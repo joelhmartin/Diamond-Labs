@@ -1,0 +1,51 @@
+{
+  "kind": "collectionType",
+  "collectionName": "product_stores",
+  "info": {
+    "singularName": "product-store",
+    "pluralName": "product-stores",
+    "displayName": "product-store",
+    "description": ""
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "title": {
+      "type": "string"
+    },
+    "address": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "image": {
+      "type": "media",
+      "multiple": true,
+      "required": false,
+      "allowedTypes": [
+        "images",
+        "files",
+        "videos",
+        "audios"
+      ]
+    },
+    "metadata": {
+      "type": "json"
+    },
+    "order": {
+      "type": "integer"
+    },
+    "products": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::product.product",
+      "mappedBy": "product_store"
+    },
+    "slug": {
+      "type": "string"
+    }
+  }
+}

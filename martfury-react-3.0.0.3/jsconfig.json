@@ -1,0 +1,28 @@
+{
+    "compilerOptions": {
+        "baseUrl": ".",
+        "paths": {
+            "~/*": ["./src/*"],
+            "~/public/*": ["./public/*"],
+            "~/redux/*": ["./src/redux/*"]
+        },
+        "jsx": "preserve",
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "module": "esnext",
+        "moduleResolution": "node",
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "noEmit": true
+    },
+    "exclude": [
+        "node_modules",
+        ".nuxt",
+        "dist",
+        ".next",
+        ".idea",
+        ".vscode",
+        ".vs"
+    ]
+}

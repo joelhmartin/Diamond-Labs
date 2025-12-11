@@ -1,0 +1,36 @@
+{
+  "name": "martfury_strapi_CMS",
+  "private": true,
+  "version": "3.0.0",
+  "description": "Strapi application, use for demo purpose. Do not use as commercial purpose.",
+  "scripts": {
+    "dev": "yarn & strapi develop",
+    "start": "strapi start",
+    "build": "strapi build",
+    "strapi": "strapi"
+  },
+  "dependencies": {
+    "@strapi/plugin-i18n": "^4.20.2",
+    "@strapi/plugin-users-permissions": "^4.20.2",
+    "@strapi/strapi": "^4.20.2",
+    "better-sqlite3": "^8.7.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "react-router-dom": "^5.2.0",
+    "slugify": "^1.6.6",
+    "strapi-plugin-ezforms": "^0.1.7",
+    "strapi-plugin-slugify": "^2.3.8",
+    "styled-components": "^5.2.1"
+  },
+  "author": {
+    "name": "Diaryforlife"
+  },
+  "strapi": {
+    "uuid": "f4222250-7dda-4627-8b7a-40972d5f7144"
+  },
+  "engines": {
+    "node": ">=12.x.x <=20.x.x",
+    "npm": ">=6.0.0"
+  },
+  "license": "MIT"
+}

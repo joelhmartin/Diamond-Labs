@@ -1,0 +1,120 @@
+{
+  "kind": "collectionType",
+  "collectionName": "products",
+  "info": {
+    "singularName": "product",
+    "pluralName": "products",
+    "displayName": "product",
+    "description": ""
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "product_categories": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::product-category.product-category",
+      "inversedBy": "products"
+    },
+    "featured": {
+      "type": "boolean",
+      "default": false
+    },
+    "sale": {
+      "type": "boolean",
+      "default": false
+    },
+    "price": {
+      "type": "float",
+      "default": 0
+    },
+    "sale_price": {
+      "type": "float",
+      "default": 0
+    },
+    "sku": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "text"
+    },
+    "tags": {
+      "type": "string"
+    },
+    "variable": {
+      "type": "boolean",
+      "default": false
+    },
+    "metadata": {
+      "type": "json"
+    },
+    "product_store": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::product-store.product-store",
+      "inversedBy": "products"
+    },
+    "product_brand": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::product-brand.product-brand",
+      "inversedBy": "products"
+    },
+    "product_collections": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::product-collection.product-collection",
+      "mappedBy": "products"
+    },
+    "stock_level": {
+      "type": "integer"
+    },
+    "currency": {
+      "type": "string",
+      "default": "usd"
+    },
+    "thumbnail": {
+      "type": "media",
+      "multiple": false,
+      "required": false,
+      "allowedTypes": [
+        "images"
+      ]
+    },
+    "images": {
+      "type": "media",
+      "multiple": true,
+      "required": false,
+      "allowedTypes": [
+        "images"
+      ]
+    },
+    "review": {
+      "type": "decimal"
+    },
+    "attributes": {
+      "type": "component",
+      "repeatable": true,
+      "component": "product-options.attributes"
+    },
+    "slug": {
+      "type": "string"
+    },
+    "type": {
+      "type": "enumeration",
+      "enum": [
+        "new-arrivals",
+        "best-seller",
+        "most-popular"
+      ],
+      "default": "new-arrivals",
+      "required": true
+    }
+  }
+}

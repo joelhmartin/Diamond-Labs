@@ -1,0 +1,21 @@
+{
+  "collectionName": "components_product_options_attributes",
+  "info": {
+    "displayName": "attributes"
+  },
+  "options": {},
+  "attributes": {
+    "name": {
+      "type": "string"
+    },
+    "default": {
+      "type": "string"
+    },
+    "values": {
+      "type": "text"
+    },
+    "visible": {
+      "type": "boolean"
+    }
+  }
+}
