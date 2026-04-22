@@ -29,6 +29,9 @@ import { SettingsPage } from "./pages/app/SettingsPage.jsx";
 import { MembersPage } from "./pages/app/MembersPage.jsx";
 import { AdminProductsPage } from "./pages/app/AdminProductsPage.jsx";
 import { AdminInvoicesPage } from "./pages/app/AdminInvoicesPage.jsx";
+import { AdminUsersPage } from "./pages/app/AdminUsersPage.jsx";
+import { AdminOrdersPage } from "./pages/app/AdminOrdersPage.jsx";
+import { AdminOrderDetailPage } from "./pages/app/AdminOrderDetailPage.jsx";
 import { RequireAdmin } from "./guards/RequireAdmin.jsx";
 
 // Marketing pages
@@ -161,6 +164,9 @@ function AppRoutes() {
           <Route path="/admin" element={<Navigate to="/admin/invoices" replace />} />
           <Route path="/admin/products" element={<AdminProductsPage />} />
           <Route path="/admin/invoices" element={<AdminInvoicesPage />} />
+          <Route path="/admin/orders" element={<AdminOrdersPage />} />
+          <Route path="/admin/orders/:id" element={<AdminOrderDetailPage />} />
+          <Route path="/admin/users" element={<AdminUsersPage />} />
         </Route>
       </Route>
 

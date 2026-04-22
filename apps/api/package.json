@@ -10,6 +10,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "node --env-file=.env src/db/seed.js",
     "db:create-admin": "node --env-file=.env src/db/create-admin.js",
+    "db:import-seazona": "node --env-file=.env src/db/import-seazona-clients.js",
     "test": "vitest run",
     "lint": "echo 'lint placeholder'"
   },

@@ -87,6 +87,21 @@ export async function getInvoice(id) {
 }
 
 /**
+ * Get orders ordered since the given ISO timestamp. Same gotcha as invoices:
+ * the `ordered` query param is required, empty = 400.
+ */
+export async function getOrders(ordered) {
+  const since = ordered || "1900-01-01T00:00:00Z";
+  const data = await request(`v1/orders/?ordered=${encodeURIComponent(since)}`);
+  return Array.isArray(data) ? data : [];
+}
+
+/** Get a single order with products, files, settings. */
+export async function getOrder(id) {
+  return request(`v1/orders/${id}`);
+}
+
+/**
  * Create a payment in Seazona.
  */
 export async function createPayment({ clientId, accountNumber, referenceNumber, notes, amount }) {

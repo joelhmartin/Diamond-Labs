@@ -70,6 +70,21 @@ export async function sendPasswordReset({ email, resetUrl }) {
   });
 }
 
+/** Invite a Seazona-imported client to activate their new portal account. */
+export async function sendPortalInvitation({ email, name, activateUrl }) {
+  await send({
+    to: email,
+    subject: "Activate your Diamond Orthotic Laboratory portal",
+    html: `
+      <h1>Welcome${name ? `, ${name}` : ""}!</h1>
+      <p>We've moved Diamond Orthotic Laboratory to a new doctor portal. Your account is waiting — just set a password to get started.</p>
+      <p>From your new portal you'll be able to submit Digital Rx cases, view invoices, track orders, and manage saved payment methods.</p>
+      <p><a href="${activateUrl}" style="display:inline-block;padding:14px 28px;background:#13AEEF;color:#fff;text-decoration:none;border-radius:999px;font-weight:600;">Create your password</a></p>
+      <p style="color:#666;font-size:13px;">This activation link expires in 7 days. If you weren't expecting this, you can ignore it.</p>
+    `,
+  });
+}
+
 export async function sendAdminApprovalRequest({ doctorName, doctorEmail, npiNumber, companyName, approveUrl, rejectUrl }) {
   await send({
     to: env.ADMIN_NOTIFICATION_EMAIL,

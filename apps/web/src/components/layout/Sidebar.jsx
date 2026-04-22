@@ -1,6 +1,14 @@
 import { NavLink } from "react-router-dom";
 import { clsx } from "clsx";
-import { LayoutDashboard, Users, Settings, Package, FileText } from "lucide-react";
+import {
+  LayoutDashboard,
+  Users,
+  Settings,
+  Package,
+  FileText,
+  ClipboardList,
+  UserCog,
+} from "lucide-react";
 import { brand } from "../../config/brand.js";
 import { ROUTES } from "../../config/routes.js";
 import { usePermission } from "../../hooks/usePermission.js";
@@ -14,6 +22,8 @@ const mainItems = [
 
 const adminItems = [
   { label: "Invoices", to: ROUTES.ADMIN_INVOICES, icon: FileText },
+  { label: "Orders",   to: ROUTES.ADMIN_ORDERS,   icon: ClipboardList },
+  { label: "Users",    to: ROUTES.ADMIN_USERS,    icon: UserCog },
   { label: "Products", to: ROUTES.ADMIN_PRODUCTS, icon: Package },
 ];
 

@@ -14,6 +14,7 @@ import memberRoutes from "./routes/member.routes.js";
 import invitationRoutes from "./routes/invitation.routes.js";
 import invoiceRoutes from "./routes/invoice.routes.js";
 import paymentRoutes from "./routes/payment.routes.js";
+import adminRoutes from "./routes/admin.routes.js";
 
 const fastify = Fastify({
   logger: {
@@ -63,6 +64,7 @@ await fastify.register(memberRoutes, { prefix: "/api/v1/accounts" });
 await fastify.register(invitationRoutes, { prefix: "/api/v1/invitations" });
 await fastify.register(invoiceRoutes, { prefix: "/api/v1" });
 await fastify.register(paymentRoutes, { prefix: "/api/v1" });
+await fastify.register(adminRoutes,   { prefix: "/api/v1" });
 
 // Start
 const start = async () => {
