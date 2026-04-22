@@ -65,51 +65,45 @@ export function DueDatePicker({ value, onChange, rush, onRushChange }) {
         </button>
       </div>
 
-      {/* Rush toggle with stamp imagery */}
-      <div className="mt-3 relative overflow-hidden rounded-2xl border border-surface-300/50 bg-surface-50">
-        <button
-          type="button"
-          onClick={() => onRushChange(!rush)}
-          className="w-full flex items-center gap-3 p-4 text-left hover:bg-accent-500/5 transition-colors"
+      {/* Rush toggle */}
+      <button
+        type="button"
+        onClick={() => onRushChange(!rush)}
+        className={`mt-3 w-full flex items-center gap-3 p-4 text-left rounded-2xl border transition-all duration-300 ${
+          rush
+            ? "bg-accent-500/5 border-accent-500/40"
+            : "bg-surface-50 border-surface-300/50 hover:border-accent-500/30"
+        }`}
+      >
+        <div
+          className={`flex-shrink-0 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${
+            rush
+              ? "border-accent-500 bg-accent-500"
+              : "border-surface-400 bg-white"
+          }`}
         >
-          <div
-            className={`flex-shrink-0 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${
-              rush
-                ? "border-accent-500 bg-accent-500"
-                : "border-surface-400 bg-white"
-            }`}
-          >
-            {rush && (
-              <svg
-                viewBox="0 0 12 12"
-                className="w-3 h-3 text-white"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-              >
-                <path d="M2 6l3 3 5-6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            )}
+          {rush && (
+            <svg
+              viewBox="0 0 12 12"
+              className="w-3 h-3 text-white"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+            >
+              <path d="M2 6l3 3 5-6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-heading font-semibold text-sm text-navy flex items-center gap-2">
+            <Zap size={13} className="text-accent-500" />
+            Rush this case
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-heading font-semibold text-sm text-navy flex items-center gap-2">
-              <Zap size={13} className="text-accent-500" />
-              Rush this case
-            </div>
-            <div className="text-xs text-navy/40 mt-0.5">
-              Expedited 3–5 business day turnaround (+$75).
-            </div>
+          <div className="text-xs text-navy/40 mt-0.5">
+            Expedited 3–5 business day turnaround (+$75).
           </div>
-        </button>
-
-        {rush && (
-          <img
-            src="/rx/rush-stamp.webp"
-            alt="Rush"
-            className="absolute top-1 right-2 w-12 h-12 md:w-16 md:h-16 opacity-80 pointer-events-none select-none"
-          />
-        )}
-      </div>
+        </div>
+      </button>
     </div>
   );
 }
