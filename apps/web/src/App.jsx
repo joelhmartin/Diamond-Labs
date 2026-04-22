@@ -33,15 +33,24 @@ import { CaseSubmissionPage } from "./pages/marketing/CaseSubmission.jsx";
 import { InstructionalVideosPage } from "./pages/marketing/InstructionalVideos.jsx";
 import { ComingSoonPage } from "./pages/marketing/ComingSoon.jsx";
 import { DownloadsPage } from "./pages/marketing/Downloads.jsx";
+import { TeamPage } from "./pages/marketing/Team.jsx";
+import { DrOlmosPage } from "./pages/marketing/DrOlmos.jsx";
+import { TmdPage } from "./pages/marketing/Tmd.jsx";
+import { SleepPage } from "./pages/marketing/Sleep.jsx";
+import { CertifiedLabsPage } from "./pages/marketing/CertifiedLabs.jsx";
+import { DigitalWorkflowPage } from "./pages/marketing/DigitalWorkflow.jsx";
+import { RxInstructionsPage } from "./pages/marketing/RxInstructions.jsx";
+import { CoursesPage } from "./pages/marketing/Courses.jsx";
 import { Navbar } from "./components/marketing/Navbar.jsx";
 import { Footer } from "./components/marketing/Footer.jsx";
+import { CartWidget } from "./components/marketing/CartWidget.jsx";
 
 // Doctor pages
 import { InvoicesPage } from "./pages/doctor/InvoicesPage.jsx";
 import { SavedCardsPage } from "./pages/doctor/SavedCardsPage.jsx";
 import { RequireDoctor } from "./guards/RequireDoctor.jsx";
 
-/* Marketing layout: Navbar + page + Footer */
+/* Marketing layout: Navbar + page + Footer + floating cart */
 function MarketingLayout() {
   return (
     <>
@@ -50,6 +59,7 @@ function MarketingLayout() {
         <Outlet />
       </main>
       <Footer />
+      <CartWidget />
     </>
   );
 }
@@ -81,17 +91,17 @@ function AppRoutes() {
         <Route path="/contact" element={<ContactPage />} />
         <Route path="/submit-case" element={<CaseSubmissionPage />} />
         <Route path="/resources/videos" element={<InstructionalVideosPage />} />
-        {/* Coming soon routes */}
-        <Route path="/about/team" element={<ComingSoonPage />} />
-        <Route path="/about/dr-olmos" element={<ComingSoonPage />} />
-        <Route path="/services/tmd" element={<ComingSoonPage />} />
-        <Route path="/services/sleep" element={<ComingSoonPage />} />
-        <Route path="/services/digital-workflow" element={<ComingSoonPage />} />
-        <Route path="/resources/rx-instructions" element={<ComingSoonPage />} />
+        <Route path="/about/team" element={<TeamPage />} />
+        <Route path="/about/dr-olmos" element={<DrOlmosPage />} />
+        <Route path="/services/tmd" element={<TmdPage />} />
+        <Route path="/services/sleep" element={<SleepPage />} />
+        <Route path="/resources/certified-labs" element={<CertifiedLabsPage />} />
         <Route path="/resources/downloads" element={<DownloadsPage />} />
+        <Route path="/services/digital-workflow" element={<DigitalWorkflowPage />} />
+        <Route path="/resources/rx-instructions" element={<RxInstructionsPage />} />
+        <Route path="/resources/courses" element={<CoursesPage />} />
+        {/* Coming soon */}
         <Route path="/resources/new-client" element={<ComingSoonPage />} />
-        <Route path="/resources/certified-labs" element={<ComingSoonPage />} />
-        <Route path="/resources/courses" element={<ComingSoonPage />} />
       </Route>
 
       {/* Auth routes */}

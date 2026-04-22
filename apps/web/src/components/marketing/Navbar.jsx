@@ -169,15 +169,22 @@ function MobileNavGroup({ link, isActive, onNavigate }) {
   );
 }
 
+const HEROLESS_ROUTES = ["/services/tmd", "/services/sleep"];
+
 export function Navbar() {
-  const [scrolled, setScrolled] = useState(false);
+  const [hasScrolled, setHasScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
   const navRef = useRef(null);
   const mobileMenuRef = useRef(null);
 
+  const isHeroless = HEROLESS_ROUTES.some(
+    (p) => location.pathname === p || location.pathname.startsWith(p + "/")
+  );
+  const scrolled = hasScrolled || isHeroless;
+
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 80);
+    const onScroll = () => setHasScrolled(window.scrollY > 80);
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
