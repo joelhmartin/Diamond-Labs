@@ -1,6 +1,6 @@
 import { db } from "../config/database.js";
 import { redis } from "../config/redis.js";
-import { users, accounts, memberships, sessions } from "../db/schema/index.js";
+import { users, accounts, memberships, sessions, doctorProfiles, approvalTokens } from "../db/schema/index.js";
 import { eq, and } from "drizzle-orm";
 import { createId } from "../lib/id.js";
 import { hashPassword, comparePassword } from "../lib/passwords.js";
@@ -15,6 +15,8 @@ import {
 import { generateMfaSecret, verifyMfaCode } from "../lib/mfa.js";
 import { ERROR_CODES, slugify } from "@my-app/shared";
 import { env } from "../config/env.js";
+import * as seazonaService from "./seazona.service.js";
+import * as emailService from "./email.service.js";
 
 const LOGIN_ATTEMPTS_PREFIX = "login_attempts:";
 const MAX_LOGIN_ATTEMPTS = 5;
@@ -152,6 +154,14 @@ export async function login({ email, password, ip, userAgent }) {
   }
 
   await clearLoginAttempts(email);
+
+  // Check doctor approval status
+  if (user.role === "doctor" && user.approvalStatus === "pending") {
+    return { pendingApproval: true };
+  }
+  if (user.role === "doctor" && user.approvalStatus === "rejected") {
+    throw createAppError(ERROR_CODES.ACCOUNT_REJECTED);
+  }
 
   // If MFA enabled, return MFA challenge
   if (user.mfaEnabled) {
@@ -388,4 +398,165 @@ export async function disableMfa(userId, password) {
     .update(users)
     .set({ mfaSecret: null, mfaEnabled: false, updatedAt: new Date() })
     .where(eq(users.id, userId));
+}
+
+// ── Doctor Registration ──
+
+export async function registerDoctor(data) {
+  // Check for duplicate email in local DB
+  const [existing] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, data.email))
+    .limit(1);
+  if (existing) throw createAppError(ERROR_CODES.EMAIL_ALREADY_EXISTS);
+
+  // Try to find existing Seazona client by email, then by phone
+  let seazonaClientId = null;
+  let seazonaAccountNumber = null;
+
+  const emailMatch = await seazonaService.checkLoginExists(data.email);
+  if (emailMatch && emailMatch.clientId) {
+    seazonaClientId = String(emailMatch.clientId);
+    seazonaAccountNumber = emailMatch.accountNumber ? String(emailMatch.accountNumber) : null;
+  } else if (data.phone) {
+    const phoneMatch = await seazonaService.findClientByPhone(data.phone);
+    if (phoneMatch) {
+      seazonaClientId = String(phoneMatch.clientId || phoneMatch.id);
+      seazonaAccountNumber = phoneMatch.accountNumber ? String(phoneMatch.accountNumber) : null;
+    }
+  }
+
+  // Create user
+  const userId = createId();
+  const passwordHash = await hashPassword(data.password);
+
+  await db.insert(users).values({
+    id: userId,
+    email: data.email,
+    passwordHash,
+    name: data.name,
+    status: "active",
+    role: "doctor",
+    approvalStatus: "pending",
+    seazonaClientId,
+    seazonaAccountNumber,
+  });
+
+  // Create default account
+  const accountId = createId();
+  const slug = slugify(data.name) || `doctor-${accountId.slice(0, 8)}`;
+  await db.insert(accounts).values({
+    id: accountId,
+    name: `${data.name}'s Practice`,
+    slug,
+    ownerId: userId,
+    status: "active",
+  });
+
+  await db.insert(memberships).values({
+    id: createId(),
+    userId,
+    accountId,
+    role: "owner",
+    status: "active",
+  });
+
+  // Create doctor profile
+  await db.insert(doctorProfiles).values({
+    id: createId(),
+    userId,
+    npiNumber: data.npiNumber,
+    licenseNumber: data.licenseNumber || null,
+    companyName: data.companyName,
+    address1: data.address1,
+    address2: data.address2 || null,
+    city: data.city,
+    state: data.state,
+    zip: data.zip,
+    phone: data.phone || null,
+    phone2: data.phone2 || null,
+    deliveryMethod: data.deliveryMethod || null,
+    deliveryNotes: data.deliveryNotes || null,
+  });
+
+  // Generate approval token
+  const token = generateSecureToken();
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+  await db.insert(approvalTokens).values({
+    id: createId(),
+    userId,
+    token,
+    expiresAt,
+  });
+
+  // Send admin notification email
+  const baseUrl = env.API_URL || env.APP_URL;
+  const approveUrl = `${baseUrl}/api/v1/auth/approve/${token}?action=approve`;
+  const rejectUrl = `${baseUrl}/api/v1/auth/approve/${token}?action=reject`;
+
+  await emailService.sendAdminApprovalRequest({
+    doctorName: data.name,
+    doctorEmail: data.email,
+    npiNumber: data.npiNumber,
+    companyName: data.companyName,
+    approveUrl,
+    rejectUrl,
+  });
+
+  return { message: "Registration submitted. Awaiting admin approval." };
+}
+
+export async function processApproval(token, action) {
+  if (!["approve", "reject"].includes(action)) {
+    throw createAppError(ERROR_CODES.APPROVAL_TOKEN_INVALID);
+  }
+
+  // Look up the token
+  const [record] = await db
+    .select()
+    .from(approvalTokens)
+    .where(eq(approvalTokens.token, token))
+    .limit(1);
+
+  if (!record) throw createAppError(ERROR_CODES.APPROVAL_TOKEN_INVALID);
+  if (record.usedAt) throw createAppError(ERROR_CODES.APPROVAL_TOKEN_INVALID);
+  if (new Date(record.expiresAt) <= new Date()) throw createAppError(ERROR_CODES.APPROVAL_TOKEN_EXPIRED);
+
+  // Load the user
+  const [user] = await db
+    .select({ id: users.id, email: users.email, name: users.name })
+    .from(users)
+    .where(eq(users.id, record.userId))
+    .limit(1);
+
+  if (!user) throw createAppError(ERROR_CODES.USER_NOT_FOUND);
+
+  // Mark token as used
+  await db
+    .update(approvalTokens)
+    .set({ usedAt: new Date() })
+    .where(eq(approvalTokens.id, record.id));
+
+  if (action === "approve") {
+    await db
+      .update(users)
+      .set({ approvalStatus: "approved", updatedAt: new Date() })
+      .where(eq(users.id, user.id));
+
+    const loginUrl = `${env.APP_URL}/login`;
+    await emailService.sendDoctorApproved({ email: user.email, name: user.name, loginUrl });
+
+    return { approved: true, doctorName: user.name };
+  } else {
+    await db
+      .update(users)
+      .set({ approvalStatus: "rejected", updatedAt: new Date() })
+      .where(eq(users.id, user.id));
+
+    await emailService.sendDoctorRejected({ email: user.email, name: user.name });
+
+    return { rejected: true, doctorName: user.name };
+  }
 }

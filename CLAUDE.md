@@ -83,3 +83,54 @@ Full cinematic landing experience:
 5. Wire all routes, all animations, all interactions before considering it done
 
 **Directive:** Build a digital instrument, not a website. Every scroll should feel intentional. Every animation should feel weighted. Eradicate all generic AI patterns.
+
+---
+
+## Project Architecture
+
+### Monorepo Structure
+- **pnpm workspaces + Turborepo** — `apps/web`, `apps/api`, `packages/shared`
+- **Frontend:** React + Vite at `apps/web/`, deployed to Vercel
+- **Backend:** Fastify v5 + Drizzle ORM at `apps/api/`, targeting Cloud Run
+- **Shared:** Zod schemas, roles/permissions, error codes at `packages/shared/`
+
+### Backend Stack
+- **Fastify** — REST API at `/api/v1/`
+- **Drizzle ORM** — PostgreSQL schema + migrations (`apps/api/src/db/schema/`)
+- **jose** — JWT access/refresh tokens
+- **bcrypt** — password hashing
+- **Resend** — transactional email
+- **Redis** — rate limiting, temporary tokens (magic links, MFA setup, etc.)
+
+### Database
+- **Local:** PostgreSQL at `postgresql://bif@localhost:5432/diamond_labs` (native install, not Docker)
+- **Production:** Cloud SQL Postgres 15 on GCP project `diamond-labs-prod`, instance `diamond-labs-db`, IP `34.45.85.116`
+- **Migrations:** `cd apps/api && pnpm db:generate && pnpm db:migrate`
+- **Drizzle config** uses `dotenv/config` — needs `.env` symlinked or present in `apps/api/`
+
+### Authentication & Roles
+- JWT + httpOnly refresh cookie auth
+- User roles: `user`, `doctor`, `admin` (enum on users table)
+- Doctors require admin approval (`approvalStatus`: pending → approved/rejected)
+- Doctor registration → admin email with approve/reject links → one-click approval
+- Middleware: `authenticate.js` (JWT), `authorize.js` (membership RBAC), `require-role.js` (user-level role guards)
+
+### External APIs
+- **Seazona** — `https://diamondapi.labzona.net/`, Basic auth. Client lookup, invoices, payments. Note: `v1/clients/` list endpoint returns 404; use `v1/clients/login-exists?email=` for email check, `v1/products` works.
+- **Authorize.net** — Production credentials (NOT sandbox). Uses JSON API directly, Accept.js for PCI-compliant card tokenization on frontend. CIM for saved cards.
+
+### Environment
+- `.env` lives at project root, symlinked to `apps/api/.env` for Drizzle
+- API dev/start scripts use `node --env-file=.env`
+- GCP secrets stored in Secret Manager on `diamond-labs-prod`
+- `project.config.js` at repo root — imported by API with relative paths (3 levels from `src/`, 4 from `src/config/`)
+
+### Key File Paths
+- DB schemas: `apps/api/src/db/schema/*.js`
+- Services: `apps/api/src/services/` (auth, email, seazona, authorizenet)
+- Routes: `apps/api/src/routes/` (auth, user, account, member, invitation, invoice, payment, health)
+- Frontend pages: `apps/web/src/pages/` (marketing, auth, app, doctor)
+- Auth store: `apps/web/src/stores/auth.store.js` (Zustand)
+- Route config: `apps/web/src/config/routes.js`
+- 3D models: `apps/web/public/models/` (OBJ+MTL for 4 products)
+- Downloads: `apps/web/public/downloads/` (PDFs)

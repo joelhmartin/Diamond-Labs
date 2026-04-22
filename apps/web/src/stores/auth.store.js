@@ -13,6 +13,9 @@ export const useAuthStore = create((set, get) => ({
 
   login: async ({ email, password }) => {
     const { data } = await api.post("/auth/login", { email, password });
+    if (data.data.pendingApproval) {
+      return { pendingApproval: true };
+    }
     if (data.data.mfaRequired) {
       return { mfaRequired: true, mfaToken: data.data.mfaToken };
     }
@@ -24,6 +27,21 @@ export const useAuthStore = create((set, get) => ({
     const { data } = await api.post("/auth/register", { email, password, name });
     set({ user: data.data.user, accessToken: data.data.accessToken, isAuthenticated: true });
     return data.data;
+  },
+
+  registerDoctor: async (formData) => {
+    const { data } = await api.post("/auth/register/doctor", formData);
+    return data.data;
+  },
+
+  isApprovedDoctor: () => {
+    const user = get().user;
+    return user?.role === "doctor" && user?.approvalStatus === "approved";
+  },
+
+  isAdmin: () => {
+    const user = get().user;
+    return user?.role === "admin";
   },
 
   logout: async () => {

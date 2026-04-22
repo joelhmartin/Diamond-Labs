@@ -17,51 +17,106 @@ gsap.registerPlugin(ScrollTrigger);
 
 /* ─── PRODUCT DATA ─── */
 const PRODUCTS = {
-  ddso: {
+  ddsoAnt: {
     name: "DDSO",
-    fullName: "Diamond Digital Sleep Orthotic",
-    tagline: "FDA-cleared mandibular advancement for obstructive sleep apnea.",
+    fullName: "Diamond Digital Sleep Orthotic — Anterior",
+    tagline: "FDA-cleared anterior contact design for precise mandibular advancement without posterior occlusal loading.",
     category: "Sleep Appliance",
     categoryColor: "text-accent-500",
     categoryBg: "bg-accent-500/10",
     images: [
-      { src: "/images/ddso-trademark.webp", label: "DDSO — Overview" },
-      { src: "/images/ddso-front.webp", label: "DDSO — Front View" },
-      { src: "/images/ddso-side.webp", label: "DDSO — Side Profile" },
-      { src: "/images/ddso-isometric.webp", label: "DDSO — Isometric" },
-      { src: "/images/ddso-rear.webp", label: "DDSO — Rear View" },
-      { src: "/images/ddso-nylon-bands.webp", label: "DDSO — Nylon Bands" },
+      { src: "/images/ddso-ant-overview.webp",  label: "DDSO Anterior — Overview" },
+      { src: "/images/ddso-ant-front.webp",     label: "DDSO Anterior — Front View" },
+      { src: "/images/ddso-ant-hooks.webp",     label: "DDSO Anterior — Nylon Band Hooks" },
+      { src: "/images/ddso-ant-angle.webp",     label: "DDSO Anterior — Angle View" },
+      { src: "/images/ddso-ant-pair.webp",      label: "DDSO Anterior — Upper & Lower" },
+      {
+        is3D: true,
+        objPath: "/models/DDSO_Anterior_contact.obj",
+        mtlPath: "/models/DDSO_Anterior_contact.mtl",
+        label: "DDSO Anterior — 3D View",
+      },
+    ],
+    specs: [
+      { label: "FDA Status",    value: "510(k) Cleared" },
+      { label: "Design",        value: "Anterior Contact Only" },
+      { label: "Material",      value: "Biocompatible Nylon PA12" },
+      { label: "Fabrication",   value: "3D Printed (SLS)" },
+      { label: "Turnaround",    value: "5–7 Business Days" },
+      { label: "Retention",     value: "Nylon Band System" },
+    ],
+  },
+  ddsoPost: {
+    name: "DDSO",
+    fullName: "Diamond Digital Sleep Orthotic — Posterior",
+    tagline: "Full-arch posterior coverage with integrated nylon band titration system for progressive mandibular advancement.",
+    category: "Sleep Appliance",
+    categoryColor: "text-accent-500",
+    categoryBg: "bg-accent-500/10",
+    images: [
+      { src: "/images/ddso-post-overview.webp",  label: "DDSO Posterior — Overview" },
+      { src: "/images/ddso-post-iso.webp",        label: "DDSO Posterior — Isometric" },
+      { src: "/images/ddso-post-stacked.webp",    label: "DDSO Posterior — Stacked" },
+      { src: "/images/ddso-post-interior.webp",   label: "DDSO Posterior — Interior" },
+      { src: "/images/ddso-blue-bands.webp",      label: "DDSO Posterior — Blue Bands" },
       {
         is3D: true,
         objPath: "/models/DDSO_BANDS_POSTERIOR.obj",
         mtlPath: "/models/DDSO_BANDS_POSTERIOR.mtl",
-        label: "DDSO — 3D View",
+        label: "DDSO Posterior — 3D View",
       },
     ],
     specs: [
-      { label: "FDA Status", value: "510(k) Cleared" },
-      { label: "Material", value: "Biocompatible Nylon PA12" },
-      { label: "Fabrication", value: "3D Printed (SLS)" },
-      { label: "Turnaround", value: "5–7 Business Days" },
-      { label: "Titration", value: "Adjustable Advancement" },
-      { label: "Retention", value: "Nylon Band System" },
+      { label: "FDA Status",    value: "510(k) Cleared" },
+      { label: "Design",        value: "Full-Arch Posterior" },
+      { label: "Material",      value: "Biocompatible Nylon PA12" },
+      { label: "Fabrication",   value: "3D Printed (SLS)" },
+      { label: "Turnaround",    value: "5–7 Business Days" },
+      { label: "Titration",     value: "Adjustable Band System" },
     ],
   },
-  onp: {
-    name: "ONP",
-    fullName: "Olmos Neuromuscular Positioner",
-    tagline:
-      "Precision TMJ orthotic designed around the Olmos clinical protocol.",
+  ond: {
+    name: "OND",
+    fullName: "Olmos Neuromuscular Device",
+    tagline: "Precision TMJ orthotic combining Nylon and Trutaine materials for optimal neuromuscular repositioning.",
     category: "TMD Orthotic",
     categoryColor: "text-brand-500",
     categoryBg: "bg-brand-500/10",
     images: [
-      { src: "/images/onp-front.webp", label: "ONP — Front View" },
-      { src: "/images/onp-rear.webp", label: "ONP — Rear View" },
-      { src: "/images/onp-side.webp", label: "ONP — Side View" },
-      { src: "/images/onp-nylon.webp", label: "ONP — Nylon" },
-      { src: "/images/onp-clear.webp", label: "ONP — Clear" },
-      { src: "/images/onp-bioflex1.webp", label: "ONP — Bioflex" },
+      { src: "/images/ond-overview.webp",   label: "OND — Overview" },
+      { src: "/images/ond-nylon.webp",      label: "OND — Nylon" },
+      { src: "/images/ond-trutaine.webp",   label: "OND — Trutaine" },
+      { src: "/images/ond-front.webp",      label: "OND — Front View" },
+      { src: "/images/ond-bands.webp",      label: "OND — With Bands" },
+      {
+        is3D: true,
+        objPath: "/models/OND_COMBINED.obj",
+        mtlPath: "/models/OND_COMBINED.mtl",
+        label: "OND — 3D View",
+      },
+    ],
+    specs: [
+      { label: "Protocol",      value: "Olmos Series Certified" },
+      { label: "Materials",     value: "Nylon / Trutaine" },
+      { label: "Fabrication",   value: "CAD/CAM + 3D Print" },
+      { label: "Turnaround",    value: "5–7 Business Days" },
+      { label: "Articulation",  value: "Digital Bite Registration" },
+      { label: "Variants",      value: "OND / ONR" },
+    ],
+  },
+  onp: {
+    name: "ONP",
+    fullName: "Olmos Neuromuscular Positioner — Trutaine",
+    tagline: "Precision TMJ orthotic in Trutaine material, designed around the Olmos clinical protocol for optimal joint decompression.",
+    category: "TMD Orthotic",
+    categoryColor: "text-brand-500",
+    categoryBg: "bg-brand-500/10",
+    images: [
+      { src: "/images/onp-front.webp",        label: "ONP — Front View" },
+      { src: "/images/onp-nylon.webp",        label: "ONP — Nylon" },
+      { src: "/images/onp-nylon4.webp",       label: "ONP — Nylon Detail" },
+      { src: "/images/onp-bioflex-new.webp",  label: "ONP — Bioflex" },
+      { src: "/images/onp-model.webp",        label: "ONP — On Model" },
       {
         is3D: true,
         objPath: "/models/ONP-Trutaine.obj",
@@ -70,12 +125,12 @@ const PRODUCTS = {
       },
     ],
     specs: [
-      { label: "Protocol", value: "Olmos Series Certified" },
-      { label: "Materials", value: "Nylon / Bioflex / Trutaine" },
-      { label: "Fabrication", value: "CAD/CAM + 3D Print" },
-      { label: "Turnaround", value: "5–7 Business Days" },
-      { label: "Articulation", value: "Digital Bite Registration" },
-      { label: "Variants", value: "ONP / OND / ONR" },
+      { label: "Protocol",      value: "Olmos Series Certified" },
+      { label: "Materials",     value: "Nylon / Bioflex / Trutaine" },
+      { label: "Fabrication",   value: "CAD/CAM + 3D Print" },
+      { label: "Turnaround",    value: "5–7 Business Days" },
+      { label: "Articulation",  value: "Digital Bite Registration" },
+      { label: "Variants",      value: "ONP / OND / ONR" },
     ],
   },
 };
@@ -426,7 +481,7 @@ function ProductHero() {
 
 /* ─── PRODUCT TABS ─── */
 function ProductTabs() {
-  const [activeProduct, setActiveProduct] = useState("ddso");
+  const [activeProduct, setActiveProduct] = useState("ddsoAnt");
   const ref = useRef(null);
 
   useEffect(() => {
@@ -448,8 +503,13 @@ function ProductTabs() {
       <div className="max-w-6xl mx-auto">
 
         {/* Tabs */}
-        <div data-product-entry className="flex items-center gap-2 mb-8">
-          {Object.entries(PRODUCTS).map(([key, prod]) => (
+        <div data-product-entry className="flex flex-wrap items-center gap-2 mb-8">
+          {[
+            { key: "ddsoAnt",  label: "DDSO — Anterior",  sub: "Sleep Appliance" },
+            { key: "ddsoPost", label: "DDSO — Posterior", sub: "Sleep Appliance" },
+            { key: "ond",      label: "OND",              sub: "TMD Orthotic" },
+            { key: "onp",      label: "ONP",              sub: "TMD Orthotic" },
+          ].map(({ key, label, sub }) => (
             <button
               key={key}
               onClick={() => setActiveProduct(key)}
@@ -459,8 +519,8 @@ function ProductTabs() {
                   : "bg-surface-200/60 text-navy/50 hover:text-navy hover:bg-surface-300/60"
               }`}
             >
-              {prod.name}
-              <span className="hidden sm:inline"> — {prod.category}</span>
+              {label}
+              <span className="hidden sm:inline text-xs opacity-60"> · {sub}</span>
             </button>
           ))}
         </div>

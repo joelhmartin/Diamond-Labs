@@ -21,6 +21,11 @@ export async function authenticate(request, reply) {
         email: users.email,
         name: users.name,
         status: users.status,
+        role: users.role,
+        approvalStatus: users.approvalStatus,
+        seazonaClientId: users.seazonaClientId,
+        seazonaAccountNumber: users.seazonaAccountNumber,
+        authorizeNetCustomerProfileId: users.authorizeNetCustomerProfileId,
         emailVerifiedAt: users.emailVerifiedAt,
         mfaEnabled: users.mfaEnabled,
       })

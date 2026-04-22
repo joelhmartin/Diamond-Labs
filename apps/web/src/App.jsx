@@ -16,6 +16,8 @@ import { ResetPasswordPage } from "./pages/auth/ResetPasswordPage.jsx";
 import { VerifyEmailPage } from "./pages/auth/VerifyEmailPage.jsx";
 import { MagicLinkPage } from "./pages/auth/MagicLinkPage.jsx";
 import { AcceptInvitePage } from "./pages/auth/AcceptInvitePage.jsx";
+import { DoctorRegisterPage } from "./pages/auth/DoctorRegisterPage.jsx";
+import { DoctorPendingPage } from "./pages/auth/DoctorPendingPage.jsx";
 
 // App pages
 import { DashboardPage } from "./pages/app/DashboardPage.jsx";
@@ -30,8 +32,14 @@ import { ContactPage } from "./pages/marketing/Contact.jsx";
 import { CaseSubmissionPage } from "./pages/marketing/CaseSubmission.jsx";
 import { InstructionalVideosPage } from "./pages/marketing/InstructionalVideos.jsx";
 import { ComingSoonPage } from "./pages/marketing/ComingSoon.jsx";
+import { DownloadsPage } from "./pages/marketing/Downloads.jsx";
 import { Navbar } from "./components/marketing/Navbar.jsx";
 import { Footer } from "./components/marketing/Footer.jsx";
+
+// Doctor pages
+import { InvoicesPage } from "./pages/doctor/InvoicesPage.jsx";
+import { SavedCardsPage } from "./pages/doctor/SavedCardsPage.jsx";
+import { RequireDoctor } from "./guards/RequireDoctor.jsx";
 
 /* Marketing layout: Navbar + page + Footer */
 function MarketingLayout() {
@@ -80,7 +88,7 @@ function AppRoutes() {
         <Route path="/services/sleep" element={<ComingSoonPage />} />
         <Route path="/services/digital-workflow" element={<ComingSoonPage />} />
         <Route path="/resources/rx-instructions" element={<ComingSoonPage />} />
-        <Route path="/resources/downloads" element={<ComingSoonPage />} />
+        <Route path="/resources/downloads" element={<DownloadsPage />} />
         <Route path="/resources/new-client" element={<ComingSoonPage />} />
         <Route path="/resources/certified-labs" element={<ComingSoonPage />} />
         <Route path="/resources/courses" element={<ComingSoonPage />} />
@@ -89,6 +97,8 @@ function AppRoutes() {
       {/* Auth routes */}
       <Route path="/auth/login" element={<LoginPage />} />
       <Route path="/auth/register" element={<RegisterPage />} />
+      <Route path="/auth/register/doctor" element={<DoctorRegisterPage />} />
+      <Route path="/auth/register/pending" element={<DoctorPendingPage />} />
       <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
       <Route path="/auth/verify-email" element={<VerifyEmailPage />} />
@@ -112,6 +122,12 @@ function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="members" element={<MembersPage />} />
+      </Route>
+
+      {/* Protected doctor routes */}
+      <Route path="/doctor" element={<RequireDoctor />}>
+        <Route path="invoices" element={<InvoicesPage />} />
+        <Route path="saved-cards" element={<SavedCardsPage />} />
       </Route>
 
       {/* Fallback */}

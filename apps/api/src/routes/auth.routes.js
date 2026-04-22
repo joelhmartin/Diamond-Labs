@@ -9,6 +9,7 @@ import {
   mfaVerifySchema,
   mfaEnableSchema,
   mfaDisableSchema,
+  doctorRegisterSchema,
 } from "@my-app/shared";
 import { validate } from "../middleware/validate.js";
 import { authenticate } from "../middleware/authenticate.js";
@@ -46,6 +47,10 @@ export default async function authRoutes(fastify) {
       ip: request.ip,
       userAgent: request.headers["user-agent"],
     });
+
+    if (result.pendingApproval) {
+      return { data: { pendingApproval: true } };
+    }
 
     if (result.mfaRequired) {
       return { data: { mfaRequired: true, mfaToken: result.mfaToken } };
@@ -149,6 +154,53 @@ export default async function authRoutes(fastify) {
   fastify.post("/mfa/disable", { preHandler: [authenticate, validate(mfaDisableSchema)] }, async (request) => {
     await authService.disableMfa(request.user.id, request.body.password);
     return { data: { message: "MFA disabled." } };
+  });
+
+  // Doctor registration
+  fastify.post("/register/doctor", { preHandler: [validate(doctorRegisterSchema)] }, async (request) => {
+    const result = await authService.registerDoctor(request.body);
+    return { data: result };
+  });
+
+  // Admin approval (one-click from email — returns HTML)
+  fastify.get("/approve/:token", async (request, reply) => {
+    const { token } = request.params;
+    const action = request.query.action;
+
+    try {
+      const result = await authService.processApproval(token, action);
+      const status = result.approved ? "approved" : "rejected";
+      const color = result.approved ? "#16a34a" : "#dc2626";
+
+      reply.type("text/html").send(`
+        <!DOCTYPE html>
+        <html>
+        <head><title>Doctor ${status}</title><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+        <body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;">
+          <div style="text-align:center;padding:40px;background:white;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:400px;">
+            <div style="width:48px;height:48px;border-radius:50%;background:${color};margin:0 auto 16px;display:flex;align-items:center;justify-content:center;">
+              <span style="color:white;font-size:24px;">${result.approved ? "✓" : "✕"}</span>
+            </div>
+            <h1 style="margin:0 0 8px;font-size:20px;">Doctor ${status}</h1>
+            <p style="color:#64748b;margin:0;">Dr. ${result.doctorName}'s account has been ${status}.</p>
+          </div>
+        </body>
+        </html>
+      `);
+    } catch (err) {
+      reply.type("text/html").code(err.statusCode || 400).send(`
+        <!DOCTYPE html>
+        <html>
+        <head><title>Error</title><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+        <body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;">
+          <div style="text-align:center;padding:40px;background:white;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:400px;">
+            <h1 style="margin:0 0 8px;font-size:20px;color:#dc2626;">Error</h1>
+            <p style="color:#64748b;margin:0;">${err.message || "This link is invalid or has expired."}</p>
+          </div>
+        </body>
+        </html>
+      `);
+    }
   });
 
   // OAuth: Google redirect

@@ -1,8 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
-import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
+import { MTLLoader } from "three/examples/jsm/loaders/MTLLoader.js";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 /**
  * ModelViewer — renders an OBJ+MTL file in a Three.js canvas.
@@ -13,6 +13,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
  */
 export function ModelViewer({ objPath, mtlPath, className = "" }) {
   const mountRef = useRef(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -95,10 +96,11 @@ export function ModelViewer({ objPath, mtlPath, className = "" }) {
           }
 
           scene.add(obj);
+          setLoading(false);
 
           /* Push camera back to see the model */
           const fov = camera.fov * (Math.PI / 180);
-          const dist = Math.max(size.x, size.y, size.z) * scale * 1.6;
+          const dist = Math.max(size.x, size.y, size.z) * scale * 0.5;
           camera.position.set(0, 0, dist / Math.tan(fov / 2));
           camera.near = dist * 0.01;
           camera.far = dist * 100;
@@ -157,8 +159,13 @@ export function ModelViewer({ objPath, mtlPath, className = "" }) {
   }, [objPath, mtlPath]);
 
   return (
-    <div ref={mountRef} className={`w-full h-full ${className}`}>
-      {/* Canvas injected by Three.js */}
+    <div ref={mountRef} className={`w-full h-full relative ${className}`}>
+      {loading && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-surface-100 z-10 pointer-events-none">
+          <div className="w-8 h-8 rounded-full border-2 border-surface-300 border-t-brand-500 animate-spin" />
+          <span className="font-mono text-[10px] text-navy/30 uppercase tracking-widest">Loading 3D model</span>
+        </div>
+      )}
     </div>
   );
 }

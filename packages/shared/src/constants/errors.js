@@ -34,6 +34,13 @@ export const ERROR_CODES = {
   INVITATION_ALREADY_ACCEPTED: { code: "INVITATION_ALREADY_ACCEPTED", status: 409, message: "This invitation has already been accepted." },
   INVITATION_ALREADY_EXISTS: { code: "INVITATION_ALREADY_EXISTS", status: 409, message: "An invitation for this email already exists." },
 
+  // Doctor
+  ACCOUNT_PENDING_APPROVAL: { code: "ACCOUNT_PENDING_APPROVAL", status: 403, message: "Your account is pending admin approval." },
+  ACCOUNT_REJECTED: { code: "ACCOUNT_REJECTED", status: 403, message: "Your account registration has been rejected." },
+  APPROVAL_TOKEN_INVALID: { code: "APPROVAL_TOKEN_INVALID", status: 400, message: "Approval token is invalid or has already been used." },
+  APPROVAL_TOKEN_EXPIRED: { code: "APPROVAL_TOKEN_EXPIRED", status: 410, message: "Approval token has expired." },
+  SEAZONA_CLIENT_NOT_LINKED: { code: "SEAZONA_CLIENT_NOT_LINKED", status: 400, message: "No Seazona client linked to this account." },
+
   // General
   VALIDATION_ERROR: { code: "VALIDATION_ERROR", status: 422, message: "Validation failed." },
   NOT_FOUND: { code: "NOT_FOUND", status: 404, message: "Resource not found." },

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { loginSchema } from "@my-app/shared";
@@ -7,10 +8,12 @@ import { Button } from "../ui/Button.jsx";
 import { useAuth } from "../../hooks/useAuth.js";
 import { useToast } from "../ui/Toast.jsx";
 import { MfaChallenge } from "./MfaChallenge.jsx";
+import { ROUTES } from "../../config/routes.js";
 
 export function LoginForm() {
   const { login } = useAuth();
   const { addToast } = useToast();
+  const navigate = useNavigate();
   const [mfaState, setMfaState] = useState(null);
   const {
     register,
@@ -21,6 +24,10 @@ export function LoginForm() {
   const onSubmit = async (data) => {
     try {
       const result = await login(data);
+      if (result?.pendingApproval) {
+        navigate(ROUTES.REGISTER_PENDING);
+        return;
+      }
       if (result?.mfaRequired) {
         setMfaState({ mfaToken: result.mfaToken });
       }

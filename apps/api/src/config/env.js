@@ -22,6 +22,19 @@ const envSchema = z.object({
 
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default(`noreply@${project.domain}`),
+
+  // Seazona
+  SEAZONA_API_KEY: z.string().optional(),
+  SEAZONA_SECRET: z.string().optional(),
+  SEAZONA_BASE_URL: z.string().url().optional(),
+
+  // Authorize.net
+  AUTHORIZE_NET_API_LOGIN: z.string().optional(),
+  AUTHORIZE_NET_TRANSACTION_KEY: z.string().optional(),
+  AUTHORIZE_NET_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
+
+  // Admin
+  ADMIN_NOTIFICATION_EMAIL: z.string().email().optional(),
 });
 
 function parseEnv() {
