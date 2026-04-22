@@ -8,7 +8,8 @@
     "start": "node --env-file=.env src/index.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:seed": "node src/db/seed.js",
+    "db:seed": "node --env-file=.env src/db/seed.js",
+    "db:create-admin": "node --env-file=.env src/db/create-admin.js",
     "test": "vitest run",
     "lint": "echo 'lint placeholder'"
   },
