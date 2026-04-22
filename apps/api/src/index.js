@@ -27,13 +27,27 @@ await fastify.register(cookie);
 await fastify.register(cors, {
   origin: env.NODE_ENV === "production"
     ? project.api.cors.origins
-    : ["http://localhost:5173", "http://localhost:3000"],
+    // Vite auto-bumps the dev port when taken, so allow any localhost origin in dev.
+    : (origin, cb) => {
+        if (!origin) return cb(null, true);
+        try {
+          const host = new URL(origin).hostname;
+          if (host === "localhost" || host === "127.0.0.1") return cb(null, true);
+        } catch {}
+        cb(new Error("CORS: origin not allowed"), false);
+      },
   credentials: true,
 });
 await fastify.register(helmet, { contentSecurityPolicy: false });
+
+// Rate limit: production caps per the project config; dev gets a much higher
+// ceiling so refreshes + HMR + dashboard fan-out don't lock out the single
+// developer on their machine.
 await fastify.register(rateLimit, {
-  max: project.api.rateLimit.maxRequests,
-  timeWindow: project.api.rateLimit.window,
+  max: env.NODE_ENV === "production" ? project.api.rateLimit.maxRequests : 10000,
+  timeWindow: env.NODE_ENV === "production" ? project.api.rateLimit.window : "1 minute",
+  // Skip rate limiting entirely for requests from localhost in dev
+  allowList: env.NODE_ENV === "production" ? [] : ["127.0.0.1", "::1"],
 });
 
 // Global error handler
