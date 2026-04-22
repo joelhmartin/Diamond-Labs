@@ -19,6 +19,7 @@ export const ROUTES = {
   // Admin
   ADMIN: "/admin",
   ADMIN_PRODUCTS: "/admin/products",
+  ADMIN_INVOICES: "/admin/invoices",
 
   // Doctor
   DOCTOR_INVOICES: "/doctor/invoices",
@@ -34,7 +35,7 @@ export const ROUTES = {
  */
 export function roleHome(user) {
   if (!user) return ROUTES.LOGIN;
-  if (user.role === "admin") return ROUTES.ADMIN_PRODUCTS;
+  if (user.role === "admin") return ROUTES.ADMIN_INVOICES;
   if (user.role === "doctor") {
     if (user.approvalStatus === "pending") return ROUTES.REGISTER_PENDING;
     if (user.approvalStatus === "approved") return ROUTES.DOCTOR_INVOICES;

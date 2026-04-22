@@ -1,5 +1,9 @@
 import { useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
+import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+
+gsap.registerPlugin(ScrollTrigger);
 import { ToastProvider } from "./components/ui/Toast.jsx";
 import { useAuthStore } from "./stores/auth.store.js";
 import { useAccountStore } from "./stores/account.store.js";
@@ -24,7 +28,9 @@ import { DashboardPage } from "./pages/app/DashboardPage.jsx";
 import { SettingsPage } from "./pages/app/SettingsPage.jsx";
 import { MembersPage } from "./pages/app/MembersPage.jsx";
 import { AdminProductsPage } from "./pages/app/AdminProductsPage.jsx";
+import { AdminInvoicesPage } from "./pages/app/AdminInvoicesPage.jsx";
 import { RequireAdmin } from "./guards/RequireAdmin.jsx";
+import { AdminLayout } from "./components/layout/AdminLayout.jsx";
 
 // Marketing pages
 import { HomePage } from "./pages/marketing/Home.jsx";
@@ -55,6 +61,23 @@ import { RequireDoctor } from "./guards/RequireDoctor.jsx";
 
 /* Marketing layout: Navbar + page + Footer + floating cart */
 function MarketingLayout() {
+  const { pathname } = useLocation();
+
+  // GSAP ScrollTrigger positions get cached before hero images finish loading,
+  // which can leave fade-in elements stuck at opacity:0 (looks like empty sections).
+  // Refresh after route change + after window load so triggers recalc against final layout.
+  useEffect(() => {
+    const raf1 = requestAnimationFrame(() => {
+      requestAnimationFrame(() => ScrollTrigger.refresh());
+    });
+    const onLoad = () => ScrollTrigger.refresh();
+    window.addEventListener("load", onLoad);
+    return () => {
+      cancelAnimationFrame(raf1);
+      window.removeEventListener("load", onLoad);
+    };
+  }, [pathname]);
+
   return (
     <>
       <Navbar />
@@ -136,8 +159,11 @@ function AppRoutes() {
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/members" element={<MembersPage />} />
         <Route element={<RequireAdmin />}>
-          <Route path="/admin" element={<Navigate to="/admin/products" replace />} />
-          <Route path="/admin/products" element={<AdminProductsPage />} />
+          <Route element={<AdminLayout />}>
+            <Route path="/admin" element={<Navigate to="/admin/products" replace />} />
+            <Route path="/admin/products" element={<AdminProductsPage />} />
+            <Route path="/admin/invoices" element={<AdminInvoicesPage />} />
+          </Route>
         </Route>
       </Route>
 

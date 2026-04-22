@@ -204,7 +204,7 @@ function MobileAccount({ onNavigate }) {
   const home = roleHome(user);
   const homeLabel =
     user?.role === "admin"
-      ? "Admin · Products"
+      ? "Admin · Invoices"
       : user?.role === "doctor"
       ? "Doctor Portal"
       : "Dashboard";
@@ -276,7 +276,7 @@ function AccountButton({ scrolled }) {
   const home = roleHome(user);
   const homeLabel =
     user?.role === "admin"
-      ? "Admin · Products"
+      ? "Admin · Invoices"
       : user?.role === "doctor"
       ? "Doctor Portal"
       : "Dashboard";
