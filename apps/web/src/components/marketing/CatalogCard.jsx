@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Check, Image as ImageIcon } from "lucide-react";
+import { Plus, Minus, Check, Image as ImageIcon } from "lucide-react";
 import { useCartStore } from "../../stores/cart.store";
 
 function formatPrice(p) {
@@ -9,23 +9,40 @@ function formatPrice(p) {
 
 export function CatalogCard({ product, onOpen }) {
   const add = useCartStore((s) => s.add);
-  const [added, setAdded] = useState(false);
+  const setQty = useCartStore((s) => s.setQty);
+  const cartItem = useCartStore((s) =>
+    s.items.find((i) => i.id === product.id)
+  );
   const [imgFailed, setImgFailed] = useState(false);
 
   const img = product.thumbnail || product.image;
   const showImage = img && !imgFailed;
+  const inCart = Boolean(cartItem);
+  const qty = cartItem?.qty ?? 0;
 
   function handleAdd(e) {
     e.stopPropagation();
     add(product);
-    setAdded(true);
-    setTimeout(() => setAdded(false), 1400);
+  }
+
+  function handleInc(e) {
+    e.stopPropagation();
+    setQty(product.id, qty + 1);
+  }
+
+  function handleDec(e) {
+    e.stopPropagation();
+    setQty(product.id, qty - 1);
   }
 
   return (
     <div
       onClick={onOpen}
-      className="group cursor-pointer bg-white card-radius border border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-navy/5 transition-all duration-500 flex flex-col overflow-hidden"
+      className={`group cursor-pointer card-radius transition-all duration-500 flex flex-col overflow-hidden ${
+        inCart
+          ? "bg-white border-2 border-brand-500 shadow-lg shadow-brand-500/10"
+          : "bg-white border border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-navy/5"
+      }`}
     >
       {/* Image */}
       <div className="relative aspect-square bg-surface-100 overflow-hidden">
@@ -51,6 +68,13 @@ export function CatalogCard({ product, onOpen }) {
             {product.categories[0]}
           </span>
         )}
+
+        {inCart && (
+          <span className="absolute top-3 right-3 flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-brand-500 text-white shadow-md shadow-brand-500/20">
+            <Check size={10} strokeWidth={3} />
+            In Cart
+          </span>
+        )}
       </div>
 
       {/* Content */}
@@ -69,10 +93,30 @@ export function CatalogCard({ product, onOpen }) {
             {formatPrice(product.price)}
           </div>
 
-          {added ? (
-            <div className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold bg-emerald-500 text-white">
-              <Check size={13} />
-              Added
+          {inCart ? (
+            <div
+              className="flex items-center gap-0.5 bg-brand-500 rounded-full p-0.5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={handleDec}
+                className="w-7 h-7 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white transition-colors"
+                aria-label="Decrease quantity"
+              >
+                <Minus size={12} strokeWidth={2.5} />
+              </button>
+              <span className="font-mono text-sm font-bold text-white w-7 text-center tabular-nums">
+                {qty}
+              </span>
+              <button
+                type="button"
+                onClick={handleInc}
+                className="w-7 h-7 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white transition-colors"
+                aria-label="Increase quantity"
+              >
+                <Plus size={12} strokeWidth={2.5} />
+              </button>
             </div>
           ) : (
             <button
