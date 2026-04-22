@@ -1,11 +1,11 @@
 /**
- * Diamond Orthotic catalog — publicly purchasable accessories, supplies, and tools.
- * Orthotics (OND/ONP/DDSO) are Rx-only and live in products.js, not here.
+ * Diamond Orthotic catalog — publicly purchasable accessories, supplies, tools,
+ * and sample models. Every item here is orderable directly; Rx-required
+ * fabrication (OND/ONP/DDSO orthotics built per case) lives in products.js
+ * and routes through the Digital Rx form instead.
  *
- * Image paths normalized to `/catalog/<filename>`. Images should be dropped
- * into `apps/web/public/catalog/`. Missing images fall back to a placeholder.
- * Products with category "Digital Rx." or "@Digital Rx." are Rx-only —
- * shown in the catalog for discovery but routed to the Digital Rx form.
+ * Image paths normalized to `/catalog/<filename>`. Main images are served
+ * as WebP (converted from original JPG/PNG); thumbnails kept as-is.
  */
 
 function file(path) {
@@ -34,10 +34,6 @@ function toWebp(path) {
 function parseCats(raw) {
   // "TMJ@Digital Rx." → ["TMJ", "Digital Rx."]
   return raw.split("@").map((c) => c.trim()).filter(Boolean);
-}
-
-function isRxOnly(raw) {
-  return parseCats(raw).some((c) => c.toLowerCase().includes("digital rx"));
 }
 
 const RAW = [
@@ -107,7 +103,6 @@ export const CATALOG = RAW.map((p) => ({
   thumbnail: file(p.thumb),
   images: p.img ? [toWebp(p.img)] : [],
   categories: parseCats(p.cats),
-  rxOnly: isRxOnly(p.cats),
 }));
 
 /** All distinct top-level categories for filter UI. */

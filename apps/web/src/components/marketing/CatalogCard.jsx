@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Check, FileText, Image as ImageIcon } from "lucide-react";
+import { Plus, Check, Image as ImageIcon } from "lucide-react";
 import { useCartStore } from "../../stores/cart.store";
 
 function formatPrice(p) {
@@ -9,7 +9,6 @@ function formatPrice(p) {
 
 export function CatalogCard({ product, onOpen }) {
   const add = useCartStore((s) => s.add);
-  const open = useCartStore((s) => s.open);
   const [added, setAdded] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
 
@@ -18,11 +17,9 @@ export function CatalogCard({ product, onOpen }) {
 
   function handleAdd(e) {
     e.stopPropagation();
-    if (product.rxOnly) return;
     add(product);
     setAdded(true);
     setTimeout(() => setAdded(false), 1400);
-    // Flash-open the drawer briefly? Keep subtle — just pulse the badge.
   }
 
   return (
@@ -49,13 +46,7 @@ export function CatalogCard({ product, onOpen }) {
           </div>
         )}
 
-        {product.rxOnly && (
-          <span className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-brand-500/10 text-brand-600 backdrop-blur-sm border border-brand-500/20">
-            Rx Only
-          </span>
-        )}
-
-        {product.categories[0] && !product.rxOnly && (
+        {product.categories[0] && (
           <span className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-surface-100/90 text-navy/60 backdrop-blur-sm border border-surface-300/50">
             {product.categories[0]}
           </span>
@@ -78,19 +69,7 @@ export function CatalogCard({ product, onOpen }) {
             {formatPrice(product.price)}
           </div>
 
-          {product.rxOnly ? (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpen();
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold text-brand-500 hover:bg-brand-500/5 transition-colors"
-            >
-              <FileText size={13} />
-              Rx Required
-            </button>
-          ) : added ? (
+          {added ? (
             <div className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold bg-emerald-500 text-white">
               <Check size={13} />
               Added

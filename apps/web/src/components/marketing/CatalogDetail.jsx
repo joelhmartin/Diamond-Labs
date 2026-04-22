@@ -1,6 +1,5 @@
 import { useEffect } from "react";
-import { Link } from "react-router-dom";
-import { X, FileText } from "lucide-react";
+import { X } from "lucide-react";
 import { ProductViewer } from "./ProductViewer";
 import { useCartStore } from "../../stores/cart.store";
 
@@ -13,8 +12,8 @@ function toViewerShape(p) {
     p.stock > 0 ? "In Stock" : p.stock === 0 ? "Out of Stock" : "Backorder";
 
   const specs = [
-    { label: "SKU",        value: `#${p.id}` },
-    { label: "Price",      value: price },
+    { label: "SKU",          value: `#${p.id}` },
+    { label: "Price",        value: price },
     { label: "Availability", value: stockValue },
     ...(p.categories.length
       ? [{ label: "Category", value: p.categories.join(" · ") }]
@@ -25,9 +24,9 @@ function toViewerShape(p) {
     name: p.name,
     fullName: p.description || p.categories[0] || "Diamond Orthotic Catalog",
     tagline: p.description || "Contact the lab for questions on this item.",
-    category: p.rxOnly ? "Rx Only" : p.categories[0] || "Catalog",
-    categoryColor: p.rxOnly ? "text-brand-600" : "text-navy/60",
-    categoryBg: p.rxOnly ? "bg-brand-500/10" : "bg-surface-200/80",
+    category: p.categories[0] || "Catalog",
+    categoryColor: "text-navy/60",
+    categoryBg: "bg-surface-200/80",
     images:
       p.images && p.images.length
         ? p.images.map((src) => ({ src, label: p.name }))
@@ -55,7 +54,7 @@ export function CatalogDetail({ product, onClose }) {
   if (!product) return null;
 
   const viewerProduct = toViewerShape(product);
-  const canAdd = !product.rxOnly;
+  const priceValue = viewerProduct.specs.find((s) => s.label === "Price").value;
 
   function handleAdd() {
     add(product);
@@ -72,7 +71,6 @@ export function CatalogDetail({ product, onClose }) {
         className="relative w-full max-w-5xl bg-white md:card-radius-lg rounded-t-[2rem] md:rounded-[3rem] p-6 md:p-10 shadow-2xl max-h-[95dvh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Close */}
         <button
           type="button"
           onClick={onClose}
@@ -82,40 +80,12 @@ export function CatalogDetail({ product, onClose }) {
           <X size={18} />
         </button>
 
-        {canAdd ? (
-          <ProductViewer
-            product={viewerProduct}
-            onCta={handleAdd}
-            ctaLabel={`Add to Cart · ${viewerProduct.specs.find((s) => s.label === "Price").value}`}
-            registered={false}
-          />
-        ) : (
-          <>
-            <ProductViewer
-              product={viewerProduct}
-              ctaTo="/submit-case"
-              ctaLabel="Submit Digital Rx"
-              registered={false}
-            />
-            <div className="mt-6 p-4 rounded-2xl bg-brand-500/5 border border-brand-500/20 flex gap-3 items-start">
-              <FileText
-                size={16}
-                className="text-brand-500 flex-shrink-0 mt-0.5"
-              />
-              <div className="text-sm text-navy/70 leading-relaxed">
-                This item is <span className="font-semibold">Rx-only</span> —
-                it can&apos;t be ordered directly. Submit the Digital Rx form
-                with case details and we&apos;ll fabricate + ship.{" "}
-                <Link
-                  to="/submit-case"
-                  className="text-brand-500 font-semibold hover:underline"
-                >
-                  Go to Digital Rx →
-                </Link>
-              </div>
-            </div>
-          </>
-        )}
+        <ProductViewer
+          product={viewerProduct}
+          onCta={handleAdd}
+          ctaLabel={`Add to Cart · ${priceValue}`}
+          registered={false}
+        />
       </div>
     </div>
   );
