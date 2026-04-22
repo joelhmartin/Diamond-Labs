@@ -122,9 +122,8 @@ function AppRoutes() {
       {/* OAuth callback */}
       <Route path="/auth/oauth-callback" element={<OAuthCallback />} />
 
-      {/* Protected app routes */}
+      {/* Protected app routes (top-level — no /app prefix) */}
       <Route
-        path="/app"
         element={
           <RequireAuth>
             <RequireAccount>
@@ -133,11 +132,12 @@ function AppRoutes() {
           </RequireAuth>
         }
       >
-        <Route index element={<DashboardPage />} />
-        <Route path="settings" element={<SettingsPage />} />
-        <Route path="members" element={<MembersPage />} />
-        <Route path="admin" element={<RequireAdmin />}>
-          <Route path="products" element={<AdminProductsPage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/members" element={<MembersPage />} />
+        <Route element={<RequireAdmin />}>
+          <Route path="/admin" element={<Navigate to="/admin/products" replace />} />
+          <Route path="/admin/products" element={<AdminProductsPage />} />
         </Route>
       </Route>
 
@@ -162,6 +162,9 @@ function OAuthCallback() {
     const token = params.get("token");
     if (token) {
       setAccessToken(token);
+      // refresh() repopulates user from /auth/me, after which the landing
+      // page can redirect via roleHome(). Simplest: send back to dashboard
+      // and let RequireAuth + the app shell route them forward if admin.
       refresh();
     }
     window.location.href = ROUTES.DASHBOARD;

@@ -11,13 +11,14 @@ export const ROUTES = {
   ACCEPT_INVITE: "/auth/accept-invite",
   OAUTH_CALLBACK: "/auth/oauth-callback",
 
-  // App
-  DASHBOARD: "/app",
-  SETTINGS: "/app/settings",
-  MEMBERS: "/app/members",
+  // User
+  DASHBOARD: "/dashboard",
+  SETTINGS: "/settings",
+  MEMBERS: "/members",
 
   // Admin
-  ADMIN_PRODUCTS: "/app/admin/products",
+  ADMIN: "/admin",
+  ADMIN_PRODUCTS: "/admin/products",
 
   // Doctor
   DOCTOR_INVOICES: "/doctor/invoices",
@@ -26,3 +27,17 @@ export const ROUTES = {
   // Commerce
   CHECKOUT: "/checkout",
 };
+
+/**
+ * Given the current user, return the URL that should serve as their "home"
+ * after login / when they click a profile link from the navbar.
+ */
+export function roleHome(user) {
+  if (!user) return ROUTES.LOGIN;
+  if (user.role === "admin") return ROUTES.ADMIN_PRODUCTS;
+  if (user.role === "doctor") {
+    if (user.approvalStatus === "pending") return ROUTES.REGISTER_PENDING;
+    if (user.approvalStatus === "approved") return ROUTES.DOCTOR_INVOICES;
+  }
+  return ROUTES.DASHBOARD;
+}

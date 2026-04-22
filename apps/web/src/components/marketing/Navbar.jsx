@@ -1,8 +1,21 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, X, ChevronDown, Facebook, Instagram, Linkedin, Youtube } from "lucide-react";
+import {
+  Menu,
+  X,
+  ChevronDown,
+  Facebook,
+  Instagram,
+  Linkedin,
+  Youtube,
+  UserCircle2,
+  LogOut,
+  LayoutDashboard,
+} from "lucide-react";
 import gsap from "gsap";
 import LogoFull from "../../images/logoFull.jsx";
+import { useAuth } from "../../hooks/useAuth.js";
+import { ROUTES, roleHome } from "../../config/routes.js";
 
 const NAV_LINKS = [
   {
@@ -171,6 +184,175 @@ function MobileNavGroup({ link, isActive, onNavigate }) {
 
 const HEROLESS_ROUTES = ["/services/tmd", "/services/sleep"];
 
+/* ─── Mobile account strip (appears in the hamburger menu) ─── */
+function MobileAccount({ onNavigate }) {
+  const { user, isAuthenticated, logout } = useAuth();
+
+  if (!isAuthenticated) {
+    return (
+      <Link
+        to={ROUTES.LOGIN}
+        onClick={onNavigate}
+        className="mt-2 flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-navy text-white text-sm font-semibold"
+      >
+        <UserCircle2 size={14} />
+        Sign In
+      </Link>
+    );
+  }
+
+  const home = roleHome(user);
+  const homeLabel =
+    user?.role === "admin"
+      ? "Admin · Products"
+      : user?.role === "doctor"
+      ? "Doctor Portal"
+      : "Dashboard";
+
+  return (
+    <div className="mt-2 rounded-2xl bg-surface-100 border border-surface-300/50 p-2">
+      <div className="px-3 py-2">
+        <div className="font-heading font-semibold text-sm text-navy truncate">
+          {user?.name || "Account"}
+        </div>
+        <div className="text-[11px] text-navy/40 truncate">
+          {user?.email}
+        </div>
+      </div>
+      <Link
+        to={home}
+        onClick={onNavigate}
+        className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium text-navy/70 hover:bg-white transition-colors"
+      >
+        <LayoutDashboard size={13} />
+        {homeLabel}
+      </Link>
+      <button
+        type="button"
+        onClick={async () => {
+          onNavigate();
+          await logout?.();
+        }}
+        className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium text-accent-600 hover:bg-accent-500/5 transition-colors"
+      >
+        <LogOut size={13} />
+        Sign out
+      </button>
+    </div>
+  );
+}
+
+/* ─── Account button — Sign In when logged out; user menu when logged in ─── */
+function AccountButton({ scrolled }) {
+  const { user, isAuthenticated, logout } = useAuth();
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    window.addEventListener("mousedown", close);
+    return () => window.removeEventListener("mousedown", close);
+  }, [open]);
+
+  if (!isAuthenticated) {
+    return (
+      <Link
+        to={ROUTES.LOGIN}
+        className={`hidden lg:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-semibold transition-colors duration-500 ${
+          scrolled
+            ? "bg-surface-200/60 text-navy/70 hover:bg-surface-300/60 hover:text-navy"
+            : "bg-white/10 text-white/80 hover:bg-white/20 hover:text-white"
+        }`}
+      >
+        <UserCircle2 size={14} />
+        Sign In
+      </Link>
+    );
+  }
+
+  const home = roleHome(user);
+  const homeLabel =
+    user?.role === "admin"
+      ? "Admin · Products"
+      : user?.role === "doctor"
+      ? "Doctor Portal"
+      : "Dashboard";
+  const firstName = (user?.name || "").split(" ")[0] || "Account";
+
+  return (
+    <div className="relative hidden lg:block" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-semibold transition-colors duration-500 ${
+          scrolled
+            ? "bg-surface-200/60 text-navy/80 hover:bg-surface-300/60"
+            : "bg-white/10 text-white/90 hover:bg-white/20"
+        }`}
+      >
+        <UserCircle2 size={14} />
+        {firstName}
+        <ChevronDown
+          size={11}
+          className={`transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {open && (
+        <div className="absolute top-full right-0 pt-2 z-50">
+          <div className="bg-white/95 backdrop-blur-xl rounded-2xl border border-surface-300/50 shadow-xl shadow-navy/10 py-1.5 min-w-[220px]">
+            <div className="px-4 py-2 border-b border-surface-300/40">
+              <div className="font-heading font-semibold text-sm text-navy truncate">
+                {user?.name || "Account"}
+              </div>
+              {user?.email && (
+                <div className="text-[11px] text-navy/40 truncate">
+                  {user.email}
+                </div>
+              )}
+              {user?.role && (
+                <span className="inline-block mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-brand-500/10 text-brand-500">
+                  {user.role}
+                </span>
+              )}
+            </div>
+            <Link
+              to={home}
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 px-4 py-2.5 text-sm text-navy/70 hover:text-brand-500 hover:bg-brand-500/5 transition-colors"
+            >
+              <LayoutDashboard size={13} />
+              {homeLabel}
+            </Link>
+            <Link
+              to={ROUTES.SETTINGS}
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 px-4 py-2.5 text-sm text-navy/70 hover:text-brand-500 hover:bg-brand-500/5 transition-colors"
+            >
+              <UserCircle2 size={13} />
+              Settings
+            </Link>
+            <button
+              type="button"
+              onClick={async () => {
+                setOpen(false);
+                await logout?.();
+              }}
+              className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-navy/70 hover:text-accent-500 hover:bg-accent-500/5 transition-colors border-t border-surface-300/40 mt-1"
+            >
+              <LogOut size={13} />
+              Sign out
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Navbar() {
   const [hasScrolled, setHasScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -262,6 +444,7 @@ export function Navbar() {
 
           {/* CTA + Mobile toggle */}
           <div className="flex items-center gap-2 flex-shrink-0">
+            <AccountButton scrolled={scrolled} />
             <Link
               to="/submit-case"
               className="btn-magnetic hidden lg:inline-flex px-4 py-2 rounded-full text-[13px] font-semibold transition-colors duration-500 bg-brand-500 text-white hover:bg-brand-600"
@@ -315,6 +498,8 @@ export function Navbar() {
                 onNavigate={() => setMobileOpen(false)}
               />
             ))}
+
+            <MobileAccount onNavigate={() => setMobileOpen(false)} />
 
             <Link
               to="/submit-case"

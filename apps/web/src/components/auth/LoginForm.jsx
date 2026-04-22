@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { loginSchema } from "@my-app/shared";
@@ -8,12 +8,13 @@ import { Button } from "../ui/Button.jsx";
 import { useAuth } from "../../hooks/useAuth.js";
 import { useToast } from "../ui/Toast.jsx";
 import { MfaChallenge } from "./MfaChallenge.jsx";
-import { ROUTES } from "../../config/routes.js";
+import { ROUTES, roleHome } from "../../config/routes.js";
 
 export function LoginForm() {
   const { login } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
   const [mfaState, setMfaState] = useState(null);
   const {
     register,
@@ -30,7 +31,13 @@ export function LoginForm() {
       }
       if (result?.mfaRequired) {
         setMfaState({ mfaToken: result.mfaToken });
+        return;
       }
+      // Role-aware post-login redirect. If RequireAuth bounced the user
+      // here from a protected page, respect that origin; otherwise send
+      // them to the home appropriate for their role.
+      const from = location.state?.from?.pathname;
+      navigate(from || roleHome(result?.user), { replace: true });
     } catch (err) {
       addToast({
         message: err.response?.data?.error?.message || "Login failed",
