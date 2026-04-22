@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Search, SlidersHorizontal, X } from "lucide-react";
-import { CATALOG, CATEGORIES } from "../../data/catalog";
+import { useCatalogStore } from "../../stores/catalog.store";
 import { CatalogCard } from "./CatalogCard";
 import { CatalogDetail } from "./CatalogDetail";
 
@@ -30,9 +30,16 @@ export function CatalogSection() {
     return () => ctx.revert();
   }, []);
 
+  const products = useCatalogStore((s) => s.products);
+  const categories = useMemo(
+    () => Array.from(new Set(products.flatMap((p) => p.categories))).sort(),
+    [products]
+  );
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return CATALOG.filter((p) => {
+    return products.filter((p) => {
+      if (!p.active) return false;
       if (active !== ALL && !p.categories.includes(active)) return false;
       if (!q) return true;
       return (
@@ -42,7 +49,7 @@ export function CatalogSection() {
         p.id.toString().includes(q)
       );
     });
-  }, [query, active]);
+  }, [query, active, products]);
 
   return (
     <section
@@ -106,7 +113,7 @@ export function CatalogSection() {
             Filter
           </div>
           <Chip label={ALL} active={active === ALL} onClick={() => setActive(ALL)} />
-          {CATEGORIES.map((c) => (
+          {categories.map((c) => (
             <Chip
               key={c}
               label={c}

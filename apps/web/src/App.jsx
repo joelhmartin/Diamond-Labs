@@ -23,6 +23,8 @@ import { DoctorPendingPage } from "./pages/auth/DoctorPendingPage.jsx";
 import { DashboardPage } from "./pages/app/DashboardPage.jsx";
 import { SettingsPage } from "./pages/app/SettingsPage.jsx";
 import { MembersPage } from "./pages/app/MembersPage.jsx";
+import { AdminProductsPage } from "./pages/app/AdminProductsPage.jsx";
+import { RequireAdmin } from "./guards/RequireAdmin.jsx";
 
 // Marketing pages
 import { HomePage } from "./pages/marketing/Home.jsx";
@@ -41,6 +43,7 @@ import { CertifiedLabsPage } from "./pages/marketing/CertifiedLabs.jsx";
 import { DigitalWorkflowPage } from "./pages/marketing/DigitalWorkflow.jsx";
 import { RxInstructionsPage } from "./pages/marketing/RxInstructions.jsx";
 import { CoursesPage } from "./pages/marketing/Courses.jsx";
+import { CheckoutPage } from "./pages/marketing/Checkout.jsx";
 import { Navbar } from "./components/marketing/Navbar.jsx";
 import { Footer } from "./components/marketing/Footer.jsx";
 import { CartWidget } from "./components/marketing/CartWidget.jsx";
@@ -100,6 +103,7 @@ function AppRoutes() {
         <Route path="/services/digital-workflow" element={<DigitalWorkflowPage />} />
         <Route path="/resources/rx-instructions" element={<RxInstructionsPage />} />
         <Route path="/resources/courses" element={<CoursesPage />} />
+        <Route path="/checkout" element={<CheckoutPage />} />
         {/* Coming soon */}
         <Route path="/resources/new-client" element={<ComingSoonPage />} />
       </Route>
@@ -132,6 +136,9 @@ function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="members" element={<MembersPage />} />
+        <Route path="admin" element={<RequireAdmin />}>
+          <Route path="products" element={<AdminProductsPage />} />
+        </Route>
       </Route>
 
       {/* Protected doctor routes */}

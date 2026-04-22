@@ -16,7 +16,13 @@ export const ROUTES = {
   SETTINGS: "/app/settings",
   MEMBERS: "/app/members",
 
+  // Admin
+  ADMIN_PRODUCTS: "/app/admin/products",
+
   // Doctor
   DOCTOR_INVOICES: "/doctor/invoices",
   DOCTOR_SAVED_CARDS: "/doctor/saved-cards",
+
+  // Commerce
+  CHECKOUT: "/checkout",
 };

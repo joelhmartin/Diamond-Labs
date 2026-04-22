@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus, Minus, Check, Image as ImageIcon } from "lucide-react";
 import { useCartStore } from "../../stores/cart.store";
+import { AVAILABILITY_META } from "../../data/catalog";
 
 function formatPrice(p) {
   if (p === 0) return "Included";
@@ -20,13 +21,19 @@ export function CatalogCard({ product, onOpen }) {
   const inCart = Boolean(cartItem);
   const qty = cartItem?.qty ?? 0;
 
+  const avail = AVAILABILITY_META[product.availability] || AVAILABILITY_META["in-stock"];
+  const canBuy = avail.canBuy;
+  const isLowStock = product.availability === "low-stock";
+
   function handleAdd(e) {
     e.stopPropagation();
+    if (!canBuy) return;
     add(product);
   }
 
   function handleInc(e) {
     e.stopPropagation();
+    if (!canBuy) return;
     setQty(product.id, qty + 1);
   }
 
@@ -42,7 +49,7 @@ export function CatalogCard({ product, onOpen }) {
         inCart
           ? "bg-white border-2 border-brand-500 shadow-lg shadow-brand-500/10"
           : "bg-white border border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-navy/5"
-      }`}
+      } ${!canBuy ? "opacity-80" : ""}`}
     >
       {/* Image */}
       <div className="relative aspect-square bg-surface-100 overflow-hidden">
@@ -50,7 +57,9 @@ export function CatalogCard({ product, onOpen }) {
           <img
             src={img}
             alt={product.name}
-            className="w-full h-full object-contain p-4 group-hover:scale-[1.03] transition-transform duration-700"
+            className={`w-full h-full object-contain p-4 transition-transform duration-700 ${
+              canBuy ? "group-hover:scale-[1.03]" : "grayscale"
+            }`}
             loading="lazy"
             onError={() => setImgFailed(true)}
           />
@@ -69,7 +78,18 @@ export function CatalogCard({ product, onOpen }) {
           </span>
         )}
 
-        {inCart && (
+        {/* Availability badge (always shown if non-default) */}
+        {product.availability !== "in-stock" && (
+          <span
+            className={`absolute bottom-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${avail.color}`}
+          >
+            {isLowStock && product.stock > 0
+              ? `Only ${product.stock} left`
+              : avail.label}
+          </span>
+        )}
+
+        {inCart && canBuy && (
           <span className="absolute top-3 right-3 flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-brand-500 text-white shadow-md shadow-brand-500/20">
             <Check size={10} strokeWidth={3} />
             In Cart
@@ -93,7 +113,14 @@ export function CatalogCard({ product, onOpen }) {
             {formatPrice(product.price)}
           </div>
 
-          {inCart ? (
+          {!canBuy ? (
+            <div
+              className={`px-3 py-2 rounded-full text-xs font-semibold ${avail.color}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {avail.label}
+            </div>
+          ) : inCart ? (
             <div
               className="flex items-center gap-0.5 bg-brand-500 rounded-full p-0.5"
               onClick={(e) => e.stopPropagation()}

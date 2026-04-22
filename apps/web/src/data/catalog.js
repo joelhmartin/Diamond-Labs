@@ -4,20 +4,19 @@
  * fabrication (OND/ONP/DDSO orthotics built per case) lives in products.js
  * and routes through the Digital Rx form instead.
  *
- * Image paths normalized to `/catalog/<filename>`. Main images are served
- * as WebP (converted from original JPG/PNG); thumbnails kept as-is.
+ * This file is the SEED data. Live product state (including admin edits and
+ * new products added through the admin UI) lives in the catalog store
+ * (stores/catalog.store.js), which hydrates from SEED_CATALOG on first use
+ * and persists to localStorage thereafter.
  */
 
 function file(path) {
   if (!path) return null;
-  // "assets/images/foo.jpg" → "/catalog/foo.jpg"
-  // "assets/images/thumbnails/foo_thumbnail.jpg" → "/catalog/thumbnails/foo_thumbnail.jpg"
   return "/catalog/" + path.replace(/^assets\/images\//, "");
 }
 
-// Main images were bulk-converted to WebP (max 1600px, q=85).
-// Thumbnails stay as-is (already small). A handful of images are kept
-// at their original extension because WebP would have been larger.
+// Main images were bulk-converted to WebP (max 1600px, q=85). A handful of
+// images kept their original extension because WebP would have been larger.
 const WEBP_EXCEPTIONS = new Set([
   "Additional shipping supplies.jpg",
   "Heating Torch_1.jpg",
@@ -32,10 +31,48 @@ function toWebp(path) {
 }
 
 function parseCats(raw) {
-  // "TMJ@Digital Rx." → ["TMJ", "Digital Rx."]
   return raw.split("@").map((c) => c.trim()).filter(Boolean);
 }
 
+/**
+ * Availability states (admin-controllable per product):
+ *   in-stock     — normal Add-to-Cart
+ *   low-stock    — Add works, badge shows "Only N left"
+ *   out-of-stock — Add disabled, badge shows "Out of Stock"
+ *   backorder    — Add works, badge shows "Backorder · delayed"
+ *   discontinued — Add disabled, badge shows "Discontinued"
+ *
+ * Defaults are derived from the raw `stock` value unless an explicit
+ * `availability` field is set.
+ */
+export const AVAILABILITY_STATES = [
+  "in-stock",
+  "low-stock",
+  "out-of-stock",
+  "backorder",
+  "discontinued",
+];
+
+export const AVAILABILITY_META = {
+  "in-stock":     { label: "In Stock",     color: "bg-emerald-500/10 text-emerald-600", canBuy: true  },
+  "low-stock":    { label: "Low Stock",    color: "bg-amber-500/10 text-amber-600",     canBuy: true  },
+  "out-of-stock": { label: "Out of Stock", color: "bg-red-500/10 text-red-600",         canBuy: false },
+  "backorder":    { label: "Backorder",    color: "bg-blue-500/10 text-blue-600",       canBuy: true  },
+  "discontinued": { label: "Discontinued", color: "bg-navy/10 text-navy/60",            canBuy: false },
+};
+
+export function deriveAvailability(stock) {
+  if (stock > 10) return "in-stock";
+  if (stock > 0) return "low-stock";
+  if (stock === 0) return "out-of-stock";
+  return "backorder"; // negative = oversold / tracking artifact
+}
+
+/**
+ * Seed data: 54 products imported from the 3dcart CSV.
+ * `active` defaults to true. 4 shipping-supply items without images have
+ * been marked inactive (they're internal logistical SKUs, not shopper-facing).
+ */
 const RAW = [
   { id: "16",  name: "NovaDent IP — 1 Box", img: "NovaDent IP.jpg", thumb: "thumbnails/NovaDent IP_thumbnail.jpg", price: 15, cats: "Products", stock: 191 },
   { id: "18",  name: "Diamond Rechargeable Sonic Cleaner", img: "diamo-sonic_cleaner.png", thumb: "thumbnails/diamo-sonic_cleaner_thumbnail.png", price: 20, cats: "Tools", stock: 952 },
@@ -50,12 +87,12 @@ const RAW = [
   { id: "31",  name: "Thermo (Crimping) Pliers — Dentsply Sirona", img: "Thermo (Crimping) Pliers- (Dentsply Sirona).jpg", thumb: "thumbnails/thermo (crimping) pliers- (dentsply sirona)_thumbnail.jpg", price: 140, cats: "Tools", stock: 998 },
   { id: "32",  name: "Heating Torch", img: "Heating Torch_1.jpg", thumb: "thumbnails/Heating Torch_1_thumbnail.jpg", price: 9.99, cats: "Tools", stock: 1000 },
   { id: "41",  name: "TAP", img: "TAP- 275.jpg", thumb: "thumbnails/TAP- 275_thumbnail.jpg", price: 375, cats: "Tools", stock: 1000 },
-  { id: "50",  name: "Shipping Supply Kits", img: null, thumb: null, price: 0, cats: "Tools", stock: 0 },
+  { id: "50",  name: "Shipping Supply Kits", img: null, thumb: null, price: 0, cats: "Tools", stock: 0, active: false },
   { id: "51",  name: "Additional Shipping Supplies", img: "Additional shipping supplies.jpg", thumb: "thumbnails/Additional shipping supplies_thumbnail.jpg", price: 0, cats: "Tools", stock: 9999 },
   { id: "52",  name: "Small White Box", img: "Small white box amt1.jpg", thumb: "thumbnails/Small white box amt1_thumbnail.jpg", price: 0, cats: "Tools", stock: 999 },
-  { id: "53",  name: "FedEx Purple Shipping Pouch (Amt)", img: null, thumb: null, price: 0, cats: "Tools", stock: 0 },
-  { id: "54",  name: "FedEx Purple Shipping Pouch (Amt)", img: null, thumb: null, price: 0, cats: "Tools", stock: 0 },
-  { id: "55",  name: "FedEx Box", img: null, thumb: null, price: 0, cats: "Tools", stock: 0 },
+  { id: "53",  name: "FedEx Purple Shipping Pouch (Amt)", img: null, thumb: null, price: 0, cats: "Tools", stock: 0, active: false },
+  { id: "54",  name: "FedEx Purple Shipping Pouch (Amt)", img: null, thumb: null, price: 0, cats: "Tools", stock: 0, active: false },
+  { id: "55",  name: "FedEx Box", img: null, thumb: null, price: 0, cats: "Tools", stock: 0, active: false },
   { id: "58",  name: "Diamond (PMT/Acrylic) Sample Models", img: "1-olmosdaynightappliances_nonasaldilators_names.jpg", thumb: "thumbnails/1-OlmosDayNightAppliances_NoNasalDilators_NAMES_thumbnail.jpg", price: 125, cats: "TMJ@Digital Rx.", stock: 962 },
   { id: "59",  name: "Diamond Sample Models", img: "1-olmosnight (printed-nylon)_nonasaldilators_names.jpg", thumb: "thumbnails/1-OlmosNight (Printed-Nylon)_NONasalDilators_NAMES_thumbnail.jpg", price: 175, cats: "TMJ@Digital Rx.", stock: 984 },
   { id: "61",  name: "Mute", desc: "Small / Medium / Large", img: "mute(smallmedium large).jpg", thumb: "thumbnails/Mute(SmallMedium Large)_thumbnail.jpg", price: 21.99, cats: "Sleep", stock: 247 },
@@ -93,19 +130,44 @@ const RAW = [
   { id: "112", name: "DDSO — Diamond Digital Sleep Orthotic", img: "ddso_transparent.png", thumb: "thumbnails/ddso_transparent_thumbnail.jpg", price: 450, cats: "Digital Rx.", stock: 0 },
 ];
 
-export const CATALOG = RAW.map((p) => ({
-  id: p.id,
-  name: p.name,
-  description: p.desc || "",
-  price: p.price,
-  stock: p.stock,
-  image: toWebp(p.img),
-  thumbnail: file(p.thumb),
-  images: p.img ? [toWebp(p.img)] : [],
-  categories: parseCats(p.cats),
-}));
+function build(p) {
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.desc || "",
+    price: p.price,
+    stock: p.stock,
+    image: toWebp(p.img),
+    thumbnail: file(p.thumb),
+    images: p.img ? [toWebp(p.img)] : [],
+    categories: parseCats(p.cats),
+    active: p.active !== false, // defaults to true
+    availability: p.availability || deriveAvailability(p.stock),
+  };
+}
 
-/** All distinct top-level categories for filter UI. */
+export const SEED_CATALOG = RAW.map(build);
+
+/** Backwards-compat — most consumers should use the catalog store instead. */
+export const CATALOG = SEED_CATALOG.filter((p) => p.active);
+
 export const CATEGORIES = Array.from(
-  new Set(CATALOG.flatMap((p) => p.categories))
+  new Set(SEED_CATALOG.flatMap((p) => p.categories))
 ).sort();
+
+/** Schema a new product is created with in the admin UI. */
+export function blankProduct(id) {
+  return {
+    id: id || `new-${Date.now()}`,
+    name: "",
+    description: "",
+    price: 0,
+    stock: 0,
+    image: null,
+    thumbnail: null,
+    images: [],
+    categories: [],
+    active: true,
+    availability: "in-stock",
+  };
+}

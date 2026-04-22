@@ -8,6 +8,64 @@ import { eq } from "drizzle-orm";
 import { ERROR_CODES } from "@my-app/shared";
 
 export default async function paymentRoutes(fastify) {
+  // ───────────────────────────────────────────────────────────────
+  // PUBLIC CHECKOUT — unauthenticated card charge for catalog orders.
+  // Guest shoppers pay for purchasable SKUs (accessories, supplies, samples).
+  // Required: opaqueData (Accept.js nonce), amount, items[], email, shipping{}.
+  // Intentionally does NOT store a CIM profile (guest checkout).
+  // ───────────────────────────────────────────────────────────────
+  fastify.post("/payments/checkout", async (request, reply) => {
+    const { opaqueData, amount, items, email, shipping, phone } = request.body || {};
+
+    if (!opaqueData?.dataDescriptor || !opaqueData?.dataValue) {
+      return reply.code(422).send({
+        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Payment nonce (opaqueData) is required." },
+      });
+    }
+    if (!amount || Number(amount) <= 0) {
+      return reply.code(422).send({
+        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Amount must be greater than zero." },
+      });
+    }
+    if (!email || !email.includes("@")) {
+      return reply.code(422).send({
+        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Valid email is required." },
+      });
+    }
+    if (!shipping?.name || !shipping?.address1 || !shipping?.city || !shipping?.state || !shipping?.postalCode) {
+      return reply.code(422).send({
+        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Complete shipping address is required." },
+      });
+    }
+
+    const invoiceNumber = `DOL-${Date.now().toString().slice(-8)}`;
+    const description = `Diamond Orthotic Catalog — ${items?.length || 0} item(s)`;
+
+    const result = await authorizenetService.chargeWithNonce({
+      amount: Number(amount),
+      opaqueData,
+      description,
+      invoiceNumber,
+      // TODO: pass customer + shipping to Authorize.net once service signature is extended
+    });
+
+    fastify.log.info(
+      { invoiceNumber, transactionId: result.transactionId, email, itemCount: items?.length },
+      "public catalog checkout succeeded"
+    );
+
+    // TODO: create a Seazona invoice + payment record; send order confirmation email.
+
+    return {
+      data: {
+        transactionId: result.transactionId,
+        invoiceNumber,
+        amount: Number(amount),
+        email,
+      },
+    };
+  });
+
   // Charge with an Accept.js nonce (one-time card payment)
   fastify.post("/payments/charge", {
     preHandler: [authenticate, requireApprovedDoctor],
