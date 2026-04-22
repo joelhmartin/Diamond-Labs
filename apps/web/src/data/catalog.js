@@ -15,6 +15,22 @@ function file(path) {
   return "/catalog/" + path.replace(/^assets\/images\//, "");
 }
 
+// Main images were bulk-converted to WebP (max 1600px, q=85).
+// Thumbnails stay as-is (already small). A handful of images are kept
+// at their original extension because WebP would have been larger.
+const WEBP_EXCEPTIONS = new Set([
+  "Additional shipping supplies.jpg",
+  "Heating Torch_1.jpg",
+]);
+
+function toWebp(path) {
+  if (!path) return null;
+  const webpPath = "/catalog/" + path.replace(/^assets\/images\//, "");
+  const filename = path.replace(/^assets\/images\//, "");
+  if (WEBP_EXCEPTIONS.has(filename)) return webpPath;
+  return webpPath.replace(/\.(jpg|jpeg|png)$/i, ".webp");
+}
+
 function parseCats(raw) {
   // "TMJ@Digital Rx." → ["TMJ", "Digital Rx."]
   return raw.split("@").map((c) => c.trim()).filter(Boolean);
@@ -87,9 +103,9 @@ export const CATALOG = RAW.map((p) => ({
   description: p.desc || "",
   price: p.price,
   stock: p.stock,
-  image: file(p.img),
+  image: toWebp(p.img),
   thumbnail: file(p.thumb),
-  images: p.img ? [file(p.img)] : [],
+  images: p.img ? [toWebp(p.img)] : [],
   categories: parseCats(p.cats),
   rxOnly: isRxOnly(p.cats),
 }));
