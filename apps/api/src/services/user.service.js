@@ -20,6 +20,8 @@ export async function getProfile(userId) {
       avatarUrl: users.avatarUrl,
       emailVerifiedAt: users.emailVerifiedAt,
       mfaEnabled: users.mfaEnabled,
+      role: users.role,
+      approvalStatus: users.approvalStatus,
       lastLoginAt: users.lastLoginAt,
       createdAt: users.createdAt,
     })

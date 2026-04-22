@@ -30,7 +30,6 @@ import { MembersPage } from "./pages/app/MembersPage.jsx";
 import { AdminProductsPage } from "./pages/app/AdminProductsPage.jsx";
 import { AdminInvoicesPage } from "./pages/app/AdminInvoicesPage.jsx";
 import { RequireAdmin } from "./guards/RequireAdmin.jsx";
-import { AdminLayout } from "./components/layout/AdminLayout.jsx";
 
 // Marketing pages
 import { HomePage } from "./pages/marketing/Home.jsx";
@@ -159,11 +158,9 @@ function AppRoutes() {
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/members" element={<MembersPage />} />
         <Route element={<RequireAdmin />}>
-          <Route element={<AdminLayout />}>
-            <Route path="/admin" element={<Navigate to="/admin/products" replace />} />
-            <Route path="/admin/products" element={<AdminProductsPage />} />
-            <Route path="/admin/invoices" element={<AdminInvoicesPage />} />
-          </Route>
+          <Route path="/admin" element={<Navigate to="/admin/invoices" replace />} />
+          <Route path="/admin/products" element={<AdminProductsPage />} />
+          <Route path="/admin/invoices" element={<AdminInvoicesPage />} />
         </Route>
       </Route>
 

@@ -35,10 +35,12 @@ export const ROUTES = {
  */
 export function roleHome(user) {
   if (!user) return ROUTES.LOGIN;
-  if (user.role === "admin") return ROUTES.ADMIN_INVOICES;
+  // Doctors with an active portal go straight to invoices.
   if (user.role === "doctor") {
     if (user.approvalStatus === "pending") return ROUTES.REGISTER_PENDING;
     if (user.approvalStatus === "approved") return ROUTES.DOCTOR_INVOICES;
   }
+  // Everyone else (including admin) lands on the dashboard; the sidebar
+  // surfaces role-specific sections like /admin/*.
   return ROUTES.DASHBOARD;
 }

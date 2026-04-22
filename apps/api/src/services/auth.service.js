@@ -29,6 +29,20 @@ function createAppError(errorDef) {
   return err;
 }
 
+/** Shape a users-table row into the public user object returned by auth endpoints. */
+function toPublicUser(user) {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    avatarUrl: user.avatarUrl ?? null,
+    role: user.role,
+    approvalStatus: user.approvalStatus,
+    emailVerifiedAt: user.emailVerifiedAt,
+    mfaEnabled: user.mfaEnabled,
+  };
+}
+
 async function checkLoginAttempts(email) {
   const key = `${LOGIN_ATTEMPTS_PREFIX}${email}`;
   const attempts = await redis.get(key);
@@ -178,7 +192,7 @@ export async function login({ email, password, ip, userAgent }) {
   await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
 
   return {
-    user: { id: user.id, email: user.email, name: user.name },
+    user: toPublicUser(user),
     accessToken,
     refreshToken,
   };
@@ -206,7 +220,7 @@ export async function verifyMfa({ mfaToken, code, ip, userAgent }) {
   await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, user.id));
 
   return {
-    user: { id: user.id, email: user.email, name: user.name },
+    user: toPublicUser(user),
     accessToken,
     refreshToken,
   };

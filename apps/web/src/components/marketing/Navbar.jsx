@@ -203,9 +203,7 @@ function MobileAccount({ onNavigate }) {
 
   const home = roleHome(user);
   const homeLabel =
-    user?.role === "admin"
-      ? "Admin · Invoices"
-      : user?.role === "doctor"
+    user?.role === "doctor" && user?.approvalStatus === "approved"
       ? "Doctor Portal"
       : "Dashboard";
 
@@ -275,9 +273,7 @@ function AccountButton({ scrolled }) {
 
   const home = roleHome(user);
   const homeLabel =
-    user?.role === "admin"
-      ? "Admin · Invoices"
-      : user?.role === "doctor"
+    user?.role === "doctor" && user?.approvalStatus === "approved"
       ? "Doctor Portal"
       : "Dashboard";
   const firstName = (user?.name || "").split(" ")[0] || "Account";
