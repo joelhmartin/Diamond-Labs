@@ -40,10 +40,11 @@ export async function checkLoginExists(email) {
 }
 
 /**
- * List all clients. Results are not paginated by the API.
+ * List all clients. The Seazona API requires the `lastModified` query param
+ * to be present (empty string returns everything).
  */
-export async function listClients() {
-  const data = await request("v1/clients/");
+export async function listClients(lastModified = "") {
+  const data = await request(`v1/clients/?lastModified=${encodeURIComponent(lastModified)}`);
   return Array.isArray(data) ? data : [];
 }
 
@@ -68,11 +69,13 @@ export async function getClient(clientId) {
 }
 
 /**
- * Get invoices, optionally filtered by lastModified date.
+ * Get invoices modified since the given ISO timestamp. Seazona rejects the
+ * call entirely if `lastModified` is empty, so default to an epoch-ish value
+ * that means "everything".
  */
 export async function getInvoices(lastModified) {
-  const params = lastModified ? `?lastModified=${encodeURIComponent(lastModified)}` : "";
-  const data = await request(`v1/invoices/${params}`);
+  const since = lastModified || "1900-01-01T00:00:00Z";
+  const data = await request(`v1/invoices/?lastModified=${encodeURIComponent(since)}`);
   return Array.isArray(data) ? data : [];
 }
 

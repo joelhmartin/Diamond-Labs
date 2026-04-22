@@ -4,90 +4,69 @@ import * as seazonaService from "../services/seazona.service.js";
 import { ERROR_CODES } from "@my-app/shared";
 
 /**
- * Normalize a Seazona invoice into a consistent shape for the frontend.
- * Seazona's field names vary across endpoints, so coalesce the common keys.
+ * Normalize a Seazona invoice into the shape the frontend renders.
+ *
+ * Real Seazona invoice fields (from live API):
+ *   id, invoiceNumber, patient, clientId, fullName, company,
+ *   sales, tax, discounts, total, status, due, lastModified
+ *
+ * The Seazona API does NOT expose paid-vs-unpaid on the invoice itself —
+ * `status` is a workflow state ("Shipped", "Hold", "In Production", …).
+ * Payment reconciliation would require cross-referencing with /v1/payments,
+ * which has no bulk list endpoint. For now we surface Seazona's own status.
  */
 function normalizeInvoice(inv) {
-  const amount = Number(inv.amount ?? inv.total ?? inv.totalAmount ?? 0);
-  const paidAmount = Number(inv.paidAmount ?? inv.amountPaid ?? 0);
-  const balance = Number(inv.balance ?? Math.max(0, amount - paidAmount));
-  const statusRaw = (inv.status || inv.state || "").toLowerCase();
-
-  let status = "unpaid";
-  if (statusRaw === "paid" || inv.paid === true || balance === 0 && amount > 0) {
-    status = "paid";
-  } else if (statusRaw === "void" || statusRaw === "cancelled" || statusRaw === "canceled") {
-    status = "void";
-  } else if (paidAmount > 0 && balance > 0) {
-    status = "partial";
-  }
-
   return {
-    id: inv.id ?? inv.invoiceId ?? inv.invoiceNumber,
-    invoiceNumber: inv.invoiceNumber ?? inv.id ?? inv.invoiceId,
-    clientId: inv.clientId ?? inv.client_id ?? null,
-    amount,
-    paidAmount,
-    balance,
-    status,
-    dueDate: inv.dueDate ?? inv.due ?? null,
-    issueDate: inv.issueDate ?? inv.date ?? inv.createdAt ?? null,
-    description: inv.description ?? inv.notes ?? "",
-    raw: inv,
+    id: inv.id,
+    invoiceNumber: inv.invoiceNumber,
+    patient: inv.patient || "",
+    clientId: inv.clientId || null,
+    clientName: inv.fullName || inv.company || "",
+    clientCompany: inv.company || "",
+    sales: Number(inv.sales || 0),
+    tax: Number(inv.tax || 0),
+    discounts: Number(inv.discounts || 0),
+    total: Number(inv.total || 0),
+    status: inv.status || "",
+    due: inv.due || null,
+    lastModified: inv.lastModified || null,
   };
-}
-
-/** Run `fn` over `items` with at most `limit` concurrent calls. */
-async function mapConcurrent(items, limit, fn) {
-  const results = new Array(items.length);
-  let cursor = 0;
-  async function worker() {
-    while (cursor < items.length) {
-      const idx = cursor++;
-      try {
-        results[idx] = await fn(items[idx], idx);
-      } catch {
-        results[idx] = null;
-      }
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return results;
 }
 
 export default async function invoiceRoutes(fastify) {
   // ───────────────────────────────────────────────────────────────
-  // ADMIN — all invoices across every client, with client enrichment.
-  // Returns { invoices, clients, summary } where clients is a { [clientId]: client }
-  // map and summary holds aggregate totals.
+  // ADMIN — all invoices across every client, enriched with client contact
+  // info (one bulk listClients call — cheap vs N individual fetches).
+  // Returns { invoices, clients, summary, statusCounts }.
   // ───────────────────────────────────────────────────────────────
   fastify.get("/admin/invoices", {
     preHandler: [authenticate, requireAdmin],
   }, async (request) => {
-    const allRaw = await seazonaService.getInvoices(request.query.lastModified);
+    const [allRaw, clientList] = await Promise.all([
+      seazonaService.getInvoices(request.query.lastModified),
+      seazonaService.listClients(),
+    ]);
+
     const invoices = allRaw.map(normalizeInvoice);
 
-    // Unique client IDs
-    const clientIds = [...new Set(invoices.map((i) => i.clientId).filter(Boolean))];
-
-    // Enrich — concurrency-limited so we don't blast Seazona
-    const fetched = await mapConcurrent(clientIds, 5, (id) =>
-      seazonaService.getClient(id)
-    );
+    // Index clients by id for lookup
     const clients = {};
-    clientIds.forEach((id, idx) => {
-      if (fetched[idx]) clients[id] = fetched[idx];
-    });
+    for (const c of clientList) {
+      if (c.id) clients[c.id] = c;
+    }
 
-    // Aggregate summary
+    // Unique status labels actually present in the data
+    const statusCounts = {};
+    for (const inv of invoices) {
+      const s = inv.status || "Unknown";
+      statusCounts[s] = (statusCounts[s] || 0) + 1;
+    }
+
     const summary = {
       count: invoices.length,
-      totalAmount: invoices.reduce((s, i) => s + i.amount, 0),
-      totalBalance: invoices.reduce((s, i) => s + i.balance, 0),
-      paidCount: invoices.filter((i) => i.status === "paid").length,
-      unpaidCount: invoices.filter((i) => i.status === "unpaid").length,
-      partialCount: invoices.filter((i) => i.status === "partial").length,
-      clientCount: clientIds.length,
+      totalAmount: invoices.reduce((s, i) => s + i.total, 0),
+      clientCount: new Set(invoices.map((i) => i.clientId).filter(Boolean)).size,
+      statuses: statusCounts,
     };
 
     return { data: { invoices, clients, summary } };

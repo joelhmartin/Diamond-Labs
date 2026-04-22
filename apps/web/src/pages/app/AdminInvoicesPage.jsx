@@ -11,18 +11,27 @@ import {
   Phone,
   User,
   Building2,
+  MapPin,
 } from "lucide-react";
 import api from "../../config/api.js";
 
-const STATUS_META = {
-  paid:    { label: "Paid",     color: "bg-emerald-500/10 text-emerald-600" },
-  unpaid:  { label: "Unpaid",   color: "bg-red-500/10 text-red-600" },
-  partial: { label: "Partial",  color: "bg-amber-500/10 text-amber-600" },
-  void:    { label: "Void",     color: "bg-navy/10 text-navy/50" },
-};
-
 const INPUT =
   "w-full px-3.5 py-2.5 rounded-lg bg-white border border-surface-300/60 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-navy/25";
+
+// Seazona's workflow statuses we've seen. Unknown values fall back to gray.
+const STATUS_COLORS = {
+  Shipped:        "bg-emerald-500/10 text-emerald-700",
+  Hold:           "bg-amber-500/10 text-amber-700",
+  "In Production":"bg-blue-500/10 text-blue-700",
+  "In Prod":      "bg-blue-500/10 text-blue-700",
+  Pending:        "bg-navy/10 text-navy/60",
+  Cancelled:      "bg-red-500/10 text-red-600",
+  Void:           "bg-red-500/10 text-red-600",
+};
+
+function statusColor(s) {
+  return STATUS_COLORS[s] || "bg-gray-200 text-gray-700";
+}
 
 function formatUSD(n) {
   return Number(n || 0).toLocaleString("en-US", {
@@ -42,17 +51,16 @@ function formatDate(d) {
   });
 }
 
-function clientName(client, id) {
-  if (!client) return `Client #${id}`;
-  if (client.companyName) return client.companyName;
-  if (client.firstName || client.lastName) {
-    return `${client.firstName || ""} ${client.lastName || ""}`.trim();
+function clientLabel(inv, client) {
+  // Prefer the richer client record when we have it; fall back to inline fields.
+  if (client?.company && client?.fullName) {
+    return client.fullName !== client.company
+      ? `${client.fullName} · ${client.company}`
+      : client.company;
   }
-  if (client.name) return client.name;
-  return `Client #${id}`;
+  return client?.company || client?.fullName || inv.clientName || `Client #${inv.clientId}`;
 }
 
-/* ─── Stat card ─── */
 function Stat({ label, value, tint = "text-navy" }) {
   return (
     <div className="bg-white rounded-2xl border border-surface-300/50 p-4">
@@ -66,53 +74,53 @@ function Stat({ label, value, tint = "text-navy" }) {
   );
 }
 
-/* ─── Invoice row (inside a client group) ─── */
+function Th({ children, className = "" }) {
+  return (
+    <th
+      className={`text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-widest text-navy/40 font-normal ${className}`}
+    >
+      {children}
+    </th>
+  );
+}
+
 function InvoiceRow({ invoice }) {
-  const status = STATUS_META[invoice.status] || STATUS_META.unpaid;
+  const color = statusColor(invoice.status);
   return (
     <tr className="border-t border-surface-300/30 hover:bg-surface-50/50">
       <td className="px-4 py-2.5 font-mono text-xs text-navy/60">
-        {invoice.invoiceNumber || invoice.id}
+        {invoice.invoiceNumber}
+      </td>
+      <td className="px-4 py-2.5 text-sm text-navy/70">
+        {invoice.patient || "—"}
       </td>
       <td className="px-4 py-2.5 text-xs text-navy/60">
-        {formatDate(invoice.issueDate)}
+        {formatDate(invoice.due)}
       </td>
-      <td className="px-4 py-2.5 text-xs text-navy/60">
-        {formatDate(invoice.dueDate)}
+      <td className="px-4 py-2.5 text-sm text-right tabular-nums">
+        {formatUSD(invoice.sales)}
       </td>
-      <td className="px-4 py-2.5 text-sm font-semibold text-navy text-right tabular-nums">
-        {formatUSD(invoice.amount)}
+      <td className="px-4 py-2.5 text-sm text-right tabular-nums text-navy/50">
+        {formatUSD(invoice.tax)}
       </td>
-      <td className="px-4 py-2.5 text-sm text-navy/60 text-right tabular-nums">
-        {formatUSD(invoice.paidAmount)}
-      </td>
-      <td className="px-4 py-2.5 text-sm font-semibold text-navy text-right tabular-nums">
-        {formatUSD(invoice.balance)}
+      <td className="px-4 py-2.5 text-sm text-right tabular-nums font-semibold text-navy">
+        {formatUSD(invoice.total)}
       </td>
       <td className="px-4 py-2.5">
         <span
-          className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${status.color}`}
+          className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${color}`}
         >
-          {status.label}
+          {invoice.status || "—"}
         </span>
       </td>
     </tr>
   );
 }
 
-/* ─── Client group ─── */
 function ClientGroup({ clientId, client, invoices }) {
   const [open, setOpen] = useState(false);
-
-  const totalAmount = invoices.reduce((s, i) => s + i.amount, 0);
-  const totalBalance = invoices.reduce((s, i) => s + i.balance, 0);
-  const unpaidCount = invoices.filter(
-    (i) => i.status === "unpaid" || i.status === "partial"
-  ).length;
-
-  const name = clientName(client, clientId);
-  const email = client?.email || client?.emailAddress;
-  const phone = client?.phone || client?.phoneNumber;
+  const total = invoices.reduce((s, i) => s + i.total, 0);
+  const label = clientLabel(invoices[0], client);
 
   return (
     <div className="bg-white rounded-2xl border border-surface-300/50 overflow-hidden">
@@ -122,33 +130,38 @@ function ClientGroup({ clientId, client, invoices }) {
         className="w-full flex items-center gap-4 p-4 md:p-5 text-left hover:bg-surface-50 transition-colors"
       >
         <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-brand-500/10 flex items-center justify-center text-brand-500">
-          {client?.companyName ? (
-            <Building2 size={18} />
-          ) : (
-            <User size={18} />
-          )}
+          {client?.company ? <Building2 size={18} /> : <User size={18} />}
         </div>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="font-heading font-semibold text-sm text-navy truncate">
-              {name}
+              {label}
             </div>
-            <span className="font-mono text-[10px] text-navy/40">
-              #{clientId}
-            </span>
-          </div>
-          <div className="flex items-center gap-4 mt-1 text-[11px] text-navy/50 truncate">
-            {email && (
-              <span className="flex items-center gap-1 truncate">
-                <Mail size={10} />
-                {email}
+            {client?.accountNumber && (
+              <span className="font-mono text-[10px] text-navy/40">
+                #{client.accountNumber}
               </span>
             )}
-            {phone && (
+          </div>
+          <div className="flex items-center gap-4 mt-1 text-[11px] text-navy/50 truncate flex-wrap">
+            {client?.email && (
+              <span className="flex items-center gap-1 truncate">
+                <Mail size={10} />
+                {client.email}
+              </span>
+            )}
+            {client?.phone1 && (
               <span className="flex items-center gap-1">
                 <Phone size={10} />
-                {phone}
+                {client.phone1}
+              </span>
+            )}
+            {client?.region && (
+              <span className="flex items-center gap-1">
+                <MapPin size={10} />
+                {client.city ? `${client.city}, ` : ""}
+                {client.region}
               </span>
             )}
           </div>
@@ -161,11 +174,6 @@ function ClientGroup({ clientId, client, invoices }) {
             </div>
             <div className="font-mono text-sm text-navy tabular-nums">
               {invoices.length}
-              {unpaidCount > 0 && (
-                <span className="ml-1.5 text-red-500">
-                  · {unpaidCount} open
-                </span>
-              )}
             </div>
           </div>
           <div className="text-right">
@@ -173,19 +181,7 @@ function ClientGroup({ clientId, client, invoices }) {
               Total billed
             </div>
             <div className="font-heading font-bold text-sm text-navy tabular-nums">
-              {formatUSD(totalAmount)}
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] font-mono text-navy/40 uppercase tracking-widest">
-              Balance
-            </div>
-            <div
-              className={`font-heading font-bold text-sm tabular-nums ${
-                totalBalance > 0 ? "text-red-600" : "text-emerald-600"
-              }`}
-            >
-              {formatUSD(totalBalance)}
+              {formatUSD(total)}
             </div>
           </div>
         </div>
@@ -198,16 +194,16 @@ function ClientGroup({ clientId, client, invoices }) {
       </button>
 
       {open && (
-        <div className="border-t border-surface-300/50">
+        <div className="border-t border-surface-300/50 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-surface-100">
                 <Th>Invoice #</Th>
-                <Th>Issued</Th>
+                <Th>Patient</Th>
                 <Th>Due</Th>
-                <Th className="text-right">Amount</Th>
-                <Th className="text-right">Paid</Th>
-                <Th className="text-right">Balance</Th>
+                <Th className="text-right">Sales</Th>
+                <Th className="text-right">Tax</Th>
+                <Th className="text-right">Total</Th>
                 <Th>Status</Th>
               </tr>
             </thead>
@@ -223,17 +219,6 @@ function ClientGroup({ clientId, client, invoices }) {
   );
 }
 
-function Th({ children, className = "" }) {
-  return (
-    <th
-      className={`text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-widest text-navy/40 font-normal ${className}`}
-    >
-      {children}
-    </th>
-  );
-}
-
-/* ─── Main page ─── */
 export function AdminInvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -251,6 +236,7 @@ export function AdminInvoicesPage() {
     } catch (err) {
       setError(
         err.response?.data?.error?.message ||
+          err.message ||
           "Failed to load invoices. Check the Seazona connection."
       );
     } finally {
@@ -264,21 +250,26 @@ export function AdminInvoicesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Filter + group
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
     const filtered = data.invoices.filter((inv) => {
       if (statusFilter !== "all" && inv.status !== statusFilter) return false;
       if (!q) return true;
       const client = data.clients[inv.clientId];
-      const name = clientName(client, inv.clientId).toLowerCase();
-      const email = (client?.email || "").toLowerCase();
-      return (
-        name.includes(q) ||
-        email.includes(q) ||
-        String(inv.clientId).includes(q) ||
-        String(inv.invoiceNumber || "").toLowerCase().includes(q)
-      );
+      const blob = [
+        inv.clientName,
+        inv.clientCompany,
+        inv.patient,
+        String(inv.invoiceNumber || ""),
+        String(inv.clientId || ""),
+        client?.email,
+        client?.phone1,
+        client?.accountNumber,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return blob.includes(q);
     });
 
     const byClient = new Map();
@@ -289,20 +280,26 @@ export function AdminInvoicesPage() {
     }
 
     return [...byClient.entries()]
-      .map(([clientId, invoices]) => ({
+      .map(([clientId, invs]) => ({
         clientId,
         client: data.clients[clientId],
-        invoices: invoices.sort((a, b) =>
-          new Date(b.issueDate || 0) - new Date(a.issueDate || 0)
+        invoices: invs.sort(
+          (a, b) =>
+            new Date(b.lastModified || b.due || 0) -
+            new Date(a.lastModified || a.due || 0)
         ),
       }))
       .sort((a, b) => {
-        // Clients with unpaid balances first
-        const aBal = a.invoices.reduce((s, i) => s + i.balance, 0);
-        const bBal = b.invoices.reduce((s, i) => s + i.balance, 0);
-        return bBal - aBal;
+        const at = a.invoices.reduce((s, i) => s + i.total, 0);
+        const bt = b.invoices.reduce((s, i) => s + i.total, 0);
+        return bt - at;
       });
   }, [data, query, statusFilter]);
+
+  const statusChips = useMemo(() => {
+    const entries = Object.entries(data.summary?.statuses || {});
+    return entries.sort((a, b) => b[1] - a[1]);
+  }, [data.summary]);
 
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto">
@@ -312,7 +309,7 @@ export function AdminInvoicesPage() {
             Invoices
           </h1>
           <p className="mt-1 text-sm text-navy/50">
-            Every invoice across every Seazona client.
+            All invoices from Seazona, grouped by client.
           </p>
         </div>
         <button
@@ -326,29 +323,18 @@ export function AdminInvoicesPage() {
         </button>
       </div>
 
-      {/* Stats */}
       {data.summary && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-          <Stat label="Invoices" value={data.summary.count} />
-          <Stat label="Clients" value={data.summary.clientCount} />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+          <Stat label="Invoices" value={data.summary.count.toLocaleString()} />
+          <Stat label="Clients" value={data.summary.clientCount.toLocaleString()} />
+          <Stat label="Total billed" value={formatUSD(data.summary.totalAmount)} />
           <Stat
-            label="Unpaid"
-            value={data.summary.unpaidCount + data.summary.partialCount}
-            tint="text-red-600"
-          />
-          <Stat
-            label="Total billed"
-            value={formatUSD(data.summary.totalAmount)}
-          />
-          <Stat
-            label="Outstanding"
-            value={formatUSD(data.summary.totalBalance)}
-            tint={data.summary.totalBalance > 0 ? "text-red-600" : "text-emerald-600"}
+            label="Statuses"
+            value={Object.keys(data.summary.statuses || {}).length}
           />
         </div>
       )}
 
-      {/* Toolbar */}
       <div className="flex flex-col md:flex-row gap-3 mb-5">
         <div className="relative flex-1">
           <Search
@@ -360,34 +346,40 @@ export function AdminInvoicesPage() {
             className={`${INPUT} pl-10`}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by client name, email, #id, or invoice number…"
+            placeholder="Search by client, patient, invoice #, email, phone, or account #…"
           />
         </div>
         <div className="flex gap-1.5 flex-wrap">
-          {["all", "unpaid", "partial", "paid", "void"].map((s) => {
-            const meta = s === "all" ? null : STATUS_META[s];
-            const active = statusFilter === s;
+          <button
+            type="button"
+            onClick={() => setStatusFilter("all")}
+            className={`px-3.5 py-2 rounded-full text-xs font-semibold transition-all ${
+              statusFilter === "all"
+                ? "bg-navy text-white"
+                : "bg-surface-100 text-navy/60 hover:text-navy"
+            }`}
+          >
+            All ({data.summary?.count ?? 0})
+          </button>
+          {statusChips.map(([status, count]) => {
+            const color = statusColor(status);
+            const active = statusFilter === status;
             return (
               <button
-                key={s}
+                key={status}
                 type="button"
-                onClick={() => setStatusFilter(s)}
+                onClick={() => setStatusFilter(status)}
                 className={`px-3.5 py-2 rounded-full text-xs font-semibold transition-all ${
-                  active
-                    ? "bg-navy text-white"
-                    : s === "all"
-                    ? "bg-surface-100 text-navy/60 hover:text-navy"
-                    : `${meta.color} hover:bg-navy/10`
+                  active ? "bg-navy text-white" : `${color} hover:bg-navy/10`
                 }`}
               >
-                {s === "all" ? "All" : meta.label}
+                {status} ({count})
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* Content */}
       {loading ? (
         <div className="py-20 flex items-center justify-center text-navy/40">
           <Loader2 size={18} className="animate-spin mr-2" />
@@ -426,6 +418,11 @@ export function AdminInvoicesPage() {
           ))}
         </div>
       )}
+
+      <p className="mt-6 text-[11px] font-mono text-navy/30 text-center">
+        Paid/unpaid status isn&apos;t surfaced by the Seazona invoice API —
+        shown status is the workflow state (Shipped, Hold, etc.).
+      </p>
     </div>
   );
 }
