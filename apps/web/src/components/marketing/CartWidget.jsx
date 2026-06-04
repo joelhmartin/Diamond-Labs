@@ -27,7 +27,7 @@ export function CartWidget() {
       <button
         type="button"
         onClick={toggle}
-        className="fixed bottom-6 right-6 z-[9997] w-14 h-14 rounded-full bg-brand-500 text-white shadow-xl shadow-ink/30 hover:bg-brand-500 hover:scale-[1.04] active:scale-[0.97] transition-all duration-300 flex items-center justify-center group"
+        className="fixed bottom-6 right-6 z-[9997] w-14 h-14 rounded-full bg-navy text-white shadow-xl shadow-navy/30 hover:bg-brand-500 hover:scale-[1.04] active:scale-[0.97] transition-all duration-300 flex items-center justify-center group"
         aria-label={`Open cart (${count} items)`}
       >
         <ShoppingBag

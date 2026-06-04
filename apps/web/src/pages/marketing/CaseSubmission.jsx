@@ -65,7 +65,7 @@ const INITIAL_FORM = {
 };
 
 const INPUT =
-  "w-full px-4 py-3 rounded-xl bg-surface-50 border border-surface-300/50 text-ink text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-ink/25";
+  "w-full px-4 py-3 rounded-xl bg-surface-50 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-navy/25";
 
 /* ════════════════════════════════════════════════════════════════
    SHARED COMPONENTS
@@ -74,7 +74,7 @@ const INPUT =
 function Field({ label, required, children }) {
   return (
     <div>
-      <label className="block text-xs font-semibold text-ink/40 uppercase tracking-wider mb-2">
+      <label className="block text-xs font-semibold text-navy/40 uppercase tracking-wider mb-2">
         {label} {required && <span className="text-red-400">*</span>}
       </label>
       {children}
@@ -93,15 +93,15 @@ function StepHeader({ current, total, labels }) {
       </div>
       <div className="flex items-center justify-between">
         <div>
-          <span className="font-mono text-[10px] text-ink/30 uppercase tracking-wider">
+          <span className="font-mono text-[10px] text-navy/30 uppercase tracking-wider">
             Step {current + 1} of {total}
           </span>
-          <h2 className="font-heading font-bold text-lg text-ink tracking-tight mt-0.5">
+          <h2 className="font-heading font-bold text-lg text-navy tracking-tight mt-0.5">
             {labels[current]}
           </h2>
         </div>
         {current < total - 1 && (
-          <span className="hidden sm:block font-mono text-[10px] text-ink/20 uppercase tracking-wider">
+          <span className="hidden sm:block font-mono text-[10px] text-navy/20 uppercase tracking-wider">
             Next: {labels[current + 1]}
           </span>
         )}
@@ -116,7 +116,7 @@ function FileUploadZone({ label, hint, accept, files, onAdd, onRemove }) {
 
   return (
     <div>
-      <label className="block text-xs font-semibold text-ink/40 uppercase tracking-wider mb-2">
+      <label className="block text-xs font-semibold text-navy/40 uppercase tracking-wider mb-2">
         {label}
       </label>
       <div
@@ -140,14 +140,14 @@ function FileUploadZone({ label, hint, accept, files, onAdd, onRemove }) {
         <Upload
           size={24}
           className={`mx-auto mb-2 transition-colors ${
-            drag ? "text-brand-500" : "text-ink/20"
+            drag ? "text-brand-500" : "text-navy/20"
           }`}
         />
-        <p className="text-sm text-ink/50">
+        <p className="text-sm text-navy/50">
           Drag & drop files here, or{" "}
           <span className="text-brand-500 font-medium">browse</span>
         </p>
-        {hint && <p className="mt-1 text-[11px] text-ink/25">{hint}</p>}
+        {hint && <p className="mt-1 text-[11px] text-navy/25">{hint}</p>}
         <input
           ref={inputRef}
           type="file"
@@ -176,14 +176,14 @@ function FileUploadZone({ label, hint, accept, files, onAdd, onRemove }) {
                 />
               ) : (
                 <div className="w-8 h-8 rounded-lg bg-surface-200/60 flex items-center justify-center">
-                  <FileText size={14} className="text-ink/30" />
+                  <FileText size={14} className="text-navy/30" />
                 </div>
               )}
               <div className="min-w-0">
-                <p className="text-xs font-medium text-ink/70 truncate max-w-[110px]">
+                <p className="text-xs font-medium text-navy/70 truncate max-w-[110px]">
                   {f.name}
                 </p>
-                <p className="text-[10px] text-ink/25">
+                <p className="text-[10px] text-navy/25">
                   {(f.size / 1024 / 1024).toFixed(1)} MB
                 </p>
               </div>
@@ -193,7 +193,7 @@ function FileUploadZone({ label, hint, accept, files, onAdd, onRemove }) {
                   e.stopPropagation();
                   onRemove(f.id);
                 }}
-                className="w-6 h-6 rounded-full flex items-center justify-center text-ink/20 hover:text-red-400 hover:bg-red-50 transition-all"
+                className="w-6 h-6 rounded-full flex items-center justify-center text-navy/20 hover:text-red-400 hover:bg-red-50 transition-all"
               >
                 <X size={12} />
               </button>
@@ -228,7 +228,7 @@ function DevicePicker({ selected, onSelect, query, setQuery, activeCat, setActiv
         <div className="relative flex-1">
           <Search
             size={14}
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/30"
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-navy/30"
           />
           <input
             type="text"
@@ -243,7 +243,7 @@ function DevicePicker({ selected, onSelect, query, setQuery, activeCat, setActiv
       <div className="flex flex-wrap gap-2">
         <CategoryChip
           label="All"
-          color="bg-diamond-300/10 text-ink/70"
+          color="bg-navy/10 text-navy/70"
           active={activeCat === "all"}
           onClick={() => setActiveCat("all")}
         />
@@ -260,7 +260,7 @@ function DevicePicker({ selected, onSelect, query, setQuery, activeCat, setActiv
 
       {/* Grid */}
       {filtered.length === 0 ? (
-        <div className="py-12 text-center text-sm text-ink/40">
+        <div className="py-12 text-center text-sm text-navy/40">
           No devices match that search.
         </div>
       ) : (
@@ -281,7 +281,7 @@ function DevicePicker({ selected, onSelect, query, setQuery, activeCat, setActiv
               >
                 {active && (
                   <div className="absolute top-3 right-3 w-6 h-6 rounded-full bg-brand-500 flex items-center justify-center z-10">
-                    <Check size={12} className="text-ink" />
+                    <Check size={12} className="text-white" />
                   </div>
                 )}
                 <div className="aspect-square rounded-xl bg-surface-50 overflow-hidden mb-3">
@@ -295,13 +295,13 @@ function DevicePicker({ selected, onSelect, query, setQuery, activeCat, setActiv
                       }}
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-ink/20">
+                    <div className="w-full h-full flex items-center justify-center text-navy/20">
                       <Package size={32} />
                     </div>
                   )}
                 </div>
                 <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <span className="font-heading font-bold text-sm text-ink">
+                  <span className="font-heading font-bold text-sm text-navy">
                     {d.name}
                   </span>
                   <span
@@ -310,7 +310,7 @@ function DevicePicker({ selected, onSelect, query, setQuery, activeCat, setActiv
                     {catMeta.label}
                   </span>
                 </div>
-                <p className="text-[11px] text-ink/40 leading-relaxed">
+                <p className="text-[11px] text-navy/40 leading-relaxed">
                   {d.tagline}
                 </p>
               </button>
@@ -329,8 +329,8 @@ function CategoryChip({ label, color, active, onClick }) {
       onClick={onClick}
       className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 ${
         active
-          ? "bg-diamond-300 text-ink"
-          : `${color} hover:bg-diamond-300/15`
+          ? "bg-navy text-white"
+          : `${color} hover:bg-navy/15`
       }`}
     >
       {label}
@@ -357,14 +357,14 @@ function DeviceThumb({ device, onEdit }) {
             }}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-ink/20">
+          <div className="w-full h-full flex items-center justify-center text-navy/20">
             <Package size={20} />
           </div>
         )}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-heading font-bold text-sm text-ink">
+          <span className="font-heading font-bold text-sm text-navy">
             {device.name}
           </span>
           <span
@@ -373,11 +373,11 @@ function DeviceThumb({ device, onEdit }) {
             {catMeta.label}
           </span>
         </div>
-        <p className="text-xs text-ink/40 truncate">{device.fullName}</p>
+        <p className="text-xs text-navy/40 truncate">{device.fullName}</p>
       </div>
       <Pencil
         size={14}
-        className="text-ink/20 group-hover:text-brand-500 transition-colors flex-shrink-0"
+        className="text-navy/20 group-hover:text-brand-500 transition-colors flex-shrink-0"
       />
     </button>
   );
@@ -391,7 +391,7 @@ function ReviewSection({ title, onEdit, children }) {
   return (
     <div className="p-4 md:p-5 rounded-2xl bg-surface-50/50 border border-surface-300/20">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-heading font-semibold text-sm text-ink">{title}</h3>
+        <h3 className="font-heading font-semibold text-sm text-navy">{title}</h3>
         {onEdit && (
           <button
             type="button"
@@ -412,10 +412,10 @@ function ReviewField({ label, value }) {
   const display = Array.isArray(value) ? value.join(", ") : String(value);
   return (
     <div className="flex items-start gap-3 py-0.5">
-      <span className="text-[10px] font-semibold text-ink/25 uppercase tracking-wider w-28 flex-shrink-0 pt-0.5">
+      <span className="text-[10px] font-semibold text-navy/25 uppercase tracking-wider w-28 flex-shrink-0 pt-0.5">
         {label}
       </span>
-      <span className="text-sm text-ink/70 flex-1">{display}</span>
+      <span className="text-sm text-navy/70 flex-1">{display}</span>
     </div>
   );
 }
@@ -443,24 +443,24 @@ function CaseHero() {
   return (
     <section
       ref={ref}
-      className="relative bg-gradient-to-b from-diamond-300 via-brand-500 to-surface-100 pt-32 pb-24"
+      className="relative bg-gradient-to-b from-navy via-brand-900 to-surface-100 pt-32 pb-24"
     >
       <div className="section-pad text-center max-w-2xl mx-auto">
         <span
           data-ch
-          className="font-mono text-xs text-ink/40 uppercase tracking-widest"
+          className="font-mono text-xs text-white/40 uppercase tracking-widest"
         >
           Digital Rx
         </span>
         <h1
           data-ch
-          className="mt-4 font-heading font-bold text-3xl md:text-5xl text-ink tracking-tight"
+          className="mt-4 font-heading font-bold text-3xl md:text-5xl text-white tracking-tight"
         >
           Submit a New Case
         </h1>
         <p
           data-ch
-          className="mt-3 text-ink/50 text-sm md:text-base max-w-lg mx-auto"
+          className="mt-3 text-white/50 text-sm md:text-base max-w-lg mx-auto"
         >
           HIPAA-compliant digital submission for every Diamond-fabricated
           device. Pick the device, configure it, upload your scans and
@@ -597,17 +597,17 @@ export function CaseSubmissionPage() {
         <CaseHero />
         <section className="relative z-10 section-pad -mt-8 pb-20">
           <div className="max-w-xl mx-auto text-center">
-            <div className="bg-white card-radius p-10 md:p-14 border border-surface-300/50 shadow-xl shadow-ink/5">
+            <div className="bg-white card-radius p-10 md:p-14 border border-surface-300/50 shadow-xl shadow-navy/5">
               <div className="w-16 h-16 rounded-full bg-emerald-500 flex items-center justify-center mx-auto mb-6">
-                <CheckCircle size={32} className="text-ink" />
+                <CheckCircle size={32} className="text-white" />
               </div>
-              <h2 className="font-heading font-bold text-2xl text-ink">
+              <h2 className="font-heading font-bold text-2xl text-navy">
                 Case Submitted!
               </h2>
-              <p className="mt-1 font-mono text-xs text-ink/30">
+              <p className="mt-1 font-mono text-xs text-navy/30">
                 DOL-2026-{String(Math.floor(Math.random() * 9000) + 1000)}
               </p>
-              <p className="mt-4 text-sm text-ink/50 max-w-sm mx-auto leading-relaxed">
+              <p className="mt-4 text-sm text-navy/50 max-w-sm mx-auto leading-relaxed">
                 Your case has been received and queued for fabrication.
                 We&apos;ll notify you at each milestone via email.
               </p>
@@ -625,10 +625,10 @@ export function CaseSubmissionPage() {
                     />
                   )}
                   <div className="text-left">
-                    <span className="text-xs font-semibold text-ink">
+                    <span className="text-xs font-semibold text-navy">
                       {form.device.name}
                     </span>
-                    <span className="block text-[10px] text-ink/30">
+                    <span className="block text-[10px] text-navy/30">
                       {form.patientFirst} {form.patientLast}
                     </span>
                   </div>
@@ -642,7 +642,7 @@ export function CaseSubmissionPage() {
                     setStep(0);
                     setForm(INITIAL_FORM);
                   }}
-                  className="px-6 py-3 rounded-full text-sm font-semibold border border-surface-300/50 text-ink/60 hover:text-ink hover:border-brand-500/30 transition-all"
+                  className="px-6 py-3 rounded-full text-sm font-semibold border border-surface-300/50 text-navy/60 hover:text-navy hover:border-brand-500/30 transition-all"
                 >
                   Submit Another
                 </button>
@@ -667,7 +667,7 @@ export function CaseSubmissionPage() {
 
       <section className="relative z-10 section-pad -mt-8 pb-20">
         <div className="max-w-3xl mx-auto">
-          <div className="bg-white rounded-[2rem] border border-surface-300/50 shadow-xl shadow-ink/5 overflow-hidden">
+          <div className="bg-white rounded-[2rem] border border-surface-300/50 shadow-xl shadow-navy/5 overflow-hidden">
             <StepHeader current={step} total={STEPS.length} labels={STEPS} />
 
             <div ref={contentRef}>
@@ -675,7 +675,7 @@ export function CaseSubmissionPage() {
               {step === 0 && (
                 <div className="space-y-8 p-6 md:p-8">
                   <div>
-                    <h3 className="font-heading font-semibold text-base text-ink mb-4">
+                    <h3 className="font-heading font-semibold text-base text-navy mb-4">
                       Practice Information
                     </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -725,7 +725,7 @@ export function CaseSubmissionPage() {
                   </div>
 
                   <div className="pt-6 border-t border-surface-300/30">
-                    <h3 className="font-heading font-semibold text-base text-ink mb-4">
+                    <h3 className="font-heading font-semibold text-base text-navy mb-4">
                       Patient Information
                     </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -791,7 +791,7 @@ export function CaseSubmissionPage() {
                   </div>
 
                   <div className="pt-6 border-t border-surface-300/30">
-                    <h3 className="font-heading font-semibold text-base text-ink mb-4">
+                    <h3 className="font-heading font-semibold text-base text-navy mb-4">
                       Timing
                     </h3>
                     <DueDatePicker
@@ -809,7 +809,7 @@ export function CaseSubmissionPage() {
                 <div className="p-6 md:p-8">
                   {form.device && (
                     <div className="mb-6">
-                      <p className="text-xs font-mono text-ink/40 uppercase tracking-wider mb-2">
+                      <p className="text-xs font-mono text-navy/40 uppercase tracking-wider mb-2">
                         Currently selected
                       </p>
                       <DeviceThumb
@@ -847,7 +847,7 @@ export function CaseSubmissionPage() {
                       />
                     </>
                   ) : (
-                    <div className="text-center py-12 text-sm text-ink/40">
+                    <div className="text-center py-12 text-sm text-navy/40">
                       Go back and select a device first.
                     </div>
                   )}
@@ -953,7 +953,7 @@ export function CaseSubmissionPage() {
                         onEdit={() => setStep(1)}
                       />
                     ) : (
-                      <span className="text-xs text-ink/25 italic">
+                      <span className="text-xs text-navy/25 italic">
                         No device selected
                       </span>
                     )}
@@ -985,7 +985,7 @@ export function CaseSubmissionPage() {
                         })}
                       </div>
                     ) : (
-                      <span className="text-xs text-ink/25 italic">
+                      <span className="text-xs text-navy/25 italic">
                         No options set
                       </span>
                     )}
@@ -1006,16 +1006,16 @@ export function CaseSubmissionPage() {
                                 className="w-5 h-5 rounded object-cover"
                               />
                             ) : (
-                              <FileText size={12} className="text-ink/30" />
+                              <FileText size={12} className="text-navy/30" />
                             )}
-                            <span className="text-ink/60 truncate max-w-[100px]">
+                            <span className="text-navy/60 truncate max-w-[100px]">
                               {f.name}
                             </span>
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <span className="text-xs text-ink/25 italic">
+                      <span className="text-xs text-navy/25 italic">
                         No files uploaded
                       </span>
                     )}
@@ -1049,7 +1049,7 @@ export function CaseSubmissionPage() {
                 <button
                   type="button"
                   onClick={prev}
-                  className="flex items-center gap-1.5 px-5 py-2.5 rounded-full text-sm font-medium text-ink/50 hover:text-ink hover:bg-surface-100 transition-all"
+                  className="flex items-center gap-1.5 px-5 py-2.5 rounded-full text-sm font-medium text-navy/50 hover:text-navy hover:bg-surface-100 transition-all"
                 >
                   <ChevronLeft size={16} /> Back
                 </button>
@@ -1099,7 +1099,7 @@ export function CaseSubmissionPage() {
             )}
           </div>
 
-          <div className="mt-6 flex items-center justify-center gap-6 text-ink/25">
+          <div className="mt-6 flex items-center justify-center gap-6 text-navy/25">
             <div className="flex items-center gap-2">
               <Clock size={14} />
               <span className="text-xs font-mono">&lt; 2 week turnaround</span>

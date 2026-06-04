@@ -53,15 +53,15 @@ function ContactHero() {
           alt="Precision medical work"
           className="w-full h-full object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-diamond-300 via-diamond-300/80 to-transparent/40" />
-        <div className="absolute inset-0 bg-gradient-to-t from-diamond-300 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/80 to-transparent/40" />
+        <div className="absolute inset-0 bg-gradient-to-t from-navy via-transparent to-transparent" />
       </div>
       <div className="relative z-10 pb-12 md:pb-16 w-full max-w-6xl mx-auto">
         <div className="max-w-3xl">
-        <span data-chero className="font-mono text-xs text-ink/40 uppercase tracking-widest">
+        <span data-chero className="font-mono text-xs text-white/40 uppercase tracking-widest">
           Contact
         </span>
-        <h1 data-chero className="mt-4 text-ink">
+        <h1 data-chero className="mt-4 text-white">
           <span className="block font-heading font-bold text-3xl sm:text-4xl md:text-6xl tracking-tight leading-[0.95]">
             Let&apos;s talk about
           </span>
@@ -103,7 +103,7 @@ function ContactForm() {
               className={`absolute left-4 transition-all duration-300 pointer-events-none ${
                 focused[field.name]
                   ? "top-2 text-[10px] text-brand-500 font-semibold"
-                  : "top-4 text-sm text-ink/40"
+                  : "top-4 text-sm text-navy/40"
               }`}
             >
               {field.label}
@@ -111,7 +111,7 @@ function ContactForm() {
             <input
               type={field.type}
               name={field.name}
-              className="w-full pt-6 pb-2 px-4 rounded-2xl bg-surface-100 border border-surface-300/50 text-ink text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all duration-300"
+              className="w-full pt-6 pb-2 px-4 rounded-2xl bg-surface-100 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all duration-300"
               onFocus={() =>
                 setFocused((prev) => ({ ...prev, [field.name]: true }))
               }
@@ -130,14 +130,14 @@ function ContactForm() {
           className={`absolute left-4 transition-all duration-300 pointer-events-none ${
             focused.subject
               ? "top-2 text-[10px] text-brand-500 font-semibold"
-              : "top-4 text-sm text-ink/40"
+              : "top-4 text-sm text-navy/40"
           }`}
         >
           Subject
         </label>
         <select
           name="subject"
-          className="w-full pt-6 pb-2 px-4 rounded-2xl bg-surface-100 border border-surface-300/50 text-ink text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all duration-300 appearance-none cursor-pointer"
+          className="w-full pt-6 pb-2 px-4 rounded-2xl bg-surface-100 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all duration-300 appearance-none cursor-pointer"
           onFocus={() =>
             setFocused((prev) => ({ ...prev, subject: true }))
           }
@@ -162,7 +162,7 @@ function ContactForm() {
           className={`absolute left-4 transition-all duration-300 pointer-events-none ${
             focused.message
               ? "top-2 text-[10px] text-brand-500 font-semibold"
-              : "top-4 text-sm text-ink/40"
+              : "top-4 text-sm text-navy/40"
           }`}
         >
           Message
@@ -170,7 +170,7 @@ function ContactForm() {
         <textarea
           name="message"
           rows={4}
-          className="w-full pt-6 pb-2 px-4 rounded-2xl bg-surface-100 border border-surface-300/50 text-ink text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all duration-300 resize-none"
+          className="w-full pt-6 pb-2 px-4 rounded-2xl bg-surface-100 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all duration-300 resize-none"
           onFocus={() =>
             setFocused((prev) => ({ ...prev, message: true }))
           }
@@ -228,7 +228,7 @@ function ContactInfo() {
       <h2 className="font-heading font-bold text-2xl md:text-3xl tracking-tight">
         Get in touch.
       </h2>
-      <p className="mt-3 text-ink/50 text-sm leading-relaxed max-w-sm">
+      <p className="mt-3 text-navy/50 text-sm leading-relaxed max-w-sm">
         Whether you have questions about our products, need help with case
         submission, or want to learn about our digital workflow — we&apos;re
         here to help.
@@ -241,10 +241,10 @@ function ContactInfo() {
               <item.icon size={16} className="text-brand-500" />
             </div>
             <div>
-              <span className="font-mono text-[10px] text-ink/30 uppercase tracking-wider">
+              <span className="font-mono text-[10px] text-navy/30 uppercase tracking-wider">
                 {item.label}
               </span>
-              <p className="text-sm font-medium text-ink/80">{item.value}</p>
+              <p className="text-sm font-medium text-navy/80">{item.value}</p>
             </div>
           </div>
         ))}
@@ -252,7 +252,7 @@ function ContactInfo() {
 
       {/* Social links */}
       <div className="mt-8 pt-6 border-t border-surface-300/30">
-        <span className="font-mono text-[10px] text-ink/30 uppercase tracking-wider">
+        <span className="font-mono text-[10px] text-navy/30 uppercase tracking-wider">
           Follow Us
         </span>
         <div className="mt-3 flex items-center gap-3">
@@ -262,7 +262,7 @@ function ContactInfo() {
               href={s.href}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-10 h-10 rounded-xl bg-surface-100 border border-surface-300/50 flex items-center justify-center text-ink/40 hover:text-brand-500 hover:border-brand-500/30 transition-all duration-300"
+              className="w-10 h-10 rounded-xl bg-surface-100 border border-surface-300/50 flex items-center justify-center text-navy/40 hover:text-brand-500 hover:border-brand-500/30 transition-all duration-300"
               aria-label={s.label}
             >
               <s.icon size={16} />
@@ -320,7 +320,7 @@ export function ContactPage() {
               className="w-full h-full object-cover"
               loading="lazy"
             />
-            <div className="absolute inset-0 bg-gradient-to-r from-brand-500/20 to-transparent/30" />
+            <div className="absolute inset-0 bg-gradient-to-r from-brand-500/20 to-navy/30" />
           </div>
         </div>
       </section>

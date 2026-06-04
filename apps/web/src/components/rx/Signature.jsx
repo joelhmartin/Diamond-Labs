@@ -89,7 +89,7 @@ export function Signature({ value, onChange, label = "Doctor signature", require
 
   return (
     <div>
-      <label className="block text-xs font-semibold text-ink/40 uppercase tracking-wider mb-2">
+      <label className="block text-xs font-semibold text-navy/40 uppercase tracking-wider mb-2">
         {label} {required && <span className="text-red-400">*</span>}
       </label>
       <div className="relative rounded-2xl bg-surface-50 border border-surface-300/50 overflow-hidden">
@@ -106,19 +106,19 @@ export function Signature({ value, onChange, label = "Doctor signature", require
         />
         {!hasInk && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <div className="flex items-center gap-2 text-ink/25 text-sm">
+            <div className="flex items-center gap-2 text-navy/25 text-sm">
               <Pencil size={14} />
               <span>Sign here</span>
             </div>
           </div>
         )}
         <div className="absolute bottom-2 left-0 right-0 flex items-center justify-between px-3">
-          <span className="text-[10px] font-mono text-ink/20">X</span>
+          <span className="text-[10px] font-mono text-navy/20">X</span>
           {hasInk && (
             <button
               type="button"
               onClick={clear}
-              className="flex items-center gap-1 text-[10px] font-mono text-ink/40 hover:text-accent-500 transition-colors px-2 py-1 rounded-full bg-white/60 backdrop-blur-sm"
+              className="flex items-center gap-1 text-[10px] font-mono text-navy/40 hover:text-accent-500 transition-colors px-2 py-1 rounded-full bg-white/60 backdrop-blur-sm"
             >
               <Eraser size={10} />
               Clear
@@ -126,7 +126,7 @@ export function Signature({ value, onChange, label = "Doctor signature", require
           )}
         </div>
       </div>
-      <p className="mt-2 text-[11px] text-ink/30 leading-snug">
+      <p className="mt-2 text-[11px] text-navy/30 leading-snug">
         By signing, you authorize Diamond Orthotic Laboratory to fabricate
         the prescribed device per the specifications above.
       </p>

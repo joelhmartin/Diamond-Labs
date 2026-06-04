@@ -66,7 +66,7 @@ function Hero() {
   return (
     <section
       ref={ref}
-      className="relative h-[70dvh] min-h-[500px] flex items-end overflow-hidden bg-gradient-to-t from-diamond-300 via-diamond-200 to-transparent section-pad"
+      className="relative h-[70dvh] min-h-[500px] flex items-end overflow-hidden bg-gradient-to-t from-navy via-navy-light to-transparent section-pad"
     >
       <div className="absolute inset-0 opacity-[0.08]">
         <img
@@ -76,17 +76,17 @@ function Hero() {
           loading="lazy"
         />
       </div>
-      {/* <div className="absolute inset-0 bg-gradient-to-t from-diamond-300 via-diamond-300/60 to-transparent" /> */}
+      {/* <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/60 to-transparent" /> */}
 
       <div className="relative z-10 pb-16 md:pb-24 w-full max-w-6xl mx-auto">
         <div className="max-w-3xl">
         <span
           data-team-hero
-          className="font-mono text-xs text-ink/40 uppercase tracking-widest"
+          className="font-mono text-xs text-white/40 uppercase tracking-widest"
         >
           Our Team
         </span>
-        <h1 data-team-hero className="mt-4 text-ink">
+        <h1 data-team-hero className="mt-4 text-white">
           <span className="block font-heading font-bold text-4xl sm:text-5xl md:text-7xl tracking-tight leading-[0.95]">
             Meet the
           </span>
@@ -96,7 +96,7 @@ function Hero() {
         </h1>
         <p
           data-team-hero
-          className="mt-6 text-ink/80 text-base md:text-lg max-w-lg leading-relaxed"
+          className="mt-6 text-white/80 text-base md:text-lg max-w-lg leading-relaxed"
         >
           Dental technicians, digital engineers, and clinical specialists —
           every case, every appliance, passes through these hands.
@@ -137,10 +137,10 @@ function StatBar() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12 ">
           {stats.map((s, i) => (
             <div key={i} data-team-stat>
-              <span className="block font-heading font-bold text-3xl md:text-4xl text-ink tracking-tight">
+              <span className="block font-heading font-bold text-3xl md:text-4xl text-navy tracking-tight">
                 {s.value}
               </span>
-              <span className="block font-mono text-[10px] text-ink/30 uppercase tracking-wider mt-1">
+              <span className="block font-mono text-[10px] text-navy/30 uppercase tracking-wider mt-1">
                 {s.label}
               </span>
             </div>
@@ -153,22 +153,22 @@ function StatBar() {
 
 function PersonCard({ name, role, accent = false }) {
   return (
-    <div className="group bg-white card-radius p-6 border border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-ink/5 transition-all duration-500">
+    <div className="group bg-white card-radius p-6 border border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-navy/5 transition-all duration-500">
       <div className="flex items-center gap-4">
         <div
           className={`w-12 h-12 rounded-2xl flex items-center justify-center font-heading font-bold text-sm tracking-tight transition-colors duration-500 ${
             accent
               ? "bg-brand-500 text-white"
-              : "bg-surface-200 text-ink/60 group-hover:bg-brand-500/10 group-hover:text-brand-500"
+              : "bg-surface-200 text-navy/60 group-hover:bg-brand-500/10 group-hover:text-brand-500"
           }`}
         >
           {initials(name)}
         </div>
         <div className="min-w-0">
-          <div className="font-heading font-semibold text-sm text-ink tracking-tight truncate">
+          <div className="font-heading font-semibold text-sm text-navy tracking-tight truncate">
             {name}
           </div>
-          <div className="text-ink/45 text-xs mt-0.5 truncate">{role}</div>
+          <div className="text-navy/45 text-xs mt-0.5 truncate">{role}</div>
         </div>
       </div>
     </div>
@@ -195,7 +195,7 @@ function Group({ label, Icon, people, accentAll = false }) {
     <div ref={ref} className="mb-16 md:mb-20">
       <div className="flex items-center gap-3 mb-6 md:mb-8">
         <Icon size={16} className="text-brand-500" />
-        <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
+        <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
           {label}
         </span>
         <div className="flex-1 h-px bg-surface-300/60" />
@@ -232,7 +232,7 @@ function CTA() {
       <div className="max-w-3xl mx-auto text-center">
         <span
           data-team-cta
-          className="font-mono text-xs text-ink/40 uppercase tracking-widest"
+          className="font-mono text-xs text-navy/40 uppercase tracking-widest"
         >
           Partner With Us
         </span>
@@ -265,7 +265,7 @@ function CTA() {
           </Link>
           <Link
             to="/about"
-            className="px-8 py-4 rounded-full border border-surface-300 text-ink/70 font-medium hover:bg-surface-200/60 transition-colors duration-300"
+            className="px-8 py-4 rounded-full border border-surface-300 text-navy/70 font-medium hover:bg-surface-200/60 transition-colors duration-300"
           >
             Our Story
           </Link>

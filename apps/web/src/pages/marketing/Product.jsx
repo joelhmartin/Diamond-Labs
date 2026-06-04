@@ -60,7 +60,7 @@ function FeatureHighlights() {
             </div>
             <div>
               <h3 className="font-heading font-bold text-sm">{h.label}</h3>
-              <p className="mt-1 text-ink/50 text-sm leading-relaxed">
+              <p className="mt-1 text-navy/50 text-sm leading-relaxed">
                 {h.desc}
               </p>
             </div>
@@ -100,15 +100,15 @@ function ProductHero() {
           alt="Precision 3D printing"
           className="w-full h-full object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-diamond-300 via-diamond-300/80 to-transparent/40" />
-        <div className="absolute inset-0 bg-gradient-to-t from-diamond-300 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/80 to-navy/40" />
+        <div className="absolute inset-0 bg-gradient-to-t from-navy via-transparent to-transparent" />
       </div>
       <div className="relative z-10 pb-12 md:pb-16 w-full max-w-6xl mx-auto">
         <div className="max-w-3xl">
-        <span data-phero className="font-mono text-xs text-ink/40 uppercase tracking-widest">
+        <span data-phero className="font-mono text-xs text-white/40 uppercase tracking-widest">
           Our Products
         </span>
-        <h1 data-phero className="mt-4 text-ink">
+        <h1 data-phero className="mt-4 text-white">
           <span className="block font-heading font-bold text-3xl sm:text-4xl md:text-6xl tracking-tight leading-[0.95]">
             Precision appliances for
           </span>
@@ -159,7 +159,7 @@ function ProductTabs() {
               className={`px-5 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 ${
                 activeProduct === key
                   ? "bg-brand-500 text-white"
-                  : "bg-surface-200/60 text-ink/50 hover:text-ink hover:bg-surface-300/60"
+                  : "bg-surface-200/60 text-navy/50 hover:text-navy hover:bg-surface-300/60"
               }`}
             >
               {label}
@@ -188,7 +188,7 @@ function ProductCTA() {
         <h2 className="font-heading font-bold text-2xl md:text-4xl tracking-tight">
           Questions about our products?
         </h2>
-        <p className="mt-4 text-ink/50 text-base max-w-lg mx-auto">
+        <p className="mt-4 text-navy/50 text-base max-w-lg mx-auto">
           Our team is ready to discuss which appliance and material options are
           the best fit for your patients.
         </p>

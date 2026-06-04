@@ -68,23 +68,23 @@ export function InstructionalVideosPage() {
   return (
     <div ref={sectionRef}>
       {/* Hero */}
-      <section className="relative bg-gradient-to-b from-diamond-300 via-brand-500 to-surface-100 pt-32 pb-28">
+      <section className="relative bg-gradient-to-b from-navy via-brand-900 to-surface-100 pt-32 pb-28">
         <div className="section-pad text-center max-w-3xl mx-auto">
           <span
             data-vid-hero
-            className="font-mono text-xs text-ink/30 uppercase tracking-widest"
+            className="font-mono text-xs text-white/30 uppercase tracking-widest"
           >
             Resources
           </span>
           <h1
             data-vid-hero
-            className="mt-4 font-heading font-bold text-3xl md:text-5xl text-ink tracking-tight"
+            className="mt-4 font-heading font-bold text-3xl md:text-5xl text-white tracking-tight"
           >
             Instructional Videos
           </h1>
           <p
             data-vid-hero
-            className="mt-4 text-ink/40 text-sm md:text-base max-w-lg mx-auto leading-relaxed"
+            className="mt-4 text-white/40 text-sm md:text-base max-w-lg mx-auto leading-relaxed"
           >
             Training and technique videos to help you get the best results with
             Diamond Orthotic Laboratory products.
@@ -122,7 +122,7 @@ export function InstructionalVideosPage() {
                 <div className="w-8 h-8 rounded-lg bg-brand-500/10 flex items-center justify-center flex-shrink-0">
                   <Play size={14} className="text-brand-500 ml-0.5" />
                 </div>
-                <h3 className="font-heading font-semibold text-sm text-ink tracking-tight">
+                <h3 className="font-heading font-semibold text-sm text-navy tracking-tight">
                   {video.title}
                 </h3>
               </div>

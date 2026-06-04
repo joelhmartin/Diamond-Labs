@@ -64,23 +64,23 @@ function Hero() {
       className="relative min-h-[100dvh] flex items-end overflow-hidden section-pad"
     >
       {/* Background stage */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#F4F9FB] to-[#DAEBF2] overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-navy to-navy-dark overflow-hidden">
         {/* Animated Diamond SVGs / Divs */}
-        <div className="absolute top-[-10%] left-[-5%] w-[40vw] h-[40vw] bg-[#C2DAE6] opacity-30 animate-float-1 mix-blend-multiply" />
-        <div className="absolute top-[20%] right-[-10%] w-[50vw] h-[50vw] bg-[#B0DEED] opacity-40 animate-float-2 mix-blend-multiply" style={{ animationDelay: "-1s" }} />
-        <div className="absolute bottom-[-15%] left-[20%] w-[45vw] h-[45vw] bg-[#94BDCF] opacity-20 animate-float-3 mix-blend-multiply" style={{ animationDelay: "-2s" }} />
-        <div className="absolute top-[40%] left-[60%] w-[25vw] h-[25vw] bg-[#80CCE3] opacity-30 animate-float-1 mix-blend-multiply" style={{ animationDelay: "-1.5s" }} />
+        <div className="absolute top-[-10%] left-[-5%] w-[40vw] h-[40vw] bg-brand-500/20 opacity-30 animate-float-1 mix-blend-screen" />
+        <div className="absolute top-[20%] right-[-10%] w-[50vw] h-[50vw] bg-brand-400/20 opacity-40 animate-float-2 mix-blend-screen" style={{ animationDelay: "-1s" }} />
+        <div className="absolute bottom-[-15%] left-[20%] w-[45vw] h-[45vw] bg-brand-500/15 opacity-20 animate-float-3 mix-blend-screen" style={{ animationDelay: "-2s" }} />
+        <div className="absolute top-[40%] left-[60%] w-[25vw] h-[25vw] bg-brand-300/20 opacity-30 animate-float-1 mix-blend-screen" style={{ animationDelay: "-1.5s" }} />
 
         {/* Gradient overlays for readability */}
-        <div className="absolute inset-0 bg-gradient-to-r from-white/60 via-white/30 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-t from-white/80 via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-navy/60 via-navy/30 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-navy/80 via-transparent to-transparent" />
       </div>
 
       {/* Content */}
       <div className="relative z-10 pt-44 pb-12 md:pt-48 md:pb-16 lg:pt-0 lg:pb-24 w-full max-w-6xl mx-auto">
         <div className="max-w-3xl">
         <div data-hero-anim className="mb-4">
-          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/60 backdrop-blur-md border border-white text-ink font-mono text-xs font-semibold tracking-wider shadow-sm">
+          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/10 text-white/70 font-mono text-xs font-semibold tracking-wider shadow-sm">
             <span className="relative flex h-1.5 w-1.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-500 opacity-75" />
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-brand-500" />
@@ -89,18 +89,18 @@ function Hero() {
           </span>
         </div>
 
-        <h1 data-hero-anim className="text-ink">
+        <h1 data-hero-anim className="text-white">
           <span className="block font-heading font-bold text-4xl sm:text-5xl md:text-6xl lg:text-7xl tracking-tight leading-[0.95]">
             Precision is the
           </span>
-          <span className="block font-drama italic text-6xl sm:text-7xl md:text-8xl lg:text-[10rem] tracking-tight leading-[0.85] text-brand-700">
+          <span className="block font-drama italic text-6xl sm:text-7xl md:text-8xl lg:text-[10rem] tracking-tight leading-[0.85] text-brand-500">
             Protocol.
           </span>
         </h1>
 
         <p
           data-hero-anim
-          className="mt-6 text-ink/70 text-base md:text-lg max-w-lg leading-relaxed font-medium"
+          className="mt-6 text-white/60 text-base md:text-lg max-w-lg leading-relaxed font-medium"
         >
           The only orthotic lab built around the Olmos Series system. Digital
           workflow. Clinical accuracy. Every appliance, every time.
@@ -122,7 +122,7 @@ function Hero() {
           </Link>
           <Link
             to="/products"
-            className="px-7 py-3.5 rounded-full bg-white/50 backdrop-blur-sm border border-ink/10 text-ink font-semibold text-sm hover:bg-white/80 hover:shadow-sm transition-all duration-300"
+            className="px-7 py-3.5 rounded-full bg-white/5 backdrop-blur-sm border border-white/20 text-white/80 font-semibold text-sm hover:bg-white/10 hover:shadow-sm transition-all duration-300"
           >
             View Products
           </Link>
@@ -130,14 +130,14 @@ function Hero() {
 
         <div
           data-hero-anim
-          className="mt-10 md:mt-12 flex flex-wrap items-center gap-x-5 gap-y-2 md:gap-x-8 text-ink/50 text-xs font-mono font-medium"
+          className="mt-10 md:mt-12 flex flex-wrap items-center gap-x-5 gap-y-2 md:gap-x-8 text-white/40 text-xs font-mono font-medium"
         >
           <span>Quality</span>
-          <span className="w-1 h-1 rounded-full bg-diamond-300/30" />
+          <span className="w-1 h-1 rounded-full bg-white/20" />
           <span>Commitment</span>
-          <span className="w-1 h-1 rounded-full bg-diamond-300/30" />
+          <span className="w-1 h-1 rounded-full bg-white/20" />
           <span>Accuracy</span>
-          <span className="w-1 h-1 rounded-full bg-diamond-300/30" />
+          <span className="w-1 h-1 rounded-full bg-white/20" />
           <span>Efficiency</span>
         </div>
         </div>
@@ -197,7 +197,7 @@ function DiagnosticShuffler() {
           Olmos-Method Expertise
         </h3>
       </div>
-      <p className="text-ink/50 text-sm mb-6">
+      <p className="text-navy/50 text-sm mb-6">
         The only lab built around the Olmos Series system. We understand the
         clinical protocol, not just the fabrication.
       </p>
@@ -221,11 +221,11 @@ function DiagnosticShuffler() {
                 <span
                   className={`w-2 h-2 rounded-full ${cards[idx].color}`}
                 />
-                <span className="text-sm font-medium text-ink/80">
+                <span className="text-sm font-medium text-navy/80">
                   {cards[idx].label}
                 </span>
               </div>
-              <span className="text-xs font-mono text-ink/40">
+              <span className="text-xs font-mono text-navy/40">
                 {cards[idx].status}
               </span>
             </div>
@@ -283,17 +283,17 @@ function TelemetryTypewriter() {
           Digital-First Precision
         </h3>
       </div>
-      <p className="text-ink/50 text-sm mb-4">
+      <p className="text-navy/50 text-sm mb-4">
         Full digital workflow. No analog guesswork. Consistent, accurate
         appliances with fast turnaround.
       </p>
-      <div className="flex-1 bg-diamond-300/[0.03] rounded-2xl p-4 font-mono text-xs overflow-hidden">
+      <div className="flex-1 bg-navy/[0.03] rounded-2xl p-4 font-mono text-xs overflow-hidden">
         {lines.map((line, i) => (
-          <div key={i} className="text-ink/40 leading-relaxed truncate">
+          <div key={i} className="text-navy/40 leading-relaxed truncate">
             {line}
           </div>
         ))}
-        <div className="text-ink/80 leading-relaxed">
+        <div className="text-navy/80 leading-relaxed">
           {currentLine}
           <span className="inline-block w-1.5 h-3.5 bg-brand-500 ml-0.5 animate-pulse rounded-sm" />
         </div>
@@ -321,11 +321,11 @@ function TMJSleepCard() {
           TMJ + Sleep Under One Roof
         </h3>
       </div>
-      <p className="text-ink/50 text-sm mb-4">
+      <p className="text-navy/50 text-sm mb-4">
         Dual specialization in TMD orthotics and FDA-cleared sleep appliances.
         One lab, every case.
       </p>
-      <div className="flex-1 bg-diamond-300/[0.03] rounded-2xl p-5 overflow-hidden min-h-[140px] flex flex-col items-center justify-center">
+      <div className="flex-1 bg-navy/[0.03] rounded-2xl p-5 overflow-hidden min-h-[140px] flex flex-col items-center justify-center">
         {/* SVG illustration: TMJ and Sleep side by side */}
         <div className="flex items-center justify-center gap-6 w-full">
           {/* TMJ figure */}
@@ -348,7 +348,7 @@ function TMJSleepCard() {
               <line x1="43" y1="25" x2="47" y2="25" stroke="#0B1A2E" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
             <span className={`mt-2 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all duration-500 ${
-              phase === 0 ? "bg-brand-500 text-white" : "bg-surface-200/60 text-ink/30"
+              phase === 0 ? "bg-brand-500 text-white" : "bg-surface-200/60 text-navy/30"
             }`}>
               TMD
             </span>
@@ -356,9 +356,9 @@ function TMJSleepCard() {
 
           {/* Divider */}
           <div className="flex flex-col items-center gap-1">
-            <div className="w-px h-12 bg-diamond-300/10" />
-            <span className="text-[9px] font-mono text-ink/20">+</span>
-            <div className="w-px h-12 bg-diamond-300/10" />
+            <div className="w-px h-12 bg-navy/10" />
+            <span className="text-[9px] font-mono text-navy/20">+</span>
+            <div className="w-px h-12 bg-navy/10" />
           </div>
 
           {/* Sleep figure */}
@@ -381,7 +381,7 @@ function TMJSleepCard() {
               <path d="M18 58 Q38 48 58 58" stroke="#0B1A2E" strokeWidth="1.5" fill="none" />
             </svg>
             <span className={`mt-2 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all duration-500 ${
-              phase === 1 ? "bg-accent-500 text-white" : "bg-surface-200/60 text-ink/30"
+              phase === 1 ? "bg-accent-500 text-white" : "bg-surface-200/60 text-navy/30"
             }`}>
               Sleep
             </span>
@@ -390,9 +390,9 @@ function TMJSleepCard() {
 
         {/* "One Roof" bar */}
         <div className="mt-4 w-full flex items-center gap-2">
-          <div className="flex-1 h-px bg-diamond-300/10" />
-          <span className="text-[9px] font-mono text-ink/25 uppercase tracking-widest">One Lab · Every Case</span>
-          <div className="flex-1 h-px bg-diamond-300/10" />
+          <div className="flex-1 h-px bg-navy/10" />
+          <span className="text-[9px] font-mono text-navy/25 uppercase tracking-widest">One Lab · Every Case</span>
+          <div className="flex-1 h-px bg-navy/10" />
         </div>
       </div>
     </div>
@@ -452,16 +452,16 @@ function TurnaroundTimeline() {
           2-Week Turnaround
         </h3>
       </div>
-      <p className="text-ink/50 text-sm mb-4">
+      <p className="text-navy/50 text-sm mb-4">
         From scan to delivery in 10 business days or less. No shortcuts — just
         an efficient digital pipeline.
       </p>
-      <div className="flex-1 bg-diamond-300/[0.03] rounded-2xl p-4 overflow-hidden min-h-[140px] flex flex-col justify-between">
+      <div className="flex-1 bg-navy/[0.03] rounded-2xl p-4 overflow-hidden min-h-[140px] flex flex-col justify-between">
         {/* Week rows */}
         <div className="space-y-2">
           <div>
             <div className="flex items-center justify-between mb-1.5 px-0.5">
-              <span className="text-[10px] font-mono text-ink/30 uppercase">Week 1</span>
+              <span className="text-[10px] font-mono text-navy/30 uppercase">Week 1</span>
             </div>
             <div className="grid grid-cols-5 gap-1">
               {week1.map((day, i) => {
@@ -478,7 +478,7 @@ function TurnaroundTimeline() {
                         ? "bg-brand-500 text-white ring-2 ring-brand-500/30 scale-105"
                         : isFilled
                         ? "bg-brand-500/80 text-white"
-                        : "bg-surface-200/60 text-ink/30"
+                        : "bg-surface-200/60 text-navy/30"
                     }`}
                   >
                     {day}
@@ -489,7 +489,7 @@ function TurnaroundTimeline() {
           </div>
           <div>
             <div className="flex items-center justify-between mb-1.5 px-0.5">
-              <span className="text-[10px] font-mono text-ink/30 uppercase">Week 2</span>
+              <span className="text-[10px] font-mono text-navy/30 uppercase">Week 2</span>
             </div>
             <div className="grid grid-cols-5 gap-1">
               {week2.map((day, i) => {
@@ -506,7 +506,7 @@ function TurnaroundTimeline() {
                         ? "bg-brand-500 text-white ring-2 ring-brand-500/30 scale-105"
                         : isFilled
                         ? "bg-brand-500/80 text-white"
-                        : "bg-surface-200/60 text-ink/30"
+                        : "bg-surface-200/60 text-navy/30"
                     }`}
                   >
                     {day}
@@ -560,7 +560,7 @@ function Features() {
     <section ref={sectionRef} className="section-pad py-24 md:py-28">
       <div className="max-w-6xl mx-auto">
         <div className="mb-12 md:mb-16">
-          <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
+          <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
             Why Diamond
           </span>
           <h2 className="mt-3 font-heading font-bold text-3xl md:text-4xl tracking-tight text-balance">
@@ -625,7 +625,7 @@ function Philosophy() {
   return (
     <section
       ref={sectionRef}
-      className="relative bg-diamond-300 overflow-hidden"
+      className="relative bg-navy overflow-hidden"
     >
       {/* Background layers */}
       <div className="absolute inset-0 opacity-[0.06]">
@@ -636,7 +636,7 @@ function Philosophy() {
           loading="lazy"
         />
       </div>
-      <div className="absolute inset-0 bg-gradient-to-b from-brand-400 via-brand-300 to-brand-400" />
+      <div className="absolute inset-0 bg-gradient-to-b from-navy via-transparent to-navy" />
 
       {/* Lottie animation — right side */}
       <div className="absolute right-0 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none hidden md:block">
@@ -654,14 +654,14 @@ function Philosophy() {
         <div className="max-w-6xl mx-auto">
           {/* Top label */}
           <div data-phil className="mb-6">
-            <span className="font-mono text-[10px] font-semibold text-white/80 uppercase tracking-[0.2em]">
+            <span className="font-mono text-[10px] font-semibold text-white/25 uppercase tracking-[0.2em]">
               Our Philosophy
             </span>
           </div>
 
           <div data-phil className="mt-8">
-            <h2 className="font-drama italic text-4xl sm:text-5xl md:text-6xl text-white/80 leading-[1.1] tracking-tight">
-              <span className="text-brand-900">Protocol-driven</span> precision
+            <h2 className="font-drama italic text-4xl sm:text-5xl md:text-6xl text-white leading-[1.1] tracking-tight">
+              <span className="text-brand-400">Protocol-driven</span> precision
               for every{" "}
               <span className="relative inline-block">
                 case
@@ -673,7 +673,7 @@ function Philosophy() {
 
           {/* Supporting text */}
           <div data-phil className="mt-10 md:mt-14 max-w-xl">
-            <p className="text-ink/80 text-sm md:text-base font-medium leading-relaxed">
+            <p className="text-white/40 text-sm md:text-base font-medium leading-relaxed">
               Every orthotic we fabricate follows the Olmos-Method protocol
               — digitally designed, SLS-printed to sub-millimeter tolerance,
               and quality-checked before it leaves our lab.
@@ -681,14 +681,14 @@ function Philosophy() {
           </div>
 
           {/* Stat bar */}
-          <div className="mt-16 md:mt-20 pt-10 border-t border-ink/15">
+          <div className="mt-16 md:mt-20 pt-10 border-t border-white/10">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12">
               {stats.map((s, i) => (
                 <div key={i} data-phil-stat>
-                  <span className="block font-heading font-bold text-3xl md:text-4xl text-ink tracking-tight">
+                  <span className="block font-heading font-bold text-3xl md:text-4xl text-white tracking-tight">
                     {s.value}
                   </span>
-                  <span className="block font-mono text-[10px] font-semibold text-ink/60 uppercase tracking-wider mt-1">
+                  <span className="block font-mono text-[10px] font-semibold text-white/30 uppercase tracking-wider mt-1">
                     {s.label}
                   </span>
                 </div>
@@ -798,7 +798,7 @@ function Protocol() {
                   <h3 className="font-heading font-bold text-4xl md:text-6xl tracking-tight mb-4">
                     {step.title}
                   </h3>
-                  <p className="text-ink/50 text-lg max-w-md leading-relaxed">
+                  <p className="text-navy/50 text-lg max-w-md leading-relaxed">
                     {step.desc}
                   </p>
                 </div>
@@ -1038,7 +1038,7 @@ function CTASection() {
       <div className="max-w-4xl mx-auto text-center">
         <span
           data-cta-anim
-          className="font-mono text-xs text-ink/40 uppercase tracking-widest"
+          className="font-mono text-xs text-navy/40 uppercase tracking-widest"
         >
           Partner With Us
         </span>
@@ -1054,7 +1054,7 @@ function CTASection() {
         </h2>
         <p
           data-cta-anim
-          className="mt-6 text-ink/50 text-lg max-w-xl mx-auto leading-relaxed"
+          className="mt-6 text-navy/50 text-lg max-w-xl mx-auto leading-relaxed"
         >
           Whether you&apos;re treating TMJ disorders, sleep breathing
           conditions, or both — we&apos;re the lab that understands your
@@ -1076,7 +1076,7 @@ function CTASection() {
           </Link>
           <Link
             to="/products"
-            className="px-8 py-4 rounded-full border border-surface-300 text-ink/70 font-medium hover:bg-surface-200/60 transition-colors duration-300"
+            className="px-8 py-4 rounded-full border border-surface-300 text-navy/70 font-medium hover:bg-surface-200/60 transition-colors duration-300"
           >
             View All Products
           </Link>

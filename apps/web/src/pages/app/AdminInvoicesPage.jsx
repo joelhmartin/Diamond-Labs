@@ -18,7 +18,7 @@ import { Pagination } from "../../components/ui/Pagination.jsx";
 import { usePagination } from "../../hooks/usePagination.js";
 
 const INPUT =
-  "w-full px-3.5 py-2.5 rounded-lg bg-white border border-surface-300/60 text-ink text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-ink/25";
+  "w-full px-3.5 py-2.5 rounded-lg bg-white border border-surface-300/60 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-navy/25";
 
 // Seazona's workflow statuses we've seen. Unknown values fall back to gray.
 const STATUS_COLORS = {
@@ -26,7 +26,7 @@ const STATUS_COLORS = {
   Hold:           "bg-amber-500/10 text-amber-700",
   "In Production":"bg-blue-500/10 text-blue-700",
   "In Prod":      "bg-blue-500/10 text-blue-700",
-  Pending:        "bg-diamond-300/10 text-ink/60",
+  Pending:        "bg-navy/10 text-navy/60",
   Cancelled:      "bg-red-500/10 text-red-600",
   Void:           "bg-red-500/10 text-red-600",
 };
@@ -63,13 +63,13 @@ function clientLabel(inv, client) {
   return client?.company || client?.fullName || inv.clientName || `Client #${inv.clientId}`;
 }
 
-function Stat({ label, value, tint = "text-ink" }) {
+function Stat({ label, value, tint = "text-navy" }) {
   return (
     <div className="bg-white rounded-2xl border border-surface-300/50 p-4">
       <div className={`font-heading font-bold text-2xl tracking-tight ${tint}`}>
         {value}
       </div>
-      <div className="text-[10px] font-mono text-ink/40 uppercase tracking-widest mt-0.5">
+      <div className="text-[10px] font-mono text-navy/40 uppercase tracking-widest mt-0.5">
         {label}
       </div>
     </div>
@@ -79,7 +79,7 @@ function Stat({ label, value, tint = "text-ink" }) {
 function Th({ children, className = "" }) {
   return (
     <th
-      className={`text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-widest text-ink/40 font-normal ${className}`}
+      className={`text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-widest text-navy/40 font-normal ${className}`}
     >
       {children}
     </th>
@@ -90,22 +90,22 @@ function InvoiceRow({ invoice }) {
   const color = statusColor(invoice.status);
   return (
     <tr className="border-t border-surface-300/30 hover:bg-surface-50/50">
-      <td className="px-4 py-2.5 font-mono text-xs text-ink/60">
+      <td className="px-4 py-2.5 font-mono text-xs text-navy/60">
         {invoice.invoiceNumber}
       </td>
-      <td className="px-4 py-2.5 text-sm text-ink/70">
+      <td className="px-4 py-2.5 text-sm text-navy/70">
         {invoice.patient || "—"}
       </td>
-      <td className="px-4 py-2.5 text-xs text-ink/60">
+      <td className="px-4 py-2.5 text-xs text-navy/60">
         {formatDate(invoice.due)}
       </td>
       <td className="px-4 py-2.5 text-sm text-right tabular-nums">
         {formatUSD(invoice.sales)}
       </td>
-      <td className="px-4 py-2.5 text-sm text-right tabular-nums text-ink/50">
+      <td className="px-4 py-2.5 text-sm text-right tabular-nums text-navy/50">
         {formatUSD(invoice.tax)}
       </td>
-      <td className="px-4 py-2.5 text-sm text-right tabular-nums font-semibold text-ink">
+      <td className="px-4 py-2.5 text-sm text-right tabular-nums font-semibold text-navy">
         {formatUSD(invoice.total)}
       </td>
       <td className="px-4 py-2.5">
@@ -137,16 +137,16 @@ function ClientGroup({ clientId, client, invoices }) {
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
-            <div className="font-heading font-semibold text-sm text-ink truncate">
+            <div className="font-heading font-semibold text-sm text-navy truncate">
               {label}
             </div>
             {client?.accountNumber && (
-              <span className="font-mono text-[10px] text-ink/40">
+              <span className="font-mono text-[10px] text-navy/40">
                 #{client.accountNumber}
               </span>
             )}
           </div>
-          <div className="flex items-center gap-4 mt-1 text-[11px] text-ink/50 truncate flex-wrap">
+          <div className="flex items-center gap-4 mt-1 text-[11px] text-navy/50 truncate flex-wrap">
             {client?.email && (
               <span className="flex items-center gap-1 truncate">
                 <Mail size={10} />
@@ -171,27 +171,27 @@ function ClientGroup({ clientId, client, invoices }) {
 
         <div className="hidden sm:flex items-center gap-6 flex-shrink-0">
           <div className="text-right">
-            <div className="text-[10px] font-mono text-ink/40 uppercase tracking-widest">
+            <div className="text-[10px] font-mono text-navy/40 uppercase tracking-widest">
               Invoices
             </div>
-            <div className="font-mono text-sm text-ink tabular-nums">
+            <div className="font-mono text-sm text-navy tabular-nums">
               {invoices.length}
             </div>
           </div>
           <div className="text-right">
-            <div className="text-[10px] font-mono text-ink/40 uppercase tracking-widest">
+            <div className="text-[10px] font-mono text-navy/40 uppercase tracking-widest">
               Total billed
             </div>
-            <div className="font-heading font-bold text-sm text-ink tabular-nums">
+            <div className="font-heading font-bold text-sm text-navy tabular-nums">
               {formatUSD(total)}
             </div>
           </div>
         </div>
 
         {open ? (
-          <ChevronDown size={16} className="text-ink/40 flex-shrink-0" />
+          <ChevronDown size={16} className="text-navy/40 flex-shrink-0" />
         ) : (
-          <ChevronRight size={16} className="text-ink/40 flex-shrink-0" />
+          <ChevronRight size={16} className="text-navy/40 flex-shrink-0" />
         )}
       </button>
 
@@ -309,10 +309,10 @@ export function AdminInvoicesPage() {
     <div className="p-6 md:p-8 max-w-7xl mx-auto">
       <div className="flex items-end justify-between mb-8 flex-wrap gap-4">
         <div>
-          <h1 className="font-heading font-bold text-3xl text-ink tracking-tight">
+          <h1 className="font-heading font-bold text-3xl text-navy tracking-tight">
             Invoices
           </h1>
-          <p className="mt-1 text-sm text-ink/50">
+          <p className="mt-1 text-sm text-navy/50">
             All invoices from Seazona, grouped by client.
           </p>
         </div>
@@ -320,7 +320,7 @@ export function AdminInvoicesPage() {
           type="button"
           onClick={load}
           disabled={refreshing}
-          className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold text-ink/60 hover:text-ink hover:bg-surface-100 transition-all disabled:opacity-50"
+          className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all disabled:opacity-50"
         >
           <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
           Refresh
@@ -343,7 +343,7 @@ export function AdminInvoicesPage() {
         <div className="relative flex-1">
           <Search
             size={14}
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/30"
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-navy/30"
           />
           <input
             type="text"
@@ -359,8 +359,8 @@ export function AdminInvoicesPage() {
             onClick={() => setStatusFilter("all")}
             className={`px-3.5 py-2 rounded-full text-xs font-semibold transition-all ${
               statusFilter === "all"
-                ? "bg-diamond-300 text-ink"
-                : "bg-surface-100 text-ink/60 hover:text-ink"
+                ? "bg-navy text-white"
+                : "bg-surface-100 text-navy/60 hover:text-navy"
             }`}
           >
             All ({data.summary?.count ?? 0})
@@ -374,7 +374,7 @@ export function AdminInvoicesPage() {
                 type="button"
                 onClick={() => setStatusFilter(status)}
                 className={`px-3.5 py-2 rounded-full text-xs font-semibold transition-all ${
-                  active ? "bg-diamond-300 text-ink" : `${color} hover:bg-diamond-300/10`
+                  active ? "bg-navy text-white" : `${color} hover:bg-navy/10`
                 }`}
               >
                 {status} ({count})
@@ -385,14 +385,14 @@ export function AdminInvoicesPage() {
       </div>
 
       {loading ? (
-        <div className="py-20 flex items-center justify-center text-ink/40">
+        <div className="py-20 flex items-center justify-center text-navy/40">
           <Loader2 size={18} className="animate-spin mr-2" />
           Loading invoices…
         </div>
       ) : error ? (
         <div className="py-20 text-center">
           <AlertCircle size={32} className="mx-auto mb-3 text-red-500/40" />
-          <p className="text-sm text-ink/60 max-w-md mx-auto">{error}</p>
+          <p className="text-sm text-navy/60 max-w-md mx-auto">{error}</p>
           <button
             type="button"
             onClick={load}
@@ -403,8 +403,8 @@ export function AdminInvoicesPage() {
         </div>
       ) : groups.length === 0 ? (
         <div className="py-20 text-center">
-          <FileText size={32} className="mx-auto mb-3 text-ink/20" />
-          <p className="text-sm text-ink/40">
+          <FileText size={32} className="mx-auto mb-3 text-navy/20" />
+          <p className="text-sm text-navy/40">
             {data.invoices.length === 0
               ? "No invoices returned by Seazona."
               : "No invoices match your filters."}
@@ -435,7 +435,7 @@ export function AdminInvoicesPage() {
         </>
       )}
 
-      <p className="mt-6 text-[11px] font-mono text-ink/30 text-center">
+      <p className="mt-6 text-[11px] font-mono text-navy/30 text-center">
         Paid/unpaid status isn&apos;t surfaced by the Seazona invoice API —
         shown status is the workflow state (Shipped, Hold, etc.).
       </p>

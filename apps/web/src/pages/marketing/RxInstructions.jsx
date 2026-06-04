@@ -124,7 +124,7 @@ function Hero() {
   return (
     <section
       ref={ref}
-      className="relative h-[75dvh] min-h-[520px] flex items-end overflow-hidden bg-diamond-300 section-pad"
+      className="relative h-[75dvh] min-h-[520px] flex items-end overflow-hidden bg-navy section-pad"
     >
       <div className="absolute inset-0 opacity-[0.1]">
         <img
@@ -134,18 +134,18 @@ function Hero() {
           loading="lazy"
         />
       </div>
-      <div className="absolute inset-0 bg-gradient-to-r from-diamond-300 via-diamond-300/70 to-transparent/30" />
-      <div className="absolute inset-0 bg-gradient-to-t from-diamond-300 via-diamond-300/30 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/70 to-navy/30" />
+      <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/30 to-transparent" />
 
       <div className="relative z-10 pb-16 md:pb-24 w-full max-w-6xl mx-auto">
         <div className="max-w-3xl">
         <span
           data-rx-hero
-          className="font-mono text-xs text-ink/40 uppercase tracking-widest"
+          className="font-mono text-xs text-white/40 uppercase tracking-widest"
         >
           Prescription Workflow
         </span>
-        <h1 data-rx-hero className="mt-4 text-ink">
+        <h1 data-rx-hero className="mt-4 text-white">
           <span className="block font-heading font-bold text-4xl sm:text-5xl md:text-6xl tracking-tight leading-[0.95]">
             How to send us
           </span>
@@ -155,7 +155,7 @@ function Hero() {
         </h1>
         <p
           data-rx-hero
-          className="mt-6 text-ink/50 text-base md:text-lg max-w-xl leading-relaxed"
+          className="mt-6 text-white/50 text-base md:text-lg max-w-xl leading-relaxed"
         >
           Three pathways, one protocol. Digital submission is fastest —
           paper forms and video walk-throughs are available if you&apos;d
@@ -196,7 +196,7 @@ function Pathways() {
     <section ref={ref} className="section-pad py-24 md:py-28">
       <div className="max-w-6xl mx-auto">
         <div className="mb-10 md:mb-12 max-w-2xl">
-          <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
+          <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
             Submission Pathways
           </span>
           <h2 className="mt-3 font-heading font-bold text-3xl md:text-5xl tracking-tight text-balance">
@@ -212,14 +212,14 @@ function Pathways() {
               data-path
               className={`card-radius p-7 md:p-8 border flex flex-col transition-all duration-500 ${
                 p.accent
-                  ? "bg-diamond-300 text-ink border-ink-light hover:border-brand-400/40"
-                  : "bg-white border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-ink/5"
+                  ? "bg-navy text-white border-navy-light hover:border-brand-400/40"
+                  : "bg-white border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-navy/5"
               }`}
             >
               <div className="flex items-center justify-between mb-6">
                 <span
                   className={`font-mono text-[10px] uppercase tracking-widest ${
-                    p.accent ? "text-brand-400" : "text-ink/40"
+                    p.accent ? "text-brand-400" : "text-navy/40"
                   }`}
                 >
                   {p.tag}
@@ -233,20 +233,20 @@ function Pathways() {
                 >
                   <p.Icon
                     size={18}
-                    className={p.accent ? "text-brand-400" : "text-ink/60"}
+                    className={p.accent ? "text-brand-400" : "text-navy/60"}
                   />
                 </div>
               </div>
 
               <h3
                 className={`font-heading font-bold text-2xl tracking-tight ${
-                  p.accent ? "text-ink" : "text-ink"
+                  p.accent ? "text-white" : "text-navy"
                 }`}
                 dangerouslySetInnerHTML={{ __html: p.title }}
               />
               <p
                 className={`mt-3 text-sm md:text-base leading-relaxed ${
-                  p.accent ? "text-ink/60" : "text-ink/55"
+                  p.accent ? "text-white/60" : "text-navy/55"
                 }`}
               >
                 {p.lead}
@@ -257,7 +257,7 @@ function Pathways() {
                   <li
                     key={i}
                     className={`flex gap-2.5 text-sm leading-snug ${
-                      p.accent ? "text-ink/60" : "text-ink/60"
+                      p.accent ? "text-white/60" : "text-navy/60"
                     }`}
                   >
                     <CheckCircle2
@@ -321,7 +321,7 @@ function Required() {
         <div className="lg:col-span-2">
           <div className="flex items-center gap-3 mb-4">
             <ClipboardCheck size={16} className="text-brand-500" />
-            <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
+            <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
               What to Include
             </span>
           </div>
@@ -331,7 +331,7 @@ function Required() {
               these details.
             </span>
           </h2>
-          <p className="mt-4 text-ink/55 leading-relaxed">
+          <p className="mt-4 text-navy/55 leading-relaxed">
             Missing information is the single biggest cause of delays.
             Here&apos;s what we need before fabrication can start.
           </p>
@@ -346,7 +346,7 @@ function Required() {
               <span className="font-mono text-[11px] text-brand-500 tracking-widest mt-0.5 flex-shrink-0">
                 {String(i + 1).padStart(2, "0")}
               </span>
-              <span className="text-sm text-ink/70 leading-snug">{r}</span>
+              <span className="text-sm text-navy/70 leading-snug">{r}</span>
             </div>
           ))}
         </div>
@@ -384,7 +384,7 @@ function Tips() {
     <section ref={ref} className="section-pad py-24 md:py-28">
       <div className="max-w-6xl mx-auto">
         <div className="mb-10 md:mb-12 max-w-2xl">
-          <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
+          <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
             Pro Tips
           </span>
           <h2 className="mt-3 font-heading font-bold text-3xl md:text-5xl tracking-tight text-balance">
@@ -400,7 +400,7 @@ function Tips() {
             <div
               key={t.title}
               data-tip
-              className="bg-white card-radius p-7 border border-surface-300/50 hover:border-accent-500/30 hover:shadow-lg hover:shadow-ink/5 transition-all duration-500"
+              className="bg-white card-radius p-7 border border-surface-300/50 hover:border-accent-500/30 hover:shadow-lg hover:shadow-navy/5 transition-all duration-500"
             >
               <div className="w-11 h-11 rounded-2xl bg-accent-500/10 border border-accent-500/20 flex items-center justify-center mb-5">
                 <t.Icon size={18} className="text-accent-500" />
@@ -410,7 +410,7 @@ function Tips() {
                 dangerouslySetInnerHTML={{ __html: t.title }}
               />
               <p
-                className="mt-2 text-ink/55 text-sm leading-relaxed"
+                className="mt-2 text-navy/55 text-sm leading-relaxed"
                 dangerouslySetInnerHTML={{ __html: t.body }}
               />
             </div>
@@ -451,7 +451,7 @@ function CTA() {
       <div className="max-w-3xl mx-auto text-center">
         <span
           data-rx-cta
-          className="font-mono text-xs text-ink/40 uppercase tracking-widest"
+          className="font-mono text-xs text-navy/40 uppercase tracking-widest"
         >
           Need Help?
         </span>
@@ -467,7 +467,7 @@ function CTA() {
         </h2>
         <p
           data-rx-cta
-          className="mt-6 text-ink/50 text-base md:text-lg max-w-xl mx-auto"
+          className="mt-6 text-navy/50 text-base md:text-lg max-w-xl mx-auto"
         >
           Our technicians can walk you through impression technique,
           appliance selection, or device-specific requirements before you
@@ -489,7 +489,7 @@ function CTA() {
           </a>
           <Link
             to="/resources/downloads"
-            className="px-8 py-4 rounded-full border border-surface-300 text-ink/70 font-medium hover:bg-white transition-colors duration-300 inline-flex items-center gap-2"
+            className="px-8 py-4 rounded-full border border-surface-300 text-navy/70 font-medium hover:bg-white transition-colors duration-300 inline-flex items-center gap-2"
           >
             <Download size={14} />
             Download PDF Forms

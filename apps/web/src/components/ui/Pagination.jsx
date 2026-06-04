@@ -29,15 +29,15 @@ export function Pagination({
     <div
       className={`flex flex-wrap items-center justify-between gap-4 ${className}`}
     >
-      <div className="flex items-center gap-2 text-xs text-ink/50">
-        <label htmlFor="page-size" className="font-mono uppercase tracking-widest text-[10px] text-ink/40">
+      <div className="flex items-center gap-2 text-xs text-navy/50">
+        <label htmlFor="page-size" className="font-mono uppercase tracking-widest text-[10px] text-navy/40">
           Per page
         </label>
         <select
           id="page-size"
           value={pageSize}
           onChange={(e) => setPageSize(Number(e.target.value))}
-          className="px-2.5 py-1.5 rounded-lg bg-white border border-surface-300/60 text-ink text-xs focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all"
+          className="px-2.5 py-1.5 rounded-lg bg-white border border-surface-300/60 text-navy text-xs focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all"
         >
           {pageSizeOptions.map((n) => (
             <option key={n} value={n}>{n}</option>
@@ -59,7 +59,7 @@ export function Pagination({
           </PagerButton>
           {pages.map((p, i) =>
             p === "…" ? (
-              <span key={`ellipsis-${i}`} className="px-2 text-ink/30 text-xs">…</span>
+              <span key={`ellipsis-${i}`} className="px-2 text-navy/30 text-xs">…</span>
             ) : (
               <PagerButton
                 key={p}
@@ -91,8 +91,8 @@ function PagerButton({ children, onClick, disabled, active, ...rest }) {
       disabled={disabled}
       className={`min-w-[32px] h-8 px-2 rounded-lg text-xs font-mono tabular-nums transition-all ${
         active
-          ? "bg-diamond-300 text-ink"
-          : "text-ink/60 hover:bg-surface-100 hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+          ? "bg-brand-500 text-white"
+          : "text-navy/60 hover:bg-surface-200 hover:text-navy disabled:text-navy/30 disabled:hover:bg-transparent disabled:cursor-not-allowed"
       }`}
       {...rest}
     >

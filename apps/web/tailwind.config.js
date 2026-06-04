@@ -29,14 +29,7 @@ export default {
           300: "#E2E0DB",
           400: "#D1CFC8",
         },
-        diamond: {
-          100: "#DAEBF2",
-          200: "#C2DAE6",
-          300: "#B0DEED",
-          400: "#94BDCF",
-          500: "#80CCE3",
-        },
-        ink: {
+        navy: {
           DEFAULT: "#0B1A2E",
           light: "#132844",
           dark: "#060d17",

@@ -56,7 +56,7 @@ export function ProductCatalog({
               className={`px-5 py-2.5 rounded-full text-sm font-semibold transition-all duration-300 ${
                 active === key
                   ? "bg-brand-500 text-white"
-                  : "bg-surface-200/60 text-ink/50 hover:text-ink hover:bg-surface-300/60"
+                  : "bg-surface-200/60 text-navy/50 hover:text-navy hover:bg-surface-300/60"
               }`}
             >
               {label}
@@ -80,7 +80,7 @@ export function ProductCatalog({
         {/* Rx-only notice */}
         <div
           data-catalog-anim
-          className="mt-6 text-[11px] font-mono text-ink/40 tracking-wide"
+          className="mt-6 text-[11px] font-mono text-navy/40 tracking-wide"
         >
           Rx-only · Submit through the Digital Rx form. Requires a licensed dentist.
         </div>

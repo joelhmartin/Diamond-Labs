@@ -65,7 +65,7 @@ function Hero() {
   return (
     <section
       ref={ref}
-      className="relative h-[85dvh] min-h-[560px] flex items-end overflow-hidden bg-diamond-300 section-pad"
+      className="relative h-[85dvh] min-h-[560px] flex items-end overflow-hidden bg-navy section-pad"
     >
       <div className="absolute inset-0 opacity-[0.12]">
         <img
@@ -75,18 +75,18 @@ function Hero() {
           loading="lazy"
         />
       </div>
-      <div className="absolute inset-0 bg-gradient-to-r from-diamond-300 via-diamond-300/80 to-transparent/60" />
-      <div className="absolute inset-0 bg-gradient-to-t from-diamond-300 via-diamond-300/40 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/80 to-navy/60" />
+      <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/40 to-transparent" />
 
       <div className="relative z-10 pb-16 md:pb-24 w-full max-w-6xl mx-auto">
         <div className="max-w-4xl">
         <span
           data-olmos-hero
-          className="font-mono text-xs text-ink/40 uppercase tracking-widest"
+          className="font-mono text-xs text-white/40 uppercase tracking-widest"
         >
           Founder · Protocol Architect
         </span>
-        <h1 data-olmos-hero className="mt-4 text-ink">
+        <h1 data-olmos-hero className="mt-4 text-white">
           <span className="block font-heading font-bold text-4xl sm:text-5xl md:text-7xl tracking-tight leading-[0.95]">
             Dr. Steven
           </span>
@@ -96,7 +96,7 @@ function Hero() {
         </h1>
         <p
           data-olmos-hero
-          className="mt-6 text-ink/50 text-base md:text-lg max-w-xl leading-relaxed"
+          className="mt-6 text-white/50 text-base md:text-lg max-w-xl leading-relaxed"
         >
           Founder of TMJ &amp; Sleep Therapy Centres International. 35+ years
           in private practice. 30+ years devoted to research and treatment of
@@ -134,7 +134,7 @@ function Quotation() {
         />
         <p
           data-quote
-          className="font-drama italic text-3xl md:text-5xl text-ink leading-[1.15] tracking-tight text-balance"
+          className="font-drama italic text-3xl md:text-5xl text-navy leading-[1.15] tracking-tight text-balance"
         >
           &ldquo;The more precise and accurate your diagnosis, the more
           specific and effective will be the{" "}
@@ -142,7 +142,7 @@ function Quotation() {
         </p>
         <div
           data-quote
-          className="mt-8 font-mono text-[11px] text-ink/40 uppercase tracking-widest"
+          className="mt-8 font-mono text-[11px] text-navy/40 uppercase tracking-widest"
         >
           Dr. Steven Olmos · DDS
         </div>
@@ -173,7 +173,7 @@ function Biography() {
         <div className="lg:col-span-2">
           <span
             data-bio
-            className="font-mono text-xs text-ink/40 uppercase tracking-widest"
+            className="font-mono text-xs text-navy/40 uppercase tracking-widest"
           >
             Biography
           </span>
@@ -188,11 +188,11 @@ function Biography() {
             .
           </h2>
         </div>
-        <div className="lg:col-span-3 space-y-5 text-ink/60 leading-relaxed">
+        <div className="lg:col-span-3 space-y-5 text-navy/60 leading-relaxed">
           <p data-bio>
             Dr. Steven Olmos has been in private practice for more than{" "}
-            <span className="text-ink font-semibold">35 years</span>, with
-            the last <span className="text-ink font-semibold">30 years</span>{" "}
+            <span className="text-navy font-semibold">35 years</span>, with
+            the last <span className="text-navy font-semibold">30 years</span>{" "}
             devoted to research and treatment of craniofacial pain,
             temporomandibular disorder (TMD), and sleep-disordered breathing.
           </p>
@@ -206,7 +206,7 @@ function Biography() {
           </p>
           <p data-bio>
             Dr. Olmos is the founder of{" "}
-            <span className="text-ink font-semibold">
+            <span className="text-navy font-semibold">
               TMJ &amp; Sleep Therapy Centres International
             </span>
             , with over 60 centres in 7 countries dedicated exclusively to
@@ -242,7 +242,7 @@ function Credentials() {
       <div className="max-w-6xl mx-auto">
         <div className="flex items-center gap-3 mb-10">
           <Award size={16} className="text-brand-500" />
-          <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
+          <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
             Board Certifications &amp; Fellowships
           </span>
           <div className="flex-1 h-px bg-surface-300/60" />
@@ -254,10 +254,10 @@ function Credentials() {
               data-cred
               className="bg-white card-radius p-5 border border-surface-300/50 hover:border-brand-500/30 hover:shadow-md transition-all duration-500 group"
             >
-              <div className="font-heading font-bold text-xl tracking-tight text-ink group-hover:text-brand-500 transition-colors">
+              <div className="font-heading font-bold text-xl tracking-tight text-navy group-hover:text-brand-500 transition-colors">
                 {c.abbr}
               </div>
-              <div className="text-ink/50 text-xs mt-1.5 leading-snug">
+              <div className="text-navy/50 text-xs mt-1.5 leading-snug">
                 {c.label}
               </div>
             </div>
@@ -285,7 +285,7 @@ function GlobalReach() {
   }, []);
 
   return (
-    <section ref={ref} className="relative bg-diamond-300 overflow-hidden">
+    <section ref={ref} className="relative bg-navy overflow-hidden">
       <div className="absolute inset-0 opacity-[0.05]">
         <img
           src="https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1920&q=80"
@@ -294,19 +294,19 @@ function GlobalReach() {
           loading="lazy"
         />
       </div>
-      <div className="absolute inset-0 bg-gradient-to-b from-diamond-300 via-transparent to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-b from-navy via-transparent to-navy" />
 
       <div className="relative z-10 section-pad py-24 md:py-28">
         <div className="max-w-6xl mx-auto">
           <div data-reach className="flex items-center gap-3 mb-6">
             <Globe2 size={16} className="text-brand-400" />
-            <span className="font-mono text-[10px] text-ink/30 uppercase tracking-[0.2em]">
+            <span className="font-mono text-[10px] text-white/30 uppercase tracking-[0.2em]">
               TMJ &amp; Sleep Therapy Centres International
             </span>
           </div>
           <h2
             data-reach
-            className="font-heading font-bold text-4xl md:text-6xl text-ink tracking-tight leading-[1.05] text-balance"
+            className="font-heading font-bold text-4xl md:text-6xl text-white tracking-tight leading-[1.05] text-balance"
           >
             <span className="text-brand-400">60+ centres.</span>{" "}
             <span className="font-drama italic">7 countries.</span>{" "}
@@ -314,7 +314,7 @@ function GlobalReach() {
           </h2>
           <p
             data-reach
-            className="mt-8 max-w-2xl text-ink/45 text-base md:text-lg leading-relaxed"
+            className="mt-8 max-w-2xl text-white/45 text-base md:text-lg leading-relaxed"
           >
             The network Dr. Olmos founded spans the US, Canada, Australia,
             and four additional countries — each centre dedicated
@@ -327,10 +327,10 @@ function GlobalReach() {
             {FOCUS_AREAS.map((f) => (
               <div key={f.title} data-reach>
                 <f.Icon size={22} className="text-brand-400 mb-4" />
-                <div className="font-heading font-bold text-lg text-ink tracking-tight">
+                <div className="font-heading font-bold text-lg text-white tracking-tight">
                   {f.title}
                 </div>
-                <p className="text-ink/40 text-sm mt-2 leading-relaxed">
+                <p className="text-white/40 text-sm mt-2 leading-relaxed">
                   {f.copy}
                 </p>
               </div>
@@ -363,7 +363,7 @@ function CTA() {
       <div className="max-w-3xl mx-auto text-center">
         <span
           data-olmos-cta
-          className="font-mono text-xs text-ink/40 uppercase tracking-widest"
+          className="font-mono text-xs text-navy/40 uppercase tracking-widest"
         >
           Training &amp; Partnership
         </span>
@@ -396,7 +396,7 @@ function CTA() {
           </Link>
           <Link
             to="/resources/certified-labs"
-            className="px-8 py-4 rounded-full border border-surface-300 text-ink/70 font-medium hover:bg-surface-200/60 transition-colors duration-300"
+            className="px-8 py-4 rounded-full border border-surface-300 text-navy/70 font-medium hover:bg-surface-200/60 transition-colors duration-300"
           >
             Certified Labs
           </Link>
