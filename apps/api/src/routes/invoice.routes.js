@@ -43,7 +43,9 @@ export default async function invoiceRoutes(fastify) {
     preHandler: [authenticate, requireAdmin],
   }, async (request) => {
     const [allRaw, clientList] = await Promise.all([
-      seazonaService.getInvoices(request.query.lastModified),
+      request.query.lastModified
+        ? seazonaService.getInvoices(request.query.lastModified)
+        : seazonaService.getAllInvoices(),
       seazonaService.listClients(),
     ]);
 
@@ -92,10 +94,12 @@ export default async function invoiceRoutes(fastify) {
     }
 
     // Fetch all invoices and filter by the doctor's client ID
-    const allInvoices = await seazonaService.getInvoices(request.query.lastModified);
-    const doctorInvoices = allInvoices.filter(
-      (inv) => String(inv.clientId) === String(seazonaClientId)
-    );
+    const allInvoices = request.query.lastModified
+      ? await seazonaService.getInvoices(request.query.lastModified)
+      : await seazonaService.getAllInvoices();
+    const doctorInvoices = allInvoices
+      .filter((inv) => String(inv.clientId) === String(seazonaClientId))
+      .map(normalizeInvoice);
 
     return { data: doctorInvoices };
   });

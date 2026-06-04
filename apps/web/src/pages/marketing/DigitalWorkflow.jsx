@@ -99,7 +99,7 @@ function Hero() {
   return (
     <section
       ref={ref}
-      className="relative h-[85dvh] min-h-[560px] flex items-end overflow-hidden bg-navy"
+      className="relative h-[85dvh] min-h-[560px] flex items-end overflow-hidden bg-diamond-300 section-pad"
     >
       <div className="absolute inset-0 opacity-[0.12]">
         <img
@@ -109,17 +109,18 @@ function Hero() {
           loading="lazy"
         />
       </div>
-      <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/70 to-navy/30" />
-      <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/40 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-r from-diamond-300 via-diamond-300/70 to-transparent/30" />
+      <div className="absolute inset-0 bg-gradient-to-t from-diamond-300 via-diamond-300/40 to-transparent" />
 
-      <div className="relative z-10 section-pad pb-16 md:pb-24 max-w-3xl">
+      <div className="relative z-10 pb-16 md:pb-24 w-full max-w-6xl mx-auto">
+        <div className="max-w-3xl">
         <span
           data-dw-hero
-          className="font-mono text-xs text-white/40 uppercase tracking-widest"
+          className="font-mono text-xs text-ink/40 uppercase tracking-widest"
         >
           Digital Workflow
         </span>
-        <h1 data-dw-hero className="mt-4 text-white">
+        <h1 data-dw-hero className="mt-4 text-ink">
           <span className="block font-heading font-bold text-4xl sm:text-5xl md:text-6xl tracking-tight leading-[0.95]">
             Scan to ship
           </span>
@@ -129,12 +130,13 @@ function Hero() {
         </h1>
         <p
           data-dw-hero
-          className="mt-6 text-white/50 text-base md:text-lg max-w-xl leading-relaxed"
+          className="mt-6 text-ink/50 text-base md:text-lg max-w-xl leading-relaxed"
         >
           Full digital fabrication pipeline. No analog guesswork. Every
           appliance archived, every occlusal surface calculated, every
           turnaround predictable.
         </p>
+        </div>
       </div>
     </section>
   );
@@ -164,14 +166,14 @@ function PipelineStats() {
   ];
 
   return (
-    <section ref={ref} className="section-pad py-16 md:py-20 bg-navy border-b border-white/10">
+    <section ref={ref} className="section-pad py-16 md:py-20 bg-diamond-300 border-b border-ink/20">
       <div className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12">
         {items.map((s, i) => (
           <div key={i} data-dw-stat>
-            <span className="block font-heading font-bold text-3xl md:text-4xl text-white tracking-tight">
+            <span className="block font-heading font-bold text-3xl md:text-4xl text-ink tracking-tight">
               {s.value}
             </span>
-            <span className="block font-mono text-[10px] text-white/30 uppercase tracking-wider mt-1">
+            <span className="block font-mono text-[10px] text-ink/30 uppercase tracking-wider mt-1">
               {s.label}
             </span>
           </div>
@@ -198,10 +200,10 @@ function Pipeline() {
   }, []);
 
   return (
-    <section ref={ref} className="section-pad py-24 md:py-32">
+    <section ref={ref} className="section-pad py-24 md:py-28">
       <div className="max-w-6xl mx-auto">
         <div className="mb-12 md:mb-16 max-w-2xl">
-          <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
+          <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
             Pipeline
           </span>
           <h2 className="mt-3 font-heading font-bold text-3xl md:text-5xl tracking-tight text-balance">
@@ -217,7 +219,7 @@ function Pipeline() {
             <div
               key={s.step}
               data-stage
-              className="group bg-white card-radius p-6 md:p-7 border border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-navy/5 transition-all duration-500"
+              className="group bg-white card-radius p-6 md:p-7 border border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-ink/5 transition-all duration-500"
             >
               <div className="flex items-center justify-between mb-5">
                 <span className="font-mono text-[11px] text-brand-500 tracking-widest">
@@ -226,17 +228,17 @@ function Pipeline() {
                 <div className="w-10 h-10 rounded-2xl bg-surface-100 border border-surface-300/50 flex items-center justify-center group-hover:bg-brand-500 group-hover:border-brand-500 transition-all duration-500">
                   <s.Icon
                     size={16}
-                    className="text-navy/60 group-hover:text-white transition-colors duration-500"
+                    className="text-ink/60 group-hover:text-ink transition-colors duration-500"
                   />
                 </div>
               </div>
               <h3 className="font-heading font-bold text-xl tracking-tight">
                 {s.title}
               </h3>
-              <p className="mt-2 text-navy/55 text-sm leading-relaxed">
+              <p className="mt-2 text-ink/55 text-sm leading-relaxed">
                 {s.body}
               </p>
-              <div className="mt-5 pt-5 border-t border-surface-300/50 text-[11px] font-mono text-navy/35 tracking-wide leading-relaxed">
+              <div className="mt-5 pt-5 border-t border-surface-300/50 text-[11px] font-mono text-ink/35 tracking-wide leading-relaxed">
                 {s.detail}
               </div>
             </div>
@@ -264,10 +266,10 @@ function Advantages() {
   }, []);
 
   return (
-    <section ref={ref} className="section-pad py-24 md:py-32 bg-surface-100">
+    <section ref={ref} className="section-pad py-24 md:py-28 bg-surface-100">
       <div className="max-w-6xl mx-auto">
         <div className="mb-12 md:mb-16 max-w-2xl">
-          <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
+          <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
             Why Digital
           </span>
           <h2 className="mt-3 font-heading font-bold text-3xl md:text-5xl tracking-tight text-balance">
@@ -283,15 +285,15 @@ function Advantages() {
             <div
               key={a.title}
               data-adv
-              className="bg-navy text-white card-radius p-8 border border-navy-light"
+              className="bg-diamond-300 text-ink card-radius p-8 border border-ink-light"
             >
               <div className="w-11 h-11 rounded-2xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center mb-6">
                 <a.Icon size={18} className="text-brand-400" />
               </div>
-              <h3 className="font-heading font-bold text-xl tracking-tight text-white">
+              <h3 className="font-heading font-bold text-xl tracking-tight text-ink">
                 {a.title}
               </h3>
-              <p className="mt-3 text-white/55 text-sm md:text-base leading-relaxed">
+              <p className="mt-3 text-ink/55 text-sm md:text-base leading-relaxed">
                 {a.body}
               </p>
             </div>
@@ -319,11 +321,11 @@ function CTA() {
   }, []);
 
   return (
-    <section ref={ref} className="section-pad py-24 md:py-32">
+    <section ref={ref} className="section-pad py-24 md:py-28">
       <div className="max-w-3xl mx-auto text-center">
         <span
           data-dw-cta
-          className="font-mono text-xs text-navy/40 uppercase tracking-widest"
+          className="font-mono text-xs text-ink/40 uppercase tracking-widest"
         >
           Start a Case
         </span>
@@ -338,7 +340,7 @@ function CTA() {
         </h2>
         <p
           data-dw-cta
-          className="mt-6 text-navy/50 text-base md:text-lg max-w-lg mx-auto"
+          className="mt-6 text-ink/50 text-base md:text-lg max-w-lg mx-auto"
         >
           Upload through the Digital Rx portal and we&apos;ll confirm receipt
           within one business day.
@@ -362,7 +364,7 @@ function CTA() {
           </Link>
           <Link
             to="/resources/rx-instructions"
-            className="px-8 py-4 rounded-full border border-surface-300 text-navy/70 font-medium hover:bg-surface-200/60 transition-colors duration-300"
+            className="px-8 py-4 rounded-full border border-surface-300 text-ink/70 font-medium hover:bg-surface-200/60 transition-colors duration-300"
           >
             Rx Instructions
           </Link>
@@ -373,10 +375,6 @@ function CTA() {
 }
 
 export function DigitalWorkflowPage() {
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
-
   return (
     <>
       <Hero />

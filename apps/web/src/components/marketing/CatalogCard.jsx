@@ -48,7 +48,7 @@ export function CatalogCard({ product, onOpen }) {
       className={`group cursor-pointer card-radius transition-all duration-500 flex flex-col overflow-hidden ${
         inCart
           ? "bg-white border-2 border-brand-500 shadow-lg shadow-brand-500/10"
-          : "bg-white border border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-navy/5"
+          : "bg-white border border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-ink/5"
       } ${!canBuy ? "opacity-80" : ""}`}
     >
       {/* Image */}
@@ -64,7 +64,7 @@ export function CatalogCard({ product, onOpen }) {
             onError={() => setImgFailed(true)}
           />
         ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center text-navy/20">
+          <div className="w-full h-full flex flex-col items-center justify-center text-ink/20">
             <ImageIcon size={28} />
             <span className="mt-2 text-[10px] font-mono uppercase tracking-widest">
               Image pending
@@ -73,7 +73,7 @@ export function CatalogCard({ product, onOpen }) {
         )}
 
         {product.categories[0] && (
-          <span className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-surface-100/90 text-navy/60 backdrop-blur-sm border border-surface-300/50">
+          <span className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-surface-100/90 text-ink/60 backdrop-blur-sm border border-surface-300/50">
             {product.categories[0]}
           </span>
         )}
@@ -99,11 +99,11 @@ export function CatalogCard({ product, onOpen }) {
 
       {/* Content */}
       <div className="p-4 md:p-5 flex flex-col flex-1">
-        <h3 className="font-heading font-semibold text-sm md:text-base text-navy tracking-tight leading-snug line-clamp-2 min-h-[2.5rem]">
+        <h3 className="font-heading font-semibold text-sm md:text-base text-ink tracking-tight leading-snug line-clamp-2 min-h-[2.5rem]">
           {product.name}
         </h3>
         {product.description && (
-          <p className="mt-1 text-xs text-navy/45 leading-snug line-clamp-2">
+          <p className="mt-1 text-xs text-ink/45 leading-snug line-clamp-2">
             {product.description}
           </p>
         )}
@@ -128,18 +128,18 @@ export function CatalogCard({ product, onOpen }) {
               <button
                 type="button"
                 onClick={handleDec}
-                className="w-7 h-7 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white transition-colors"
+                className="w-7 h-7 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-ink transition-colors"
                 aria-label="Decrease quantity"
               >
                 <Minus size={12} strokeWidth={2.5} />
               </button>
-              <span className="font-mono text-sm font-bold text-white w-7 text-center tabular-nums">
+              <span className="font-mono text-sm font-bold text-ink w-7 text-center tabular-nums">
                 {qty}
               </span>
               <button
                 type="button"
                 onClick={handleInc}
-                className="w-7 h-7 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-white transition-colors"
+                className="w-7 h-7 rounded-full bg-white/15 hover:bg-white/25 flex items-center justify-center text-ink transition-colors"
                 aria-label="Increase quantity"
               >
                 <Plus size={12} strokeWidth={2.5} />
@@ -149,7 +149,7 @@ export function CatalogCard({ product, onOpen }) {
             <button
               type="button"
               onClick={handleAdd}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold bg-navy text-white hover:bg-brand-500 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold bg-diamond-300 text-white hover:bg-brand-500 transition-colors"
             >
               <Plus size={13} />
               Add

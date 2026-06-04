@@ -541,7 +541,7 @@ export const CATEGORY_LABELS = {
   sleep:  { label: "Sleep Appliances",     color: "bg-accent-500/10 text-accent-600" },
   guard:  { label: "Mouthguards",          color: "bg-emerald-500/10 text-emerald-600" },
   sport:  { label: "Sport-Guards",         color: "bg-violet-500/10 text-violet-600" },
-  remake: { label: "Remake / Repair",      color: "bg-navy/10 text-navy/70" },
+  remake: { label: "Remake / Repair",      color: "bg-diamond-300/10 text-ink/70" },
 };
 
 export const CATEGORY_ORDER = ["tmd", "sleep", "guard", "sport", "remake"];

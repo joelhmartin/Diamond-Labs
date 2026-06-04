@@ -3,9 +3,71 @@ import { requireApprovedDoctor } from "../middleware/require-role.js";
 import * as authorizenetService from "../services/authorizenet.service.js";
 import * as seazonaService from "../services/seazona.service.js";
 import { db } from "../config/database.js";
-import { users } from "../db/schema/index.js";
+import { users, invoicePayments } from "../db/schema/index.js";
 import { eq } from "drizzle-orm";
+import { createId } from "../lib/id.js";
 import { ERROR_CODES } from "@my-app/shared";
+
+/**
+ * Validate a payment allocation: a list of {invoiceId, invoiceNumber?, amount}
+ * slices whose amounts must sum to the total charge (within a cent).
+ */
+function validateAllocations(allocations, amount) {
+  if (!Array.isArray(allocations) || allocations.length === 0) {
+    return "allocations[] is required.";
+  }
+  for (const a of allocations) {
+    if (!a.invoiceId) return "Each allocation needs an invoiceId.";
+    if (!(Number(a.amount) > 0)) return "Each allocation amount must be greater than zero.";
+  }
+  const sum = allocations.reduce((s, a) => s + Number(a.amount), 0);
+  if (Math.abs(sum - Number(amount)) > 0.01) {
+    return `Allocations ($${sum.toFixed(2)}) must sum to the charge amount ($${Number(amount).toFixed(2)}).`;
+  }
+  return null;
+}
+
+function buildAllocationNotes(allocations, transactionId) {
+  const parts = allocations.map(
+    (a) => `${a.invoiceNumber || a.invoiceId} $${Number(a.amount).toFixed(2)}`
+  );
+  return `DOL portal txn ${transactionId} — ${parts.join("; ")}`.slice(0, 500);
+}
+
+/**
+ * After a successful charge: record ONE account-level payment in Seazona (their
+ * payment API has no invoice-level granularity) with notes describing the split,
+ * then write one local invoice_payments row per allocated invoice.
+ */
+async function recordPaymentAndAllocations({ user, amount, transactionId, allocations }) {
+  let seazonaPaymentId = null;
+
+  if (user.seazonaClientId) {
+    const res = await seazonaService.createPayment({
+      clientId: user.seazonaClientId,
+      accountNumber: user.seazonaAccountNumber,
+      referenceNumber: transactionId,
+      notes: buildAllocationNotes(allocations, transactionId),
+      amount,
+    });
+    seazonaPaymentId = res?.paymentId || null;
+  }
+
+  await db.insert(invoicePayments).values(
+    allocations.map((a) => ({
+      id: createId(),
+      userId: user.id,
+      seazonaClientId: user.seazonaClientId || null,
+      seazonaInvoiceId: String(a.invoiceId),
+      invoiceNumber: a.invoiceNumber ? String(a.invoiceNumber) : null,
+      appliedAmount: Number(a.amount).toFixed(2),
+      transactionId,
+      seazonaPaymentId,
+    }))
+  );
+
+  return seazonaPaymentId;
+}
 
 export default async function paymentRoutes(fastify) {
   // ───────────────────────────────────────────────────────────────
@@ -66,38 +128,35 @@ export default async function paymentRoutes(fastify) {
     };
   });
 
-  // Charge with an Accept.js nonce (one-time card payment)
+  // Charge with an Accept.js nonce (one-time card payment), allocated across invoices
   fastify.post("/payments/charge", {
     preHandler: [authenticate, requireApprovedDoctor],
   }, async (request, reply) => {
-    const { opaqueData, amount, invoiceIds, description } = request.body;
+    const { opaqueData, amount, allocations, description } = request.body;
 
     if (!opaqueData?.dataDescriptor || !opaqueData?.dataValue || !amount) {
       return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "opaqueData and amount are required." } });
     }
+    const allocErr = validateAllocations(allocations, amount);
+    if (allocErr) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: allocErr } });
+    }
 
-    // Charge via Authorize.net
     const result = await authorizenetService.chargeWithNonce({
       amount,
       opaqueData,
       description: description || "Diamond Labs Invoice Payment",
-      invoiceNumber: invoiceIds?.[0] || undefined,
+      invoiceNumber: allocations[0]?.invoiceNumber || allocations[0]?.invoiceId || undefined,
     });
 
-    // Record payment in Seazona for each invoice
-    if (request.user.seazonaClientId && invoiceIds?.length) {
-      for (const invoiceId of invoiceIds) {
-        await seazonaService.createPayment({
-          clientId: request.user.seazonaClientId,
-          accountNumber: request.user.seazonaAccountNumber,
-          referenceNumber: result.transactionId,
-          notes: `Authorize.net txn ${result.transactionId}`,
-          amount: invoiceIds.length === 1 ? amount : undefined,
-        });
-      }
-    }
+    const seazonaPaymentId = await recordPaymentAndAllocations({
+      user: request.user,
+      amount,
+      transactionId: result.transactionId,
+      allocations,
+    });
 
-    return { data: result };
+    return { data: { ...result, seazonaPaymentId } };
   });
 
   // List saved cards
@@ -160,37 +219,93 @@ export default async function paymentRoutes(fastify) {
     return { data: { message: "Card removed." } };
   });
 
-  // Charge a saved card
+  // Charge a saved card, allocated across invoices
   fastify.post("/payments/charge-saved", {
     preHandler: [authenticate, requireApprovedDoctor],
   }, async (request, reply) => {
-    const { paymentProfileId, amount, invoiceIds } = request.body;
+    const { paymentProfileId, amount, allocations } = request.body;
     const customerProfileId = request.user.authorizeNetCustomerProfileId;
 
     if (!customerProfileId || !paymentProfileId || !amount) {
       return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "paymentProfileId and amount are required." } });
+    }
+    const allocErr = validateAllocations(allocations, amount);
+    if (allocErr) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: allocErr } });
     }
 
     const result = await authorizenetService.chargeCustomerProfile({
       customerProfileId,
       paymentProfileId,
       amount,
-      invoiceNumber: invoiceIds?.[0] || undefined,
+      invoiceNumber: allocations[0]?.invoiceNumber || allocations[0]?.invoiceId || undefined,
     });
 
-    // Record in Seazona
-    if (request.user.seazonaClientId && invoiceIds?.length) {
-      for (const invoiceId of invoiceIds) {
-        await seazonaService.createPayment({
-          clientId: request.user.seazonaClientId,
-          accountNumber: request.user.seazonaAccountNumber,
-          referenceNumber: result.transactionId,
-          notes: `Authorize.net txn ${result.transactionId}`,
-          amount: invoiceIds.length === 1 ? amount : undefined,
-        });
-      }
+    const seazonaPaymentId = await recordPaymentAndAllocations({
+      user: request.user,
+      amount,
+      transactionId: result.transactionId,
+      allocations,
+    });
+
+    return { data: { ...result, seazonaPaymentId } };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // TEST — Accept Hosted (SAQ A) end-to-end check. Card data is entered on
+  // Authorize.net's hosted iframe, never our DOM. These endpoints intentionally
+  // do NOT write to Seazona or the invoice_payments ledger — they only exercise
+  // the Authorize.net pipeline. `mode` defaults to sandbox; production is allowed
+  // for a small real-charge smoke test (void it in the Authorize.net dashboard).
+  // ───────────────────────────────────────────────────────────────
+  fastify.post("/payments/test/hosted-token", {
+    preHandler: [authenticate],
+  }, async (request, reply) => {
+    const { amount, mode = "sandbox", iframeCommunicatorUrl } = request.body || {};
+
+    if (!(Number(amount) > 0) || Number(amount) > 100000) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "amount must be between 0 and 100000." } });
+    }
+    if (mode !== "sandbox" && mode !== "production") {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "mode must be 'sandbox' or 'production'." } });
+    }
+    if (iframeCommunicatorUrl && !/^https?:\/\//.test(iframeCommunicatorUrl)) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "iframeCommunicatorUrl must be an http(s) URL." } });
     }
 
-    return { data: result };
+    const refId = `TEST-${Date.now().toString().slice(-10)}`;
+    const result = await authorizenetService.getHostedPaymentPageToken({
+      amount: Number(amount),
+      invoiceNumber: refId,
+      description: "Diamond Labs test payment",
+      refId,
+      iframeCommunicatorUrl,
+    }, mode);
+
+    if (!result?.token) {
+      return reply.code(502).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: `Could not get a ${mode} form token — check Authorize.net ${mode} credentials.` } });
+    }
+
+    return { data: { token: result.token, formUrl: result.formUrl, refId, mode } };
+  });
+
+  fastify.post("/payments/test/hosted-complete", {
+    preHandler: [authenticate],
+  }, async (request, reply) => {
+    const { transId, mode = "sandbox" } = request.body || {};
+
+    if (!transId) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "transId is required." } });
+    }
+    if (mode !== "sandbox" && mode !== "production") {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "mode must be 'sandbox' or 'production'." } });
+    }
+
+    const details = await authorizenetService.getTransactionDetails(transId, mode);
+    if (!details) {
+      return reply.code(404).send({ error: { ...ERROR_CODES.NOT_FOUND, message: "Transaction not found." } });
+    }
+
+    return { data: details };
   });
 }

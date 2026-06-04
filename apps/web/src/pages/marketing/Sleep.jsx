@@ -60,7 +60,7 @@ function Intro() {
       <div className="max-w-4xl mx-auto">
         <span
           data-intro
-          className="font-mono text-xs text-navy/40 uppercase tracking-widest"
+          className="font-mono text-xs text-ink/40 uppercase tracking-widest"
         >
           Sleep Appliances · FDA-Cleared
         </span>
@@ -73,7 +73,7 @@ function Intro() {
         </h1>
         <p
           data-intro
-          className="mt-6 text-navy/55 text-base md:text-lg max-w-2xl leading-relaxed"
+          className="mt-6 text-ink/55 text-base md:text-lg max-w-2xl leading-relaxed"
         >
           The Diamond Digital Sleep Orthotic (DDSO) is a custom CAD/CAM
           device for snoring and mild-to-moderate OSA in adults. Two
@@ -101,10 +101,10 @@ function CoreFeatures() {
   }, []);
 
   return (
-    <section ref={ref} className="section-pad py-24 md:py-28 bg-navy text-white">
+    <section ref={ref} className="section-pad py-24 md:py-28 bg-diamond-300 text-ink">
       <div className="max-w-6xl mx-auto">
         <div className="mb-12 md:mb-16 max-w-2xl">
-          <span className="font-mono text-xs text-white/40 uppercase tracking-widest">
+          <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
             Core Features &amp; Benefits
           </span>
           <h2 className="mt-3 font-heading font-bold text-3xl md:text-5xl tracking-tight text-balance">
@@ -118,7 +118,7 @@ function CoreFeatures() {
             <div
               key={f.title}
               data-feat
-              className="card-radius p-6 md:p-7 bg-navy-light border border-white/10"
+              className="card-radius p-6 md:p-7 bg-diamond-200 border border-ink/20"
             >
               <div className="flex gap-3">
                 <CheckCircle2
@@ -126,10 +126,10 @@ function CoreFeatures() {
                   className="text-brand-400 flex-shrink-0 mt-0.5"
                 />
                 <div>
-                  <h3 className="font-heading font-semibold text-base text-white tracking-tight">
+                  <h3 className="font-heading font-semibold text-base text-ink tracking-tight">
                     {f.title}
                   </h3>
-                  <p className="mt-2 text-white/55 text-sm leading-relaxed">
+                  <p className="mt-2 text-ink/55 text-sm leading-relaxed">
                     {f.body}
                   </p>
                 </div>
@@ -138,7 +138,7 @@ function CoreFeatures() {
           ))}
         </div>
 
-        <p className="mt-12 max-w-3xl text-[11px] font-mono text-white/30 leading-relaxed">
+        <p className="mt-12 max-w-3xl text-[11px] font-mono text-ink/30 leading-relaxed">
           FDA 510(k) cleared for the treatment of snoring and/or obstructive
           sleep apnea in adults. Additional modifications and attachments
           have not been reviewed or cleared by the FDA for the treatment of
@@ -185,7 +185,7 @@ function Stats() {
               <div className="font-heading font-bold text-3xl md:text-4xl text-brand-500 tracking-tight">
                 {s.value}
               </div>
-              <div className="mt-2 font-mono text-xs text-navy/40 uppercase tracking-wider">
+              <div className="mt-2 font-mono text-xs text-ink/40 uppercase tracking-wider">
                 {s.label}
               </div>
             </div>
@@ -213,11 +213,11 @@ function CTA() {
   }, []);
 
   return (
-    <section ref={ref} className="section-pad py-24 md:py-32">
+    <section ref={ref} className="section-pad py-24 md:py-28">
       <div className="max-w-3xl mx-auto text-center">
         <span
           data-sleep-cta
-          className="font-mono text-xs text-navy/40 uppercase tracking-widest"
+          className="font-mono text-xs text-ink/40 uppercase tracking-widest"
         >
           Ready to Order?
         </span>
@@ -232,7 +232,7 @@ function CTA() {
         </h2>
         <p
           data-sleep-cta
-          className="mt-6 text-navy/50 text-base md:text-lg max-w-lg mx-auto"
+          className="mt-6 text-ink/50 text-base md:text-lg max-w-lg mx-auto"
         >
           All DDSO devices are Rx-only. Upload scans and Rx details through
           the HIPAA-compliant submission portal.
@@ -256,7 +256,7 @@ function CTA() {
           </Link>
           <Link
             to="/contact"
-            className="px-8 py-4 rounded-full border border-surface-300 text-navy/70 font-medium hover:bg-surface-200/60 transition-colors duration-300"
+            className="px-8 py-4 rounded-full border border-surface-300 text-ink/70 font-medium hover:bg-surface-200/60 transition-colors duration-300"
           >
             Talk to the Lab
           </Link>
@@ -267,10 +267,6 @@ function CTA() {
 }
 
 export function SleepPage() {
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
-
   return (
     <>
       <ProductCatalog tabs={SLEEP_TABS} />

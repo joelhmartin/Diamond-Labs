@@ -21,7 +21,7 @@ import {
 } from "../../data/catalog";
 
 const INPUT =
-  "w-full px-3.5 py-2.5 rounded-lg bg-white border border-surface-300/60 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-navy/25";
+  "w-full px-3.5 py-2.5 rounded-lg bg-white border border-surface-300/60 text-ink text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-ink/25";
 
 function formatPrice(p) {
   if (p === 0) return "Included";
@@ -52,7 +52,7 @@ function ProductEditor({ product, onClose, onSave }) {
 
   return (
     <div
-      className="fixed inset-0 z-[9998] flex items-end md:items-center justify-center p-0 md:p-6 bg-navy/50 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-[9998] flex items-end md:items-center justify-center p-0 md:p-6 bg-diamond-300/50 backdrop-blur-sm overflow-y-auto"
       onClick={onClose}
     >
       <div
@@ -61,15 +61,15 @@ function ProductEditor({ product, onClose, onSave }) {
       >
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="font-heading font-bold text-xl text-navy">
+            <h2 className="font-heading font-bold text-xl text-ink">
               {product.__isNew ? "Add product" : "Edit product"}
             </h2>
-            <p className="text-xs text-navy/40 mt-0.5 font-mono">#{draft.id}</p>
+            <p className="text-xs text-ink/40 mt-0.5 font-mono">#{draft.id}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="w-9 h-9 rounded-full bg-surface-100 hover:bg-surface-200 flex items-center justify-center text-navy/60"
+            className="w-9 h-9 rounded-full bg-surface-100 hover:bg-surface-200 flex items-center justify-center text-ink/60"
             aria-label="Close"
           >
             <X size={16} />
@@ -88,14 +88,14 @@ function ProductEditor({ product, onClose, onSave }) {
                   onError={(e) => (e.target.style.display = "none")}
                 />
               ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-navy/20">
+                <div className="w-full h-full flex flex-col items-center justify-center text-ink/20">
                   <ImageIcon size={32} />
                   <span className="mt-2 text-[10px] font-mono">No image</span>
                 </div>
               )}
             </div>
             <div>
-              <label className="block text-[10px] font-mono text-navy/40 uppercase tracking-widest mb-1.5">
+              <label className="block text-[10px] font-mono text-ink/40 uppercase tracking-widest mb-1.5">
                 Image URL (/catalog/… or full URL)
               </label>
               <input
@@ -106,7 +106,7 @@ function ProductEditor({ product, onClose, onSave }) {
               />
             </div>
             <div>
-              <label className="block text-[10px] font-mono text-navy/40 uppercase tracking-widest mb-1.5">
+              <label className="block text-[10px] font-mono text-ink/40 uppercase tracking-widest mb-1.5">
                 Thumbnail URL
               </label>
               <input
@@ -121,7 +121,7 @@ function ProductEditor({ product, onClose, onSave }) {
           {/* Fields */}
           <div className="md:col-span-2 space-y-4">
             <div>
-              <label className="block text-[10px] font-mono text-navy/40 uppercase tracking-widest mb-1.5">
+              <label className="block text-[10px] font-mono text-ink/40 uppercase tracking-widest mb-1.5">
                 Name
               </label>
               <input
@@ -132,7 +132,7 @@ function ProductEditor({ product, onClose, onSave }) {
             </div>
 
             <div>
-              <label className="block text-[10px] font-mono text-navy/40 uppercase tracking-widest mb-1.5">
+              <label className="block text-[10px] font-mono text-ink/40 uppercase tracking-widest mb-1.5">
                 Description
               </label>
               <textarea
@@ -145,7 +145,7 @@ function ProductEditor({ product, onClose, onSave }) {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] font-mono text-navy/40 uppercase tracking-widest mb-1.5">
+                <label className="block text-[10px] font-mono text-ink/40 uppercase tracking-widest mb-1.5">
                   Price ($)
                 </label>
                 <input
@@ -157,7 +157,7 @@ function ProductEditor({ product, onClose, onSave }) {
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-mono text-navy/40 uppercase tracking-widest mb-1.5">
+                <label className="block text-[10px] font-mono text-ink/40 uppercase tracking-widest mb-1.5">
                   Stock
                 </label>
                 <input
@@ -170,7 +170,7 @@ function ProductEditor({ product, onClose, onSave }) {
             </div>
 
             <div>
-              <label className="block text-[10px] font-mono text-navy/40 uppercase tracking-widest mb-1.5">
+              <label className="block text-[10px] font-mono text-ink/40 uppercase tracking-widest mb-1.5">
                 Categories (comma-separated)
               </label>
               <input
@@ -182,7 +182,7 @@ function ProductEditor({ product, onClose, onSave }) {
             </div>
 
             <div>
-              <label className="block text-[10px] font-mono text-navy/40 uppercase tracking-widest mb-1.5">
+              <label className="block text-[10px] font-mono text-ink/40 uppercase tracking-widest mb-1.5">
                 Availability
               </label>
               <div className="flex flex-wrap gap-1.5">
@@ -196,8 +196,8 @@ function ProductEditor({ product, onClose, onSave }) {
                       onClick={() => update("availability", s)}
                       className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
                         active
-                          ? "bg-navy text-white"
-                          : `${meta.color} hover:bg-navy/10`
+                          ? "bg-diamond-300 text-ink"
+                          : `${meta.color} hover:bg-diamond-300/10`
                       }`}
                     >
                       {meta.label}
@@ -214,12 +214,12 @@ function ProductEditor({ product, onClose, onSave }) {
                 className={`flex items-center gap-3 w-full p-3 rounded-xl border transition-all ${
                   draft.active
                     ? "bg-emerald-500/5 border-emerald-500/30"
-                    : "bg-navy/5 border-navy/20"
+                    : "bg-diamond-300/5 border-ink/20"
                 }`}
               >
                 <div
                   className={`w-10 h-6 rounded-full transition-colors relative ${
-                    draft.active ? "bg-emerald-500" : "bg-navy/30"
+                    draft.active ? "bg-emerald-500" : "bg-diamond-300/30"
                   }`}
                 >
                   <div
@@ -229,10 +229,10 @@ function ProductEditor({ product, onClose, onSave }) {
                   />
                 </div>
                 <div className="flex-1 text-left">
-                  <div className="text-sm font-semibold text-navy">
+                  <div className="text-sm font-semibold text-ink">
                     {draft.active ? "Active — visible to shoppers" : "Inactive — hidden from catalog"}
                   </div>
-                  <div className="text-xs text-navy/40">
+                  <div className="text-xs text-ink/40">
                     Inactive items stay in the admin but don&apos;t render publicly.
                   </div>
                 </div>
@@ -245,7 +245,7 @@ function ProductEditor({ product, onClose, onSave }) {
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2.5 rounded-full text-sm font-medium text-navy/60 hover:bg-surface-100 transition-all"
+            className="px-5 py-2.5 rounded-full text-sm font-medium text-ink/60 hover:bg-surface-100 transition-all"
           >
             Cancel
           </button>
@@ -322,10 +322,10 @@ export function AdminProductsPage() {
       {/* Header */}
       <div className="flex items-end justify-between mb-8 flex-wrap gap-4">
         <div>
-          <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
+          <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
             Admin · Catalog
           </span>
-          <h1 className="mt-2 font-heading font-bold text-3xl text-navy tracking-tight">
+          <h1 className="mt-2 font-heading font-bold text-3xl text-ink tracking-tight">
             Product Management
           </h1>
         </div>
@@ -333,7 +333,7 @@ export function AdminProductsPage() {
           <button
             type="button"
             onClick={() => setConfirmReset(true)}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold text-navy/50 hover:text-navy hover:bg-surface-100 transition-all"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold text-ink/50 hover:text-ink hover:bg-surface-100 transition-all"
           >
             <RefreshCw size={12} />
             Reset to seed
@@ -362,7 +362,7 @@ export function AdminProductsPage() {
         <div className="relative flex-1">
           <Search
             size={14}
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-navy/30"
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/30"
           />
           <input
             type="text"
@@ -377,8 +377,8 @@ export function AdminProductsPage() {
           onClick={() => setShowInactive((v) => !v)}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all ${
             showInactive
-              ? "bg-navy text-white"
-              : "bg-surface-100 text-navy/60 hover:text-navy"
+              ? "bg-diamond-300 text-ink"
+              : "bg-surface-100 text-ink/60 hover:text-ink"
           }`}
         >
           {showInactive ? <Eye size={14} /> : <EyeOff size={14} />}
@@ -405,7 +405,7 @@ export function AdminProductsPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-16 text-navy/40">
+                  <td colSpan={8} className="text-center py-16 text-ink/40">
                     No products match.
                   </td>
                 </tr>
@@ -425,7 +425,7 @@ export function AdminProductsPage() {
         </div>
       </div>
 
-      <p className="mt-4 text-xs text-navy/40 text-center">
+      <p className="mt-4 text-xs text-ink/40 text-center">
         Catalog changes persist to localStorage. When a backend is wired,
         these actions will call the API instead.
       </p>
@@ -440,17 +440,17 @@ export function AdminProductsPage() {
 
       {confirmReset && (
         <div
-          className="fixed inset-0 z-[9998] flex items-center justify-center p-6 bg-navy/50 backdrop-blur-sm"
+          className="fixed inset-0 z-[9998] flex items-center justify-center p-6 bg-diamond-300/50 backdrop-blur-sm"
           onClick={() => setConfirmReset(false)}
         >
           <div
             className="bg-white rounded-2xl p-6 max-w-sm shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="font-heading font-bold text-lg text-navy">
+            <h3 className="font-heading font-bold text-lg text-ink">
               Reset catalog to seed?
             </h3>
-            <p className="mt-2 text-sm text-navy/60 leading-relaxed">
+            <p className="mt-2 text-sm text-ink/60 leading-relaxed">
               This will discard every admin edit and added product, restoring
               the 54-item seed catalog. Cannot be undone.
             </p>
@@ -458,7 +458,7 @@ export function AdminProductsPage() {
               <button
                 type="button"
                 onClick={() => setConfirmReset(false)}
-                className="px-4 py-2 rounded-full text-sm text-navy/60 hover:bg-surface-100"
+                className="px-4 py-2 rounded-full text-sm text-ink/60 hover:bg-surface-100"
               >
                 Cancel
               </button>
@@ -468,7 +468,7 @@ export function AdminProductsPage() {
                   resetToSeed();
                   setConfirmReset(false);
                 }}
-                className="px-4 py-2 rounded-full text-sm font-semibold bg-red-500 text-white hover:bg-red-600"
+                className="px-4 py-2 rounded-full text-sm font-semibold bg-red-500 text-ink hover:bg-red-600"
               >
                 Reset
               </button>
@@ -480,13 +480,13 @@ export function AdminProductsPage() {
   );
 }
 
-function Stat({ label, value, tint = "text-navy" }) {
+function Stat({ label, value, tint = "text-ink" }) {
   return (
     <div className="bg-white rounded-2xl border border-surface-300/50 p-4">
       <div className={`font-heading font-bold text-2xl tracking-tight ${tint}`}>
         {value}
       </div>
-      <div className="text-[10px] font-mono text-navy/40 uppercase tracking-widest mt-0.5">
+      <div className="text-[10px] font-mono text-ink/40 uppercase tracking-widest mt-0.5">
         {label}
       </div>
     </div>
@@ -496,7 +496,7 @@ function Stat({ label, value, tint = "text-navy" }) {
 function Th({ children, className = "" }) {
   return (
     <th
-      className={`text-left px-4 py-3 text-[10px] font-mono uppercase tracking-widest text-navy/40 font-normal ${className}`}
+      className={`text-left px-4 py-3 text-[10px] font-mono uppercase tracking-widest text-ink/40 font-normal ${className}`}
     >
       {children}
     </th>
@@ -511,7 +511,7 @@ function Row({ product, onEdit, onDelete, onToggleActive }) {
         !product.active ? "opacity-60" : ""
       }`}
     >
-      <td className="px-4 py-3 font-mono text-xs text-navy/40">{product.id}</td>
+      <td className="px-4 py-3 font-mono text-xs text-ink/40">{product.id}</td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 flex-shrink-0 rounded-lg bg-surface-100 border border-surface-300/30 overflow-hidden">
@@ -523,30 +523,30 @@ function Row({ product, onEdit, onDelete, onToggleActive }) {
                 onError={(e) => (e.target.style.display = "none")}
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-navy/20">
+              <div className="w-full h-full flex items-center justify-center text-ink/20">
                 <Package size={14} />
               </div>
             )}
           </div>
           <div className="min-w-0">
-            <div className="font-semibold text-navy truncate max-w-[280px]">
+            <div className="font-semibold text-ink truncate max-w-[280px]">
               {product.name}
             </div>
             {product.description && (
-              <div className="text-xs text-navy/40 truncate max-w-[280px]">
+              <div className="text-xs text-ink/40 truncate max-w-[280px]">
                 {product.description}
               </div>
             )}
           </div>
         </div>
       </td>
-      <td className="px-4 py-3 text-xs text-navy/60">
+      <td className="px-4 py-3 text-xs text-ink/60">
         {product.categories.join(", ") || "—"}
       </td>
-      <td className="px-4 py-3 text-sm font-semibold text-navy">
+      <td className="px-4 py-3 text-sm font-semibold text-ink">
         {formatPrice(product.price)}
       </td>
-      <td className="px-4 py-3 text-sm text-navy/60 font-mono tabular-nums">
+      <td className="px-4 py-3 text-sm text-ink/60 font-mono tabular-nums">
         {product.stock.toLocaleString()}
       </td>
       <td className="px-4 py-3">
@@ -561,7 +561,7 @@ function Row({ product, onEdit, onDelete, onToggleActive }) {
           type="button"
           onClick={onToggleActive}
           className={`w-9 h-5 rounded-full transition-colors relative ${
-            product.active ? "bg-emerald-500" : "bg-navy/20"
+            product.active ? "bg-emerald-500" : "bg-diamond-300/20"
           }`}
           aria-label={product.active ? "Set inactive" : "Set active"}
         >
@@ -577,7 +577,7 @@ function Row({ product, onEdit, onDelete, onToggleActive }) {
           <button
             type="button"
             onClick={onEdit}
-            className="w-8 h-8 rounded-full hover:bg-surface-200 flex items-center justify-center text-navy/60 hover:text-navy transition-colors"
+            className="w-8 h-8 rounded-full hover:bg-surface-200 flex items-center justify-center text-ink/60 hover:text-ink transition-colors"
             aria-label="Edit"
           >
             <Edit3 size={14} />
@@ -585,7 +585,7 @@ function Row({ product, onEdit, onDelete, onToggleActive }) {
           <button
             type="button"
             onClick={onDelete}
-            className="w-8 h-8 rounded-full hover:bg-red-50 flex items-center justify-center text-navy/50 hover:text-red-500 transition-colors"
+            className="w-8 h-8 rounded-full hover:bg-red-50 flex items-center justify-center text-ink/50 hover:text-red-500 transition-colors"
             aria-label="Delete"
           >
             <Trash2 size={14} />

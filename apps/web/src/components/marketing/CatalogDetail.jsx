@@ -25,7 +25,7 @@ function toViewerShape(p) {
     fullName: p.description || p.categories[0] || "Diamond Orthotic Catalog",
     tagline: p.description || "Contact the lab for questions on this item.",
     category: p.categories[0] || "Catalog",
-    categoryColor: "text-navy/60",
+    categoryColor: "text-ink/60",
     categoryBg: "bg-surface-200/80",
     images:
       p.images && p.images.length
@@ -64,7 +64,7 @@ export function CatalogDetail({ product, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-[9998] flex items-end md:items-center justify-center p-0 md:p-6 bg-navy/50 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-[9998] flex items-end md:items-center justify-center p-0 md:p-6 bg-diamond-300/50 backdrop-blur-sm overflow-y-auto"
       onClick={onClose}
     >
       <div
@@ -74,7 +74,7 @@ export function CatalogDetail({ product, onClose }) {
         <button
           type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 md:top-6 md:right-6 z-10 w-10 h-10 rounded-full bg-surface-100 hover:bg-surface-200 flex items-center justify-center text-navy/60 hover:text-navy transition-colors"
+          className="absolute top-4 right-4 md:top-6 md:right-6 z-10 w-10 h-10 rounded-full bg-surface-100 hover:bg-surface-200 flex items-center justify-center text-ink/60 hover:text-ink transition-colors"
           aria-label="Close"
         >
           <X size={18} />

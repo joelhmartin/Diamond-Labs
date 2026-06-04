@@ -32,6 +32,10 @@ const envSchema = z.object({
   AUTHORIZE_NET_API_LOGIN: z.string().optional(),
   AUTHORIZE_NET_TRANSACTION_KEY: z.string().optional(),
   AUTHORIZE_NET_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
+  // Sandbox creds (from developer.authorize.net) — used by the test payment flow
+  // regardless of AUTHORIZE_NET_ENV, so we can sandbox-test without touching prod.
+  AUTHORIZE_NET_SANDBOX_API_LOGIN: z.string().optional(),
+  AUTHORIZE_NET_SANDBOX_TRANSACTION_KEY: z.string().optional(),
 
   // Admin
   ADMIN_NOTIFICATION_EMAIL: z.string().email().optional(),

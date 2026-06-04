@@ -29,11 +29,19 @@ await fastify.register(cors, {
   origin: env.NODE_ENV === "production"
     ? project.api.cors.origins
     // Vite auto-bumps the dev port when taken, so allow any localhost origin in dev.
+    // Also allow dev tunnels (cloudflared/ngrok) used to test Authorize.net
+    // Accept Hosted, which requires an https FQDN rather than localhost.
     : (origin, cb) => {
         if (!origin) return cb(null, true);
         try {
           const host = new URL(origin).hostname;
-          if (host === "localhost" || host === "127.0.0.1") return cb(null, true);
+          const allowed =
+            host === "localhost" ||
+            host === "127.0.0.1" ||
+            host.endsWith(".trycloudflare.com") ||
+            host.endsWith(".ngrok-free.app") ||
+            host.endsWith(".ngrok.io");
+          if (allowed) return cb(null, true);
         } catch {}
         cb(new Error("CORS: origin not allowed"), false);
       },

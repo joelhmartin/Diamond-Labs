@@ -35,12 +35,17 @@ function processQueue(error, token = null) {
   failedQueue = [];
 }
 
+function isAuthRequest(config) {
+  const url = config?.url ?? "";
+  return url.startsWith("/auth/");
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config;
+    const originalRequest = error.config ?? {};
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthRequest(originalRequest)) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -64,8 +69,7 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
-        useAuthStore.getState().logout();
-        window.location.href = "/auth/login";
+        useAuthStore.setState({ user: null, accessToken: null, isAuthenticated: false, isLoading: false });
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

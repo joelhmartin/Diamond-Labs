@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -60,22 +60,60 @@ import { CartWidget } from "./components/marketing/CartWidget.jsx";
 import { InvoicesPage } from "./pages/doctor/InvoicesPage.jsx";
 import { SavedCardsPage } from "./pages/doctor/SavedCardsPage.jsx";
 import { RequireDoctor } from "./guards/RequireDoctor.jsx";
+import { PaymentTestPage } from "./pages/dev/PaymentTestPage.jsx";
+
+/* Scroll to top on route change, but NOT on initial load —
+   that lets the browser restore scroll position on reload. */
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+}
 
 /* Marketing layout: Navbar + page + Footer + floating cart */
 function MarketingLayout() {
   const { pathname } = useLocation();
 
-  // GSAP ScrollTrigger positions get cached before hero images finish loading,
-  // which can leave fade-in elements stuck at opacity:0 (looks like empty sections).
-  // Refresh after route change + after window load so triggers recalc against final layout.
+  // GSAP ScrollTrigger caches trigger positions on first measurement. If fonts,
+  // images, or layout settle AFTER triggers register, those positions are stale
+  // and `gsap.from` animations stay at opacity:0 forever. Refresh at every stage
+  // where layout could shift: after children's effects, after fonts load, after
+  // images load, and a final fallback for late-arriving content.
   useEffect(() => {
+    const refresh = () => ScrollTrigger.refresh();
+    const timers = [];
+
+    // After children's useEffects have registered triggers (1-2 frames out).
     const raf1 = requestAnimationFrame(() => {
-      requestAnimationFrame(() => ScrollTrigger.refresh());
+      requestAnimationFrame(refresh);
     });
-    const onLoad = () => ScrollTrigger.refresh();
-    window.addEventListener("load", onLoad);
+
+    // After web fonts swap in (changes heading metrics → trigger offsets).
+    if (document.fonts?.ready) {
+      document.fonts.ready.then(refresh);
+    }
+
+    // After images / hero backgrounds load.
+    const onLoad = () => refresh();
+    if (document.readyState === "complete") {
+      timers.push(setTimeout(refresh, 50));
+    } else {
+      window.addEventListener("load", onLoad);
+    }
+
+    // Final safety net for any straggler layout shift.
+    timers.push(setTimeout(refresh, 600));
+
     return () => {
       cancelAnimationFrame(raf1);
+      timers.forEach(clearTimeout);
       window.removeEventListener("load", onLoad);
     };
   }, [pathname]);
@@ -176,6 +214,9 @@ function AppRoutes() {
         <Route path="saved-cards" element={<SavedCardsPage />} />
       </Route>
 
+      {/* Dev-only payment test harness (any authenticated user) */}
+      <Route path="/dev/pay-test" element={<RequireAuth><PaymentTestPage /></RequireAuth>} />
+
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
@@ -205,6 +246,7 @@ function OAuthCallback() {
 export default function App() {
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <ToastProvider>
         <AppRoutes />
       </ToastProvider>

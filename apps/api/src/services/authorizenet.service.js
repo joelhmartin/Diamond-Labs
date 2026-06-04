@@ -6,24 +6,41 @@ import { env } from "../config/env.js";
  * only receives opaque nonces (dataDescriptor + dataValue).
  */
 
-const API_URL = env.AUTHORIZE_NET_ENV === "production"
-  ? "https://api.authorize.net/xml/v1/request.api"
-  : "https://apitest.authorize.net/xml/v1/request.api";
-
-function merchantAuth() {
-  return {
-    name: env.AUTHORIZE_NET_API_LOGIN,
-    transactionKey: env.AUTHORIZE_NET_TRANSACTION_KEY,
-  };
+// `mode` is "sandbox" | "production". When omitted it falls back to the
+// global AUTHORIZE_NET_ENV. The test payment flow forces a mode explicitly so
+// sandbox testing never depends on flipping the global env.
+function resolveMode(mode) {
+  if (mode === "sandbox" || mode === "production") return mode;
+  return env.AUTHORIZE_NET_ENV === "production" ? "production" : "sandbox";
 }
 
-async function apiRequest(payload) {
-  if (!env.AUTHORIZE_NET_API_LOGIN || !env.AUTHORIZE_NET_TRANSACTION_KEY) {
-    console.warn("[Authorize.net] API credentials not configured");
+function apiUrl(mode) {
+  return resolveMode(mode) === "production"
+    ? "https://api.authorize.net/xml/v1/request.api"
+    : "https://apitest.authorize.net/xml/v1/request.api";
+}
+
+/** The Accept Hosted form-POST endpoint (different host from the API). */
+export function hostedFormUrl(mode) {
+  return resolveMode(mode) === "production"
+    ? "https://accept.authorize.net/payment/payment"
+    : "https://test.authorize.net/payment/payment";
+}
+
+function merchantAuth(mode) {
+  return resolveMode(mode) === "production"
+    ? { name: env.AUTHORIZE_NET_API_LOGIN, transactionKey: env.AUTHORIZE_NET_TRANSACTION_KEY }
+    : { name: env.AUTHORIZE_NET_SANDBOX_API_LOGIN, transactionKey: env.AUTHORIZE_NET_SANDBOX_TRANSACTION_KEY };
+}
+
+async function apiRequest(payload, mode) {
+  const auth = merchantAuth(mode);
+  if (!auth.name || !auth.transactionKey) {
+    console.warn(`[Authorize.net] ${resolveMode(mode)} API credentials not configured`);
     return null;
   }
 
-  const res = await fetch(API_URL, {
+  const res = await fetch(apiUrl(mode), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -172,4 +189,70 @@ export async function deletePaymentProfile({ customerProfileId, paymentProfileId
       customerPaymentProfileId: paymentProfileId,
     },
   });
+}
+
+/**
+ * Accept Hosted: get a one-time form token for the hosted payment page. The
+ * amount is baked into the token server-side so it can't be tampered with in
+ * the browser. The card data is entered on Authorize.net's hosted iframe — it
+ * never touches our DOM (SAQ A). Returns { token, formUrl }.
+ */
+export async function getHostedPaymentPageToken(
+  { amount, invoiceNumber, description, refId, iframeCommunicatorUrl },
+  mode
+) {
+  const setting = [
+    { settingName: "hostedPaymentReturnOptions", settingValue: JSON.stringify({ showReceipt: false }) },
+    { settingName: "hostedPaymentButtonOptions", settingValue: JSON.stringify({ text: "Pay" }) },
+    { settingName: "hostedPaymentPaymentOptions", settingValue: JSON.stringify({ cardCodeRequired: true, showCreditCard: true, showBankAccount: false }) },
+    { settingName: "hostedPaymentSecurityOptions", settingValue: JSON.stringify({ captcha: false }) },
+    { settingName: "hostedPaymentBillingAddressOptions", settingValue: JSON.stringify({ show: true, required: false }) },
+    { settingName: "hostedPaymentCustomerOptions", settingValue: JSON.stringify({ showEmail: false, requiredEmail: false }) },
+    { settingName: "hostedPaymentOrderOptions", settingValue: JSON.stringify({ show: true, merchantName: "Diamond Orthotic Lab" }) },
+  ];
+  if (iframeCommunicatorUrl) {
+    setting.push({
+      settingName: "hostedPaymentIFrameCommunicatorUrl",
+      settingValue: JSON.stringify({ url: iframeCommunicatorUrl }),
+    });
+  }
+
+  const data = await apiRequest({
+    getHostedPaymentPageRequest: {
+      merchantAuthentication: merchantAuth(mode),
+      refId: refId ? String(refId).slice(0, 20) : undefined,
+      transactionRequest: {
+        transactionType: "authCaptureTransaction",
+        amount: String(amount),
+        order: invoiceNumber
+          ? { invoiceNumber: String(invoiceNumber).slice(0, 20), description: description?.slice(0, 255) }
+          : undefined,
+      },
+      hostedPaymentSettings: { setting },
+    },
+  }, mode);
+
+  return { token: data?.token || null, formUrl: hostedFormUrl(mode) };
+}
+
+/**
+ * Look up a transaction by id — used to verify, server-side, the amount and
+ * status that Authorize.net actually captured before we record anything.
+ */
+export async function getTransactionDetails(transId, mode) {
+  const data = await apiRequest({
+    getTransactionDetailsRequest: {
+      merchantAuthentication: merchantAuth(mode),
+      transId: String(transId),
+    },
+  }, mode);
+
+  const t = data?.transaction;
+  if (!t) return null;
+  return {
+    transId: t.transId,
+    amount: Number(t.authAmount ?? t.settleAmount ?? 0),
+    responseCode: t.responseCode,
+    status: t.transactionStatus,
+  };
 }

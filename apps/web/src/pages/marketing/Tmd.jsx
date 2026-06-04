@@ -132,7 +132,7 @@ function Intro() {
       <div className="max-w-4xl mx-auto">
         <span
           data-intro
-          className="font-mono text-xs text-navy/40 uppercase tracking-widest"
+          className="font-mono text-xs text-ink/40 uppercase tracking-widest"
         >
           Olmos Series · TMD Orthotics
         </span>
@@ -147,7 +147,7 @@ function Intro() {
         </h1>
         <p
           data-intro
-          className="mt-6 text-navy/55 text-base md:text-lg max-w-2xl leading-relaxed"
+          className="mt-6 text-ink/55 text-base md:text-lg max-w-2xl leading-relaxed"
         >
           The Olmos Series is designed to correct skeletal, muscular,
           tendon, and ligament asymmetries — restoring function and
@@ -194,7 +194,7 @@ function Stats() {
               <div className="font-heading font-bold text-3xl md:text-4xl text-brand-500 tracking-tight">
                 {s.value}
               </div>
-              <div className="mt-2 font-mono text-xs text-navy/40 uppercase tracking-wider">
+              <div className="mt-2 font-mono text-xs text-ink/40 uppercase tracking-wider">
                 {s.label}
               </div>
             </div>
@@ -223,9 +223,9 @@ function Definition() {
 
   return (
     <section ref={ref} className="section-pad py-24 md:py-28 bg-surface-100">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="mb-10 flex items-center gap-3">
-          <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
+          <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
             Splint vs. Orthotic
           </span>
           <div className="flex-1 h-px bg-surface-300/60" />
@@ -236,10 +236,10 @@ function Definition() {
             data-def
             className="bg-white card-radius p-8 md:p-10 border border-surface-300/50"
           >
-            <span className="font-mono text-[10px] text-navy/40 uppercase tracking-widest">
+            <span className="font-mono text-[10px] text-ink/40 uppercase tracking-widest">
               Splint
             </span>
-            <div className="mt-3 font-drama italic text-2xl md:text-3xl text-navy/70 leading-snug">
+            <div className="mt-3 font-drama italic text-2xl md:text-3xl text-ink/70 leading-snug">
               &ldquo;A rigid or flexible appliance used to maintain in
               position a displaced or mobile part, or to keep in place and
               protect an injured part.&rdquo;
@@ -247,17 +247,17 @@ function Definition() {
           </div>
           <div
             data-def
-            className="bg-navy card-radius p-8 md:p-10 border border-navy-light"
+            className="bg-diamond-100 card-radius p-8 md:p-10 border border-ink-light"
           >
             <span className="font-mono text-[10px] text-brand-400 uppercase tracking-widest">
               Orthotic
             </span>
-            <div className="mt-3 font-drama italic text-2xl md:text-3xl text-white leading-snug">
+            <div className="mt-3 font-drama italic text-2xl md:text-3xl text-ink leading-snug">
               &ldquo;An orthopedic appliance used to support, align, prevent
               or correct deformities, or to improve the function of movable
               parts.&rdquo;
             </div>
-            <div className="mt-6 text-white/40 text-xs font-mono tracking-widest uppercase">
+            <div className="mt-6 text-ink/40 text-xs font-mono tracking-widest uppercase">
               What we build.
             </div>
           </div>
@@ -286,10 +286,10 @@ function DayOrthotics() {
   return (
     <section ref={ref} className="section-pad py-24 md:py-28">
       <div className="max-w-6xl mx-auto">
-        <div className="mb-12 md:mb-16 max-w-2xl">
+        <div className="mb-10 md:mb-12 max-w-2xl">
           <div className="flex items-center gap-3 mb-4">
             <Sun size={16} className="text-accent-500" />
-            <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
+            <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
               Olmos Day Orthotics
             </span>
           </div>
@@ -299,7 +299,7 @@ function DayOrthotics() {
               Made in the phonetic position.
             </span>
           </h2>
-          <p className="mt-5 text-navy/55 leading-relaxed">
+          <p className="mt-5 text-ink/55 leading-relaxed">
             Indicated for chronic joint inflammation and disc displacement.
             Can function as a positioning stent, correcting vertical
             dimension, rotational cant, and protrusive changes. Lingual
@@ -313,7 +313,7 @@ function DayOrthotics() {
             <div
               key={o.code}
               data-day-card
-              className="bg-white card-radius p-6 md:p-7 border border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-navy/5 transition-all duration-500 flex flex-col"
+              className="bg-white card-radius p-6 md:p-7 border border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-ink/5 transition-all duration-500 flex flex-col"
             >
               <span className="font-mono text-[10px] text-brand-500 uppercase tracking-widest">
                 {o.code}
@@ -321,12 +321,12 @@ function DayOrthotics() {
               <h3 className="mt-2 font-heading font-bold text-xl tracking-tight">
                 {o.name}
               </h3>
-              <div className="mt-1 text-xs text-navy/40 italic">{o.tag}</div>
+              <div className="mt-1 text-xs text-ink/40 italic">{o.tag}</div>
               <ul className="mt-5 space-y-2.5 flex-1">
                 {o.bullets.map((b, i) => (
                   <li
                     key={i}
-                    className="flex gap-2.5 text-sm text-navy/60 leading-snug"
+                    className="flex gap-2.5 text-sm text-ink/60 leading-snug"
                   >
                     <span className="mt-1.5 w-1 h-1 rounded-full bg-brand-500 flex-shrink-0" />
                     <span>{b}</span>
@@ -360,10 +360,10 @@ function NightOrthotics() {
   return (
     <section ref={ref} className="section-pad py-24 md:py-28 bg-surface-100">
       <div className="max-w-6xl mx-auto">
-        <div className="mb-12 md:mb-16 max-w-2xl">
+        <div className="mb-10 md:mb-12 max-w-2xl">
           <div className="flex items-center gap-3 mb-4">
             <Moon size={16} className="text-brand-500" />
-            <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
+            <span className="font-mono text-xs text-white/80 uppercase tracking-widest">
               Olmos Night Orthotics
             </span>
           </div>
@@ -380,7 +380,7 @@ function NightOrthotics() {
             <div
               key={o.code}
               data-night-card
-              className="bg-navy card-radius p-8 md:p-10 border border-navy-light"
+              className="bg-diamond-100 card-radius p-8 md:p-10 border border-ink-light"
             >
               <div className="flex items-center gap-3 mb-6">
                 <div className="w-10 h-10 rounded-2xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center">
@@ -390,15 +390,15 @@ function NightOrthotics() {
                   {o.code}
                 </span>
               </div>
-              <h3 className="font-heading font-bold text-2xl md:text-3xl text-white tracking-tight leading-tight">
+              <h3 className="font-heading font-bold text-2xl md:text-3xl text-ink tracking-tight leading-tight">
                 {o.name}
               </h3>
-              <p className="mt-4 text-white/50 text-sm md:text-base leading-relaxed">
+              <p className="mt-4 text-ink/50 text-sm md:text-base leading-relaxed">
                 {o.summary}
               </p>
               <ul className="mt-6 space-y-3">
                 {o.bullets.map((b, i) => (
-                  <li key={i} className="flex gap-3 text-sm text-white/60">
+                  <li key={i} className="flex gap-3 text-sm text-ink/60">
                     <CheckCircle2
                       size={14}
                       className="text-brand-400 flex-shrink-0 mt-1"
@@ -433,10 +433,10 @@ function Symptoms() {
 
   return (
     <section ref={ref} className="section-pad py-24 md:py-28">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="flex items-center gap-3 mb-6">
           <AlertCircle size={16} className="text-accent-500" />
-          <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
+          <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
             Signs &amp; Symptoms of TMJ
           </span>
           <div className="flex-1 h-px bg-surface-300/60" />
@@ -445,7 +445,7 @@ function Symptoms() {
           One joint. Many{" "}
           <span className="font-drama italic text-brand-500">disguises.</span>
         </h2>
-        <p className="mt-4 max-w-2xl text-navy/55 leading-relaxed">
+        <p className="mt-4 max-w-2xl text-ink/55 leading-relaxed">
           TMD transcends the boundaries of dentistry, neurology, physical
           therapy, and psychology. Symptoms often involve more than one of
           the numerous TMJ components: muscles, nerves, tendons, ligaments,
@@ -460,7 +460,7 @@ function Symptoms() {
               className="flex items-center gap-3 bg-white card-radius px-5 py-4 border border-surface-300/40"
             >
               <Activity size={14} className="text-brand-500 flex-shrink-0" />
-              <span className="text-sm text-navy/70">{s}</span>
+              <span className="text-sm text-ink/70">{s}</span>
             </div>
           ))}
         </div>
@@ -486,11 +486,11 @@ function CTA() {
   }, []);
 
   return (
-    <section ref={ref} className="section-pad py-24 md:py-32 bg-surface-100">
+    <section ref={ref} className="section-pad py-24 md:py-28 bg-surface-100">
       <div className="max-w-3xl mx-auto text-center">
         <span
           data-tmd-cta
-          className="font-mono text-xs text-navy/40 uppercase tracking-widest"
+          className="font-mono text-xs text-ink/40 uppercase tracking-widest"
         >
           Ready to Order?
         </span>
@@ -505,7 +505,7 @@ function CTA() {
         </h2>
         <p
           data-tmd-cta
-          className="mt-6 text-navy/50 text-base md:text-lg max-w-lg mx-auto"
+          className="mt-6 text-ink/50 text-base md:text-lg max-w-lg mx-auto"
         >
           All Olmos TMD orthotics are Rx-only. Appliance selection is driven
           by comprehensive diagnosis — unsure which variant fits? We&apos;ll
@@ -530,7 +530,7 @@ function CTA() {
           </Link>
           <Link
             to="/contact"
-            className="px-8 py-4 rounded-full border border-surface-300 text-navy/70 font-medium hover:bg-white transition-colors duration-300"
+            className="px-8 py-4 rounded-full border border-surface-300 text-ink/70 font-medium hover:bg-white transition-colors duration-300"
           >
             Talk to the Lab
           </Link>
@@ -541,10 +541,6 @@ function CTA() {
 }
 
 export function TmdPage() {
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
-
   return (
     <>
       <ProductCatalog tabs={TMD_TABS} />

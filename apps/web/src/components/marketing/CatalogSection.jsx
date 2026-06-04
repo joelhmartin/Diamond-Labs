@@ -5,6 +5,8 @@ import { Search, SlidersHorizontal, X } from "lucide-react";
 import { useCatalogStore } from "../../stores/catalog.store";
 import { CatalogCard } from "./CatalogCard";
 import { CatalogDetail } from "./CatalogDetail";
+import { usePagination } from "../../hooks/usePagination.js";
+import { Pagination } from "../ui/Pagination.jsx";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -51,6 +53,8 @@ export function CatalogSection() {
     });
   }, [query, active, products]);
 
+  const pagination = usePagination(filtered, { initialPageSize: 12 });
+
   return (
     <section
       ref={ref}
@@ -61,7 +65,7 @@ export function CatalogSection() {
         {/* Header */}
         <div className="mb-8 md:mb-12 flex flex-col md:flex-row md:items-end md:justify-between gap-6">
           <div data-cat-head>
-            <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
+            <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
               Shop Accessories &amp; Supplies
             </span>
             <h2 className="mt-3 font-heading font-bold text-3xl md:text-5xl tracking-tight text-balance">
@@ -70,7 +74,7 @@ export function CatalogSection() {
                 shipped fast.
               </span>
             </h2>
-            <p className="mt-4 max-w-xl text-navy/55 leading-relaxed">
+            <p className="mt-4 max-w-xl text-ink/55 leading-relaxed">
               Cleaners, polishing wheels, burs, bite registration, shipping
               supplies — everything you need between cases. Orthotics are
               Rx-only and submitted through the Digital Rx form.
@@ -81,20 +85,20 @@ export function CatalogSection() {
           <div data-cat-head className="relative md:w-80 flex-shrink-0">
             <Search
               size={16}
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-navy/30"
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-ink/30"
             />
             <input
               type="text"
               placeholder="Search products…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="w-full pl-11 pr-10 py-3 rounded-full bg-white border border-surface-300/60 text-sm placeholder:text-navy/30 focus:outline-none focus:border-brand-500/50 focus:ring-2 focus:ring-brand-500/10 transition-all"
+              className="w-full pl-11 pr-10 py-3 rounded-full bg-white border border-surface-300/60 text-sm placeholder:text-ink/30 focus:outline-none focus:border-brand-500/50 focus:ring-2 focus:ring-brand-500/10 transition-all"
             />
             {query && (
               <button
                 type="button"
                 onClick={() => setQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full hover:bg-surface-200 flex items-center justify-center text-navy/40"
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full hover:bg-surface-200 flex items-center justify-center text-ink/40"
                 aria-label="Clear"
               >
                 <X size={12} />
@@ -108,7 +112,7 @@ export function CatalogSection() {
           data-cat-head
           className="mb-8 flex items-center gap-2 overflow-x-auto scrollbar-hide pb-2"
         >
-          <div className="flex items-center gap-2 text-[10px] font-mono text-navy/40 uppercase tracking-widest pr-2 flex-shrink-0">
+          <div className="flex items-center gap-2 text-[10px] font-mono text-ink/40 uppercase tracking-widest pr-2 flex-shrink-0">
             <SlidersHorizontal size={12} />
             Filter
           </div>
@@ -124,17 +128,17 @@ export function CatalogSection() {
         </div>
 
         {/* Results count */}
-        <div className="mb-5 text-xs font-mono text-navy/40">
+        <div className="mb-5 text-xs font-mono text-ink/40">
           {filtered.length} {filtered.length === 1 ? "product" : "products"}
           {active !== ALL && (
             <>
-              {" "}in <span className="text-navy/60">{active}</span>
+              {" "}in <span className="text-ink/60">{active}</span>
             </>
           )}
           {query && (
             <>
               {" "}matching{" "}
-              <span className="text-navy/60">&ldquo;{query}&rdquo;</span>
+              <span className="text-ink/60">&ldquo;{query}&rdquo;</span>
             </>
           )}
         </div>
@@ -142,21 +146,28 @@ export function CatalogSection() {
         {/* Grid */}
         {filtered.length === 0 ? (
           <div className="py-16 text-center">
-            <p className="text-navy/40 text-sm">
+            <p className="text-ink/40 text-sm">
               No products match your search. Try different keywords or clear
               the filter.
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-5">
-            {filtered.map((p) => (
-              <CatalogCard
-                key={p.id}
-                product={p}
-                onOpen={() => setDetail(p)}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-5">
+              {pagination.paged.map((p) => (
+                <CatalogCard
+                  key={p.id}
+                  product={p}
+                  onOpen={() => setDetail(p)}
+                />
+              ))}
+            </div>
+            <Pagination
+              {...pagination}
+              itemLabel="products"
+              className="mt-10 pt-6 border-t border-surface-300/50"
+            />
+          </>
         )}
       </div>
 
@@ -174,8 +185,8 @@ function Chip({ label, active, onClick }) {
       onClick={onClick}
       className={`flex-shrink-0 px-4 py-2 rounded-full text-xs font-semibold transition-all duration-300 ${
         active
-          ? "bg-navy text-white"
-          : "bg-white text-navy/60 border border-surface-300/50 hover:border-brand-500/30 hover:text-navy"
+          ? "bg-diamond-300 text-ink"
+          : "bg-white text-ink/60 border border-surface-300/50 hover:border-brand-500/30 hover:text-ink"
       }`}
     >
       {label}

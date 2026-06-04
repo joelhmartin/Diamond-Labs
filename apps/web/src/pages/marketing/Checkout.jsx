@@ -12,7 +12,7 @@ import {
 import { useCartStore } from "../../stores/cart.store";
 
 const INPUT =
-  "w-full px-4 py-3 rounded-xl bg-white border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-navy/25";
+  "w-full px-4 py-3 rounded-xl bg-white border border-surface-300/50 text-ink text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-ink/25";
 
 function formatUSD(n) {
   return Number(n).toLocaleString("en-US", {
@@ -33,23 +33,23 @@ function SummaryItem({ item }) {
             className="w-full h-full object-contain p-1"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-navy/20">
+          <div className="w-full h-full flex items-center justify-center text-ink/20">
             <ImageIcon size={16} />
           </div>
         )}
-        <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-navy text-white text-[10px] font-bold flex items-center justify-center border-2 border-white">
+        <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-diamond-300 text-ink text-[10px] font-bold flex items-center justify-center border-2 border-ink/20">
           {item.qty}
         </span>
       </div>
       <div className="flex-1 min-w-0">
-        <div className="font-semibold text-sm text-navy truncate">
+        <div className="font-semibold text-sm text-ink truncate">
           {item.name}
         </div>
-        <div className="text-xs text-navy/45 mt-0.5">
+        <div className="text-xs text-ink/45 mt-0.5">
           {item.price === 0 ? "Included" : formatUSD(item.price)} each
         </div>
       </div>
-      <div className="font-heading font-bold text-sm text-navy whitespace-nowrap">
+      <div className="font-heading font-bold text-sm text-ink whitespace-nowrap">
         {item.price === 0 ? "—" : formatUSD(item.price * item.qty)}
       </div>
     </div>
@@ -88,10 +88,6 @@ export function CheckoutPage() {
   const TAX = Math.round(subtotal * 0.08 * 100) / 100; // CA-ish placeholder
   const total = subtotal + SHIPPING + TAX;
   const free = subtotal === 0;
-
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
 
   function validate() {
     setError(null);
@@ -210,25 +206,25 @@ export function CheckoutPage() {
     return (
       <div className="pt-28 md:pt-32 pb-16 section-pad">
         <div className="max-w-xl mx-auto text-center">
-          <div className="bg-white card-radius p-10 md:p-14 border border-surface-300/50 shadow-xl shadow-navy/5">
+          <div className="bg-white card-radius p-10 md:p-14 border border-surface-300/50 shadow-xl shadow-ink/5">
             <div className="w-16 h-16 rounded-full bg-emerald-500 flex items-center justify-center mx-auto mb-6">
-              <CheckCircle size={32} className="text-white" />
+              <CheckCircle size={32} className="text-ink" />
             </div>
-            <h1 className="font-heading font-bold text-2xl text-navy">
+            <h1 className="font-heading font-bold text-2xl text-ink">
               Order placed!
             </h1>
-            <p className="mt-1 font-mono text-xs text-navy/30">
+            <p className="mt-1 font-mono text-xs text-ink/30">
               {success.invoiceNumber}
             </p>
-            <p className="mt-4 text-sm text-navy/50 leading-relaxed">
+            <p className="mt-4 text-sm text-ink/50 leading-relaxed">
               A confirmation has been sent to{" "}
-              <span className="font-semibold text-navy">{contact.email}</span>.
+              <span className="font-semibold text-ink">{contact.email}</span>.
               You&apos;ll receive tracking as soon as your order ships.
             </p>
             <div className="mt-8 flex items-center justify-center gap-3">
               <Link
                 to="/products"
-                className="px-6 py-3 rounded-full text-sm font-semibold border border-surface-300/50 text-navy/60 hover:text-navy hover:border-brand-500/30 transition-all"
+                className="px-6 py-3 rounded-full text-sm font-semibold border border-surface-300/50 text-ink/60 hover:text-ink hover:border-brand-500/30 transition-all"
               >
                 Continue Shopping
               </Link>
@@ -250,12 +246,12 @@ export function CheckoutPage() {
     return (
       <div className="pt-28 md:pt-32 pb-16 section-pad">
         <div className="max-w-md mx-auto text-center">
-          <div className="bg-white card-radius p-10 md:p-14 border border-surface-300/50 shadow-xl shadow-navy/5">
-            <ShoppingBag size={32} className="mx-auto mb-4 text-navy/20" />
-            <h1 className="font-heading font-bold text-xl text-navy">
+          <div className="bg-white card-radius p-10 md:p-14 border border-surface-300/50 shadow-xl shadow-ink/5">
+            <ShoppingBag size={32} className="mx-auto mb-4 text-ink/20" />
+            <h1 className="font-heading font-bold text-xl text-ink">
               Your cart is empty
             </h1>
-            <p className="mt-2 text-sm text-navy/50 leading-relaxed">
+            <p className="mt-2 text-sm text-ink/50 leading-relaxed">
               Add items from the catalog to start an order.
             </p>
             <Link
@@ -276,14 +272,14 @@ export function CheckoutPage() {
         <button
           type="button"
           onClick={() => navigate(-1)}
-          className="mb-4 flex items-center gap-1 text-xs text-navy/50 hover:text-navy font-medium"
+          className="mb-4 flex items-center gap-1 text-xs text-ink/50 hover:text-ink font-medium"
         >
           <ArrowLeft size={12} /> Back
         </button>
-        <h1 className="font-heading font-bold text-3xl md:text-4xl text-navy tracking-tight">
+        <h1 className="font-heading font-bold text-3xl md:text-4xl text-ink tracking-tight">
           Checkout
         </h1>
-        <p className="mt-1 text-sm text-navy/50">
+        <p className="mt-1 text-sm text-ink/50">
           {items.length} {items.length === 1 ? "item" : "items"} in your cart
         </p>
 
@@ -403,7 +399,7 @@ export function CheckoutPage() {
                 title="Payment"
                 icon={<CreditCard size={14} />}
                 note={
-                  <span className="flex items-center gap-1 text-[11px] text-navy/40">
+                  <span className="flex items-center gap-1 text-[11px] text-ink/40">
                     <Lock size={11} />
                     Card data is tokenized by Authorize.net — Diamond never stores the number.
                   </span>
@@ -469,7 +465,7 @@ export function CheckoutPage() {
               </Card>
             ) : (
               <Card title="Payment">
-                <p className="text-sm text-navy/60 leading-relaxed">
+                <p className="text-sm text-ink/60 leading-relaxed">
                   No card required — this order totals $0.00. Confirm your
                   shipping details and submit.
                 </p>
@@ -480,7 +476,7 @@ export function CheckoutPage() {
           {/* Summary */}
           <div>
             <div className="sticky top-28 bg-white rounded-2xl border border-surface-300/50 p-5">
-              <h2 className="font-heading font-bold text-base text-navy mb-3">
+              <h2 className="font-heading font-bold text-base text-ink mb-3">
                 Order summary
               </h2>
               <div className="max-h-80 overflow-y-auto -mx-1 px-1">
@@ -497,10 +493,10 @@ export function CheckoutPage() {
                 <Row label="Tax (est.)" value={formatUSD(TAX)} />
               </dl>
               <div className="mt-4 pt-4 border-t border-surface-300/40 flex items-center justify-between">
-                <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
+                <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
                   Total
                 </span>
-                <span className="font-heading font-bold text-2xl text-navy tracking-tight">
+                <span className="font-heading font-bold text-2xl text-ink tracking-tight">
                   {formatUSD(total)}
                 </span>
               </div>
@@ -535,7 +531,7 @@ export function CheckoutPage() {
                 </span>
               </button>
 
-              <p className="mt-3 text-[10px] font-mono text-navy/30 text-center uppercase tracking-widest">
+              <p className="mt-3 text-[10px] font-mono text-ink/30 text-center uppercase tracking-widest">
                 Payments by Authorize.net
               </p>
             </div>
@@ -550,7 +546,7 @@ function Card({ title, icon, note, children }) {
   return (
     <div className="bg-white rounded-2xl border border-surface-300/50 p-5">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-heading font-bold text-base text-navy flex items-center gap-2">
+        <h2 className="font-heading font-bold text-base text-ink flex items-center gap-2">
           {icon}
           {title}
         </h2>
@@ -564,7 +560,7 @@ function Card({ title, icon, note, children }) {
 function Field({ label, required, children }) {
   return (
     <div>
-      <label className="block text-[10px] font-mono text-navy/40 uppercase tracking-widest mb-1.5">
+      <label className="block text-[10px] font-mono text-ink/40 uppercase tracking-widest mb-1.5">
         {label} {required && <span className="text-red-400">*</span>}
       </label>
       {children}
@@ -575,8 +571,8 @@ function Field({ label, required, children }) {
 function Row({ label, value }) {
   return (
     <div className="flex items-center justify-between">
-      <dt className="text-navy/50">{label}</dt>
-      <dd className="text-navy font-medium">{value}</dd>
+      <dt className="text-ink/50">{label}</dt>
+      <dd className="text-ink font-medium">{value}</dd>
     </div>
   );
 }

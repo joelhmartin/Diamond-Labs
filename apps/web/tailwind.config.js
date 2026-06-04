@@ -5,7 +5,7 @@ export default {
     extend: {
       colors: {
         brand: {
-          50:  "#F4F9FB",
+          50: "#F4F9FB",
           100: "#E3F1F7",
           200: "#C2E6F4",
           300: "#9DD8F1",
@@ -29,7 +29,14 @@ export default {
           300: "#E2E0DB",
           400: "#D1CFC8",
         },
-        navy: {
+        diamond: {
+          100: "#DAEBF2",
+          200: "#C2DAE6",
+          300: "#B0DEED",
+          400: "#94BDCF",
+          500: "#80CCE3",
+        },
+        ink: {
           DEFAULT: "#0B1A2E",
           light: "#132844",
           dark: "#060d17",
@@ -47,9 +54,29 @@ export default {
         "4xl": "3rem",
         "5xl": "4rem",
       },
+      maxWidth: {
+        "6xl": "1440px",
+      },
       animation: {
         "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        "float-1": "float-1 8s ease-in-out infinite",
+        "float-2": "float-2 10s ease-in-out infinite",
+        "float-3": "float-3 12s ease-in-out infinite",
       },
+      keyframes: {
+        "float-1": {
+          '0%, 100%': { transform: 'translateY(0) rotate(45deg)' },
+          '50%': { transform: 'translateY(-20px) rotate(45deg)' },
+        },
+        "float-2": {
+          '0%, 100%': { transform: 'translateY(0) rotate(45deg) scale(1.1)' },
+          '50%': { transform: 'translateY(-30px) rotate(45deg) scale(1.1)' },
+        },
+        "float-3": {
+          '0%, 100%': { transform: 'translateY(0) rotate(45deg) scale(0.9)' },
+          '50%': { transform: 'translateY(-15px) rotate(45deg) scale(0.9)' },
+        }
+      }
     },
   },
   plugins: [],

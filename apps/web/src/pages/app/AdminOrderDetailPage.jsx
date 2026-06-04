@@ -43,11 +43,11 @@ function formatBytes(b) {
 function Field({ label, value, Icon }) {
   return (
     <div>
-      <div className="flex items-center gap-1.5 text-[10px] font-mono text-navy/40 uppercase tracking-widest">
+      <div className="flex items-center gap-1.5 text-[10px] font-mono text-ink/40 uppercase tracking-widest">
         {Icon && <Icon size={10} />}
         {label}
       </div>
-      <div className="mt-1 text-sm text-navy">{value || "—"}</div>
+      <div className="mt-1 text-sm text-ink">{value || "—"}</div>
     </div>
   );
 }
@@ -74,7 +74,7 @@ export function AdminOrderDetailPage() {
 
   if (loading) {
     return (
-      <div className="py-20 flex items-center justify-center text-navy/40">
+      <div className="py-20 flex items-center justify-center text-ink/40">
         <Loader2 size={18} className="animate-spin mr-2" /> Loading order…
       </div>
     );
@@ -83,12 +83,12 @@ export function AdminOrderDetailPage() {
   if (error) {
     return (
       <div className="p-6 md:p-8 max-w-5xl mx-auto">
-        <Link to="/admin/orders" className="inline-flex items-center gap-1 text-xs text-navy/60 hover:text-navy mb-6">
+        <Link to="/admin/orders" className="inline-flex items-center gap-1 text-xs text-ink/60 hover:text-ink mb-6">
           <ArrowLeft size={12} /> Back to orders
         </Link>
         <div className="py-20 text-center">
           <AlertCircle size={32} className="mx-auto mb-3 text-red-500/40" />
-          <p className="text-sm text-navy/60">{error}</p>
+          <p className="text-sm text-ink/60">{error}</p>
         </div>
       </div>
     );
@@ -98,22 +98,22 @@ export function AdminOrderDetailPage() {
 
   return (
     <div className="p-6 md:p-8 max-w-5xl mx-auto">
-      <Link to="/admin/orders" className="inline-flex items-center gap-1 text-xs text-navy/60 hover:text-navy mb-6">
+      <Link to="/admin/orders" className="inline-flex items-center gap-1 text-xs text-ink/60 hover:text-ink mb-6">
         <ArrowLeft size={12} /> Back to orders
       </Link>
 
       {/* Header */}
       <div className="flex items-start justify-between mb-8 flex-wrap gap-4">
         <div>
-          <div className="flex items-center gap-2 text-xs font-mono text-navy/40 uppercase tracking-widest">
+          <div className="flex items-center gap-2 text-xs font-mono text-ink/40 uppercase tracking-widest">
             <ClipboardList size={12} />
             Order
           </div>
-          <h1 className="mt-2 font-heading font-bold text-3xl text-navy tracking-tight">
+          <h1 className="mt-2 font-heading font-bold text-3xl text-ink tracking-tight">
             Invoice #{order.invoiceNumber}
           </h1>
-          <div className="mt-2 text-sm text-navy/50">
-            {order.patient && <span>Patient: <span className="text-navy">{order.patient}</span></span>}
+          <div className="mt-2 text-sm text-ink/50">
+            {order.patient && <span>Patient: <span className="text-ink">{order.patient}</span></span>}
           </div>
         </div>
         {order.status && (
@@ -125,7 +125,7 @@ export function AdminOrderDetailPage() {
 
       {/* Workflow */}
       <div className="bg-white rounded-2xl border border-surface-300/50 p-6 mb-5">
-        <h2 className="font-heading font-bold text-sm text-navy mb-4">Workflow</h2>
+        <h2 className="font-heading font-bold text-sm text-ink mb-4">Workflow</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
           <Field label="Department" value={order.department} Icon={Package} />
           <Field label="Assigned to" value={order.assignedTo} Icon={User} />
@@ -134,8 +134,8 @@ export function AdminOrderDetailPage() {
         </div>
         {order.notes && (
           <div className="mt-5 pt-5 border-t border-surface-300/40">
-            <div className="text-[10px] font-mono text-navy/40 uppercase tracking-widest mb-1.5">Notes</div>
-            <p className="text-sm text-navy/70 whitespace-pre-wrap leading-relaxed">{order.notes}</p>
+            <div className="text-[10px] font-mono text-ink/40 uppercase tracking-widest mb-1.5">Notes</div>
+            <p className="text-sm text-ink/70 whitespace-pre-wrap leading-relaxed">{order.notes}</p>
           </div>
         )}
       </div>
@@ -143,7 +143,7 @@ export function AdminOrderDetailPage() {
       {/* Client */}
       {(client || order.clientName || order.company) && (
         <div className="bg-white rounded-2xl border border-surface-300/50 p-6 mb-5">
-          <h2 className="font-heading font-bold text-sm text-navy mb-4">Client</h2>
+          <h2 className="font-heading font-bold text-sm text-ink mb-4">Client</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Field label="Name" value={client?.fullName || order.clientName} Icon={User} />
             <Field label="Company" value={client?.company || order.company} />
@@ -164,16 +164,16 @@ export function AdminOrderDetailPage() {
       {/* Products */}
       {Array.isArray(order.products) && order.products.length > 0 && (
         <div className="bg-white rounded-2xl border border-surface-300/50 p-6 mb-5">
-          <h2 className="font-heading font-bold text-sm text-navy mb-4">
+          <h2 className="font-heading font-bold text-sm text-ink mb-4">
             Products
           </h2>
           <div className="space-y-2">
             {order.products.map((p) => (
               <div key={p.id} className="flex items-center gap-3 p-3 bg-surface-50 rounded-lg">
-                <Package size={14} className="text-navy/40 flex-shrink-0" />
+                <Package size={14} className="text-ink/40 flex-shrink-0" />
                 <div className="flex-1">
-                  <div className="font-semibold text-sm text-navy">{p.name}</div>
-                  {p.code && <div className="text-[10px] font-mono text-navy/40">#{p.code}</div>}
+                  <div className="font-semibold text-sm text-ink">{p.name}</div>
+                  {p.code && <div className="text-[10px] font-mono text-ink/40">#{p.code}</div>}
                 </div>
               </div>
             ))}
@@ -184,7 +184,7 @@ export function AdminOrderDetailPage() {
       {/* Files */}
       {Array.isArray(order.files) && order.files.length > 0 && (
         <div className="bg-white rounded-2xl border border-surface-300/50 p-6 mb-5">
-          <h2 className="font-heading font-bold text-sm text-navy mb-4">Files</h2>
+          <h2 className="font-heading font-bold text-sm text-ink mb-4">Files</h2>
           <div className="space-y-2">
             {order.files.map((f) => (
               <a
@@ -194,12 +194,12 @@ export function AdminOrderDetailPage() {
                 rel="noopener noreferrer"
                 className="flex items-center gap-3 p-3 bg-surface-50 rounded-lg hover:bg-surface-100 transition-colors"
               >
-                <FileText size={14} className="text-navy/40 flex-shrink-0" />
+                <FileText size={14} className="text-ink/40 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-sm text-navy truncate">
+                  <div className="font-semibold text-sm text-ink truncate">
                     {f.originalName || f.name}
                   </div>
-                  <div className="text-[10px] font-mono text-navy/40">
+                  <div className="text-[10px] font-mono text-ink/40">
                     {f.extension} · {formatBytes(f.size)}
                   </div>
                 </div>
@@ -213,12 +213,12 @@ export function AdminOrderDetailPage() {
       {/* Settings */}
       {Array.isArray(order.settings) && order.settings.length > 0 && (
         <div className="bg-white rounded-2xl border border-surface-300/50 p-6">
-          <h2 className="font-heading font-bold text-sm text-navy mb-4">Settings</h2>
+          <h2 className="font-heading font-bold text-sm text-ink mb-4">Settings</h2>
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {order.settings.map((s) => (
               <div key={s.name} className="flex items-center justify-between px-3 py-2 bg-surface-50 rounded-lg">
-                <dt className="text-xs text-navy/50">{s.name}</dt>
-                <dd className="text-sm font-semibold text-navy">{s.value}</dd>
+                <dt className="text-xs text-ink/50">{s.name}</dt>
+                <dd className="text-sm font-semibold text-ink">{s.value}</dd>
               </div>
             ))}
           </dl>

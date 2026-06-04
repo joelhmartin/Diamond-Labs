@@ -79,6 +79,44 @@ export async function getInvoices(lastModified) {
   return Array.isArray(data) ? data : [];
 }
 
+const INVOICE_PAGE_CAP = 10000;
+
+function bumpOneSecond(ts) {
+  const d = new Date(ts.endsWith("Z") ? ts : `${ts}Z`);
+  d.setUTCSeconds(d.getUTCSeconds() + 1);
+  return d.toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+/**
+ * Fetch the FULL invoice archive, working around Seazona's hard 10,000-record
+ * cap on `GET v1/invoices/`. The API sorts by id and truncates at the cap, and
+ * the historical archive was bulk-restamped to a single `lastModified`, so we
+ * walk forward by `lastModified` and bump one second whenever an entire capped
+ * batch shares the same timestamp (otherwise the cursor can't escape the blob).
+ * De-dupes by invoice id.
+ */
+export async function getAllInvoices() {
+  const seen = new Map();
+  let cursor = "1900-01-01T00:00:00Z";
+
+  for (let i = 0; i < 50; i++) {
+    const batch = await getInvoices(cursor);
+    if (!batch.length) break;
+
+    for (const inv of batch) seen.set(inv.id, inv);
+    if (batch.length < INVOICE_PAGE_CAP) break;
+
+    const maxLM = batch.reduce(
+      (m, inv) => (inv.lastModified > m ? inv.lastModified : m),
+      batch[0].lastModified
+    );
+    const allSame = batch.every((inv) => inv.lastModified === maxLM);
+    cursor = allSame ? bumpOneSecond(maxLM) : maxLM;
+  }
+
+  return [...seen.values()];
+}
+
 /**
  * Get a specific invoice by ID.
  */
@@ -102,11 +140,52 @@ export async function getOrder(id) {
 }
 
 /**
- * Create a payment in Seazona.
+ * Create an order for a client.
+ *   items: [{ id: <seazonaProductId>, arch: 1 (upper) | 2 (lower) | null }]
+ *   userId: a Seazona user id (lab staff) — see listUsers().
+ * Returns { orderId } on success, null on failure.
+ */
+export async function createOrder({ clientId, patientName, due, items, notes, userId }) {
+  return request("v1/orders/", {
+    method: "POST",
+    body: JSON.stringify({ clientId, patientName, due, items, notes, userId }),
+  });
+}
+
+/**
+ * Create a payment in Seazona. Returns { paymentId, clientId } on success.
  */
 export async function createPayment({ clientId, accountNumber, referenceNumber, notes, amount }) {
   return request("v1/payments/", {
     method: "POST",
     body: JSON.stringify({ clientId, accountNumber, referenceNumber, notes, amount }),
   });
+}
+
+/** Get a single payment by id. Note: there is no bulk list endpoint for payments. */
+export async function getPayment(id) {
+  return request(`v1/payments/${id}`);
+}
+
+/**
+ * List all Seazona products ({ id, code, name, taxable, price }).
+ * Used to map our catalog SKUs / Rx devices to Seazona product ids.
+ */
+export async function listProducts() {
+  const data = await request("v1/products/");
+  return Array.isArray(data) ? data : [];
+}
+
+/** Get a single product by id. */
+export async function getProduct(id) {
+  return request(`v1/products/${id}`);
+}
+
+/**
+ * List Seazona users (lab staff: { id, firstName, lastName, email }).
+ * The `id` is what an order's `userId` field expects.
+ */
+export async function listUsers() {
+  const data = await request("v1/users/");
+  return Array.isArray(data) ? data : [];
 }

@@ -116,8 +116,94 @@ Full cinematic landing experience:
 - Middleware: `authenticate.js` (JWT), `authorize.js` (membership RBAC), `require-role.js` (user-level role guards)
 
 ### External APIs
-- **Seazona** — `https://diamondapi.labzona.net/`, Basic auth. Client lookup, invoices, payments. Note: `v1/clients/` list endpoint returns 404; use `v1/clients/login-exists?email=` for email check, `v1/products` works.
-- **Authorize.net** — Production credentials (NOT sandbox). Uses JSON API directly, Accept.js for PCI-compliant card tokenization on frontend. CIM for saved cards.
+
+#### Seazona (lab management — clients, invoices, orders, payments)
+
+Source of truth for clients (doctors), invoices, orders, and recorded payments. Our DB stores `users.seazonaClientId` + `users.seazonaAccountNumber` to link a doctor to their Seazona client record.
+
+- **Base URL:** `https://diamondapi.labzona.net/` (env `SEAZONA_BASE_URL`)
+- **Auth:** HTTP Basic — `Authorization: Basic base64(SEAZONA_API_KEY:SEAZONA_SECRET)`
+- **Content-Type:** `application/json` on every request (set unconditionally in `seazona.service.js`)
+- **Wrapper:** `apps/api/src/services/seazona.service.js` — all calls go through `request()`; on non-2xx it logs and returns `null` (or `[]` for list endpoints) rather than throwing. Routes must handle `null`.
+
+**Endpoints (use exactly these paths — 404s on small variations):**
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `v1/clients/?lastModified=` | **Trailing slash + empty `lastModified` query param are both required.** Without the query the API 400s. Empty string returns everything. |
+| GET | `v1/clients/login-exists?email=<urlencoded>` | Cheap "does this email exist" check. Returns client object or null. |
+| GET | `v1/clients/:id` | Single client. |
+| GET | `v1/invoices/?lastModified=<ISO>` | Same gotcha — `lastModified` is required. We default to `1900-01-01T00:00:00Z` to mean "everything". |
+| GET | `v1/invoices/:id` | Single invoice. |
+| GET | `v1/orders/?ordered=<ISO>` | Required `ordered` query param (NOT `lastModified`). Empty = 400. Default to `1900-01-01T00:00:00Z`. |
+| GET | `v1/orders/:id` | Returns order with products, files, settings. |
+| POST | `v1/payments/` | Body: `{ clientId, accountNumber, referenceNumber, notes, amount }`. |
+| GET | `v1/products` | Works as expected. |
+
+**Known gotchas:**
+- There is **no list endpoint for `/v1/payments/`** — payment reconciliation by querying the API in bulk is not possible. We record each payment individually after charging via Authorize.net.
+- The `status` field on an invoice is a workflow state (`Shipped`, `Hold`, `In Production`, …), **not** paid/unpaid. Don't write logic that treats it as a payment status.
+- `listClients()` does the brute force fetch-all + in-memory filter for things like phone lookup (`findClientByPhone`). There's no server-side filter for these.
+
+**Real Seazona invoice shape (live):**
+```
+{ id, invoiceNumber, patient, clientId, fullName, company,
+  sales, tax, discounts, total, status, due, lastModified }
+```
+The frontend renders the normalized shape produced by `normalizeInvoice()` in `apps/api/src/routes/invoice.routes.js`.
+
+**Bulk import:** `pnpm db:import-seazona` (wraps `apps/api/src/db/import-seazona-clients.js`) creates doctor users + accounts + memberships from `listClients()`. Idempotent — skips by `seazonaClientId` link or matching email. `DRY_RUN=1 pnpm db:import-seazona` previews. Imported users have `passwordHash=null` and must complete a password reset before login.
+
+#### Authorize.net (card processing — direct JSON API + Accept.js)
+
+**Production credentials, not sandbox.** All card data is tokenized in the browser via Accept.js — the backend only ever sees opaque nonces (`dataDescriptor` + `dataValue`). CIM stores cards on file for approved doctors; guest checkout charges without storing.
+
+- **Wrapper:** `apps/api/src/services/authorizenet.service.js` — direct `fetch` against the JSON XML endpoint. We do **not** use the official `authorizenet` npm package.
+- **Endpoint:** `https://api.authorize.net/xml/v1/request.api` (production) / `https://apitest.authorize.net/xml/v1/request.api` (sandbox), selected via `AUTHORIZE_NET_ENV`.
+- **Auth (every payload):** `merchantAuthentication: { name: AUTHORIZE_NET_API_LOGIN, transactionKey: AUTHORIZE_NET_TRANSACTION_KEY }`.
+- **Response quirk:** Authorize.net responses are prefixed with a UTF-8 BOM (`﻿`). `apiRequest()` strips it before `JSON.parse` — don't `res.json()` directly or it'll throw on the BOM.
+- **Error shape:** `messages.resultCode !== "Ok"` → throw with `err.authNetResponse = data`. Caller can introspect.
+
+**Backend service exports** (`authorizenet.service.js`):
+
+| Function | Authorize.net request | Returns |
+|---|---|---|
+| `chargeWithNonce({ amount, opaqueData, description, invoiceNumber })` | `createTransactionRequest` (`authCaptureTransaction`) | `{ transactionId, responseCode, authCode }` |
+| `createCustomerProfile({ email, description })` | `createCustomerProfileRequest` | `customerProfileId` |
+| `addPaymentProfileFromNonce({ customerProfileId, opaqueData })` | `createCustomerPaymentProfileRequest` (`validationMode` = liveMode in prod) | `customerPaymentProfileId` |
+| `listPaymentProfiles(customerProfileId)` | `getCustomerProfileRequest` (`includeIssuerInfo: "true"`) | `[{ paymentProfileId, cardNumber (masked XXXX1234), cardType, expirationDate }]` |
+| `chargeCustomerProfile({ customerProfileId, paymentProfileId, amount, invoiceNumber })` | `createTransactionRequest` with `profile.{customerProfileId,paymentProfile.paymentProfileId}` | `{ transactionId, responseCode, authCode }` |
+| `deletePaymentProfile({ customerProfileId, paymentProfileId })` | `deleteCustomerPaymentProfileRequest` | void |
+
+**API routes** (`apps/api/src/routes/payment.routes.js`, all under `/api/v1`):
+
+| Method | Path | Auth | Body |
+|---|---|---|---|
+| POST | `/payments/checkout` | public | `{ opaqueData, amount, items, email, shipping{name,address1,city,state,postalCode}, phone? }` — guest catalog checkout, **no CIM**. Generates `invoiceNumber = DOL-<last8 of Date.now()>`. |
+| POST | `/payments/charge` | doctor (approved) | `{ opaqueData, amount, invoiceIds[], description? }` — also calls `seazonaService.createPayment` per invoice with `referenceNumber = transactionId`. |
+| GET | `/payments/saved-cards` | doctor | — |
+| POST | `/payments/saved-cards` | doctor | `{ opaqueData }` — lazily creates the user's `authorizeNetCustomerProfileId` if missing, persists it on `users`. |
+| DELETE | `/payments/saved-cards/:profileId` | doctor | — |
+| POST | `/payments/charge-saved` | doctor | `{ paymentProfileId, amount, invoiceIds[] }` — also records Seazona payment per invoice. |
+
+**Pairing rule (charge → record):** every successful Authorize.net charge associated with a Seazona client must be followed by `seazonaService.createPayment({ clientId, accountNumber, referenceNumber: transactionId, notes, amount })`. The current routes loop per `invoiceId` and pass `amount` only when there's a single invoice (otherwise omit, treated as a credit). Don't break this pattern silently.
+
+**Frontend Accept.js integration:**
+- Script tag in `apps/web/index.html`: `https://js.authorize.net/v1/Accept.js` (swap to `https://jstest.authorize.net/v1/Accept.js` for sandbox).
+- `apps/web/src/main.jsx` exposes the public keys to `window`: `__AUTHORIZE_NET_API_LOGIN__` and `__AUTHORIZE_NET_CLIENT_KEY__`, sourced from Vite env (`VITE_AUTHORIZE_NET_API_LOGIN`, `VITE_AUTHORIZE_NET_CLIENT_KEY`). The **client key is public-safe**; the transaction key must never reach the bundle.
+- Tokenization call: `window.Accept.dispatchData({ authData: { apiLoginID, clientKey }, cardData: {...} }, callback)` — see `apps/web/src/components/doctor/PaymentModal.jsx` and `apps/web/src/pages/marketing/Checkout.jsx`. The callback receives `response.opaqueData`, which is what gets POSTed to our backend.
+
+**Required env vars:**
+```
+SEAZONA_API_KEY=
+SEAZONA_SECRET=
+SEAZONA_BASE_URL=https://diamondapi.labzona.net/
+AUTHORIZE_NET_API_LOGIN=
+AUTHORIZE_NET_TRANSACTION_KEY=
+AUTHORIZE_NET_ENV=production            # or "sandbox"
+VITE_AUTHORIZE_NET_API_LOGIN=           # mirrors API_LOGIN, public
+VITE_AUTHORIZE_NET_CLIENT_KEY=          # public client key from the merchant portal
+```
 
 ### Environment
 - `.env` lives at project root, symlinked to `apps/api/.env` for Drizzle

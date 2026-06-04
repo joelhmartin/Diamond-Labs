@@ -9,11 +9,11 @@ import {
 } from "lucide-react";
 
 const INPUT =
-  "w-full px-4 py-3 rounded-xl bg-surface-50 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-navy/25";
+  "w-full px-4 py-3 rounded-xl bg-surface-50 border border-surface-300/50 text-ink text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-ink/25";
 
 function Label({ children, required }) {
   return (
-    <label className="block text-xs font-semibold text-navy/40 uppercase tracking-wider mb-2">
+    <label className="block text-xs font-semibold text-ink/40 uppercase tracking-wider mb-2">
       {children} {required && <span className="text-red-400">*</span>}
     </label>
   );
@@ -46,7 +46,7 @@ function RadioField({ field, value, onChange }) {
               className={`px-4 py-2.5 rounded-full text-sm font-medium transition-all duration-300 ${
                 active
                   ? "bg-brand-500 text-white shadow-sm"
-                  : "bg-surface-50 text-navy/60 border border-surface-300/50 hover:border-brand-500/30 hover:text-navy"
+                  : "bg-surface-50 text-ink/60 border border-surface-300/50 hover:border-brand-500/30 hover:text-ink"
               }`}
             >
               {active && <Check size={12} className="inline mr-1.5 -mt-0.5" />}
@@ -56,7 +56,7 @@ function RadioField({ field, value, onChange }) {
         })}
       </div>
       {field.note && (
-        <p className="mt-2 flex items-start gap-1.5 text-[11px] text-navy/45">
+        <p className="mt-2 flex items-start gap-1.5 text-[11px] text-ink/45">
           <AlertCircle size={11} className="mt-0.5 text-accent-500 flex-shrink-0" />
           {field.note}
         </p>
@@ -86,7 +86,7 @@ function CheckboxField({ field, value, onChange }) {
               className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
                 active
                   ? "bg-brand-500 text-white"
-                  : "bg-surface-50 text-navy/60 border border-surface-300/50 hover:border-brand-500/30"
+                  : "bg-surface-50 text-ink/60 border border-surface-300/50 hover:border-brand-500/30"
               }`}
             >
               {active && <Check size={12} className="inline mr-1.5 -mt-0.5" />}
@@ -136,7 +136,7 @@ function TextField({ field, value, onChange }) {
           onChange={(e) => onChange(e.target.value)}
         />
         {field.unit && (
-          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-mono text-navy/40">
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-mono text-ink/40">
             {field.unit}
           </span>
         )}
@@ -172,13 +172,13 @@ function MatrixField({ field, value, onChange }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-surface-100">
-              <th className="text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-widest text-navy/40 font-normal">
+              <th className="text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-widest text-ink/40 font-normal">
                 —
               </th>
               {field.columns.map((c) => (
                 <th
                   key={c}
-                  className="text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-widest text-navy/40 font-normal border-l border-surface-300/40"
+                  className="text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-widest text-ink/40 font-normal border-l border-surface-300/40"
                 >
                   {c}
                 </th>
@@ -188,7 +188,7 @@ function MatrixField({ field, value, onChange }) {
           <tbody>
             {field.rows.map((row) => (
               <tr key={row} className="border-t border-surface-300/30">
-                <td className="px-4 py-2 text-navy/60 font-medium whitespace-nowrap">
+                <td className="px-4 py-2 text-ink/60 font-medium whitespace-nowrap">
                   {row}
                 </td>
                 {field.columns.map((col) => (
@@ -228,8 +228,8 @@ function ColorPaletteField({ field, value, onChange }) {
               title={c.name}
               className={`group relative aspect-square rounded-2xl transition-all duration-300 border-2 ${
                 active
-                  ? "border-navy scale-105 shadow-md"
-                  : "border-surface-300/50 hover:border-navy/30 hover:scale-[1.02]"
+                  ? "border-ink scale-105 shadow-md"
+                  : "border-surface-300/50 hover:border-ink/30 hover:scale-[1.02]"
               }`}
               style={{ backgroundColor: c.hex }}
             >
@@ -249,14 +249,14 @@ function ColorPaletteField({ field, value, onChange }) {
                       className={
                         c.hex === "#f9fafb" || c.hex === "#e5e7eb"
                           ? "text-white"
-                          : "text-navy"
+                          : "text-ink"
                       }
                     />
                   </div>
                 </div>
               )}
               <span
-                className={`absolute -bottom-5 left-0 right-0 text-[9px] font-mono text-navy/50 text-center transition-opacity ${
+                className={`absolute -bottom-5 left-0 right-0 text-[9px] font-mono text-ink/50 text-center transition-opacity ${
                   active ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                 }`}
               >
@@ -267,8 +267,8 @@ function ColorPaletteField({ field, value, onChange }) {
         })}
       </div>
       {value && (
-        <div className="mt-8 text-xs text-navy/50">
-          Selected: <span className="font-semibold text-navy">{value}</span>
+        <div className="mt-8 text-xs text-ink/50">
+          Selected: <span className="font-semibold text-ink">{value}</span>
         </div>
       )}
     </div>
@@ -330,10 +330,10 @@ function FileUploadField({ field, value, onChange }) {
         <Upload
           size={20}
           className={`mx-auto mb-2 transition-colors ${
-            drag ? "text-brand-500" : "text-navy/20"
+            drag ? "text-brand-500" : "text-ink/20"
           }`}
         />
-        <p className="text-xs text-navy/50">
+        <p className="text-xs text-ink/50">
           Drop files here or{" "}
           <span className="text-brand-500 font-medium">browse</span>
           {field.maxFiles && ` · up to ${max}`}
@@ -365,14 +365,14 @@ function FileUploadField({ field, value, onChange }) {
                 />
               ) : (
                 <div className="w-8 h-8 rounded-lg bg-surface-200/60 flex items-center justify-center">
-                  <ImageIcon size={14} className="text-navy/30" />
+                  <ImageIcon size={14} className="text-ink/30" />
                 </div>
               )}
               <div className="min-w-0">
-                <p className="text-xs font-medium text-navy/70 truncate max-w-[110px]">
+                <p className="text-xs font-medium text-ink/70 truncate max-w-[110px]">
                   {f.name}
                 </p>
-                <p className="text-[10px] text-navy/25">
+                <p className="text-[10px] text-ink/25">
                   {(f.size / 1024 / 1024).toFixed(1)} MB
                 </p>
               </div>
@@ -382,7 +382,7 @@ function FileUploadField({ field, value, onChange }) {
                   e.stopPropagation();
                   remove(f.id);
                 }}
-                className="w-6 h-6 rounded-full flex items-center justify-center text-navy/20 hover:text-red-400 hover:bg-red-50 transition-all"
+                className="w-6 h-6 rounded-full flex items-center justify-center text-ink/20 hover:text-red-400 hover:bg-red-50 transition-all"
               >
                 <X size={12} />
               </button>

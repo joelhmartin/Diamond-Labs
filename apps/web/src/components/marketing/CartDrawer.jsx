@@ -33,7 +33,7 @@ function LineItem({ item }) {
             className="w-full h-full object-contain p-1"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-navy/20">
+          <div className="w-full h-full flex items-center justify-center text-ink/20">
             <ImageIcon size={18} />
           </div>
         )}
@@ -42,19 +42,19 @@ function LineItem({ item }) {
       {/* Details */}
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-3">
-          <h4 className="font-heading font-semibold text-sm text-navy tracking-tight leading-snug line-clamp-2">
+          <h4 className="font-heading font-semibold text-sm text-ink tracking-tight leading-snug line-clamp-2">
             {item.name}
           </h4>
           <button
             type="button"
             onClick={() => remove(item.id)}
-            className="text-navy/30 hover:text-accent-500 transition-colors flex-shrink-0"
+            className="text-ink/30 hover:text-accent-500 transition-colors flex-shrink-0"
             aria-label="Remove"
           >
             <Trash2 size={14} />
           </button>
         </div>
-        <div className="mt-1 text-xs text-navy/45">
+        <div className="mt-1 text-xs text-ink/45">
           {item.price === 0 ? "Included" : formatUSD(item.price)} each
         </div>
 
@@ -63,7 +63,7 @@ function LineItem({ item }) {
             <button
               type="button"
               onClick={() => setQty(item.id, item.qty - 1)}
-              className="w-7 h-7 rounded-full bg-white border border-surface-300/50 flex items-center justify-center text-navy/60 hover:text-navy transition-colors"
+              className="w-7 h-7 rounded-full bg-white border border-surface-300/50 flex items-center justify-center text-ink/60 hover:text-ink transition-colors"
               aria-label="Decrease"
             >
               <Minus size={12} />
@@ -72,7 +72,7 @@ function LineItem({ item }) {
             <button
               type="button"
               onClick={() => setQty(item.id, item.qty + 1)}
-              className="w-7 h-7 rounded-full bg-white border border-surface-300/50 flex items-center justify-center text-navy/60 hover:text-navy transition-colors"
+              className="w-7 h-7 rounded-full bg-white border border-surface-300/50 flex items-center justify-center text-ink/60 hover:text-ink transition-colors"
               aria-label="Increase"
             >
               <Plus size={12} />
@@ -115,7 +115,7 @@ export function CartDrawer() {
     <div className="fixed inset-0 z-[9999]">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-navy/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-diamond-300/50 backdrop-blur-sm"
         onClick={close}
       />
 
@@ -129,7 +129,7 @@ export function CartDrawer() {
               <h3 className="font-heading font-bold text-lg tracking-tight">
                 Your Cart
               </h3>
-              <div className="text-xs font-mono text-navy/40 uppercase tracking-wider">
+              <div className="text-xs font-mono text-ink/40 uppercase tracking-wider">
                 {count} {count === 1 ? "item" : "items"}
               </div>
             </div>
@@ -137,7 +137,7 @@ export function CartDrawer() {
           <button
             type="button"
             onClick={close}
-            className="w-9 h-9 rounded-full bg-surface-100 hover:bg-surface-200 flex items-center justify-center text-navy/60 hover:text-navy transition-colors"
+            className="w-9 h-9 rounded-full bg-surface-100 hover:bg-surface-200 flex items-center justify-center text-ink/60 hover:text-ink transition-colors"
             aria-label="Close cart"
           >
             <X size={16} />
@@ -147,9 +147,9 @@ export function CartDrawer() {
         {/* Items */}
         <div className="flex-1 overflow-y-auto px-6">
           {items.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center py-16 text-navy/40">
+            <div className="h-full flex flex-col items-center justify-center text-center py-16 text-ink/40">
               <ShoppingBag size={32} className="mb-4 opacity-40" />
-              <div className="font-heading font-semibold text-sm mb-1 text-navy/60">
+              <div className="font-heading font-semibold text-sm mb-1 text-ink/60">
                 Your cart is empty
               </div>
               <div className="text-xs">
@@ -165,7 +165,7 @@ export function CartDrawer() {
         {items.length > 0 && (
           <div className="p-6 border-t border-surface-300/50 bg-surface-100">
             <div className="flex items-center justify-between mb-5">
-              <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
+              <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
                 Subtotal
               </span>
               <span className="font-heading font-bold text-2xl tracking-tight">
@@ -191,12 +191,12 @@ export function CartDrawer() {
             <button
               type="button"
               onClick={clear}
-              className="mt-3 w-full text-xs font-mono text-navy/40 hover:text-accent-500 uppercase tracking-widest transition-colors py-2"
+              className="mt-3 w-full text-xs font-mono text-ink/40 hover:text-accent-500 uppercase tracking-widest transition-colors py-2"
             >
               Clear Cart
             </button>
 
-            <p className="mt-4 text-[11px] text-navy/40 text-center leading-relaxed">
+            <p className="mt-4 text-[11px] text-ink/40 text-center leading-relaxed">
               Accessories &amp; supplies only. Orthotics require a Digital Rx
               submission.
             </p>

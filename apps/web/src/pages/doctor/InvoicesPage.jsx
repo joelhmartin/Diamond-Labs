@@ -4,6 +4,8 @@ import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { Button } from "../../components/ui/Button.jsx";
 import { PaymentModal } from "../../components/doctor/PaymentModal.jsx";
+import { Pagination } from "../../components/ui/Pagination.jsx";
+import { usePagination } from "../../hooks/usePagination.js";
 
 export function InvoicesPage() {
   const [invoices, setInvoices] = useState([]);
@@ -43,7 +45,9 @@ export function InvoicesPage() {
   };
 
   const selectedInvoices = invoices.filter((inv) => selected.has(inv.id || inv.invoiceId));
-  const selectedTotal = selectedInvoices.reduce((sum, inv) => sum + (parseFloat(inv.amount) || 0), 0);
+  const selectedTotal = selectedInvoices.reduce((sum, inv) => sum + (parseFloat(inv.total) || 0), 0);
+
+  const pagination = usePagination(invoices);
 
   if (loading) {
     return (
@@ -73,23 +77,25 @@ export function InvoicesPage() {
           <p className="text-gray-500">No invoices found.</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                <th className="px-4 py-3 w-10">
-                  <button onClick={toggleAll} className="text-gray-400 hover:text-gray-600">
-                    {selected.size === invoices.length ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
-                  </button>
-                </th>
-                <th className="px-4 py-3">Invoice #</th>
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">Amount</th>
-                <th className="px-4 py-3">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {invoices.map((inv) => {
+        <>
+          <Pagination {...pagination} itemLabel="invoices" className="mb-4" />
+          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className="px-4 py-3 w-10">
+                    <button onClick={toggleAll} className="text-gray-400 hover:text-gray-600">
+                      {selected.size === invoices.length ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3">Invoice #</th>
+                  <th className="px-4 py-3">Date</th>
+                  <th className="px-4 py-3">Amount</th>
+                  <th className="px-4 py-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {pagination.paged.map((inv) => {
                 const id = inv.id || inv.invoiceId;
                 const isSelected = selected.has(id);
                 return (
@@ -102,29 +108,26 @@ export function InvoicesPage() {
                       {isSelected ? <CheckSquare className="h-4 w-4 text-brand-600" /> : <Square className="h-4 w-4 text-gray-300" />}
                     </td>
                     <td className="px-4 py-3 font-medium">{inv.invoiceNumber || id}</td>
-                    <td className="px-4 py-3 text-gray-500">{inv.date || inv.createdDate || "—"}</td>
-                    <td className="px-4 py-3 font-medium">${parseFloat(inv.amount || 0).toFixed(2)}</td>
+                    <td className="px-4 py-3 text-gray-500">{inv.due ? new Date(inv.due).toLocaleDateString() : "—"}</td>
+                    <td className="px-4 py-3 font-medium">${parseFloat(inv.total || 0).toFixed(2)}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                        inv.status === "paid" ? "bg-green-100 text-green-700"
-                        : inv.status === "overdue" ? "bg-red-100 text-red-700"
-                        : "bg-gray-100 text-gray-600"
-                      }`}>
-                        {inv.status || "open"}
+                      <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                        {inv.status || "—"}
                       </span>
                     </td>
                   </tr>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
+              </tbody>
+            </table>
+          </div>
+          <Pagination {...pagination} itemLabel="invoices" className="mt-6" />
+        </>
       )}
 
       {showPayment && (
         <PaymentModal
           invoices={selectedInvoices}
-          total={selectedTotal}
           onClose={() => setShowPayment(false)}
           onSuccess={() => {
             setShowPayment(false);

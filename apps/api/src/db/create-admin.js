@@ -58,21 +58,36 @@ async function run() {
     approvalStatus: "not_required",
   });
 
-  // Create account + owner membership so RequireAccount is satisfied
-  const accountId = createId();
-  await db.insert(accounts).values({
-    id: accountId,
-    name: "Diamond Orthotic Laboratory",
-    slug: "diamond-orthotic-laboratory",
-    ownerId: userId,
-    plan: "pro",
-    status: "active",
-  });
+  // Reuse the Diamond account if it exists; otherwise create it.
+  const DIAMOND_SLUG = "diamond-orthotic-laboratory";
+  const existingAccount = await db
+    .select()
+    .from(accounts)
+    .where(eq(accounts.slug, DIAMOND_SLUG))
+    .limit(1);
+
+  let accountId;
+  let membershipRole;
+  if (existingAccount.length > 0) {
+    accountId = existingAccount[0].id;
+    membershipRole = "admin";
+  } else {
+    accountId = createId();
+    await db.insert(accounts).values({
+      id: accountId,
+      name: "Diamond Orthotic Laboratory",
+      slug: DIAMOND_SLUG,
+      ownerId: userId,
+      plan: "pro",
+      status: "active",
+    });
+    membershipRole = "owner";
+  }
   await db.insert(memberships).values({
     id: createId(),
     userId,
     accountId,
-    role: "owner",
+    role: membershipRole,
     status: "active",
   });
 

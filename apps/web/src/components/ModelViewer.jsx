@@ -11,7 +11,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
  *   mtlPath  — path to the .mtl file (relative to /public), optional
  *   className — extra Tailwind classes for the wrapper div
  */
-export function ModelViewer({ objPath, mtlPath, className = "" }) {
+export function ModelViewer({ objPath, mtlPath, className = "", interactive = true }) {
   const mountRef = useRef(null);
   const [loading, setLoading] = useState(true);
 
@@ -62,6 +62,10 @@ export function ModelViewer({ objPath, mtlPath, className = "" }) {
     controls.maxDistance = 20;
     controls.autoRotate = true;
     controls.autoRotateSpeed = 1.2;
+    if (!interactive) {
+      controls.enabled = false;
+      renderer.domElement.style.pointerEvents = "none";
+    }
 
     /* ── Load model ── */
     let animId;
@@ -73,12 +77,12 @@ export function ModelViewer({ objPath, mtlPath, className = "" }) {
       loader.load(
         objPath,
         (obj) => {
-          /* Fit model to view */
+          /* Fit model using bounding sphere — guarantees no overflow at any rotation */
           const box = new THREE.Box3().setFromObject(obj);
-          const size = box.getSize(new THREE.Vector3());
-          const center = box.getCenter(new THREE.Vector3());
-          const maxDim = Math.max(size.x, size.y, size.z);
-          const scale = 2.5 / maxDim;
+          const sphere = box.getBoundingSphere(new THREE.Sphere());
+          const center = sphere.center.clone();
+          const targetRadius = 1;
+          const scale = targetRadius / sphere.radius;
           obj.scale.setScalar(scale);
           obj.position.sub(center.multiplyScalar(scale));
 
@@ -98,11 +102,15 @@ export function ModelViewer({ objPath, mtlPath, className = "" }) {
           scene.add(obj);
           setLoading(false);
 
-          /* Push camera back to see the model */
-          const fov = camera.fov * (Math.PI / 180);
-          const dist = Math.max(size.x, size.y, size.z) * scale * 0.5;
-          camera.position.set(0, 0, dist / Math.tan(fov / 2));
-          camera.near = dist * 0.01;
+          /* Camera distance fits the bounding sphere with padding,
+             accounting for the smaller of vertical/horizontal FOV */
+          const fovV = camera.fov * (Math.PI / 180);
+          const fovH = 2 * Math.atan(Math.tan(fovV / 2) * camera.aspect);
+          const minFov = Math.min(fovV, fovH);
+          const padding = 1.35;
+          const dist = (targetRadius * padding) / Math.sin(minFov / 2);
+          camera.position.set(0, 0, dist);
+          camera.near = Math.max(dist * 0.01, 0.001);
           camera.far = dist * 100;
           camera.updateProjectionMatrix();
           controls.update();
@@ -156,14 +164,14 @@ export function ModelViewer({ objPath, mtlPath, className = "" }) {
         mount.removeChild(renderer.domElement);
       }
     };
-  }, [objPath, mtlPath]);
+  }, [objPath, mtlPath, interactive]);
 
   return (
     <div ref={mountRef} className={`w-full h-full relative ${className}`}>
       {loading && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-surface-100 z-10 pointer-events-none">
           <div className="w-8 h-8 rounded-full border-2 border-surface-300 border-t-brand-500 animate-spin" />
-          <span className="font-mono text-[10px] text-navy/30 uppercase tracking-widest">Loading 3D model</span>
+          <span className="font-mono text-[10px] text-ink/30 uppercase tracking-widest">Loading 3D model</span>
         </div>
       )}
     </div>

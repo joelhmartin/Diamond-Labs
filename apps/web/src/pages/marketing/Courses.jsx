@@ -84,7 +84,7 @@ function Hero() {
   return (
     <section
       ref={ref}
-      className="relative h-[80dvh] min-h-[540px] flex items-end overflow-hidden bg-navy"
+      className="relative h-[80dvh] min-h-[540px] flex items-end overflow-hidden bg-diamond-300 section-pad"
     >
       <div className="absolute inset-0 opacity-[0.12]">
         <img
@@ -94,17 +94,18 @@ function Hero() {
           loading="lazy"
         />
       </div>
-      <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/70 to-navy/30" />
-      <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/40 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-r from-diamond-300 via-diamond-300/70 to-transparent/30" />
+      <div className="absolute inset-0 bg-gradient-to-t from-diamond-300 via-diamond-300/40 to-transparent" />
 
-      <div className="relative z-10 section-pad pb-16 md:pb-24 max-w-3xl">
+      <div className="relative z-10 pb-16 md:pb-24 w-full max-w-6xl mx-auto">
+        <div className="max-w-3xl">
         <span
           data-crs-hero
-          className="font-mono text-xs text-white/40 uppercase tracking-widest"
+          className="font-mono text-xs text-ink/40 uppercase tracking-widest"
         >
           Dr. Steven Olmos · Courses
         </span>
-        <h1 data-crs-hero className="mt-4 text-white">
+        <h1 data-crs-hero className="mt-4 text-ink">
           <span className="block font-heading font-bold text-4xl sm:text-5xl md:text-6xl tracking-tight leading-[0.95]">
             Train with the
           </span>
@@ -114,13 +115,14 @@ function Hero() {
         </h1>
         <p
           data-crs-hero
-          className="mt-6 text-white/50 text-base md:text-lg max-w-xl leading-relaxed"
+          className="mt-6 text-ink/50 text-base md:text-lg max-w-xl leading-relaxed"
         >
           Continued education from TMJ &amp; Sleep Therapy Centres
           International — the clinical network Dr. Olmos founded. Beginning,
           intermediate, and advanced training in TMD and Dental Sleep
           Medicine.
         </p>
+        </div>
       </div>
     </section>
   );
@@ -143,12 +145,12 @@ function Intro() {
   }, []);
 
   return (
-    <section ref={ref} className="section-pad py-24 md:py-32">
-      <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-14">
+    <section ref={ref} className="section-pad py-24 md:py-28">
+      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-14">
         <div className="lg:col-span-2">
           <span
             data-crs-intro
-            className="font-mono text-xs text-navy/40 uppercase tracking-widest"
+            className="font-mono text-xs text-ink/40 uppercase tracking-widest"
           >
             The Program
           </span>
@@ -162,7 +164,7 @@ function Intro() {
             </span>
           </h2>
         </div>
-        <div className="lg:col-span-3 space-y-5 text-navy/60 leading-relaxed">
+        <div className="lg:col-span-3 space-y-5 text-ink/60 leading-relaxed">
           <p data-crs-intro>
             TMJ &amp; Sleep Therapy Centres International is recognized as a
             leader in continued education, training, and resources for the
@@ -212,7 +214,7 @@ function Levels() {
     <section ref={ref} className="section-pad py-24 md:py-28 bg-surface-100">
       <div className="max-w-6xl mx-auto">
         <div className="mb-12 md:mb-16 max-w-2xl">
-          <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
+          <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
             Course Levels
           </span>
           <h2 className="mt-3 font-heading font-bold text-3xl md:text-5xl tracking-tight text-balance">
@@ -228,7 +230,7 @@ function Levels() {
             <div
               key={l.level}
               data-level
-              className="bg-white card-radius p-8 border border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-navy/5 transition-all duration-500 flex flex-col"
+              className="bg-white card-radius p-8 border border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-ink/5 transition-all duration-500 flex flex-col"
             >
               <div className="flex items-center justify-between mb-6">
                 <span className="font-mono text-[11px] text-brand-500 tracking-widest">
@@ -241,14 +243,14 @@ function Levels() {
               <h3 className="font-heading font-bold text-2xl tracking-tight">
                 {l.level}
               </h3>
-              <p className="mt-3 text-navy/55 text-sm md:text-base leading-relaxed flex-1">
+              <p className="mt-3 text-ink/55 text-sm md:text-base leading-relaxed flex-1">
                 {l.body}
               </p>
               <div className="mt-6 pt-6 border-t border-surface-300/50">
-                <div className="text-[10px] font-mono text-navy/40 uppercase tracking-widest">
+                <div className="text-[10px] font-mono text-ink/40 uppercase tracking-widest">
                   Ideal for
                 </div>
-                <div className="mt-1.5 text-sm text-navy/80 font-medium">
+                <div className="mt-1.5 text-sm text-ink/80 font-medium">
                   {l.audience}
                 </div>
               </div>
@@ -280,7 +282,7 @@ function Focus() {
     <section ref={ref} className="section-pad py-24 md:py-28">
       <div className="max-w-6xl mx-auto">
         <div className="mb-12 md:mb-16 max-w-2xl">
-          <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
+          <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
             Focus Areas
           </span>
           <h2 className="mt-3 font-heading font-bold text-3xl md:text-5xl tracking-tight text-balance">
@@ -294,7 +296,7 @@ function Focus() {
             <div
               key={f.title}
               data-focus
-              className="bg-navy text-white card-radius p-8 border border-navy-light"
+              className="bg-diamond-300 text-ink card-radius p-8 border border-ink-light"
             >
               <div className="w-11 h-11 rounded-2xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center mb-5">
                 <f.Icon size={18} className="text-brand-400" />
@@ -302,7 +304,7 @@ function Focus() {
               <h3 className="font-heading font-bold text-lg tracking-tight">
                 {f.title}
               </h3>
-              <p className="mt-2 text-white/55 text-sm leading-relaxed">
+              <p className="mt-2 text-ink/55 text-sm leading-relaxed">
                 {f.body}
               </p>
             </div>
@@ -331,10 +333,10 @@ function Locations() {
 
   return (
     <section ref={ref} className="section-pad py-24 md:py-28 bg-surface-100">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="flex items-center gap-3 mb-10">
           <Globe2 size={16} className="text-brand-500" />
-          <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
+          <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
             Where to Train
           </span>
           <div className="flex-1 h-px bg-surface-300/60" />
@@ -357,24 +359,24 @@ function Locations() {
                 {l.flag}
               </span>
               <div>
-                <div className="font-heading font-semibold text-sm text-navy tracking-tight">
+                <div className="font-heading font-semibold text-sm text-ink tracking-tight">
                   {l.label}
                 </div>
-                <div className="text-navy/45 text-xs mt-0.5">{l.note}</div>
+                <div className="text-ink/45 text-xs mt-0.5">{l.note}</div>
               </div>
             </div>
           ))}
         </div>
 
-        <div className="mt-10 bg-navy card-radius p-8 md:p-10 border border-navy-light flex flex-col md:flex-row md:items-center gap-6">
+        <div className="mt-10 bg-diamond-300 card-radius p-8 md:p-10 border border-ink-light flex flex-col md:flex-row md:items-center gap-6">
           <div className="w-12 h-12 rounded-2xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center flex-shrink-0">
             <Calendar size={18} className="text-brand-400" />
           </div>
           <div className="flex-1">
-            <div className="font-heading font-bold text-lg text-white tracking-tight">
+            <div className="font-heading font-bold text-lg text-ink tracking-tight">
               Upcoming course calendar
             </div>
-            <p className="mt-1 text-white/55 text-sm leading-relaxed">
+            <p className="mt-1 text-ink/55 text-sm leading-relaxed">
               Dates and locations are scheduled throughout the year. For the
               current calendar, registration, and seat availability, contact
               the lab or visit TMJ &amp; Sleep Therapy Centres International
@@ -413,11 +415,11 @@ function CTA() {
   }, []);
 
   return (
-    <section ref={ref} className="section-pad py-24 md:py-32">
+    <section ref={ref} className="section-pad py-24 md:py-28">
       <div className="max-w-3xl mx-auto text-center">
         <span
           data-crs-cta
-          className="font-mono text-xs text-navy/40 uppercase tracking-widest"
+          className="font-mono text-xs text-ink/40 uppercase tracking-widest"
         >
           Enrollment
         </span>
@@ -432,7 +434,7 @@ function CTA() {
         </h2>
         <p
           data-crs-cta
-          className="mt-6 text-navy/50 text-base md:text-lg max-w-lg mx-auto"
+          className="mt-6 text-ink/50 text-base md:text-lg max-w-lg mx-auto"
         >
           Call the lab for current session dates, curriculum, and
           registration — or reach us through the contact form.
@@ -453,7 +455,7 @@ function CTA() {
           </a>
           <Link
             to="/contact"
-            className="px-8 py-4 rounded-full border border-surface-300 text-navy/70 font-medium hover:bg-surface-200/60 transition-colors duration-300 inline-flex items-center gap-2"
+            className="px-8 py-4 rounded-full border border-surface-300 text-ink/70 font-medium hover:bg-surface-200/60 transition-colors duration-300 inline-flex items-center gap-2"
           >
             Contact Form
             <ArrowRight size={14} />
@@ -465,10 +467,6 @@ function CTA() {
 }
 
 export function CoursesPage() {
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
-
   return (
     <>
       <Hero />

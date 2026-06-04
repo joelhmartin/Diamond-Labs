@@ -84,7 +84,7 @@ function Hero() {
   return (
     <section
       ref={ref}
-      className="relative h-[75dvh] min-h-[520px] flex items-end overflow-hidden bg-navy"
+      className="relative h-[75dvh] min-h-[520px] flex items-end overflow-hidden bg-diamond-300 section-pad"
     >
       <div className="absolute inset-0 opacity-[0.1]">
         <img
@@ -94,17 +94,18 @@ function Hero() {
           loading="lazy"
         />
       </div>
-      <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/70 to-navy/40" />
-      <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/40 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-r from-diamond-300 via-diamond-300/70 to-transparent/40" />
+      <div className="absolute inset-0 bg-gradient-to-t from-diamond-300 via-diamond-300/40 to-transparent" />
 
-      <div className="relative z-10 section-pad pb-16 md:pb-24 max-w-3xl">
+      <div className="relative z-10 pb-16 md:pb-24 w-full max-w-6xl mx-auto">
+        <div className="max-w-3xl">
         <span
           data-lab-hero
-          className="font-mono text-xs text-white/40 uppercase tracking-widest"
+          className="font-mono text-xs text-ink/40 uppercase tracking-widest"
         >
           Certified Laboratories
         </span>
-        <h1 data-lab-hero className="mt-4 text-white">
+        <h1 data-lab-hero className="mt-4 text-ink">
           <span className="block font-heading font-bold text-4xl sm:text-5xl md:text-6xl tracking-tight leading-[0.95]">
             One protocol.
           </span>
@@ -114,13 +115,14 @@ function Hero() {
         </h1>
         <p
           data-lab-hero
-          className="mt-6 text-white/50 text-base md:text-lg max-w-xl leading-relaxed"
+          className="mt-6 text-ink/50 text-base md:text-lg max-w-xl leading-relaxed"
         >
           Dr. Olmos has partnered with and certified 7 laboratories in the
           US, Canada, and Australia with the ability and commitment to
           produce orthotics to the quality and accuracy this treatment
           demands.
         </p>
+        </div>
       </div>
     </section>
   );
@@ -143,12 +145,12 @@ function Standard() {
   }, []);
 
   return (
-    <section ref={ref} className="section-pad py-24 md:py-32">
-      <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-14">
+    <section ref={ref} className="section-pad py-24 md:py-28">
+      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-14">
         <div className="lg:col-span-2">
           <span
             data-std
-            className="font-mono text-xs text-navy/40 uppercase tracking-widest"
+            className="font-mono text-xs text-ink/40 uppercase tracking-widest"
           >
             The Standard
           </span>
@@ -162,7 +164,7 @@ function Standard() {
             </span>
           </h2>
         </div>
-        <div className="lg:col-span-3 space-y-5 text-navy/60 leading-relaxed">
+        <div className="lg:col-span-3 space-y-5 text-ink/60 leading-relaxed">
           <p data-std>
             TMJ &amp; Sleep Certified Labs share a commitment to excellence.
             Each lab has given their assurance that products using the Olmos
@@ -176,7 +178,7 @@ function Standard() {
           </p>
           <p data-std>
             The certified lab program is administered by{" "}
-            <span className="text-navy font-semibold">Matt Rago</span>,
+            <span className="text-ink font-semibold">Matt Rago</span>,
             Director of International Laboratory Certification, together
             with{" "}
             <Link
@@ -199,8 +201,8 @@ function LabCard({ lab }) {
     <div
       className={`card-radius p-6 md:p-7 border transition-all duration-500 flex flex-col ${
         lab.featured
-          ? "bg-navy text-white border-navy-light hover:border-brand-400/40"
-          : "bg-white border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-navy/5"
+          ? "bg-diamond-100 text-ink border-ink-light hover:border-brand-400/40"
+          : "bg-white border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-ink/5"
       }`}
     >
       {lab.featured && (
@@ -213,14 +215,14 @@ function LabCard({ lab }) {
       )}
       <h3
         className={`font-heading font-bold text-lg tracking-tight leading-snug ${
-          lab.featured ? "text-white" : "text-navy"
+          lab.featured ? "text-ink" : "text-ink"
         }`}
       >
         {lab.name}
       </h3>
       <div
         className={`mt-2 flex items-center gap-2 text-xs ${
-          lab.featured ? "text-white/50" : "text-navy/45"
+          lab.featured ? "text-ink/50" : "text-ink/45"
         }`}
       >
         <MapPin size={12} />
@@ -249,7 +251,7 @@ function LabCard({ lab }) {
         {lab.phone && (
           <div
             className={`flex items-center gap-2 text-sm ${
-              lab.featured ? "text-white/70" : "text-navy/70"
+              lab.featured ? "text-ink/70" : "text-ink/70"
             }`}
           >
             <Phone size={12} />
@@ -283,7 +285,7 @@ function Directory() {
         <div className="mb-12 md:mb-16">
           <div className="flex items-center gap-3 mb-4">
             <Workflow size={16} className="text-brand-500" />
-            <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
+            <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
               Phase I · Phase II · Sleep
             </span>
           </div>
@@ -302,11 +304,11 @@ function Directory() {
                 <span className="text-2xl" aria-hidden>
                   {r.flag}
                 </span>
-                <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
+                <span className="font-mono text-xs text-ink/40 uppercase tracking-widest">
                   {r.label}
                 </span>
                 <div className="flex-1 h-px bg-surface-300/60" />
-                <span className="font-mono text-[10px] text-navy/30">
+                <span className="font-mono text-[10px] text-ink/30">
                   {r.labs.length}{" "}
                   {r.labs.length === 1 ? "laboratory" : "laboratories"}
                 </span>
@@ -341,11 +343,11 @@ function CTA() {
   }, []);
 
   return (
-    <section ref={ref} className="section-pad py-24 md:py-32">
+    <section ref={ref} className="section-pad py-24 md:py-28">
       <div className="max-w-3xl mx-auto text-center">
         <span
           data-lab-cta
-          className="font-mono text-xs text-navy/40 uppercase tracking-widest"
+          className="font-mono text-xs text-ink/40 uppercase tracking-widest"
         >
           Training &amp; Technical Support
         </span>
@@ -360,7 +362,7 @@ function CTA() {
         </h2>
         <p
           data-lab-cta
-          className="mt-6 text-navy/50 text-base md:text-lg max-w-xl mx-auto"
+          className="mt-6 text-ink/50 text-base md:text-lg max-w-xl mx-auto"
         >
           Call Diamond Orthotic Lab directly for training on taking quality
           impressions or performing simple orthotic repairs and relines —
@@ -382,7 +384,7 @@ function CTA() {
           </a>
           <Link
             to="/contact"
-            className="px-8 py-4 rounded-full border border-surface-300 text-navy/70 font-medium hover:bg-surface-200/60 transition-colors duration-300"
+            className="px-8 py-4 rounded-full border border-surface-300 text-ink/70 font-medium hover:bg-surface-200/60 transition-colors duration-300"
           >
             Contact Form
             <ArrowRight size={14} className="inline ml-2" />
@@ -394,10 +396,6 @@ function CTA() {
 }
 
 export function CertifiedLabsPage() {
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, []);
-
   return (
     <>
       <Hero />

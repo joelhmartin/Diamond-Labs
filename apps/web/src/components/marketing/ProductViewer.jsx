@@ -53,7 +53,7 @@ export function ProductViewer({
               className="w-full h-full object-contain p-8"
             />
           ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center text-navy/20">
+            <div className="w-full h-full flex flex-col items-center justify-center text-ink/20">
               <ImageIcon size={40} />
               <span className="mt-3 text-xs font-mono uppercase tracking-widest">
                 Image pending
@@ -67,14 +67,14 @@ export function ProductViewer({
               {product.category}
             </span>
             {activeItem.is3D && (
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-navy/80 text-white flex items-center gap-1">
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-diamond-300/80 text-ink flex items-center gap-1">
                 <Box size={10} />
                 Interactive 3D
               </span>
             )}
           </div>
           {activeItem.is3D && (
-            <div className="absolute bottom-4 right-4 text-[10px] font-mono text-white/30 pointer-events-none">
+            <div className="absolute bottom-4 right-4 text-[10px] font-mono text-ink/30 pointer-events-none">
               drag to rotate · scroll to zoom
             </div>
           )}
@@ -92,9 +92,9 @@ export function ProductViewer({
               }`}
             >
               {img.is3D ? (
-                <div className="w-full h-full bg-navy flex flex-col items-center justify-center gap-0.5">
+                <div className="w-full h-full bg-diamond-300 flex flex-col items-center justify-center gap-0.5">
                   <Box size={16} className="text-brand-400" />
-                  <span className="text-[9px] font-mono text-white/50 leading-none">3D</span>
+                  <span className="text-[9px] font-mono text-ink/50 leading-none">3D</span>
                 </div>
               ) : (
                 <img
@@ -117,10 +117,10 @@ export function ProductViewer({
             <span className="font-drama italic text-brand-500">®</span>
           )}
         </div>
-        <div className="mt-1 font-heading text-sm text-navy/50">
+        <div className="mt-1 font-heading text-sm text-ink/50">
           {product.fullName}
         </div>
-        <p className="mt-4 text-navy/60 text-sm leading-relaxed">
+        <p className="mt-4 text-ink/60 text-sm leading-relaxed">
           {product.tagline}
         </p>
 
@@ -130,10 +130,10 @@ export function ProductViewer({
               key={i}
               className="flex items-center justify-between py-2 border-b border-surface-300/30"
             >
-              <span className="text-xs font-mono text-navy/40 uppercase">
+              <span className="text-xs font-mono text-ink/40 uppercase">
                 {spec.label}
               </span>
-              <span className="text-sm font-medium text-navy/80">
+              <span className="text-sm font-medium text-ink/80">
                 {spec.value}
               </span>
             </div>
