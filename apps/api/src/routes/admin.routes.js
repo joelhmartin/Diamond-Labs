@@ -321,7 +321,7 @@ export default async function adminRoutes(fastify) {
     return { data: { product: updated } };
   });
 
-  // Trigger a read-only Seazona→local sync. May take a few seconds (~391 upserts).
+  // Trigger a Seazona→local upsert sync (writes ~391 local rows). May take a few seconds.
   fastify.post("/admin/products/sync", {
     preHandler: [authenticate, requireAdmin],
   }, async (request, reply) => {

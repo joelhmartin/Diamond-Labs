@@ -23,6 +23,9 @@ import { SEED_CATALOG } from "../../data/catalog.js";
 const INPUT =
   "w-full px-3.5 py-2.5 rounded-lg bg-white border border-surface-300/60 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-navy/25";
 
+// The mirror can hold ~391 rows; render in pages to keep the table light.
+const PAGE_SIZE = 50;
+
 // Catalog SKUs an admin can map a Seazona product to. Sorted by name for the
 // picker; we keep id around for display + value.
 const CATALOG_OPTIONS = SEED_CATALOG
@@ -73,7 +76,11 @@ function Toast({ tone, children, onDismiss }) {
     >
       {tone === "error" ? <AlertCircle size={14} /> : <CheckCircle size={14} />}
       <span>{children}</span>
-      <button onClick={onDismiss} className="ml-2 opacity-80 hover:opacity-100">
+      <button
+        onClick={onDismiss}
+        className="ml-2 opacity-80 hover:opacity-100"
+        aria-label="Dismiss notification"
+      >
         <XCircle size={14} />
       </button>
     </div>
@@ -112,10 +119,13 @@ function ProductEditor({ product, onClose, onSave, saving }) {
       <div
         className="relative w-full max-w-2xl bg-white md:rounded-[2rem] rounded-t-[2rem] p-6 md:p-8 shadow-2xl max-h-[95dvh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="product-editor-title"
       >
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="font-heading font-bold text-xl text-navy">Edit product</h2>
+            <h2 id="product-editor-title" className="font-heading font-bold text-xl text-navy">Edit product</h2>
             <p className="text-xs text-navy/40 mt-0.5 font-mono">{product.seazonaProductId}</p>
           </div>
           <button
@@ -271,8 +281,13 @@ export function AdminProductsPage() {
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState(null);
+  // seazonaProductIds whose purchasable PATCH (+ reload) is currently in flight —
+  // used to disable the per-row toggle and prevent concurrent double-submits.
+  const [togglingIds, setTogglingIds] = useState(() => new Set());
+  const [page, setPage] = useState(1);
 
   const load = async () => {
+    setLoading(true);
     try {
       const res = await api.get("/admin/products");
       setData(res.data.data);
@@ -303,6 +318,19 @@ export function AdminProductsPage() {
     });
   }, [data.products, query, purchasableOnly]);
 
+  // Reset to the first page whenever the filtered set changes (search / toggle /
+  // reload) so we never strand the user on an out-of-range page.
+  useEffect(() => {
+    setPage(1);
+  }, [query, purchasableOnly, data.products]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paged = useMemo(
+    () => filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+    [filtered, safePage],
+  );
+
   async function patchProduct(seazonaProductId, body) {
     const res = await api.patch(`/admin/products/${encodeURIComponent(seazonaProductId)}`, body);
     return res.data.data.product;
@@ -323,11 +351,20 @@ export function AdminProductsPage() {
   }
 
   async function handleTogglePurchasable(p) {
+    // Guard against double-submit: ignore clicks while this row's PATCH is in flight.
+    if (togglingIds.has(p.seazonaProductId)) return;
+    setTogglingIds((s) => new Set(s).add(p.seazonaProductId));
     try {
       await patchProduct(p.seazonaProductId, { purchasable: !p.purchasable });
       await load();
     } catch (err) {
       setToast({ tone: "error", text: err.response?.data?.error?.message || "Update failed" });
+    } finally {
+      setTogglingIds((s) => {
+        const next = new Set(s);
+        next.delete(p.seazonaProductId);
+        return next;
+      });
     }
   }
 
@@ -362,9 +399,10 @@ export function AdminProductsPage() {
           <button
             type="button"
             onClick={load}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all"
+            disabled={loading}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all disabled:opacity-50"
           >
-            <RefreshCw size={12} /> Refresh
+            <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> Refresh
           </button>
           <button
             type="button"
@@ -478,10 +516,11 @@ export function AdminProductsPage() {
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((p) => (
+                  paged.map((p) => (
                     <Row
                       key={p.seazonaProductId}
                       product={p}
+                      toggling={togglingIds.has(p.seazonaProductId)}
                       onEdit={() => setEditing(p)}
                       onTogglePurchasable={() => handleTogglePurchasable(p)}
                     />
@@ -490,6 +529,37 @@ export function AdminProductsPage() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination */}
+          {filtered.length > PAGE_SIZE && (
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-surface-300/40 text-xs text-navy/50">
+              <span className="font-mono">
+                {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of{" "}
+                {filtered.length.toLocaleString()}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={safePage <= 1}
+                  className="px-3 py-1.5 rounded-full font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all disabled:opacity-40 disabled:hover:bg-transparent"
+                >
+                  Prev
+                </button>
+                <span className="font-mono">
+                  Page {safePage} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={safePage >= totalPages}
+                  className="px-3 py-1.5 rounded-full font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all disabled:opacity-40 disabled:hover:bg-transparent"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -511,7 +581,7 @@ export function AdminProductsPage() {
   );
 }
 
-function Row({ product, onEdit, onTogglePurchasable }) {
+function Row({ product, onEdit, onTogglePurchasable, toggling = false }) {
   // Flag products that still need an admin's attention: shoppable but unmapped,
   // or mapped but not yet flagged shoppable.
   const unmappedShoppable = product.purchasable && !product.catalogId;
@@ -549,8 +619,10 @@ function Row({ product, onEdit, onTogglePurchasable }) {
         <button
           type="button"
           onClick={onTogglePurchasable}
-          className={`w-9 h-5 rounded-full transition-colors relative ${product.purchasable ? "bg-emerald-500" : "bg-navy/20"}`}
+          disabled={toggling}
+          className={`w-9 h-5 rounded-full transition-colors relative disabled:opacity-50 disabled:cursor-wait ${product.purchasable ? "bg-emerald-500" : "bg-navy/20"}`}
           aria-label={product.purchasable ? "Set not shoppable" : "Set shoppable"}
+          aria-busy={toggling}
         >
           <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${product.purchasable ? "left-[18px]" : "left-0.5"}`} />
         </button>

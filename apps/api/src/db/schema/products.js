@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, varchar, text, boolean, numeric, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, varchar, text, boolean, numeric, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 
 /**
  * Local mirror of Seazona products. Seazona is the system of record — there is
@@ -9,9 +9,11 @@ import { pgTable, varchar, text, boolean, numeric, timestamp, index } from "driz
  * Two distinct groups of columns:
  *   - Seazona-authoritative (`code`, `name`, `taxable`, `price`): overwritten on
  *     every sync. These reflect the lab's source of truth.
- *   - Shop-presentation (`imageUrl`, `description`, `purchasable`, `category`):
- *     our own local data, edited by admins. The sync job must NEVER clobber
- *     these. A product is not shoppable until an admin sets `purchasable=true`.
+ *   - Shop-presentation (`imageUrl`, `description`, `purchasable`, `category`,
+ *     `catalogId`): our own local data, edited by admins. The sync job must NEVER
+ *     clobber these. A product is not shoppable until an admin sets
+ *     `purchasable=true`, and is only orderable once mapped to a shop SKU via
+ *     `catalogId`.
  */
 export const products = pgTable("products", {
   // Seazona's product `id` is the primary key (varchar, matching how other
@@ -40,7 +42,11 @@ export const products = pgTable("products", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   index("products_code_idx").on(table.code),
-  index("products_catalog_id_idx").on(table.catalogId),
+  // UNIQUE so a shop SKU maps to at most one Seazona product — checkout looks up
+  // the product by catalogId and a duplicate would make that ambiguous (the
+  // app-level 409 check has a race). Postgres allows multiple NULLs in a unique
+  // index, so unmapped products (catalogId = null) don't conflict.
+  uniqueIndex("products_catalog_id_idx").on(table.catalogId),
   // Partial index — the shop only ever queries purchasable products, and a plain
   // B-tree on a boolean is near-useless. Index only the `true` rows.
   index("products_purchasable_idx").on(table.purchasable).where(sql`"purchasable" = true`),
