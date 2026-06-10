@@ -106,6 +106,28 @@ async function verifyInvoiceOwnership(allocations, seazonaClientId) {
   return null;
 }
 
+/**
+ * Lazily create an Authorize.net CIM customer profile for `user` if they don't
+ * have one yet. Persists the new ID to the DB row and reflects it on the
+ * in-flight user object so subsequent reads within the same request don't need
+ * an extra DB round-trip. Returns the customerProfileId (existing or new).
+ */
+async function ensureCustomerProfile(user) {
+  let customerProfileId = user.authorizeNetCustomerProfileId;
+  if (!customerProfileId) {
+    customerProfileId = await authorizenetService.createCustomerProfile({
+      email: user.email,
+      description: `Doctor: ${user.name}`,
+    });
+    await db
+      .update(users)
+      .set({ authorizeNetCustomerProfileId: customerProfileId, updatedAt: new Date() })
+      .where(eq(users.id, user.id));
+    user.authorizeNetCustomerProfileId = customerProfileId;
+  }
+  return customerProfileId;
+}
+
 export default async function paymentRoutes(fastify) {
   // ───────────────────────────────────────────────────────────────
   // PUBLIC CHECKOUT — unauthenticated card charge for catalog orders.
@@ -225,20 +247,7 @@ export default async function paymentRoutes(fastify) {
       return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "opaqueData is required." } });
     }
 
-    let customerProfileId = request.user.authorizeNetCustomerProfileId;
-
-    // Create CIM profile if user doesn't have one yet
-    if (!customerProfileId) {
-      customerProfileId = await authorizenetService.createCustomerProfile({
-        email: request.user.email,
-        description: `Doctor: ${request.user.name}`,
-      });
-
-      await db
-        .update(users)
-        .set({ authorizeNetCustomerProfileId: customerProfileId, updatedAt: new Date() })
-        .where(eq(users.id, request.user.id));
-    }
+    const customerProfileId = await ensureCustomerProfile(request.user);
 
     const paymentProfileId = await authorizenetService.addPaymentProfileFromNonce({
       customerProfileId,
@@ -246,6 +255,66 @@ export default async function paymentRoutes(fastify) {
     });
 
     return { data: { paymentProfileId } };
+  });
+
+  // Get a hosted add-card token (SAQ A). The frontend POSTs the token to addCardUrl
+  // to load Authorize.net's hosted card-entry page inside an iframe. On success,
+  // Authorize.net stores the new payment profile under the doctor's CIM profile
+  // (created lazily here if needed). The new customerPaymentProfileId lives at the
+  // gateway and is retrieved live via GET /payments/saved-cards — no local table needed.
+  fastify.post("/payments/saved-cards/hosted-token", {
+    preHandler: [authenticate, requireApprovedDoctor],
+  }, async (request, reply) => {
+    const { iframeCommunicatorUrl } = request.body || {};
+
+    if (iframeCommunicatorUrl && !/^https?:\/\//.test(iframeCommunicatorUrl)) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "iframeCommunicatorUrl must be an http(s) URL." } });
+    }
+
+    const customerProfileId = await ensureCustomerProfile(request.user);
+
+    const result = await authorizenetService.getHostedAddCardToken({ customerProfileId, iframeCommunicatorUrl });
+
+    if (!result?.token) {
+      return reply.code(502).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Could not get an add-card form token." } });
+    }
+
+    return { data: { token: result.token, addCardUrl: result.addCardUrl } };
+  });
+
+  // Update a saved card (e.g., renew expiration date). Looks up the payment
+  // profile to confirm ownership (gateway-scoped to this doctor's customerProfileId)
+  // and to retrieve the masked cardNumber required for the update request.
+  fastify.put("/payments/saved-cards/:profileId", {
+    preHandler: [authenticate, requireApprovedDoctor],
+  }, async (request, reply) => {
+    const { expirationDate, billTo } = request.body || {};
+    const { profileId } = request.params;
+
+    if (!expirationDate) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "expirationDate is required (format: YYYY-MM)." } });
+    }
+
+    const customerProfileId = request.user.authorizeNetCustomerProfileId;
+    if (!customerProfileId) {
+      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    }
+
+    const profiles = await authorizenetService.listPaymentProfiles(customerProfileId);
+    const profile = profiles.find((p) => p.paymentProfileId === profileId);
+    if (!profile) {
+      return reply.code(404).send({ error: { ...ERROR_CODES.NOT_FOUND, message: "Payment profile not found or does not belong to your account." } });
+    }
+
+    await authorizenetService.updateCustomerPaymentProfile({
+      customerProfileId,
+      paymentProfileId: profileId,
+      cardNumber: profile.cardNumber,
+      expirationDate,
+      billTo: billTo || undefined,
+    });
+
+    return { data: { paymentProfileId: profileId, expirationDate } };
   });
 
   // Delete a saved card
@@ -316,7 +385,7 @@ export default async function paymentRoutes(fastify) {
   fastify.post("/payments/hosted-token", {
     preHandler: [authenticate, requireApprovedDoctor],
   }, async (request, reply) => {
-    const { allocations, iframeCommunicatorUrl } = request.body || {};
+    const { allocations, iframeCommunicatorUrl, saveCard } = request.body || {};
 
     if (!request.user.seazonaClientId) {
       return reply.code(400).send({ error: ERROR_CODES.SEAZONA_CLIENT_NOT_LINKED });
@@ -337,6 +406,14 @@ export default async function paymentRoutes(fastify) {
       return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: ownErr } });
     }
 
+    // When the frontend requests save-card, lazily create the CIM profile so
+    // Authorize.net has a customer to attach the saved card to. The profile ID
+    // is baked into the hosted-page token; the gateway enforces ownership.
+    let customerProfileId;
+    if (saveCard) {
+      customerProfileId = await ensureCustomerProfile(request.user);
+    }
+
     const refId = `INV-${Date.now().toString().slice(-10)}`;
     const result = await authorizenetService.getHostedPaymentPageToken({
       amount,
@@ -344,6 +421,8 @@ export default async function paymentRoutes(fastify) {
       description: `Diamond Labs — ${allocations.length} invoice(s)`,
       refId,
       iframeCommunicatorUrl,
+      customerProfileId,
+      allowSaveCard: Boolean(saveCard),
     });
 
     if (!result?.token) {
@@ -355,6 +434,14 @@ export default async function paymentRoutes(fastify) {
   // Finalize a hosted invoice payment: verify the captured amount server-side,
   // then record one Seazona payment + the local allocation ledger. Idempotent
   // on transId so a double postMessage / retry can't double-record.
+  //
+  // Save-card persistence note: when the doctor checked "save card" on the hosted
+  // form, Authorize.net stores the new payment profile under their CIM customer
+  // profile autonomously — we don't need to do anything here. The customerProfileId
+  // was set on users.authorizeNetCustomerProfileId before the token was issued
+  // (ensureCustomerProfile in /payments/hosted-token), and individual payment profile
+  // IDs live at the gateway and are listed live via GET /payments/saved-cards.
+  // No additional DB write is required; no new table is needed.
   fastify.post("/payments/hosted-complete", {
     preHandler: [authenticate, requireApprovedDoctor],
   }, async (request, reply) => {

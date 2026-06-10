@@ -27,6 +27,13 @@ export function hostedFormUrl(mode) {
     : "https://test.authorize.net/payment/payment";
 }
 
+/** The Accept Hosted Customer profile page for adding a payment method. */
+export function hostedAddCardUrl(mode) {
+  return resolveMode(mode) === "production"
+    ? "https://accept.authorize.net/customer/addPayment"
+    : "https://test.authorize.net/customer/addPayment";
+}
+
 function merchantAuth(mode) {
   return resolveMode(mode) === "production"
     ? { name: env.AUTHORIZE_NET_API_LOGIN, transactionKey: env.AUTHORIZE_NET_TRANSACTION_KEY }
@@ -196,18 +203,30 @@ export async function deletePaymentProfile({ customerProfileId, paymentProfileId
  * amount is baked into the token server-side so it can't be tampered with in
  * the browser. The card data is entered on Authorize.net's hosted iframe — it
  * never touches our DOM (SAQ A). Returns { token, formUrl }.
+ *
+ * Optional save-card mode: pass `customerProfileId` + `allowSaveCard: true` to
+ * link the transaction to a CIM profile and show the "save card" checkbox on
+ * the hosted form (hostedPaymentCustomerOptions.addPaymentProfile). The
+ * `profile.customerProfileId` is added to `transactionRequest` so Authorize.net
+ * stores any saved card under that profile. Existing behavior is unchanged when
+ * these params are absent.
  */
 export async function getHostedPaymentPageToken(
-  { amount, invoiceNumber, description, refId, iframeCommunicatorUrl },
+  { amount, invoiceNumber, description, refId, iframeCommunicatorUrl, customerProfileId, allowSaveCard },
   mode
 ) {
+  const saveCard = Boolean(allowSaveCard && customerProfileId);
+
   const setting = [
     { settingName: "hostedPaymentReturnOptions", settingValue: JSON.stringify({ showReceipt: false }) },
     { settingName: "hostedPaymentButtonOptions", settingValue: JSON.stringify({ text: "Pay" }) },
     { settingName: "hostedPaymentPaymentOptions", settingValue: JSON.stringify({ cardCodeRequired: true, showCreditCard: true, showBankAccount: false }) },
     { settingName: "hostedPaymentSecurityOptions", settingValue: JSON.stringify({ captcha: false }) },
     { settingName: "hostedPaymentBillingAddressOptions", settingValue: JSON.stringify({ show: true, required: false }) },
-    { settingName: "hostedPaymentCustomerOptions", settingValue: JSON.stringify({ showEmail: false, requiredEmail: false }) },
+    {
+      settingName: "hostedPaymentCustomerOptions",
+      settingValue: JSON.stringify({ showEmail: false, requiredEmail: false, ...(saveCard ? { addPaymentProfile: true } : {}) }),
+    },
     { settingName: "hostedPaymentOrderOptions", settingValue: JSON.stringify({ show: true, merchantName: "Diamond Orthotic Lab" }) },
   ];
   if (iframeCommunicatorUrl) {
@@ -224,6 +243,9 @@ export async function getHostedPaymentPageToken(
       transactionRequest: {
         transactionType: "authCaptureTransaction",
         amount: String(amount),
+        // profile links the transaction to an existing CIM record so Authorize.net
+        // can attach any newly saved payment profile to that customer.
+        ...(saveCard ? { profile: { customerProfileId } } : {}),
         order: invoiceNumber
           ? { invoiceNumber: String(invoiceNumber).slice(0, 20), description: description?.slice(0, 255) }
           : undefined,
@@ -233,6 +255,81 @@ export async function getHostedPaymentPageToken(
   }, mode);
 
   return { token: data?.token || null, formUrl: hostedFormUrl(mode) };
+}
+
+/**
+ * Accept Hosted Customer Profile: get a one-time token for the hosted
+ * add-payment-method page (getHostedProfilePageRequest). The customer enters
+ * their card on Authorize.net's domain — card data never touches our DOM (SAQ A).
+ * Returns { token, addCardUrl } where addCardUrl is the URL the frontend should
+ * POST the token to (production vs sandbox mirrors the API credentials in use).
+ */
+export async function getHostedAddCardToken({ customerProfileId, iframeCommunicatorUrl }, mode) {
+  if (!customerProfileId) {
+    throw new Error("[Authorize.net] customerProfileId is required for getHostedAddCardToken");
+  }
+
+  const setting = [
+    {
+      settingName: "hostedProfileValidationMode",
+      settingValue: resolveMode(mode) === "production" ? "liveMode" : "testMode",
+    },
+  ];
+  if (iframeCommunicatorUrl) {
+    setting.push({
+      settingName: "hostedProfileIFrameCommunicatorUrl",
+      settingValue: JSON.stringify({ url: iframeCommunicatorUrl }),
+    });
+  }
+
+  const data = await apiRequest({
+    getHostedProfilePageRequest: {
+      merchantAuthentication: merchantAuth(mode),
+      customerProfileId,
+      hostedProfileSettings: { setting },
+    },
+  }, mode);
+
+  return { token: data?.token || null, addCardUrl: hostedAddCardUrl(mode) };
+}
+
+/**
+ * Update a saved payment profile — typically to renew the expiration date.
+ * To preserve the stored PAN, pass the masked cardNumber exactly as returned
+ * by listPaymentProfiles (e.g., "XXXX1234"). validationMode is "none" because
+ * a masked card number cannot be submitted to the live gateway for re-validation.
+ * billTo is optional; include it to update billing address alongside the card.
+ */
+export async function updateCustomerPaymentProfile({ customerProfileId, paymentProfileId, cardNumber, expirationDate, billTo }) {
+  const missing = [
+    !customerProfileId && "customerProfileId",
+    !paymentProfileId && "paymentProfileId",
+    !cardNumber && "cardNumber",
+    !expirationDate && "expirationDate",
+  ].filter(Boolean);
+  if (missing.length) {
+    throw new Error(`[Authorize.net] updateCustomerPaymentProfile: required fields missing: ${missing.join(", ")}`);
+  }
+
+  const paymentProfile = {
+    customerPaymentProfileId: paymentProfileId,
+    payment: {
+      creditCard: {
+        cardNumber,
+        expirationDate,
+      },
+    },
+  };
+  if (billTo) paymentProfile.billTo = billTo;
+
+  await apiRequest({
+    updateCustomerPaymentProfileRequest: {
+      merchantAuthentication: merchantAuth(),
+      customerProfileId,
+      paymentProfile,
+      validationMode: "none",
+    },
+  });
 }
 
 /**
