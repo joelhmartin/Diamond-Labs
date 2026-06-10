@@ -2,6 +2,9 @@ import { authenticate } from "../middleware/authenticate.js";
 import { requireApprovedDoctor, requireAdmin } from "../middleware/require-role.js";
 import * as seazonaService from "../services/seazona.service.js";
 import { ERROR_CODES } from "@my-app/shared";
+import { db } from "../config/database.js";
+import { invoicePayments } from "../db/schema/index.js";
+import { and, eq, sql } from "drizzle-orm";
 
 /**
  * Normalize a Seazona invoice into the shape the frontend renders.
@@ -12,10 +15,22 @@ import { ERROR_CODES } from "@my-app/shared";
  *
  * The Seazona API does NOT expose paid-vs-unpaid on the invoice itself —
  * `status` is a workflow state ("Shipped", "Hold", "In Production", …).
- * Payment reconciliation would require cross-referencing with /v1/payments,
- * which has no bulk list endpoint. For now we surface Seazona's own status.
+ *
+ * @param {object} inv - Raw Seazona invoice object.
+ * @param {number} [portalPaid=0] - Sum of payments recorded in the local
+ *   invoice_payments ledger (Authorize.net charges made through this portal).
+ *   Payments entered directly in Seazona by staff are NOT included here.
  */
-function normalizeInvoice(inv) {
+function normalizeInvoice(inv, portalPaid = 0) {
+  const total = Number(inv.total || 0);
+  // Round to 2 decimal places; Drizzle returns numeric columns as strings.
+  const portalPaidAmount = Math.round(parseFloat(portalPaid || 0) * 100) / 100;
+  // Floor balance at 0 — over-payment should not produce a negative balance
+  // that the UI could inadvertently multiply into a new charge.
+  const portalBalance = Math.max(0, Math.round((total - portalPaidAmount) * 100) / 100);
+  // Float epsilon: anything under half a cent is considered fully paid.
+  const portalPaidFlag = portalBalance < 0.005;
+
   return {
     id: inv.id,
     invoiceNumber: inv.invoiceNumber,
@@ -26,11 +41,41 @@ function normalizeInvoice(inv) {
     sales: Number(inv.sales || 0),
     tax: Number(inv.tax || 0),
     discounts: Number(inv.discounts || 0),
-    total: Number(inv.total || 0),
+    total,
     status: inv.status || "",
     due: inv.due || null,
     lastModified: inv.lastModified || null,
+    // Portal-payment ledger fields (Authorize.net charges made via this portal
+    // only — payments entered directly in Seazona are NOT reflected here).
+    portalPaidAmount,
+    portalBalance,
+    portalPaid: portalPaidFlag,
   };
+}
+
+/**
+ * Return a Map of { [seazonaInvoiceId]: totalPaidAmount } for all invoice_payments
+ * rows belonging to `userId`. One grouped SELECT — avoids N queries on the list path.
+ * Amounts are numeric(12,2) → Drizzle returns strings; we convert on the way out.
+ *
+ * @param {string} userId
+ * @returns {Promise<Record<string, number>>}
+ */
+async function buildPortalPaidMap(userId) {
+  const rows = await db
+    .select({
+      seazonaInvoiceId: invoicePayments.seazonaInvoiceId,
+      totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
+    })
+    .from(invoicePayments)
+    .where(eq(invoicePayments.userId, userId))
+    .groupBy(invoicePayments.seazonaInvoiceId);
+
+  const map = {};
+  for (const row of rows) {
+    map[row.seazonaInvoiceId] = parseFloat(row.totalPaid || 0);
+  }
+  return map;
 }
 
 export default async function invoiceRoutes(fastify) {
@@ -93,13 +138,17 @@ export default async function invoiceRoutes(fastify) {
       return reply.code(400).send({ error: ERROR_CODES.SEAZONA_CLIENT_NOT_LINKED });
     }
 
-    // Fetch all invoices and filter by the doctor's client ID
-    const allInvoices = request.query.lastModified
-      ? await seazonaService.getInvoices(request.query.lastModified)
-      : await seazonaService.getAllInvoices();
+    // Fetch Seazona invoices and the local portal-payment ledger in parallel.
+    const [allInvoices, portalPaidMap] = await Promise.all([
+      request.query.lastModified
+        ? seazonaService.getInvoices(request.query.lastModified)
+        : seazonaService.getAllInvoices(),
+      buildPortalPaidMap(request.user.id),
+    ]);
+
     const doctorInvoices = allInvoices
       .filter((inv) => String(inv.clientId) === String(seazonaClientId))
-      .map(normalizeInvoice);
+      .map((inv) => normalizeInvoice(inv, portalPaidMap[String(inv.id)] || 0));
 
     return { data: doctorInvoices };
   });
@@ -124,6 +173,21 @@ export default async function invoiceRoutes(fastify) {
       return reply.code(403).send({ error: ERROR_CODES.FORBIDDEN });
     }
 
-    return { data: invoice };
+    // Aggregate portal payments for this single invoice.
+    const invoiceId = String(request.params.id);
+    const [paymentRow] = await db
+      .select({
+        totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
+      })
+      .from(invoicePayments)
+      .where(
+        and(
+          eq(invoicePayments.userId, request.user.id),
+          eq(invoicePayments.seazonaInvoiceId, invoiceId)
+        )
+      );
+
+    const portalPaid = parseFloat(paymentRow?.totalPaid || 0);
+    return { data: normalizeInvoice(invoice, portalPaid) };
   });
 }
