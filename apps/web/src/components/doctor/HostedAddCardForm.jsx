@@ -41,9 +41,19 @@ export function HostedAddCardForm({
   // fresh object literals each render.
   const tokenBodyRef = useRef(tokenBody);
 
+  // Keep refs current so the install effect (deps=[]) always calls the latest
+  // callbacks without needing to re-install the global handler on each render.
+  const onCompleteRef = useRef(onComplete);
+  const onCancelRef = useRef(onCancel);
+  useEffect(() => { onCompleteRef.current = onComplete; }, [onComplete]);
+  useEffect(() => { onCancelRef.current = onCancel; }, [onCancel]);
+
   // Install the IFrameCommunicator handler. The hosted profile page fires
   // action=successfulSave on completion and action=cancel on dismissal — the
   // same relay and global as HostedPaymentForm, but different action names.
+  // deps=[] so the handler is installed exactly once; refs above keep the
+  // callbacks fresh, preventing a race where a re-render during the iframe
+  // session tears down and reinstalls the handler and drops the message.
   useEffect(() => {
     const handle = (queryStr) => {
       let params;
@@ -59,16 +69,16 @@ export function HostedAddCardForm({
         const h = parseInt(params.get("height"), 10);
         if (h && iframeRef.current) iframeRef.current.style.height = `${h + 30}px`;
       } else if (action === "successfulSave") {
-        onComplete?.();
+        onCompleteRef.current?.();
       } else if (action === "cancel") {
-        onCancel?.();
+        onCancelRef.current?.();
       }
     };
 
     const prev = window.AuthorizeNetIFrame;
     window.AuthorizeNetIFrame = { onReceiveCommunication: handle };
     return () => { window.AuthorizeNetIFrame = prev; };
-  }, [onComplete, onCancel]);
+  }, []); // stable — callbacks are accessed via refs
 
   // Fetch the session token once on mount.
   useEffect(() => {

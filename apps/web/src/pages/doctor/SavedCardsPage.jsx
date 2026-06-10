@@ -55,6 +55,12 @@ export function SavedCardsPage() {
       addToast({ message: "Month must be between 01 and 12", type: "error" });
       return;
     }
+    const now = new Date();
+    const y = parseInt(yyyy, 10);
+    if (y < now.getFullYear() || (y === now.getFullYear() && month < now.getMonth() + 1)) {
+      addToast({ message: "Expiry date is in the past", type: "error" });
+      return;
+    }
     const expirationDate = `${yyyy}-${mm}`;
 
     setSaving(true);
@@ -133,6 +139,7 @@ export function SavedCardsPage() {
                     <button
                       onClick={() => openEdit(card)}
                       title="Edit expiration"
+                      aria-label="Edit expiration date"
                       className={`rounded-lg p-2 transition-colors ${
                         editingCard === card.paymentProfileId
                           ? "bg-blue-50 text-blue-500"
@@ -196,10 +203,15 @@ export function SavedCardsPage() {
       {/* Add-card modal — hosted Authorize.net iframe (SAQ A) */}
       {showAddCard && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
-            style={{ maxHeight: "90vh" }}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="relative w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
+            style={{ maxHeight: "90vh" }}
+          >
             <button
               onClick={() => setShowAddCard(false)}
+              aria-label="Close"
               className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
             >
               <X className="h-5 w-5" />
