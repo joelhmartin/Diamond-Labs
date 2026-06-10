@@ -257,11 +257,12 @@ export default async function paymentRoutes(fastify) {
     return { data: { paymentProfileId } };
   });
 
-  // Get a hosted add-card token (SAQ A). The frontend POSTs the token to addCardUrl
-  // to load Authorize.net's hosted card-entry page inside an iframe. On success,
-  // Authorize.net stores the new payment profile under the doctor's CIM profile
-  // (created lazily here if needed). The new customerPaymentProfileId lives at the
-  // gateway and is retrieved live via GET /payments/saved-cards — no local table needed.
+  // Get a hosted add-card token (SAQ A). The iframe is pointed at addCardUrl;
+  // the token is submitted as a form-POST body to authenticate the hosted session —
+  // card data is entered entirely on Authorize.net's domain. On success, Authorize.net
+  // stores the new payment profile under the doctor's CIM profile (created lazily here
+  // if needed). The new customerPaymentProfileId lives at the gateway and is retrieved
+  // live via GET /payments/saved-cards — no local table needed.
   fastify.post("/payments/saved-cards/hosted-token", {
     preHandler: [authenticate, requireApprovedDoctor],
   }, async (request, reply) => {
@@ -291,9 +292,16 @@ export default async function paymentRoutes(fastify) {
     const { expirationDate, billTo } = request.body || {};
     const { profileId } = request.params;
 
-    if (!expirationDate) {
+    if (!expirationDate || !/^\d{4}-\d{2}$/.test(expirationDate)) {
       return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "expirationDate is required (format: YYYY-MM)." } });
     }
+    if (billTo !== undefined && (billTo === null || typeof billTo !== "object" || Array.isArray(billTo))) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "billTo must be a plain object." } });
+    }
+    const BILL_TO_ALLOWED_KEYS = ["firstName", "lastName", "company", "address", "city", "state", "zip", "country", "phoneNumber"];
+    const sanitizedBillTo = billTo
+      ? Object.fromEntries(Object.entries(billTo).filter(([k]) => BILL_TO_ALLOWED_KEYS.includes(k)))
+      : undefined;
 
     const customerProfileId = request.user.authorizeNetCustomerProfileId;
     if (!customerProfileId) {
@@ -311,7 +319,7 @@ export default async function paymentRoutes(fastify) {
       paymentProfileId: profileId,
       cardNumber: profile.cardNumber,
       expirationDate,
-      billTo: billTo || undefined,
+      billTo: sanitizedBillTo,
     });
 
     return { data: { paymentProfileId: profileId, expirationDate } };

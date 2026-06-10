@@ -261,8 +261,9 @@ export async function getHostedPaymentPageToken(
  * Accept Hosted Customer Profile: get a one-time token for the hosted
  * add-payment-method page (getHostedProfilePageRequest). The customer enters
  * their card on Authorize.net's domain — card data never touches our DOM (SAQ A).
- * Returns { token, addCardUrl } where addCardUrl is the URL the frontend should
- * POST the token to (production vs sandbox mirrors the API credentials in use).
+ * Returns { token, addCardUrl }. The iframe is pointed at addCardUrl; the token
+ * is submitted as a form-POST body to authenticate the hosted session (production
+ * vs sandbox mirrors the API credentials in use).
  */
 export async function getHostedAddCardToken({ customerProfileId, iframeCommunicatorUrl }, mode) {
   if (!customerProfileId) {
