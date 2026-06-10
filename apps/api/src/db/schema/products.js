@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { pgTable, varchar, text, boolean, numeric, timestamp, index } from "drizzle-orm/pg-core";
 
 /**
@@ -34,5 +35,7 @@ export const products = pgTable("products", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   index("products_code_idx").on(table.code),
-  index("products_purchasable_idx").on(table.purchasable),
+  // Partial index — the shop only ever queries purchasable products, and a plain
+  // B-tree on a boolean is near-useless. Index only the `true` rows.
+  index("products_purchasable_idx").on(table.purchasable).where(sql`"purchasable" = true`),
 ]);

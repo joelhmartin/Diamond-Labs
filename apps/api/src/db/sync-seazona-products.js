@@ -16,8 +16,11 @@
  *
  * Idempotent. Safe to run on a schedule (cron / Cloud Scheduler) — re-running
  * with no upstream changes is a no-op aside from refreshing `lastSyncedAt`.
+ *
+ * NOTE: products removed upstream in Seazona are NOT deleted locally — stale rows
+ * persist (intentional, to avoid clobbering shop-presentation data and orphaning
+ * references); cleanup of removed products is left to a future manual/soft-delete pass.
  */
-import { eq } from "drizzle-orm";
 import { db, queryClient } from "../config/database.js";
 import { products } from "./schema/index.js";
 import * as seazonaService from "../services/seazona.service.js";
@@ -28,7 +31,11 @@ const DRY_RUN = process.env.DRY_RUN === "1";
 function normalizePrice(raw) {
   if (raw === null || raw === undefined || raw === "") return null;
   const n = Number(raw);
-  return Number.isFinite(n) ? n.toFixed(2) : null;
+  if (!Number.isFinite(n)) {
+    console.warn(`normalizePrice: non-numeric price ${JSON.stringify(raw)} — storing null`);
+    return null;
+  }
+  return n.toFixed(2);
 }
 
 async function run() {
@@ -47,6 +54,22 @@ async function run() {
     .select({ seazonaProductId: products.seazonaProductId })
     .from(products);
   const existingIds = new Set(existingRows.map((r) => r.seazonaProductId));
+
+  // Guard against silent failure: seazonaService.listProducts() returns [] both
+  // for a genuinely empty catalog AND for any API failure (bad creds, non-2xx,
+  // network). If the remote is empty but we already have local rows, treat it as
+  // a likely connectivity/credential failure rather than a real empty catalog —
+  // otherwise a scheduled job would report healthy while syncing nothing. A
+  // genuine first run (empty local table) is allowed to proceed with 0 products.
+  if (remote.length === 0 && existingIds.size > 0) {
+    console.error(
+      `ERROR: Seazona returned 0 products but the local table has ${existingIds.size} rows. ` +
+        "This almost certainly indicates an API credential or connectivity failure, not an " +
+        "empty catalog. Aborting without modifying any data.",
+    );
+    await queryClient.end();
+    process.exit(1);
+  }
 
   for (const p of remote) {
     const seazonaProductId = p.id != null ? String(p.id) : null;

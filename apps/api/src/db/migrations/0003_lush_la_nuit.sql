@@ -14,4 +14,4 @@ CREATE TABLE "products" (
 );
 --> statement-breakpoint
 CREATE INDEX "products_code_idx" ON "products" USING btree ("code");--> statement-breakpoint
-CREATE INDEX "products_purchasable_idx" ON "products" USING btree ("purchasable");
+CREATE INDEX "products_purchasable_idx" ON "products" USING btree ("purchasable") WHERE "purchasable" = true;
