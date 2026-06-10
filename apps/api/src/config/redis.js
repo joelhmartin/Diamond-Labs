@@ -18,10 +18,40 @@ async function get(key) {
   return rows.length ? rows[0].value : null;
 }
 
-// Mirrors redis.set(key, value, "EX", seconds). Other modes aren't used here.
-async function set(key, value, mode, seconds) {
-  const expiresAt =
-    mode === "EX" && seconds ? new Date(Date.now() + Number(seconds) * 1000).toISOString() : null;
+// Mirrors redis.set(key, value, ...flags). Supports the ioredis flag forms this
+// app uses: `"EX", seconds` (TTL) and `"NX"` (set-if-not-exists, atomic). Flags
+// can be combined, e.g. set(key, val, "EX", 120, "NX") — an atomic lock-acquire
+// with TTL in a single round-trip.
+async function set(key, value, ...flags) {
+  let seconds = null;
+  let nx = false;
+  for (let i = 0; i < flags.length; i++) {
+    const flag = String(flags[i]).toUpperCase();
+    if (flag === "EX") {
+      seconds = Number(flags[++i]);
+    } else if (flag === "NX") {
+      nx = true;
+    }
+  }
+  const expiresAt = seconds ? new Date(Date.now() + seconds * 1000).toISOString() : null;
+
+  if (nx) {
+    // Atomic set-if-not-exists with lazy expiry: INSERT when the key is absent,
+    // or take over a row whose TTL has already lapsed; a still-live row blocks
+    // the write (the DO UPDATE … WHERE is false → no row touched → no RETURNING).
+    // Returns "OK" only when the caller actually acquired the key, else null —
+    // matching ioredis SET NX semantics.
+    const rows = await sql`
+      INSERT INTO kv_store (key, value, expires_at)
+      VALUES (${key}, ${String(value)}, ${expiresAt}::timestamptz)
+      ON CONFLICT (key) DO UPDATE
+        SET value = EXCLUDED.value, expires_at = EXCLUDED.expires_at
+        WHERE kv_store.expires_at IS NOT NULL AND kv_store.expires_at <= now()
+      RETURNING key
+    `;
+    return rows.length ? "OK" : null;
+  }
+
   await sql`
     INSERT INTO kv_store (key, value, expires_at)
     VALUES (${key}, ${String(value)}, ${expiresAt}::timestamptz)

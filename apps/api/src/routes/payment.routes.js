@@ -18,6 +18,8 @@ import { ERROR_CODES } from "@my-app/shared";
 // NOTE: keep in sync with apps/web/src/pages/marketing/Checkout.jsx.
 const TAX_RATE = 0.08; // applied only to products.taxable line items
 const SHIPPING_FLAT = 12; // flat per-order, charged when subtotal > 0
+const MAX_QTY = 999; // per-line quantity ceiling — guards against an absurd qty
+// inflating the total past anything real and reaching the gateway as a 500.
 
 // Idempotency TTLs for /payments/checkout (kv-store / Redis shim).
 const IDEMPOTENCY_RESULT_TTL = 24 * 60 * 60; // 24h — cached completed response
@@ -66,7 +68,7 @@ function buildAddresses(shipping, phone) {
     zip: String(shipping.postalCode).slice(0, 20),
     country: String(shipping.country || "US").slice(0, 60),
   };
-  const billTo = phone ? { ...base, phoneNumber: String(phone).slice(0, 25) } : { ...base };
+  const billTo = { ...base, ...(phone ? { phoneNumber: String(phone).slice(0, 25) } : {}) };
   return { billTo, shipTo: { ...base } };
 }
 
@@ -256,6 +258,14 @@ export default async function paymentRoutes(fastify) {
           error: { ...ERROR_CODES.VALIDATION_ERROR, message: `Invalid quantity for item ${item.id}.` },
         });
       }
+      if (qty > MAX_QTY) {
+        return reply.code(422).send({
+          error: {
+            ...ERROR_CODES.VALIDATION_ERROR,
+            message: `Quantity for item ${item.id} exceeds the maximum of ${MAX_QTY} per order. Contact the lab for bulk orders.`,
+          },
+        });
+      }
       const rows = await db
         .select()
         .from(products)
@@ -274,10 +284,9 @@ export default async function paymentRoutes(fastify) {
       if (product.taxable) taxableBase = round2(taxableBase + line);
     }
 
-    subtotal = round2(subtotal);
     const tax = round2(taxableBase * TAX_RATE);
-    const shipping_ = subtotal > 0 ? SHIPPING_FLAT : 0;
-    const total = round2(subtotal + tax + shipping_);
+    const shippingCost = subtotal > 0 ? SHIPPING_FLAT : 0;
+    const total = round2(subtotal + tax + shippingCost);
 
     if (!(total > 0)) {
       return reply.code(422).send({
@@ -295,13 +304,15 @@ export default async function paymentRoutes(fastify) {
       );
     }
 
-    // ── Acquire an in-flight lock (atomic incr) right before charging. First
-    // caller gets count 1; a concurrent duplicate sees >1 and is rejected 409
-    // (or replays the cached result if the first one already finished).
+    // ── Acquire an in-flight lock right before charging. A single atomic
+    // SET key "1" EX <ttl> NX both creates the lock and stamps its TTL in one
+    // round-trip — no crash window can strand a never-expiring lock (the old
+    // incr + separate expire was non-atomic). The first caller gets "OK"; a
+    // concurrent duplicate for the same key gets null and is rejected 409 (or
+    // replays the cached result if the first one already finished).
     if (lockKey) {
-      const count = await redis.incr(lockKey);
-      await redis.expire(lockKey, IDEMPOTENCY_LOCK_TTL);
-      if (count > 1) {
+      const acquired = await redis.set(lockKey, "1", "EX", IDEMPOTENCY_LOCK_TTL, "NX");
+      if (!acquired) {
         const cached = safeParse(await redis.get(resultKey));
         if (cached) return { data: cached };
         return reply.code(409).send({
@@ -329,8 +340,14 @@ export default async function paymentRoutes(fastify) {
         shipTo,
       });
     } catch (err) {
-      // Release the lock so the shopper can legitimately retry the same submit.
-      if (lockKey) await redis.del(lockKey);
+      // Release the lock (best-effort) so the shopper can legitimately retry the
+      // same submit. A kv-store failure here must NOT mask the real charge error
+      // — log it and rethrow the original. (A stranded lock self-expires via TTL.)
+      if (lockKey) {
+        await redis
+          .del(lockKey)
+          .catch((delErr) => fastify.log.warn({ delErr }, "checkout lock release failed"));
+      }
       throw err;
     }
 
@@ -340,13 +357,21 @@ export default async function paymentRoutes(fastify) {
       amount: total,
       subtotal,
       tax,
-      shipping: shipping_,
+      shipping: shippingCost,
       email,
     };
 
-    // Cache the completed result so a repeat with the same key replays it.
+    // Cache the completed result so a repeat with the same key replays it. The
+    // card is ALREADY charged at this point — a kv-store write failure here must
+    // never surface as a 500 to the shopper, so guard it and proceed regardless
+    // (worst case: an exact-same-key retry re-charges, but the frontend mints a
+    // fresh idempotency key per submit, so that path isn't reachable in practice).
     if (resultKey) {
-      await redis.set(resultKey, JSON.stringify(responseData), "EX", IDEMPOTENCY_RESULT_TTL);
+      try {
+        await redis.set(resultKey, JSON.stringify(responseData), "EX", IDEMPOTENCY_RESULT_TTL);
+      } catch (cacheErr) {
+        fastify.log.warn({ cacheErr, invoiceNumber }, "checkout result cache write failed — charge already succeeded");
+      }
     }
 
     fastify.log.info(
