@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
 import {
   ArrowRight,
   Globe,
@@ -11,8 +10,7 @@ import {
 } from "lucide-react";
 import { ModelViewer } from "../../components/ModelViewer";
 import { PRODUCTS } from "../../data/products";
-
-gsap.registerPlugin(ScrollTrigger);
+import { playOnView } from "../../lib/playOnView";
 
 /* ─── HERO ─── */
 function AboutHero() {
@@ -82,17 +80,26 @@ function Mission() {
   const ref = useRef(null);
 
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-mission]", {
-        y: 30,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.1,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 70%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-mission]",
+        { y: 30, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.8,
+          stagger: 0.1,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (
@@ -134,17 +141,26 @@ function DrOlmos() {
   const ref = useRef(null);
 
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-olmos]", {
-        y: 40,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.12,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 70%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-olmos]",
+        { y: 40, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.8,
+          stagger: 0.12,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (
@@ -242,17 +258,26 @@ function Values() {
   const ref = useRef(null);
 
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-value-card]", {
-        y: 60,
-        opacity: 0,
-        duration: 0.7,
-        stagger: 0.15,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 70%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-value-card]",
+        { y: 60, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.7,
+          stagger: 0.15,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   const values = [
@@ -315,17 +340,26 @@ function CertifiedLabs() {
   const ref = useRef(null);
 
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-map]", {
-        y: 40,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.1,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 75%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-map]",
+        { y: 40, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.8,
+          stagger: 0.1,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (
@@ -387,17 +421,26 @@ function DigitalWorkflow() {
   const ref = useRef(null);
 
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-workflow]", {
-        y: 40,
-        opacity: 0,
-        duration: 0.7,
-        stagger: 0.12,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 70%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-workflow]",
+        { y: 40, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.7,
+          stagger: 0.12,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   const steps = [
@@ -524,17 +567,26 @@ function Stats() {
   const ref = useRef(null);
 
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-stat]", {
-        y: 30,
-        opacity: 0,
-        duration: 0.7,
-        stagger: 0.1,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 80%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-stat]",
+        { y: 30, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.7,
+          stagger: 0.1,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   const stats = [

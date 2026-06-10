@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { playOnView } from "../../lib/playOnView";
 import {
   ArrowRight,
   GraduationCap,
@@ -14,8 +14,6 @@ import {
   Phone,
   Sparkles,
 } from "lucide-react";
-
-gsap.registerPlugin(ScrollTrigger);
 
 const LEVELS = [
   {
@@ -131,17 +129,26 @@ function Hero() {
 function Intro() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-crs-intro]", {
-        y: 30,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.1,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 70%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-crs-intro]",
+        { y: 30, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.8,
+          stagger: 0.1,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (
@@ -197,17 +204,26 @@ function Intro() {
 function Levels() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-level]", {
-        y: 40,
-        opacity: 0,
-        duration: 0.7,
-        stagger: 0.12,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 75%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-level]",
+        { y: 40, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.7,
+          stagger: 0.12,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (
@@ -265,17 +281,26 @@ function Levels() {
 function Focus() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-focus]", {
-        y: 30,
-        opacity: 0,
-        duration: 0.7,
-        stagger: 0.1,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 75%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-focus]",
+        { y: 30, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.7,
+          stagger: 0.1,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (
@@ -318,17 +343,26 @@ function Focus() {
 function Locations() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-loc]", {
-        y: 24,
-        opacity: 0,
-        duration: 0.6,
-        stagger: 0.08,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 80%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-loc]",
+        { y: 24, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.6,
+          stagger: 0.08,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (
@@ -401,17 +435,26 @@ function Locations() {
 function CTA() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-crs-cta]", {
-        y: 40,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.1,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 75%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-crs-cta]",
+        { y: 40, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.8,
+          stagger: 0.1,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (

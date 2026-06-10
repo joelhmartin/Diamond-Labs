@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
 import {
   ArrowRight,
   ExternalLink,
@@ -10,8 +9,7 @@ import {
   Star,
   Workflow,
 } from "lucide-react";
-
-gsap.registerPlugin(ScrollTrigger);
+import { playOnView } from "../../lib/playOnView";
 
 const REGIONS = [
   {
@@ -131,17 +129,26 @@ function Hero() {
 function Standard() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-std]", {
-        y: 30,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.1,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 70%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-std]",
+        { y: 30, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.8,
+          stagger: 0.1,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (
@@ -266,17 +273,26 @@ function LabCard({ lab }) {
 function Directory() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-region]", {
-        y: 30,
-        opacity: 0,
-        duration: 0.7,
-        stagger: 0.12,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 75%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-region]",
+        { y: 30, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.7,
+          stagger: 0.12,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (
@@ -329,17 +345,26 @@ function Directory() {
 function CTA() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-lab-cta]", {
-        y: 40,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.1,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 75%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-lab-cta]",
+        { y: 40, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.8,
+          stagger: 0.1,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (

@@ -1,9 +1,7 @@
 import { useEffect, useRef } from "react";
 import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { playOnView } from "../../lib/playOnView";
 import { Play } from "lucide-react";
-
-gsap.registerPlugin(ScrollTrigger);
 
 const VIDEOS = [
   {
@@ -41,6 +39,7 @@ export function InstructionalVideosPage() {
   const sectionRef = useRef(null);
 
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
       gsap.from("[data-vid-hero]", {
         y: 30,
@@ -50,19 +49,25 @@ export function InstructionalVideosPage() {
         ease: "power3.out",
         delay: 0.2,
       });
-      gsap.from("[data-vid-card]", {
-        y: 30,
-        opacity: 0,
-        duration: 0.6,
-        stagger: 0.08,
-        ease: "power3.out",
-        scrollTrigger: {
-          trigger: "[data-vid-grid]",
-          start: "top 80%",
-        },
-      });
+      const tween = gsap.fromTo(
+        "[data-vid-card]",
+        { y: 30, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.6,
+          stagger: 0.08,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      const grid = sectionRef.current?.querySelector("[data-vid-grid]");
+      cleanup = playOnView(grid, tween);
     }, sectionRef);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (

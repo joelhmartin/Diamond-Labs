@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
 import {
   ArrowRight,
   Award,
@@ -11,8 +10,7 @@ import {
   Microscope,
   Quote,
 } from "lucide-react";
-
-gsap.registerPlugin(ScrollTrigger);
+import { playOnView } from "../../lib/playOnView";
 
 const CREDENTIALS = [
   { abbr: "DDS",      label: "Doctor of Dental Surgery — USC School of Dentistry" },
@@ -111,17 +109,26 @@ function Hero() {
 function Quotation() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-quote]", {
-        y: 30,
-        opacity: 0,
-        duration: 1,
-        stagger: 0.12,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 70%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-quote]",
+        { y: 30, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 1,
+          stagger: 0.12,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (
@@ -154,17 +161,26 @@ function Quotation() {
 function Biography() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-bio]", {
-        y: 30,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.1,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 70%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-bio]",
+        { y: 30, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.8,
+          stagger: 0.1,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (
@@ -224,17 +240,26 @@ function Biography() {
 function Credentials() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-cred]", {
-        y: 20,
-        opacity: 0,
-        duration: 0.5,
-        stagger: 0.04,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 80%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-cred]",
+        { y: 20, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.5,
+          stagger: 0.04,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (
@@ -271,17 +296,26 @@ function Credentials() {
 function GlobalReach() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-reach]", {
-        y: 30,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.1,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 70%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-reach]",
+        { y: 30, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.8,
+          stagger: 0.1,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (
@@ -345,17 +379,26 @@ function GlobalReach() {
 function CTA() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-olmos-cta]", {
-        y: 40,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.1,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 75%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-olmos-cta]",
+        { y: 40, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.8,
+          stagger: 0.1,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (

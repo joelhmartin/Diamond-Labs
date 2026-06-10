@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { playOnView } from "../../lib/playOnView";
 import {
   ArrowRight,
   Scan,
@@ -14,8 +14,6 @@ import {
   Archive,
   Gauge,
 } from "lucide-react";
-
-gsap.registerPlugin(ScrollTrigger);
 
 const PIPELINE = [
   {
@@ -145,17 +143,26 @@ function Hero() {
 function PipelineStats() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-dw-stat]", {
-        y: 20,
-        opacity: 0,
-        duration: 0.6,
-        stagger: 0.08,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 80%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-dw-stat]",
+        { y: 20, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.6,
+          stagger: 0.08,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   const items = [
@@ -186,17 +193,26 @@ function PipelineStats() {
 function Pipeline() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-stage]", {
-        y: 40,
-        opacity: 0,
-        duration: 0.7,
-        stagger: 0.08,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 75%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-stage]",
+        { y: 40, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.7,
+          stagger: 0.08,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (
@@ -252,17 +268,26 @@ function Pipeline() {
 function Advantages() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-adv]", {
-        y: 30,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.12,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 75%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-adv]",
+        { y: 30, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.8,
+          stagger: 0.12,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (
@@ -307,17 +332,26 @@ function Advantages() {
 function CTA() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-dw-cta]", {
-        y: 40,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.1,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 75%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-dw-cta]",
+        { y: 40, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.8,
+          stagger: 0.1,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (

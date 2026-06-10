@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { playOnView } from "../../lib/playOnView";
 import {
   ArrowRight,
   Scan,
@@ -540,20 +541,26 @@ function Features() {
   const sectionRef = useRef(null);
 
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-feature-card]", {
-        y: 60,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.15,
-        ease: "power3.out",
-        scrollTrigger: {
-          trigger: sectionRef.current,
-          start: "top 75%",
-        },
-      });
+      const tween = gsap.fromTo(
+        "[data-feature-card]",
+        { y: 60, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.8,
+          stagger: 0.15,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(sectionRef.current, tween);
     }, sectionRef);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (
@@ -594,25 +601,42 @@ function Philosophy() {
   const sectionRef = useRef(null);
 
   useEffect(() => {
+    let cleanupPhil;
+    let cleanupStat;
     const ctx = gsap.context(() => {
-      gsap.from("[data-phil]", {
-        y: 30,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.1,
-        ease: "power3.out",
-        scrollTrigger: { trigger: sectionRef.current, start: "top 65%" },
-      });
-      gsap.from("[data-phil-stat]", {
-        y: 20,
-        opacity: 0,
-        duration: 0.6,
-        stagger: 0.08,
-        ease: "power3.out",
-        scrollTrigger: { trigger: sectionRef.current, start: "top 50%" },
-      });
+      const philTween = gsap.fromTo(
+        "[data-phil]",
+        { y: 30, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.8,
+          stagger: 0.1,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanupPhil = playOnView(sectionRef.current, philTween);
+
+      const statTween = gsap.fromTo(
+        "[data-phil-stat]",
+        { y: 20, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.6,
+          stagger: 0.08,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanupStat = playOnView(sectionRef.current, statTween);
     }, sectionRef);
-    return () => ctx.revert();
+    return () => {
+      cleanupPhil?.();
+      cleanupStat?.();
+      ctx.revert();
+    };
   }, []);
 
   const stats = [
@@ -1017,20 +1041,26 @@ function CTASection() {
   const sectionRef = useRef(null);
 
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-cta-anim]", {
-        y: 40,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.1,
-        ease: "power3.out",
-        scrollTrigger: {
-          trigger: sectionRef.current,
-          start: "top 75%",
-        },
-      });
+      const tween = gsap.fromTo(
+        "[data-cta-anim]",
+        { y: 40, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.8,
+          stagger: 0.1,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(sectionRef.current, tween);
     }, sectionRef);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   return (

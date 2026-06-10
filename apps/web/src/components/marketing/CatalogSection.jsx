@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 import { useCatalogStore } from "../../stores/catalog.store";
 import { CatalogCard } from "./CatalogCard";
 import { CatalogDetail } from "./CatalogDetail";
 import { usePagination } from "../../hooks/usePagination.js";
 import { Pagination } from "../ui/Pagination.jsx";
-
-gsap.registerPlugin(ScrollTrigger);
+import { playOnView } from "../../lib/playOnView";
 
 const ALL = "All";
 
@@ -19,17 +17,26 @@ export function CatalogSection() {
   const ref = useRef(null);
 
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-cat-head]", {
-        y: 24,
-        opacity: 0,
-        duration: 0.7,
-        stagger: 0.08,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 80%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-cat-head]",
+        { y: 24, opacity: 0 },
+        {
+          y: 0,
+          opacity: 1,
+          duration: 0.7,
+          stagger: 0.08,
+          ease: "power3.out",
+          paused: true,
+        }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => {
+      cleanup?.();
+      ctx.revert();
+    };
   }, []);
 
   const products = useCatalogStore((s) => s.products);

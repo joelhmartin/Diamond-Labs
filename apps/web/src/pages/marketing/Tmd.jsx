@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { playOnView } from "../../lib/playOnView";
 import {
   ArrowRight,
   Sun,
@@ -11,8 +11,6 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { ProductCatalog } from "../../components/marketing/ProductCatalog";
-
-gsap.registerPlugin(ScrollTrigger);
 
 const TMD_TABS = [
   { key: "ond", label: "OND", sub: "Olmos Neuromuscular Device" },
@@ -114,17 +112,16 @@ const SYMPTOMS = [
 function Intro() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-intro]", {
-        y: 30,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.1,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 80%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-intro]",
+        { y: 30, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.8, stagger: 0.1, ease: "power3.out", paused: true }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => { cleanup?.(); ctx.revert(); };
   }, []);
 
   return (
@@ -161,17 +158,16 @@ function Intro() {
 function Stats() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-stat]", {
-        y: 30,
-        opacity: 0,
-        duration: 0.7,
-        stagger: 0.1,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 80%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-stat]",
+        { y: 30, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.7, stagger: 0.1, ease: "power3.out", paused: true }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => { cleanup?.(); ctx.revert(); };
   }, []);
 
   const stats = [
@@ -208,17 +204,16 @@ function Stats() {
 function Definition() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-def]", {
-        y: 30,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.1,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 70%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-def]",
+        { y: 30, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.8, stagger: 0.1, ease: "power3.out", paused: true }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => { cleanup?.(); ctx.revert(); };
   }, []);
 
   return (
@@ -270,17 +265,16 @@ function Definition() {
 function DayOrthotics() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-day-card]", {
-        y: 40,
-        opacity: 0,
-        duration: 0.7,
-        stagger: 0.1,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 75%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-day-card]",
+        { y: 40, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.7, stagger: 0.1, ease: "power3.out", paused: true }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => { cleanup?.(); ctx.revert(); };
   }, []);
 
   return (
@@ -344,17 +338,16 @@ function DayOrthotics() {
 function NightOrthotics() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-night-card]", {
-        y: 40,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.12,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 75%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-night-card]",
+        { y: 40, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.8, stagger: 0.12, ease: "power3.out", paused: true }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => { cleanup?.(); ctx.revert(); };
   }, []);
 
   return (
@@ -418,17 +411,16 @@ function NightOrthotics() {
 function Symptoms() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-sym]", {
-        y: 20,
-        opacity: 0,
-        duration: 0.5,
-        stagger: 0.03,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 80%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-sym]",
+        { y: 20, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.5, stagger: 0.03, ease: "power3.out", paused: true }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => { cleanup?.(); ctx.revert(); };
   }, []);
 
   return (
@@ -472,17 +464,16 @@ function Symptoms() {
 function CTA() {
   const ref = useRef(null);
   useEffect(() => {
+    let cleanup;
     const ctx = gsap.context(() => {
-      gsap.from("[data-tmd-cta]", {
-        y: 40,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.1,
-        ease: "power3.out",
-        scrollTrigger: { trigger: ref.current, start: "top 75%" },
-      });
+      const tween = gsap.fromTo(
+        "[data-tmd-cta]",
+        { y: 40, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.8, stagger: 0.1, ease: "power3.out", paused: true }
+      );
+      cleanup = playOnView(ref.current, tween);
     }, ref);
-    return () => ctx.revert();
+    return () => { cleanup?.(); ctx.revert(); };
   }, []);
 
   return (
