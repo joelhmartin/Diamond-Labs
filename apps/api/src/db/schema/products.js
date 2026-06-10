@@ -30,11 +30,17 @@ export const products = pgTable("products", {
   purchasable: boolean("purchasable").notNull().default(false),
   category: varchar("category", { length: 100 }),
 
+  // Link to a `catalog.js` shop SKU id (e.g. "16", "112"). Shop-local data set
+  // by an admin in the Products surface — NEVER touched by the Seazona sync.
+  // A shop SKU is only orderable once mapped to a Seazona product here.
+  catalogId: varchar("catalog_id", { length: 100 }),
+
   lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   index("products_code_idx").on(table.code),
+  index("products_catalog_id_idx").on(table.catalogId),
   // Partial index — the shop only ever queries purchasable products, and a plain
   // B-tree on a boolean is near-useless. Index only the `true` rows.
   index("products_purchasable_idx").on(table.purchasable).where(sql`"purchasable" = true`),

@@ -1,11 +1,12 @@
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, ne, asc, desc, sql } from "drizzle-orm";
 import { db } from "../config/database.js";
-import { users, accounts, memberships } from "../db/schema/index.js";
+import { users, accounts, memberships, products } from "../db/schema/index.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireAdmin } from "../middleware/require-role.js";
 import * as authService from "../services/auth.service.js";
 import * as emailService from "../services/email.service.js";
 import * as seazonaService from "../services/seazona.service.js";
+import { syncSeazonaProducts, EmptyRemoteError } from "../db/sync-seazona-products.js";
 import { env } from "../config/env.js";
 import { ERROR_CODES } from "@my-app/shared";
 
@@ -217,5 +218,126 @@ export default async function adminRoutes(fastify) {
     }
 
     return { data: { order, client } };
+  });
+
+  // ──────────────────────────────────────────────────────────────
+  // PRODUCTS (local Seazona mirror — see db/schema/products.js)
+  // ──────────────────────────────────────────────────────────────
+
+  // All rows from the products mirror — Seazona-authoritative + shop-local.
+  fastify.get("/admin/products", {
+    preHandler: [authenticate, requireAdmin],
+  }, async () => {
+    const rows = await db.select().from(products).orderBy(asc(products.name));
+
+    const summary = {
+      total: rows.length,
+      purchasable: rows.filter((p) => p.purchasable).length,
+      mapped: rows.filter((p) => p.catalogId).length,
+      // Products an admin still needs to act on: shoppable but unlinked, OR
+      // linked but not yet flagged shoppable.
+      needsLinking: rows.filter(
+        (p) => (p.purchasable && !p.catalogId) || (!p.purchasable && p.catalogId),
+      ).length,
+      lastSyncedAt: rows.reduce((max, p) => {
+        if (!p.lastSyncedAt) return max;
+        const t = new Date(p.lastSyncedAt).getTime();
+        return t > max ? t : max;
+      }, 0) || null,
+    };
+
+    return { data: { products: rows, summary } };
+  });
+
+  // Edit shop-local fields only. Seazona-authoritative fields (code/name/taxable/
+  // price) are NEVER editable here — they come only from sync.
+  fastify.patch("/admin/products/:seazonaProductId", {
+    preHandler: [authenticate, requireAdmin],
+  }, async (request, reply) => {
+    const { seazonaProductId } = request.params;
+    const body = request.body || {};
+
+    // Whitelist + type-validate. Any non-whitelisted key is silently ignored.
+    const update = {};
+
+    if ("purchasable" in body) {
+      if (typeof body.purchasable !== "boolean") {
+        return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "purchasable must be a boolean." } });
+      }
+      update.purchasable = body.purchasable;
+    }
+
+    if ("catalogId" in body) {
+      if (body.catalogId !== null && typeof body.catalogId !== "string") {
+        return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "catalogId must be a string or null." } });
+      }
+      const trimmed = typeof body.catalogId === "string" ? body.catalogId.trim() : body.catalogId;
+      update.catalogId = trimmed ? trimmed : null;
+    }
+
+    for (const key of ["imageUrl", "description", "category"]) {
+      if (key in body) {
+        if (body[key] !== null && typeof body[key] !== "string") {
+          return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: `${key} must be a string or null.` } });
+        }
+        const trimmed = typeof body[key] === "string" ? body[key].trim() : body[key];
+        update[key] = trimmed ? trimmed : null;
+      }
+    }
+
+    if (Object.keys(update).length === 0) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "No editable fields supplied." } });
+    }
+
+    // Enforce one product per catalogId at the app level. If another product is
+    // already mapped to this catalogId, reject rather than silently stealing it.
+    if (update.catalogId) {
+      const [conflict] = await db
+        .select({ seazonaProductId: products.seazonaProductId, name: products.name })
+        .from(products)
+        .where(and(eq(products.catalogId, update.catalogId), ne(products.seazonaProductId, seazonaProductId)))
+        .limit(1);
+      if (conflict) {
+        return reply.code(409).send({
+          error: {
+            code: "CATALOG_ID_TAKEN",
+            status: 409,
+            message: `Catalog SKU "${update.catalogId}" is already mapped to "${conflict.name || conflict.seazonaProductId}". Unmap it there first.`,
+          },
+        });
+      }
+    }
+
+    update.updatedAt = new Date();
+
+    const [updated] = await db
+      .update(products)
+      .set(update)
+      .where(eq(products.seazonaProductId, seazonaProductId))
+      .returning();
+
+    if (!updated) return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+
+    return { data: { product: updated } };
+  });
+
+  // Trigger a read-only Seazona→local sync. May take a few seconds (~391 upserts).
+  fastify.post("/admin/products/sync", {
+    preHandler: [authenticate, requireAdmin],
+  }, async (request, reply) => {
+    try {
+      const { inserted, updated, total, skippedNoId, errors } =
+        await syncSeazonaProducts(db, { dryRun: false });
+      fastify.log.info({ inserted, updated, total, skippedNoId, errors: errors.length }, "admin product sync");
+      return { data: { inserted, updated, total, skippedNoId, errors: errors.length } };
+    } catch (err) {
+      if (err instanceof EmptyRemoteError) {
+        fastify.log.error({ err }, "admin product sync: empty remote guard tripped");
+        return reply.code(502).send({
+          error: { code: "SEAZONA_EMPTY_REMOTE", status: 502, message: err.message },
+        });
+      }
+      throw err;
+    }
   });
 }
