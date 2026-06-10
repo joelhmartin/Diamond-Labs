@@ -6,7 +6,8 @@ import { HostedPaymentForm } from "./HostedPaymentForm.jsx";
 import api from "../../config/api.js";
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-const balanceOf = (inv) => round2(parseFloat(inv.total) || 0);
+// Use portalBalance (partial-payment-aware) when present; fall back to gross total for safety.
+const balanceOf = (inv) => round2(inv.portalBalance != null ? inv.portalBalance : (parseFloat(inv.total) || 0));
 const idOf = (inv) => inv.id || inv.invoiceId;
 
 export function PaymentModal({ invoices, onClose, onSuccess }) {
