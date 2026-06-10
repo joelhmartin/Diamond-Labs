@@ -7,3 +7,4 @@ export { auditLog } from "./audit-log.js";
 export { doctorProfiles } from "./doctor-profiles.js";
 export { approvalTokens } from "./approval-tokens.js";
 export { invoicePayments } from "./invoice-payments.js";
+export { kvStore } from "./kv-store.js";

@@ -1,0 +1,23 @@
+# Builds the API image from the monorepo root using apps/api/Dockerfile
+# (its COPY paths are repo-root-relative), then pushes to Artifact Registry.
+# Manual trigger for now:
+#   gcloud builds submit --config cloudbuild.yaml --project diamond-labs-prod
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - apps/api/Dockerfile
+      - -t
+      - us-central1-docker.pkg.dev/diamond-labs-prod/diamond-labs/api:${_TAG}
+      - -t
+      - us-central1-docker.pkg.dev/diamond-labs-prod/diamond-labs/api:latest
+      - .
+  - name: gcr.io/cloud-builders/docker
+    args: [push, --all-tags, us-central1-docker.pkg.dev/diamond-labs-prod/diamond-labs/api]
+images:
+  - us-central1-docker.pkg.dev/diamond-labs-prod/diamond-labs/api:latest
+substitutions:
+  _TAG: manual
+options:
+  logging: CLOUD_LOGGING_ONLY

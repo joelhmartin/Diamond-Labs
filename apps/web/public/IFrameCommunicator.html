@@ -4,20 +4,27 @@
   <meta charset="utf-8" />
   <title>IFrame Communicator</title>
   <script type="text/javascript">
-    // Authorize.net Accept Hosted relay. The hosted payment page loads this
-    // page (same-origin with our app) and posts transaction events to it; we
-    // forward them up to the parent window via postMessage. The parent listens
-    // for "message" events and validates the action payload.
+    // Authorize.net Accept Hosted relay (official pattern). The hosted payment
+    // page (inside our payment iframe) communicates here either by posting a
+    // message or by navigating this page with the response in the URL hash.
+    // We forward the raw querystring up to the merchant app, which exposes
+    // window.AuthorizeNetIFrame.onReceiveCommunication(). This avoids the
+    // origin-checked postMessage that fails across the trycloudflare ↔
+    // authorize.net origin boundary.
     function callParentFunction(str) {
-      if (str && str.length > 0 && window.parent && window.parent.parent) {
-        var referrer = document.referrer;
-        window.parent.parent.postMessage(str, referrer !== "" ? referrer : "*");
+      if (
+        str &&
+        str.length > 0 &&
+        window.parent &&
+        window.parent.parent &&
+        window.parent.parent.AuthorizeNetIFrame &&
+        typeof window.parent.parent.AuthorizeNetIFrame.onReceiveCommunication === "function"
+      ) {
+        window.parent.parent.AuthorizeNetIFrame.onReceiveCommunication(str);
       }
     }
     function receiveMessage(event) {
-      if (event && event.data) {
-        callParentFunction(event.data);
-      }
+      if (event && event.data) callParentFunction(event.data);
     }
     if (window.addEventListener) {
       window.addEventListener("message", receiveMessage, false);
@@ -25,9 +32,11 @@
       window.attachEvent("onmessage", receiveMessage);
     }
     // The hosted page also navigates this iframe with the response in the hash.
-    if (window.location.hash && window.location.hash.length > 1) {
-      callParentFunction(window.location.hash.substring(1));
-    }
+    window.onload = function () {
+      if (window.location.hash && window.location.hash.length > 1) {
+        callParentFunction(window.location.hash.substring(1));
+      }
+    };
   </script>
 </head>
 <body></body>

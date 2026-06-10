@@ -23,6 +23,31 @@ const fastify = Fastify({
   trustProxy: true,
 });
 
+// Treat an empty JSON body as {} instead of erroring. Several POSTs carry no
+// body and rely on cookies/headers instead (e.g. /auth/refresh, /auth/logout);
+// without this, axios's default `Content-Type: application/json` + empty body
+// makes Fastify 400 ("Body cannot be empty") and silently breaks silent-refresh.
+fastify.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
+  if (!body || body.trim() === "") return done(null, {});
+  try {
+    done(null, JSON.parse(body));
+  } catch (err) {
+    err.statusCode = 400;
+    done(err);
+  }
+});
+
+// Catch-all: a POST with no/odd content-type (e.g. an empty body and no header)
+// would otherwise 415. Treat empty as {}; attempt JSON for anything non-empty.
+fastify.addContentTypeParser("*", { parseAs: "string" }, (req, body, done) => {
+  if (!body || body.trim() === "") return done(null, {});
+  try {
+    done(null, JSON.parse(body));
+  } catch {
+    done(null, {});
+  }
+});
+
 // Plugins
 await fastify.register(cookie);
 await fastify.register(cors, {

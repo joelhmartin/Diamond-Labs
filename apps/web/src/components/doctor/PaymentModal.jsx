@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
-import { X, CreditCard, Loader2 } from "lucide-react";
+import { X, CreditCard, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "../ui/Button.jsx";
 import { useToast } from "../ui/Toast.jsx";
+import { HostedPaymentForm } from "./HostedPaymentForm.jsx";
 import api from "../../config/api.js";
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
@@ -14,6 +15,7 @@ export function PaymentModal({ invoices, onClose, onSuccess }) {
   const [selectedCard, setSelectedCard] = useState(null);
   const [processing, setProcessing] = useState(false);
   const [loadingCards, setLoadingCards] = useState(true);
+  const [launched, setLaunched] = useState(false); // hosted card form shown?
   const { addToast } = useToast();
 
   // Oldest-due-first ordering drives FIFO auto-allocation.
@@ -103,57 +105,6 @@ export function PaymentModal({ invoices, onClose, onSuccess }) {
     }
   };
 
-  const handleNewCardPayment = () => {
-    if (!window.Accept) {
-      addToast({ message: "Payment system not loaded. Please refresh and try again.", type: "error" });
-      return;
-    }
-    const cardNumber = document.getElementById("pay-card-number")?.value;
-    const expMonth = document.getElementById("pay-exp-month")?.value;
-    const expYear = document.getElementById("pay-exp-year")?.value;
-    const cvv = document.getElementById("pay-cvv")?.value;
-    if (!cardNumber || !expMonth || !expYear || !cvv) {
-      addToast({ message: "Please fill in all card fields.", type: "error" });
-      return;
-    }
-    if (!canPay) {
-      addToast({ message: "Enter an amount to pay.", type: "error" });
-      return;
-    }
-
-    setProcessing(true);
-    const authData = {
-      clientKey: window.__AUTHORIZE_NET_CLIENT_KEY__,
-      apiLoginID: window.__AUTHORIZE_NET_API_LOGIN__,
-    };
-    const cardData = {
-      cardNumber: cardNumber.replace(/\s/g, ""),
-      month: expMonth.padStart(2, "0"),
-      year: expYear,
-      cardCode: cvv,
-    };
-
-    window.Accept.dispatchData({ authData, cardData }, async (response) => {
-      if (response.messages.resultCode === "Error") {
-        addToast({ message: response.messages.message[0]?.text || "Card validation failed", type: "error" });
-        setProcessing(false);
-        return;
-      }
-      try {
-        await api.post("/payments/charge", {
-          opaqueData: response.opaqueData,
-          amount: payTotal,
-          allocations,
-        });
-        onSuccess();
-      } catch (err) {
-        addToast({ message: err.response?.data?.error?.message || "Payment failed", type: "error" });
-      } finally {
-        setProcessing(false);
-      }
-    });
-  };
-
   const handleSavedCardPayment = () => {
     if (!selectedCard) {
       addToast({ message: "Select a card", type: "error" });
@@ -191,7 +142,8 @@ export function PaymentModal({ invoices, onClose, onSuccess }) {
               step="0.01"
               value={targetStr}
               onChange={(e) => handleTargetChange(e.target.value)}
-              className="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              disabled={launched}
+              className="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-gray-100 disabled:text-gray-400"
             />
             <span className="text-xs text-gray-400">applied oldest-first; adjust rows below</span>
           </div>
@@ -213,7 +165,8 @@ export function PaymentModal({ invoices, onClose, onSuccess }) {
                     step="0.01"
                     value={applied}
                     onChange={(e) => setRow(inv, e.target.value)}
-                    className="w-24 rounded-lg border border-gray-300 px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    disabled={launched}
+                    className="w-24 rounded-lg border border-gray-300 px-2 py-1 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-gray-100 disabled:text-gray-400"
                   />
                   {label && (
                     <span className={`text-xs ${applied >= bal ? "text-green-600" : "text-amber-600"}`}>
@@ -248,36 +201,29 @@ export function PaymentModal({ invoices, onClose, onSuccess }) {
 
         {method === "new" ? (
           <div className="space-y-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-500">Card Number</label>
-              <input
-                id="pay-card-number"
-                type="text"
-                placeholder="4111 1111 1111 1111"
-                maxLength={19}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            {!launched ? (
+              <>
+                <div className="flex items-start gap-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-500">
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
+                  <span>Card details are entered on Authorize.net's secure form — they never touch this site.</span>
+                </div>
+                <Button onClick={() => setLaunched(true)} disabled={!canPay} className="w-full">
+                  Pay ${payTotal.toFixed(2)} with a card
+                </Button>
+              </>
+            ) : (
+              <HostedPaymentForm
+                tokenEndpoint="/payments/hosted-token"
+                completeEndpoint="/payments/hosted-complete"
+                tokenBody={{ allocations }}
+                completeBody={{ allocations }}
+                onComplete={() => onSuccess()}
+                onError={(msg) => {
+                  addToast({ message: msg, type: "error" });
+                  setLaunched(false);
+                }}
               />
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">Month</label>
-                <input id="pay-exp-month" type="text" placeholder="MM" maxLength={2}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">Year</label>
-                <input id="pay-exp-year" type="text" placeholder="YYYY" maxLength={4}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-500">CVV</label>
-                <input id="pay-cvv" type="text" placeholder="123" maxLength={4}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
-              </div>
-            </div>
-            <Button onClick={handleNewCardPayment} loading={processing} disabled={!canPay} className="w-full">
-              Pay ${payTotal.toFixed(2)}
-            </Button>
+            )}
           </div>
         ) : (
           <div className="space-y-3">

@@ -7,15 +7,26 @@ import api from "../../config/api.js";
  * backend, then loads Authorize.net's hosted card form inside an iframe. The
  * card data is entered on Authorize.net's domain — it never touches our DOM.
  *
- * Transaction results arrive via postMessage relayed by /IFrameCommunicator.html.
+ * Results arrive via window.AuthorizeNetIFrame.onReceiveCommunication(),
+ * relayed by /IFrameCommunicator.html (not origin-checked postMessage).
  *
  * Props:
- *   amount     number
- *   mode       "sandbox" | "production"
- *   onComplete (details) => void   // verified { transId, amount, status, responseCode }
- *   onError    (message) => void
+ *   tokenEndpoint    string  backend route that returns { token, formUrl }
+ *   completeEndpoint string  backend route that verifies + returns details
+ *   tokenBody        object  extra fields merged into the token request body
+ *                            (e.g. { mode } for the test page, { allocations } for invoices)
+ *   completeBody     object  extra fields merged into the complete request body
+ *   onComplete       (details) => void
+ *   onError          (message) => void
  */
-export function HostedPaymentForm({ amount, mode, onComplete, onError }) {
+export function HostedPaymentForm({
+  tokenEndpoint = "/payments/test/hosted-token",
+  completeEndpoint = "/payments/test/hosted-complete",
+  tokenBody = {},
+  completeBody = {},
+  onComplete,
+  onError,
+}) {
   const [token, setToken] = useState(null);
   const [formUrl, setFormUrl] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -23,25 +34,31 @@ export function HostedPaymentForm({ amount, mode, onComplete, onError }) {
   const formRef = useRef(null);
   const iframeRef = useRef(null);
 
+  // Stable refs so the mount-time token fetch doesn't re-run when parents pass
+  // fresh object/array literals each render.
+  const tokenBodyRef = useRef(tokenBody);
+  const completeBodyRef = useRef(completeBody);
+
   const completeTransaction = useCallback(async (transId) => {
     setVerifying(true);
     try {
-      const { data } = await api.post("/payments/test/hosted-complete", { transId, mode });
+      const { data } = await api.post(completeEndpoint, { transId, ...completeBodyRef.current });
       onComplete?.(data.data);
     } catch (err) {
       onError?.(err.response?.data?.error?.message || "Could not verify the transaction.");
     } finally {
       setVerifying(false);
     }
-  }, [mode, onComplete, onError]);
+  }, [completeEndpoint, onComplete, onError]);
 
-  // Relay handler for messages forwarded by IFrameCommunicator.html
+  // Accept Hosted calls window.AuthorizeNetIFrame.onReceiveCommunication() via
+  // the IFrameCommunicator relay — NOT origin-checked postMessage. We expose
+  // that global here and parse the forwarded querystring.
   useEffect(() => {
-    const handleMessage = (e) => {
-      if (typeof e.data !== "string") return;
+    const handle = (queryStr) => {
       let params;
       try {
-        params = new URLSearchParams(e.data);
+        params = new URLSearchParams(queryStr);
       } catch {
         return;
       }
@@ -63,16 +80,17 @@ export function HostedPaymentForm({ amount, mode, onComplete, onError }) {
         }
       }
     };
-    window.addEventListener("message", handleMessage, false);
-    return () => window.removeEventListener("message", handleMessage, false);
+
+    const prev = window.AuthorizeNetIFrame;
+    window.AuthorizeNetIFrame = { onReceiveCommunication: handle };
+    return () => { window.AuthorizeNetIFrame = prev; };
   }, [completeTransaction, onError]);
 
   // Fetch the form token once on mount.
   useEffect(() => {
     let cancelled = false;
-    api.post("/payments/test/hosted-token", {
-      amount,
-      mode,
+    api.post(tokenEndpoint, {
+      ...tokenBodyRef.current,
       iframeCommunicatorUrl: `${window.location.origin}/IFrameCommunicator.html`,
     })
       .then(({ data }) => {
@@ -85,7 +103,7 @@ export function HostedPaymentForm({ amount, mode, onComplete, onError }) {
       })
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
-  }, [amount, mode, onError]);
+  }, [tokenEndpoint, onError]);
 
   // Once we have a token, POST it to the hosted form (targets the iframe).
   useEffect(() => {
@@ -114,10 +132,11 @@ export function HostedPaymentForm({ amount, mode, onComplete, onError }) {
         name="hostedPaymentIframe"
         title="Secure payment"
         width="100%"
-        height="450"
+        height="800"
         frameBorder="0"
-        scrolling="no"
+        scrolling="auto"
         className="w-full rounded-xl border border-gray-200"
+        style={{ minHeight: 800 }}
       />
       {verifying && (
         <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-white/80">

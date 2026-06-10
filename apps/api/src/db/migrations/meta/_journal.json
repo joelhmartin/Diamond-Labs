@@ -15,6 +15,13 @@
       "when": 1779249292192,
       "tag": "0001_youthful_ink",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781100422235,
+      "tag": "0002_lumpy_joystick",
+      "breakpoints": true
     }
   ]
 }

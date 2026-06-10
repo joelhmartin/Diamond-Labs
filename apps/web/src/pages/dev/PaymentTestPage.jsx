@@ -90,8 +90,8 @@ export function PaymentTestPage() {
       {started && !result && (
         <div className="rounded-2xl border border-gray-200 bg-white p-4">
           <HostedPaymentForm
-            amount={Number(amount)}
-            mode={mode}
+            tokenBody={{ amount: Number(amount), mode }}
+            completeBody={{ mode }}
             onComplete={(details) => setResult(details)}
             onError={(msg) => { setError(msg); setStarted(false); }}
           />

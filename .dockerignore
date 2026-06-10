@@ -1,0 +1,16 @@
+# Never bake secrets or local env into the image
+**/.env
+**/.env.*
+
+# Deps are reinstalled in the image
+**/node_modules
+
+# Not needed by the API image
+.git
+.gitignore
+apps/web
+packages/shared/node_modules
+*.zip
+Provided Images/
+**/.DS_Store
+*.log
