@@ -6,6 +6,7 @@ import { db } from "../config/database.js";
 import { users, invoicePayments } from "../db/schema/index.js";
 import { eq } from "drizzle-orm";
 import { createId } from "../lib/id.js";
+import { env } from "../config/env.js";
 import { ERROR_CODES } from "@my-app/shared";
 
 /**
@@ -35,6 +36,18 @@ function buildAllocationNotes(allocations, transactionId) {
 }
 
 /**
+ * Seazona's "Invoices & Payments" report attributes an account-level payment to
+ * specific invoices by parsing the literal token `Invoices <num>, <num>` out of
+ * the payment's `referenceNumber` field (verified live 2026-06-10 — it matches
+ * on referenceNumber, NOT notes, and by invoice NUMBER, not GUID). Build exactly
+ * that token; returns null if no allocation carries an invoice number.
+ */
+function buildInvoiceReference(allocations) {
+  const numbers = allocations.map((a) => a.invoiceNumber).filter(Boolean);
+  return numbers.length ? `Invoices ${numbers.join(", ")}` : null;
+}
+
+/**
  * After a successful charge: record ONE account-level payment in Seazona (their
  * payment API has no invoice-level granularity) with notes describing the split,
  * then write one local invoice_payments row per allocated invoice.
@@ -42,11 +55,17 @@ function buildAllocationNotes(allocations, transactionId) {
 async function recordPaymentAndAllocations({ user, amount, transactionId, allocations }) {
   let seazonaPaymentId = null;
 
-  if (user.seazonaClientId) {
+  // Seazona has no sandbox — createPayment writes to the live system. Only do it
+  // for real (production) charges; in sandbox we still write the local ledger so
+  // the flow is fully testable without polluting Seazona's production data.
+  if (user.seazonaClientId && env.AUTHORIZE_NET_ENV === "production") {
     const res = await seazonaService.createPayment({
       clientId: user.seazonaClientId,
       accountNumber: user.seazonaAccountNumber,
-      referenceNumber: transactionId,
+      // `Invoices <num>` token is what Seazona's report matches on to attribute
+      // this payment to the invoice(s); the gateway txn id lives in notes. Fall
+      // back to the txn id only if no allocation carried an invoice number.
+      referenceNumber: buildInvoiceReference(allocations) || transactionId,
       notes: buildAllocationNotes(allocations, transactionId),
       amount,
     });
@@ -67,6 +86,24 @@ async function recordPaymentAndAllocations({ user, amount, transactionId, alloca
   );
 
   return seazonaPaymentId;
+}
+
+/**
+ * Verify every allocated invoice belongs to the doctor's Seazona client.
+ * Returns an error string, or null if all good.
+ */
+async function verifyInvoiceOwnership(allocations, seazonaClientId) {
+  for (const a of allocations) {
+    const inv = await seazonaService.getInvoice(a.invoiceId);
+    if (!inv) return `Invoice ${a.invoiceNumber || a.invoiceId} not found.`;
+    // Backfill the invoice NUMBER — Seazona's report matches on number, not GUID,
+    // so buildInvoiceReference needs it even if the client didn't send it.
+    if (!a.invoiceNumber && inv.invoiceNumber != null) a.invoiceNumber = inv.invoiceNumber;
+    if (String(inv.clientId) !== String(seazonaClientId)) {
+      return `Invoice ${a.invoiceNumber || a.invoiceId} does not belong to your account.`;
+    }
+  }
+  return null;
 }
 
 export default async function paymentRoutes(fastify) {
@@ -249,6 +286,103 @@ export default async function paymentRoutes(fastify) {
     });
 
     return { data: { ...result, seazonaPaymentId } };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // REAL invoice payment via Accept Hosted (SAQ A). New-card path: card is
+  // entered on Authorize.net's hosted iframe (never our DOM). The amount is the
+  // allocation sum, baked into the token server-side. Mode resolves from
+  // AUTHORIZE_NET_ENV (sandbox locally, production once deployed) — clients
+  // cannot pick the mode, so a payment record always reflects a real charge.
+  // ───────────────────────────────────────────────────────────────
+  fastify.post("/payments/hosted-token", {
+    preHandler: [authenticate, requireApprovedDoctor],
+  }, async (request, reply) => {
+    const { allocations, iframeCommunicatorUrl } = request.body || {};
+
+    if (!request.user.seazonaClientId) {
+      return reply.code(400).send({ error: ERROR_CODES.SEAZONA_CLIENT_NOT_LINKED });
+    }
+    const amount = Math.round(
+      ((allocations || []).reduce((s, a) => s + Number(a.amount || 0), 0) + Number.EPSILON) * 100
+    ) / 100;
+    const allocErr = validateAllocations(allocations, amount);
+    if (allocErr) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: allocErr } });
+    }
+    if (iframeCommunicatorUrl && !/^https?:\/\//.test(iframeCommunicatorUrl)) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "iframeCommunicatorUrl must be an http(s) URL." } });
+    }
+
+    const ownErr = await verifyInvoiceOwnership(allocations, request.user.seazonaClientId);
+    if (ownErr) {
+      return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: ownErr } });
+    }
+
+    const refId = `INV-${Date.now().toString().slice(-10)}`;
+    const result = await authorizenetService.getHostedPaymentPageToken({
+      amount,
+      invoiceNumber: allocations[0]?.invoiceNumber || refId,
+      description: `Diamond Labs — ${allocations.length} invoice(s)`,
+      refId,
+      iframeCommunicatorUrl,
+    });
+
+    if (!result?.token) {
+      return reply.code(502).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Could not get a payment form token." } });
+    }
+    return { data: { token: result.token, formUrl: result.formUrl, refId, amount } };
+  });
+
+  // Finalize a hosted invoice payment: verify the captured amount server-side,
+  // then record one Seazona payment + the local allocation ledger. Idempotent
+  // on transId so a double postMessage / retry can't double-record.
+  fastify.post("/payments/hosted-complete", {
+    preHandler: [authenticate, requireApprovedDoctor],
+  }, async (request, reply) => {
+    const { transId, allocations } = request.body || {};
+
+    if (!transId) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "transId is required." } });
+    }
+    if (!Array.isArray(allocations) || !allocations.length) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "allocations[] is required." } });
+    }
+
+    // Idempotency — already recorded?
+    const existing = await db
+      .select()
+      .from(invoicePayments)
+      .where(eq(invoicePayments.transactionId, String(transId)));
+    if (existing.length) {
+      return { data: { transId, alreadyRecorded: true, rows: existing.length } };
+    }
+
+    // Anchor of trust: whatever we record must equal what Authorize.net captured.
+    const details = await authorizenetService.getTransactionDetails(transId);
+    if (!details) {
+      return reply.code(404).send({ error: { ...ERROR_CODES.NOT_FOUND, message: "Transaction not found." } });
+    }
+    const allocSum = Math.round(
+      (allocations.reduce((s, a) => s + Number(a.amount || 0), 0) + Number.EPSILON) * 100
+    ) / 100;
+    if (Math.abs(details.amount - allocSum) > 0.01) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: `Allocation total ($${allocSum.toFixed(2)}) does not match the captured amount ($${details.amount.toFixed(2)}).` } });
+    }
+
+    const ownErr = await verifyInvoiceOwnership(allocations, request.user.seazonaClientId);
+    if (ownErr) {
+      return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: ownErr } });
+    }
+
+    const seazonaPaymentId = await recordPaymentAndAllocations({
+      user: request.user,
+      amount: details.amount,
+      transactionId: String(transId),
+      allocations,
+    });
+
+    return { data: { transId, amount: details.amount, status: details.status, seazonaPaymentId, recorded: true } };
   });
 
   // ───────────────────────────────────────────────────────────────
