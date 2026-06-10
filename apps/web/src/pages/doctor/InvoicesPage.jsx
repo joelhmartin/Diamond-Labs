@@ -3,7 +3,7 @@ import { CreditCard, CheckSquare, Square, Loader2, CheckCircle2 } from "lucide-r
 import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { Button } from "../../components/ui/Button.jsx";
-import { PaymentModal } from "../../components/doctor/PaymentModal.jsx";
+import { PaymentModal, balanceOf, round2 } from "../../components/doctor/PaymentModal.jsx";
 import { Pagination } from "../../components/ui/Pagination.jsx";
 import { usePagination } from "../../hooks/usePagination.js";
 
@@ -49,11 +49,8 @@ export function InvoicesPage() {
   };
 
   const selectedInvoices = invoices.filter((inv) => selected.has(inv.id || inv.invoiceId));
-  // Use portalBalance so partial prior payments reduce what's shown as owed.
-  const selectedTotal = selectedInvoices.reduce(
-    (sum, inv) => sum + (inv.portalBalance != null ? inv.portalBalance : (parseFloat(inv.total) || 0)),
-    0
-  );
+  // Round per term (same formula as PaymentModal) so the Pay button label matches the modal's total.
+  const selectedTotal = selectedInvoices.reduce((sum, inv) => round2(sum + balanceOf(inv)), 0);
 
   const pagination = usePagination(invoices);
 
@@ -92,7 +89,7 @@ export function InvoicesPage() {
               <thead>
                 <tr className="border-b bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                   <th className="px-4 py-3 w-10">
-                    <button onClick={toggleAll} className="text-gray-400 hover:text-gray-600">
+                    <button onClick={toggleAll} disabled={payableInvoices.length === 0} className="text-gray-400 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40">
                       {selected.size > 0 && selected.size === payableInvoices.length
                         ? <CheckSquare className="h-4 w-4" />
                         : <Square className="h-4 w-4" />}
@@ -100,7 +97,7 @@ export function InvoicesPage() {
                   </th>
                   <th className="px-4 py-3">Invoice #</th>
                   <th className="px-4 py-3">Date</th>
-                  <th className="px-4 py-3">Amount</th>
+                  <th className="px-4 py-3">Invoice Total</th>
                   <th className="px-4 py-3">Paid / Balance</th>
                   <th className="px-4 py-3">Status</th>
                 </tr>
@@ -122,10 +119,14 @@ export function InvoicesPage() {
                             : "cursor-pointer hover:bg-gray-50"
                       }`}
                       onClick={() => toggleSelect(id, isPaid)}
+                      {...(isPaid && {
+                        "aria-disabled": "true",
+                        title: "Paid via portal — cannot be selected",
+                      })}
                     >
                       <td className="px-4 py-3">
                         {isPaid
-                          ? <Square className="h-4 w-4 text-gray-200" />
+                          ? <Square aria-hidden="true" className="h-4 w-4 text-gray-300" />
                           : isSelected
                             ? <CheckSquare className="h-4 w-4 text-brand-600" />
                             : <Square className="h-4 w-4 text-gray-300" />}

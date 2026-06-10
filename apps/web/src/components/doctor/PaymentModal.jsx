@@ -5,9 +5,9 @@ import { useToast } from "../ui/Toast.jsx";
 import { HostedPaymentForm } from "./HostedPaymentForm.jsx";
 import api from "../../config/api.js";
 
-const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+export const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 // Use portalBalance (partial-payment-aware) when present; fall back to gross total for safety.
-const balanceOf = (inv) => round2(inv.portalBalance != null ? inv.portalBalance : (parseFloat(inv.total) || 0));
+export const balanceOf = (inv) => round2(inv.portalBalance != null ? inv.portalBalance : (parseFloat(inv.total) || 0));
 const idOf = (inv) => inv.id || inv.invoiceId;
 
 export function PaymentModal({ invoices, onClose, onSuccess }) {
