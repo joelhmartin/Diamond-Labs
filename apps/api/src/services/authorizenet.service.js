@@ -70,22 +70,39 @@ async function apiRequest(payload, mode) {
 
 /**
  * Charge using an Accept.js opaque nonce (one-time payment).
+ *
+ * Optional `billTo`/`shipTo` enable AVS (address verification). They are plain
+ * objects shaped like Authorize.net's nameAndAddressType
+ * ({ firstName, lastName, company, address, city, state, zip, country } — billTo
+ * may also carry `phoneNumber`). AVS scores the billTo street address + zip.
+ *
+ * IMPORTANT: Authorize.net JSON is field-ORDER-SENSITIVE. Per the
+ * createTransactionRequest schema, transactionRequest fields must appear in
+ * order: transactionType, amount, payment, …, order, …, customer, billTo,
+ * shipTo. We build the object by inserting keys in that order (JS preserves
+ * string-key insertion order), so `billTo`/`shipTo` land AFTER `order`. When
+ * absent (e.g. doctor invoice charges) the request is byte-for-byte unchanged.
  */
-export async function chargeWithNonce({ amount, opaqueData, description, invoiceNumber }) {
+export async function chargeWithNonce({ amount, opaqueData, description, invoiceNumber, billTo, shipTo }) {
+  const transactionRequest = {
+    transactionType: "authCaptureTransaction",
+    amount: String(amount),
+    payment: {
+      opaqueData: {
+        dataDescriptor: opaqueData.dataDescriptor,
+        dataValue: opaqueData.dataValue,
+      },
+    },
+  };
+  if (invoiceNumber) transactionRequest.order = { invoiceNumber, description };
+  // billTo/shipTo intentionally added after `order` to honor field order.
+  if (billTo) transactionRequest.billTo = billTo;
+  if (shipTo) transactionRequest.shipTo = shipTo;
+
   const data = await apiRequest({
     createTransactionRequest: {
       merchantAuthentication: merchantAuth(),
-      transactionRequest: {
-        transactionType: "authCaptureTransaction",
-        amount: String(amount),
-        payment: {
-          opaqueData: {
-            dataDescriptor: opaqueData.dataDescriptor,
-            dataValue: opaqueData.dataValue,
-          },
-        },
-        order: invoiceNumber ? { invoiceNumber, description } : undefined,
-      },
+      transactionRequest,
     },
   });
 

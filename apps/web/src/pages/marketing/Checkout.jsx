@@ -84,8 +84,16 @@ export function CheckoutPage() {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
-  const SHIPPING = subtotal > 0 ? 12 : 0; // flat-rate placeholder
-  const TAX = Math.round(subtotal * 0.08 * 100) / 100; // CA-ish placeholder
+  // Display estimate only. The SERVER recomputes the authoritative total from
+  // the products table and charges that — the client amount is never trusted.
+  // These constants MUST stay in sync with the backend (TAX_RATE / SHIPPING_FLAT
+  // in apps/api/src/routes/payment.routes.js). Note: the server applies tax only
+  // to taxable products, so this estimate can differ slightly from the charge;
+  // a future server "quote" endpoint should make this exact.
+  const TAX_RATE = 0.08;
+  const SHIPPING_FLAT = 12;
+  const SHIPPING = subtotal > 0 ? SHIPPING_FLAT : 0;
+  const TAX = Math.round(subtotal * TAX_RATE * 100) / 100;
   const total = subtotal + SHIPPING + TAX;
 
   function validate() {
@@ -119,8 +127,15 @@ export function CheckoutPage() {
     if (!validate()) return;
     setProcessing(true);
 
+    // One idempotency key per submit attempt — stable across any internal retry
+    // of this same charge so the backend won't double-charge. A fresh user click
+    // after a failure generates a new key (the server released its lock).
+    const idempotencyKey = crypto.randomUUID();
+
     try {
       const payload = {
+        // amount is sent for back-compat/display only — the server ignores it
+        // and charges the total it recomputes from product prices.
         amount: total,
         items: items.map((i) => ({ id: i.id, name: i.name, price: i.price, qty: i.qty })),
         email: contact.email,
@@ -165,7 +180,10 @@ export function CheckoutPage() {
         try {
           const res = await fetch("/api/v1/payments/checkout", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              "Idempotency-Key": idempotencyKey,
+            },
             body: JSON.stringify({ ...payload, opaqueData: response.opaqueData }),
           });
           const data = await res.json();

@@ -3,11 +3,72 @@ import { requireApprovedDoctor } from "../middleware/require-role.js";
 import * as authorizenetService from "../services/authorizenet.service.js";
 import * as seazonaService from "../services/seazona.service.js";
 import { db } from "../config/database.js";
-import { users, invoicePayments } from "../db/schema/index.js";
-import { eq } from "drizzle-orm";
+import { redis } from "../config/redis.js";
+import { users, invoicePayments, products } from "../db/schema/index.js";
+import { eq, and } from "drizzle-orm";
 import { createId } from "../lib/id.js";
 import { env } from "../config/env.js";
 import { ERROR_CODES } from "@my-app/shared";
+
+// ─── Guest-checkout pricing constants ───────────────────────────────────────
+// INTERIM flat values — tax/shipping are not yet modeled per-jurisdiction or
+// per-weight. These live server-side so the charged total cannot be tampered
+// with from the browser. The client display in Checkout.jsx mirrors these exact
+// constants for now; a future server quote endpoint should replace both.
+// NOTE: keep in sync with apps/web/src/pages/marketing/Checkout.jsx.
+const TAX_RATE = 0.08; // applied only to products.taxable line items
+const SHIPPING_FLAT = 12; // flat per-order, charged when subtotal > 0
+
+// Idempotency TTLs for /payments/checkout (kv-store / Redis shim).
+const IDEMPOTENCY_RESULT_TTL = 24 * 60 * 60; // 24h — cached completed response
+const IDEMPOTENCY_LOCK_TTL = 120; // 2 min — in-flight lock window for one charge
+
+/** Round to cents consistently (avoids FP drift like 0.1+0.2). */
+function round2(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
+
+function safeParse(json) {
+  try {
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+/** Best-effort split of a single "Full Name" field into first/last. */
+function splitName(name) {
+  const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: "", lastName: "" };
+  if (parts.length === 1) return { firstName: parts[0], lastName: "" };
+  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+}
+
+/**
+ * Build Authorize.net billTo/shipTo objects from the guest checkout payload.
+ * The guest form collects a single shipping address; we use it for billing too
+ * (standard for guest checkout). Keys are ordered per nameAndAddressType and
+ * sliced to the gateway's max field lengths. AVS scores billTo address + zip.
+ */
+function buildAddresses(shipping, phone) {
+  const { firstName, lastName } = splitName(shipping.name);
+  const address = [shipping.address1, shipping.address2]
+    .filter(Boolean)
+    .join(", ")
+    .slice(0, 60);
+  const base = {
+    firstName: firstName.slice(0, 50),
+    lastName: lastName.slice(0, 50),
+    ...(shipping.practice ? { company: String(shipping.practice).slice(0, 50) } : {}),
+    address,
+    city: String(shipping.city).slice(0, 40),
+    state: String(shipping.state).slice(0, 40),
+    zip: String(shipping.postalCode).slice(0, 20),
+    country: String(shipping.country || "US").slice(0, 60),
+  };
+  const billTo = phone ? { ...base, phoneNumber: String(phone).slice(0, 25) } : { ...base };
+  return { billTo, shipTo: { ...base } };
+}
 
 /**
  * Validate a payment allocation: a list of {invoiceId, invoiceNumber?, amount}
@@ -136,16 +197,16 @@ export default async function paymentRoutes(fastify) {
   // Intentionally does NOT store a CIM profile (guest checkout).
   // ───────────────────────────────────────────────────────────────
   fastify.post("/payments/checkout", async (request, reply) => {
-    const { opaqueData, amount, items, email, shipping, phone } = request.body || {};
+    // `amount` from the client is accepted for back-compat/logging ONLY — it is
+    // NEVER used to charge. The charged total is recomputed server-side from the
+    // products table. This closes a price-tampering hole (pay $0.01 for $450).
+    const { opaqueData, amount: clientAmount, items, email, shipping, phone, idempotencyKey: bodyKey } =
+      request.body || {};
+    const idempotencyKey = request.headers["idempotency-key"] || bodyKey || null;
 
     if (!opaqueData?.dataDescriptor || !opaqueData?.dataValue) {
       return reply.code(422).send({
         error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Payment nonce (opaqueData) is required." },
-      });
-    }
-    if (!amount || Number(amount) <= 0) {
-      return reply.code(422).send({
-        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Amount must be greater than zero." },
       });
     }
     if (!email || !email.includes("@")) {
@@ -158,33 +219,144 @@ export default async function paymentRoutes(fastify) {
         error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Complete shipping address is required." },
       });
     }
+    if (!Array.isArray(items) || items.length === 0) {
+      return reply.code(422).send({
+        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "At least one item is required." },
+      });
+    }
+
+    // ── Idempotency fast-path: a completed result for this key replays verbatim
+    // without charging again. (Done before pricing so a replay is cheap.)
+    const resultKey = idempotencyKey ? `checkout:result:${idempotencyKey}` : null;
+    const lockKey = idempotencyKey ? `checkout:lock:${idempotencyKey}` : null;
+    if (resultKey) {
+      const cached = safeParse(await redis.get(resultKey));
+      if (cached) {
+        fastify.log.info({ idempotencyKey }, "checkout idempotent replay — returning cached result, no charge");
+        return { data: cached };
+      }
+    } else {
+      fastify.log.warn("checkout called without an Idempotency-Key — duplicate submits cannot be de-duplicated");
+    }
+
+    // ── Server-side price authority: recompute every line from the products
+    // mirror. Unmapped / non-purchasable SKUs are refused (fail-safe — never
+    // guess a price). Client-sent price/amount are ignored entirely.
+    let subtotal = 0;
+    let taxableBase = 0;
+    for (const item of items) {
+      if (item?.id == null || item.id === "") {
+        return reply.code(422).send({
+          error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Each item requires an id." },
+        });
+      }
+      const qty = Number(item.qty);
+      if (!Number.isInteger(qty) || qty <= 0) {
+        return reply.code(422).send({
+          error: { ...ERROR_CODES.VALIDATION_ERROR, message: `Invalid quantity for item ${item.id}.` },
+        });
+      }
+      const rows = await db
+        .select()
+        .from(products)
+        .where(and(eq(products.catalogId, String(item.id)), eq(products.purchasable, true)));
+      const product = rows[0];
+      if (!product || product.price == null) {
+        return reply.code(422).send({
+          error: {
+            ...ERROR_CODES.VALIDATION_ERROR,
+            message: `Item not available for online order (${item.id}). Contact the lab to place this order.`,
+          },
+        });
+      }
+      const line = round2(Number(product.price) * qty);
+      subtotal = round2(subtotal + line);
+      if (product.taxable) taxableBase = round2(taxableBase + line);
+    }
+
+    subtotal = round2(subtotal);
+    const tax = round2(taxableBase * TAX_RATE);
+    const shipping_ = subtotal > 0 ? SHIPPING_FLAT : 0;
+    const total = round2(subtotal + tax + shipping_);
+
+    if (!(total > 0)) {
+      return reply.code(422).send({
+        error: {
+          ...ERROR_CODES.VALIDATION_ERROR,
+          message: "This order totals $0.00 and cannot be processed online. Please contact the lab.",
+        },
+      });
+    }
+    if (clientAmount != null && Math.abs(Number(clientAmount) - total) > 0.01) {
+      // Signal only — the server total is authoritative regardless.
+      fastify.log.warn(
+        { idempotencyKey, clientAmount: Number(clientAmount), serverTotal: total },
+        "checkout client amount differs from server-computed total — charging server total"
+      );
+    }
+
+    // ── Acquire an in-flight lock (atomic incr) right before charging. First
+    // caller gets count 1; a concurrent duplicate sees >1 and is rejected 409
+    // (or replays the cached result if the first one already finished).
+    if (lockKey) {
+      const count = await redis.incr(lockKey);
+      await redis.expire(lockKey, IDEMPOTENCY_LOCK_TTL);
+      if (count > 1) {
+        const cached = safeParse(await redis.get(resultKey));
+        if (cached) return { data: cached };
+        return reply.code(409).send({
+          error: {
+            code: "CHARGE_IN_PROGRESS",
+            status: 409,
+            message: "A charge for this request is already being processed. Please wait.",
+          },
+        });
+      }
+    }
 
     const invoiceNumber = `DOL-${Date.now().toString().slice(-8)}`;
-    const description = `Diamond Orthotic Catalog — ${items?.length || 0} item(s)`;
+    const description = `Diamond Orthotic Catalog — ${items.length} item(s)`;
+    const { billTo, shipTo } = buildAddresses(shipping, phone);
 
-    const result = await authorizenetService.chargeWithNonce({
-      amount: Number(amount),
-      opaqueData,
-      description,
+    let result;
+    try {
+      result = await authorizenetService.chargeWithNonce({
+        amount: total, // SERVER-computed — never the client amount
+        opaqueData,
+        description,
+        invoiceNumber,
+        billTo,
+        shipTo,
+      });
+    } catch (err) {
+      // Release the lock so the shopper can legitimately retry the same submit.
+      if (lockKey) await redis.del(lockKey);
+      throw err;
+    }
+
+    const responseData = {
+      transactionId: result.transactionId,
       invoiceNumber,
-      // TODO: pass customer + shipping to Authorize.net once service signature is extended
-    });
+      amount: total,
+      subtotal,
+      tax,
+      shipping: shipping_,
+      email,
+    };
+
+    // Cache the completed result so a repeat with the same key replays it.
+    if (resultKey) {
+      await redis.set(resultKey, JSON.stringify(responseData), "EX", IDEMPOTENCY_RESULT_TTL);
+    }
 
     fastify.log.info(
-      { invoiceNumber, transactionId: result.transactionId, email, itemCount: items?.length },
+      { invoiceNumber, transactionId: result.transactionId, email, itemCount: items.length, total },
       "public catalog checkout succeeded"
     );
 
     // TODO: create a Seazona invoice + payment record; send order confirmation email.
 
-    return {
-      data: {
-        transactionId: result.transactionId,
-        invoiceNumber,
-        amount: Number(amount),
-        email,
-      },
-    };
+    return { data: responseData };
   });
 
   // Charge with an Accept.js nonce (one-time card payment), allocated across invoices
