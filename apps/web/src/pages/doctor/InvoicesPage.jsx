@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback } from "react";
-import { CreditCard, CheckSquare, Square, Loader2 } from "lucide-react";
+import { CreditCard, CheckSquare, Square, Loader2, CheckCircle2 } from "lucide-react";
 import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { Button } from "../../components/ui/Button.jsx";
-import { PaymentModal } from "../../components/doctor/PaymentModal.jsx";
+import { PaymentModal, balanceOf, round2 } from "../../components/doctor/PaymentModal.jsx";
 import { Pagination } from "../../components/ui/Pagination.jsx";
 import { usePagination } from "../../hooks/usePagination.js";
 
@@ -27,7 +27,11 @@ export function InvoicesPage() {
 
   useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
 
-  const toggleSelect = (id) => {
+  // Invoices that can still be paid through the portal (not fully paid).
+  const payableInvoices = invoices.filter((inv) => !inv.portalPaid);
+
+  const toggleSelect = (id, isPaid) => {
+    if (isPaid) return; // fully-paid invoices cannot be selected
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -37,15 +41,16 @@ export function InvoicesPage() {
   };
 
   const toggleAll = () => {
-    if (selected.size === invoices.length) {
+    if (selected.size > 0 && selected.size === payableInvoices.length) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(invoices.map((inv) => inv.id || inv.invoiceId)));
+      setSelected(new Set(payableInvoices.map((inv) => inv.id || inv.invoiceId)));
     }
   };
 
   const selectedInvoices = invoices.filter((inv) => selected.has(inv.id || inv.invoiceId));
-  const selectedTotal = selectedInvoices.reduce((sum, inv) => sum + (parseFloat(inv.total) || 0), 0);
+  // Round per term (same formula as PaymentModal) so the Pay button label matches the modal's total.
+  const selectedTotal = selectedInvoices.reduce((sum, inv) => round2(sum + balanceOf(inv)), 0);
 
   const pagination = usePagination(invoices);
 
@@ -84,40 +89,76 @@ export function InvoicesPage() {
               <thead>
                 <tr className="border-b bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                   <th className="px-4 py-3 w-10">
-                    <button onClick={toggleAll} className="text-gray-400 hover:text-gray-600">
-                      {selected.size === invoices.length ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                    <button onClick={toggleAll} disabled={payableInvoices.length === 0} className="text-gray-400 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40">
+                      {selected.size > 0 && selected.size === payableInvoices.length
+                        ? <CheckSquare className="h-4 w-4" />
+                        : <Square className="h-4 w-4" />}
                     </button>
                   </th>
                   <th className="px-4 py-3">Invoice #</th>
                   <th className="px-4 py-3">Date</th>
-                  <th className="px-4 py-3">Amount</th>
+                  <th className="px-4 py-3">Invoice Total</th>
+                  <th className="px-4 py-3">Paid / Balance</th>
                   <th className="px-4 py-3">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {pagination.paged.map((inv) => {
-                const id = inv.id || inv.invoiceId;
-                const isSelected = selected.has(id);
-                return (
-                  <tr
-                    key={id}
-                    className={`cursor-pointer transition-colors ${isSelected ? "bg-brand-50" : "hover:bg-gray-50"}`}
-                    onClick={() => toggleSelect(id)}
-                  >
-                    <td className="px-4 py-3">
-                      {isSelected ? <CheckSquare className="h-4 w-4 text-brand-600" /> : <Square className="h-4 w-4 text-gray-300" />}
-                    </td>
-                    <td className="px-4 py-3 font-medium">{inv.invoiceNumber || id}</td>
-                    <td className="px-4 py-3 text-gray-500">{inv.due ? new Date(inv.due).toLocaleDateString() : "—"}</td>
-                    <td className="px-4 py-3 font-medium">${parseFloat(inv.total || 0).toFixed(2)}</td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
-                        {inv.status || "—"}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
+                  const id = inv.id || inv.invoiceId;
+                  const isSelected = selected.has(id);
+                  const isPaid = !!inv.portalPaid;
+                  const hasPartialPayment = !isPaid && (inv.portalPaidAmount || 0) > 0;
+                  return (
+                    <tr
+                      key={id}
+                      className={`transition-colors ${
+                        isPaid
+                          ? "cursor-default bg-gray-50/50"
+                          : isSelected
+                            ? "cursor-pointer bg-brand-50"
+                            : "cursor-pointer hover:bg-gray-50"
+                      }`}
+                      onClick={() => toggleSelect(id, isPaid)}
+                      {...(isPaid && {
+                        "aria-disabled": "true",
+                        title: "Paid via portal — cannot be selected",
+                      })}
+                    >
+                      <td className="px-4 py-3">
+                        {isPaid
+                          ? <Square aria-hidden="true" className="h-4 w-4 text-gray-300" />
+                          : isSelected
+                            ? <CheckSquare className="h-4 w-4 text-brand-600" />
+                            : <Square className="h-4 w-4 text-gray-300" />}
+                      </td>
+                      <td className="px-4 py-3 font-medium">{inv.invoiceNumber || id}</td>
+                      <td className="px-4 py-3 text-gray-500">{inv.due ? new Date(inv.due).toLocaleDateString() : "—"}</td>
+                      <td className="px-4 py-3 font-medium">${parseFloat(inv.total || 0).toFixed(2)}</td>
+                      <td className="px-4 py-3">
+                        {isPaid ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Paid via portal
+                          </span>
+                        ) : hasPartialPayment ? (
+                          <div>
+                            <span className="font-medium">${(inv.portalBalance || 0).toFixed(2)}</span>
+                            <p className="mt-0.5 text-xs text-green-600">
+                              Paid via portal: ${(inv.portalPaidAmount || 0).toFixed(2)}
+                            </p>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                          {inv.status || "—"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

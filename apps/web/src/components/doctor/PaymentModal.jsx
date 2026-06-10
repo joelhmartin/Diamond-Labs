@@ -5,8 +5,9 @@ import { useToast } from "../ui/Toast.jsx";
 import { HostedPaymentForm } from "./HostedPaymentForm.jsx";
 import api from "../../config/api.js";
 
-const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-const balanceOf = (inv) => round2(parseFloat(inv.total) || 0);
+export const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+// Use portalBalance (partial-payment-aware) when present; fall back to gross total for safety.
+export const balanceOf = (inv) => round2(inv.portalBalance != null ? inv.portalBalance : (parseFloat(inv.total) || 0));
 const idOf = (inv) => inv.id || inv.invoiceId;
 
 export function PaymentModal({ invoices, onClose, onSuccess }) {
@@ -16,6 +17,7 @@ export function PaymentModal({ invoices, onClose, onSuccess }) {
   const [processing, setProcessing] = useState(false);
   const [loadingCards, setLoadingCards] = useState(true);
   const [launched, setLaunched] = useState(false); // hosted card form shown?
+  const [saveCard, setSaveCard] = useState(false); // "save this card" checkbox
   const { addToast } = useToast();
 
   // Oldest-due-first ordering drives FIFO auto-allocation.
@@ -207,6 +209,15 @@ export function PaymentModal({ invoices, onClose, onSuccess }) {
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
                   <span>Card details are entered on Authorize.net's secure form — they never touch this site.</span>
                 </div>
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={saveCard}
+                    onChange={(e) => setSaveCard(e.target.checked)}
+                    className="accent-brand-600"
+                  />
+                  Save this card for later
+                </label>
                 <Button onClick={() => setLaunched(true)} disabled={!canPay} className="w-full">
                   Pay ${payTotal.toFixed(2)} with a card
                 </Button>
@@ -215,7 +226,7 @@ export function PaymentModal({ invoices, onClose, onSuccess }) {
               <HostedPaymentForm
                 tokenEndpoint="/payments/hosted-token"
                 completeEndpoint="/payments/hosted-complete"
-                tokenBody={{ allocations }}
+                tokenBody={{ allocations, saveCard }}
                 completeBody={{ allocations }}
                 onComplete={() => onSuccess()}
                 onError={(msg) => {

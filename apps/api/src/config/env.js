@@ -27,6 +27,11 @@ const envSchema = z.object({
   SEAZONA_API_KEY: z.string().optional(),
   SEAZONA_SECRET: z.string().optional(),
   SEAZONA_BASE_URL: z.string().url().optional(),
+  // Lab-staff Seazona user id that catalog-order pushes are attributed to
+  // (createOrder requires a `userId`). LEFT UNSET INTENTIONALLY until the lab
+  // confirms which staff id to use — when unset, the Seazona order push does not
+  // fire (the order is still recorded locally). Never hardcode/guess this id.
+  SEAZONA_ORDER_USER_ID: z.string().optional(),
 
   // Authorize.net
   AUTHORIZE_NET_API_LOGIN: z.string().optional(),

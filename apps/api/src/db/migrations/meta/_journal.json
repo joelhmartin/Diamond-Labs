@@ -22,6 +22,27 @@
       "when": 1781100422235,
       "tag": "0002_lumpy_joystick",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1781124467661,
+      "tag": "0003_lush_la_nuit",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1781126703112,
+      "tag": "0004_romantic_captain_midlands",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1781129139071,
+      "tag": "0005_striped_reaper",
+      "breakpoints": true
     }
   ]
 }
