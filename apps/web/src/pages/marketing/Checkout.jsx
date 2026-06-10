@@ -87,12 +87,17 @@ export function CheckoutPage() {
   const SHIPPING = subtotal > 0 ? 12 : 0; // flat-rate placeholder
   const TAX = Math.round(subtotal * 0.08 * 100) / 100; // CA-ish placeholder
   const total = subtotal + SHIPPING + TAX;
-  const free = subtotal === 0;
 
   function validate() {
     setError(null);
     if (items.length === 0) {
       setError("Your cart is empty.");
+      return false;
+    }
+    if (total <= 0) {
+      setError(
+        "This order totals $0.00 and cannot be processed online. Please contact the lab to place your order."
+      );
       return false;
     }
     if (!contact.email || !contact.email.includes("@")) {
@@ -103,11 +108,9 @@ export function CheckoutPage() {
       setError("Please complete your shipping address.");
       return false;
     }
-    if (!free) {
-      if (!card.number || !card.month || !card.year || !card.cvv) {
-        setError("Please fill in all card fields.");
-        return false;
-      }
+    if (!card.number || !card.month || !card.year || !card.cvv) {
+      setError("Please fill in all card fields.");
+      return false;
     }
     return true;
   }
@@ -124,22 +127,6 @@ export function CheckoutPage() {
         phone: contact.phone || undefined,
         shipping: ship,
       };
-
-      if (free) {
-        // $0 order — skip Authorize.net entirely. Just confirm the order.
-        const res = await fetch("/api/v1/orders/free", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }).catch(() => null);
-        const data = res?.ok ? await res.json() : null;
-        setSuccess({
-          invoiceNumber: data?.data?.invoiceNumber || `DOL-${Date.now().toString().slice(-8)}`,
-          transactionId: "FREE",
-        });
-        clear();
-        return;
-      }
 
       // Tokenize the card via Accept.js → dispatchData returns opaqueData
       if (!window.Accept) {
@@ -217,9 +204,7 @@ export function CheckoutPage() {
               {success.invoiceNumber}
             </p>
             <p className="mt-4 text-sm text-navy/50 leading-relaxed">
-              A confirmation has been sent to{" "}
-              <span className="font-semibold text-navy">{contact.email}</span>.
-              You&apos;ll receive tracking as soon as your order ships.
+              Payment received. Save this reference number for your records.
             </p>
             <div className="mt-8 flex items-center justify-center gap-3">
               <Link
@@ -394,83 +379,74 @@ export function CheckoutPage() {
             </Card>
 
             {/* Payment */}
-            {!free ? (
-              <Card
-                title="Payment"
-                icon={<CreditCard size={14} />}
-                note={
-                  <span className="flex items-center gap-1 text-[11px] text-navy/40">
-                    <Lock size={11} />
-                    Card data is tokenized by Authorize.net — Diamond never stores the number.
-                  </span>
-                }
-              >
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2">
-                    <Field label="Card number" required>
-                      <input
-                        inputMode="numeric"
-                        className={INPUT}
-                        value={card.number}
-                        onChange={(e) =>
-                          setCard({ ...card, number: e.target.value })
-                        }
-                        placeholder="1234 5678 9012 3456"
-                        autoComplete="cc-number"
-                      />
-                    </Field>
-                  </div>
-                  <Field label="MM" required>
+            <Card
+              title="Payment"
+              icon={<CreditCard size={14} />}
+              note={
+                <span className="flex items-center gap-1 text-[11px] text-navy/40">
+                  <Lock size={11} />
+                  Card data is tokenized by Authorize.net — Diamond never stores the number.
+                </span>
+              }
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <Field label="Card number" required>
                     <input
                       inputMode="numeric"
-                      maxLength={2}
                       className={INPUT}
-                      value={card.month}
+                      value={card.number}
                       onChange={(e) =>
-                        setCard({ ...card, month: e.target.value })
+                        setCard({ ...card, number: e.target.value })
                       }
-                      placeholder="MM"
-                      autoComplete="cc-exp-month"
+                      placeholder="1234 5678 9012 3456"
+                      autoComplete="cc-number"
                     />
                   </Field>
-                  <Field label="YYYY" required>
+                </div>
+                <Field label="MM" required>
+                  <input
+                    inputMode="numeric"
+                    maxLength={2}
+                    className={INPUT}
+                    value={card.month}
+                    onChange={(e) =>
+                      setCard({ ...card, month: e.target.value })
+                    }
+                    placeholder="MM"
+                    autoComplete="cc-exp-month"
+                  />
+                </Field>
+                <Field label="YYYY" required>
+                  <input
+                    inputMode="numeric"
+                    maxLength={4}
+                    className={INPUT}
+                    value={card.year}
+                    onChange={(e) =>
+                      setCard({ ...card, year: e.target.value })
+                    }
+                    placeholder="YYYY"
+                    autoComplete="cc-exp-year"
+                  />
+                </Field>
+                <div className="col-span-2">
+                  <Field label="CVV" required>
                     <input
                       inputMode="numeric"
                       maxLength={4}
                       className={INPUT}
-                      value={card.year}
+                      value={card.cvv}
                       onChange={(e) =>
-                        setCard({ ...card, year: e.target.value })
+                        setCard({ ...card, cvv: e.target.value })
                       }
-                      placeholder="YYYY"
-                      autoComplete="cc-exp-year"
+                      placeholder="123"
+                      autoComplete="cc-csc"
                     />
                   </Field>
-                  <div className="col-span-2">
-                    <Field label="CVV" required>
-                      <input
-                        inputMode="numeric"
-                        maxLength={4}
-                        className={INPUT}
-                        value={card.cvv}
-                        onChange={(e) =>
-                          setCard({ ...card, cvv: e.target.value })
-                        }
-                        placeholder="123"
-                        autoComplete="cc-csc"
-                      />
-                    </Field>
-                  </div>
                 </div>
-              </Card>
-            ) : (
-              <Card title="Payment">
-                <p className="text-sm text-navy/60 leading-relaxed">
-                  No card required — this order totals $0.00. Confirm your
-                  shipping details and submit.
-                </p>
-              </Card>
-            )}
+              </div>
+            </Card>
           </div>
 
           {/* Summary */}
@@ -520,8 +496,6 @@ export function CheckoutPage() {
                       <Loader2 size={14} className="animate-spin" />
                       Processing…
                     </>
-                  ) : free ? (
-                    <>Place order</>
                   ) : (
                     <>
                       <Lock size={13} />
