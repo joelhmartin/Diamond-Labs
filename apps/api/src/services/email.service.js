@@ -16,13 +16,21 @@ async function send({ to, subject, html, text }) {
     return false;
   }
 
-  await resend.emails.send({
+  // The Resend SDK does NOT throw on API errors (bad key, invalid sender domain,
+  // rate limit, etc.) — it resolves with `{ data, error }`. Returning false (never
+  // throwing) keeps existing fire-and-forget callers unaffected while letting the
+  // receipt flow report honestly whether the email actually went out.
+  const { error } = await resend.emails.send({
     from: env.EMAIL_FROM,
     to,
     subject,
     html,
     ...(text ? { text } : {}),
   });
+  if (error) {
+    console.error(`[EMAIL] Resend rejected message to ${to} (subject: ${subject}):`, error);
+    return false;
+  }
   return true;
 }
 
@@ -149,7 +157,8 @@ function esc(value) {
 }
 
 function money(n) {
-  return `$${Number(n || 0).toFixed(2)}`;
+  const v = Number(n);
+  return `$${(Number.isFinite(v) ? v : 0).toFixed(2)}`;
 }
 
 /**
@@ -197,7 +206,7 @@ export async function sendOrderReceipt({
 
   const totalsRow = (label, value, bold) => `
     <tr>
-      <td style="padding:4px 12px;text-align:right;color:#5a6b7b;${bold ? "font-weight:700;color:#1a2733;font-size:15px;" : ""}">${label}</td>
+      <td style="padding:4px 12px;text-align:right;color:#5a6b7b;${bold ? "font-weight:700;color:#1a2733;font-size:15px;" : ""}">${esc(label)}</td>
       <td style="padding:4px 12px;text-align:right;color:#1a2733;width:120px;${bold ? "font-weight:700;font-size:15px;" : ""}">${value}</td>
     </tr>`;
 
