@@ -9,3 +9,5 @@ export { approvalTokens } from "./approval-tokens.js";
 export { invoicePayments } from "./invoice-payments.js";
 export { kvStore } from "./kv-store.js";
 export { products } from "./products.js";
+export { orders } from "./orders.js";
+export { orderItems } from "./order-items.js";

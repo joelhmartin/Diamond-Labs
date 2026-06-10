@@ -4,7 +4,7 @@ import * as authorizenetService from "../services/authorizenet.service.js";
 import * as seazonaService from "../services/seazona.service.js";
 import { db } from "../config/database.js";
 import { redis } from "../config/redis.js";
-import { users, invoicePayments, products } from "../db/schema/index.js";
+import { users, invoicePayments, products, orders, orderItems } from "../db/schema/index.js";
 import { eq, and } from "drizzle-orm";
 import { createId } from "../lib/id.js";
 import { env } from "../config/env.js";
@@ -191,6 +191,76 @@ async function ensureCustomerProfile(user) {
   return customerProfileId;
 }
 
+/**
+ * Generate the authoritative catalog order number. Replaces the old
+ * `DOL-<last8 of Date.now()>` scheme, which collided trivially (two orders in the
+ * same 100ms window shared a number). Form: `DOL-` + a 12-char cuid2-derived
+ * suffix (uppercased) → 16 chars, comfortably under Authorize.net's 20-char
+ * `invoiceNumber` limit. cuid2 is collision-resistant by design; the unique
+ * index on orders.order_number is the hard backstop.
+ */
+function generateOrderNumber() {
+  return `DOL-${createId().slice(0, 12).toUpperCase()}`;
+}
+
+/**
+ * Decide whether a recorded catalog order may be pushed to Seazona via
+ * createOrder, and if not, why. Gated behind the SAME production condition the
+ * rest of the payment code uses (env.AUTHORIZE_NET_ENV === "production") PLUS a
+ * configured lab-staff userId. A guest order with no Seazona clientId cannot be
+ * pushed at all — Seazona's createOrder requires a clientId.
+ *
+ * Returns a `seazonaPushStatus` value; "pending" means "eligible — go ahead".
+ * For the current public guest checkout `seazonaClientId` is always null, so this
+ * never returns "pending" there (it resolves to a skip/not-applicable status and
+ * Seazona is never called). The "pending"→push path is built correct-by-
+ * construction for a future order that carries a Seazona clientId.
+ */
+function resolveOrderPushStatus({ seazonaClientId }) {
+  if (env.AUTHORIZE_NET_ENV !== "production") return "skipped_not_production";
+  if (!env.SEAZONA_ORDER_USER_ID) return "skipped_no_user";
+  if (!seazonaClientId) return "not_applicable_guest";
+  return "pending";
+}
+
+/**
+ * Push a recorded order to Seazona via createOrder. The caller must have already
+ * confirmed eligibility (resolveOrderPushStatus === "pending"). NEVER throws —
+ * the customer is already charged, so a push failure is captured and reported,
+ * never surfaced. Returns { status, seazonaOrderId, error }.
+ */
+async function pushOrderToSeazona({ order, lines, shipping, log }) {
+  // Every line must carry a Seazona product id to be pushable.
+  const unmapped = lines.filter((l) => !l.seazonaProductId);
+  if (unmapped.length) {
+    const msg = `Order has ${unmapped.length} line(s) with no mapped Seazona product id.`;
+    log.warn(
+      { orderNumber: order.orderNumber, unmapped: unmapped.map((l) => l.catalogId) },
+      `catalog order Seazona push skipped — ${msg}`
+    );
+    return { status: "failed", seazonaOrderId: null, error: msg };
+  }
+  try {
+    const res = await seazonaService.createOrder({
+      clientId: order.seazonaClientId,
+      patientName: shipping.name || order.email,
+      due: null,
+      // Physical catalog goods (accessories/supplies) — no upper/lower arch.
+      items: lines.map((l) => ({ id: l.seazonaProductId, arch: null })),
+      notes: `DOL catalog order ${order.orderNumber} — ship to ${shipping.name}, ${shipping.address1}, ${shipping.city} ${shipping.state} ${shipping.postalCode}`.slice(0, 500),
+      userId: env.SEAZONA_ORDER_USER_ID,
+    });
+    // createOrder returns null on any non-2xx (see seazona.service.js).
+    const seazonaOrderId = res?.orderId != null ? String(res.orderId) : null;
+    if (!seazonaOrderId) {
+      return { status: "failed", seazonaOrderId: null, error: "Seazona createOrder returned no orderId." };
+    }
+    return { status: "pushed", seazonaOrderId, error: null };
+  } catch (err) {
+    return { status: "failed", seazonaOrderId: null, error: String(err?.message || err).slice(0, 1000) };
+  }
+}
+
 export default async function paymentRoutes(fastify) {
   // ───────────────────────────────────────────────────────────────
   // PUBLIC CHECKOUT — unauthenticated card charge for catalog orders.
@@ -246,6 +316,10 @@ export default async function paymentRoutes(fastify) {
     // guess a price). Client-sent price/amount are ignored entirely.
     let subtotal = 0;
     let taxableBase = 0;
+    // Resolved, price-authoritative lines — reused after the charge to build the
+    // immutable order_items snapshot and the (gated) Seazona push. Carries the
+    // mapped seazonaProductId so neither needs to re-query the catalog.
+    const lines = [];
     for (const item of items) {
       if (item?.id == null || item.id === "") {
         return reply.code(422).send({
@@ -282,6 +356,15 @@ export default async function paymentRoutes(fastify) {
       const line = round2(Number(product.price) * qty);
       subtotal = round2(subtotal + line);
       if (product.taxable) taxableBase = round2(taxableBase + line);
+      lines.push({
+        catalogId: String(item.id),
+        seazonaProductId: product.seazonaProductId,
+        name: product.name,
+        unitPrice: round2(Number(product.price)),
+        qty,
+        lineTotal: line,
+        taxable: Boolean(product.taxable),
+      });
     }
 
     const tax = round2(taxableBase * TAX_RATE);
@@ -325,7 +408,9 @@ export default async function paymentRoutes(fastify) {
       }
     }
 
-    const invoiceNumber = `DOL-${Date.now().toString().slice(-8)}`;
+    // ONE identifier end-to-end: generated before the charge, sent to the gateway
+    // as the transaction invoiceNumber, then persisted as orders.orderNumber.
+    const orderNumber = generateOrderNumber();
     const description = `Diamond Orthotic Catalog — ${items.length} item(s)`;
     const { billTo, shipTo } = buildAddresses(shipping, phone);
 
@@ -335,7 +420,7 @@ export default async function paymentRoutes(fastify) {
         amount: total, // SERVER-computed — never the client amount
         opaqueData,
         description,
-        invoiceNumber,
+        invoiceNumber: orderNumber,
         billTo,
         shipTo,
       });
@@ -353,13 +438,93 @@ export default async function paymentRoutes(fastify) {
 
     const responseData = {
       transactionId: result.transactionId,
-      invoiceNumber,
+      // orderNumber is the new authoritative identifier; invoiceNumber mirrors it
+      // (same value) for frontend back-compat.
+      orderNumber,
+      invoiceNumber: orderNumber,
       amount: total,
       subtotal,
       tax,
       shipping: shippingCost,
       email,
     };
+
+    // ── Record the order LOCALLY (authoritative) + attempt the gated Seazona push.
+    // The card is already charged, so NONE of this may throw to the customer:
+    //   • A DB failure here is logged loudly but the successful charge response
+    //     still returns (failing it would invite a double-charge on the retry).
+    //   • A Seazona push failure/skip never fails checkout — the local order
+    //     stands and the push outcome is recorded for later reconcile.
+    // For guest checkout there is no Seazona clientId, so resolveOrderPushStatus
+    // resolves to a skip/not-applicable status and Seazona is never called.
+    const orderId = createId();
+    const pushStatus = resolveOrderPushStatus({ seazonaClientId: null });
+    try {
+      await db.transaction(async (tx) => {
+        await tx.insert(orders).values({
+          id: orderId,
+          orderNumber,
+          email,
+          phone: phone ? String(phone) : null,
+          shipping,
+          subtotal: subtotal.toFixed(2),
+          tax: tax.toFixed(2),
+          shippingCost: shippingCost.toFixed(2),
+          total: total.toFixed(2),
+          transactionId: result.transactionId,
+          authCode: result.authCode || null,
+          status: "paid",
+          seazonaClientId: null, // guest checkout — no Seazona client
+          seazonaPushStatus: pushStatus,
+        });
+        await tx.insert(orderItems).values(
+          lines.map((l) => ({
+            id: createId(),
+            orderId,
+            catalogId: l.catalogId,
+            seazonaProductId: l.seazonaProductId || null,
+            name: l.name,
+            unitPrice: l.unitPrice.toFixed(2),
+            qty: l.qty,
+            lineTotal: l.lineTotal.toFixed(2),
+            taxable: l.taxable,
+          }))
+        );
+      });
+
+      // Gated live write. Unreachable for pure guest checkout (pushStatus is never
+      // "pending" when seazonaClientId is null) — built for a future client-linked
+      // order. Never executed in dev (skipped_not_production).
+      if (pushStatus === "pending") {
+        const push = await pushOrderToSeazona({
+          order: { orderNumber, email, seazonaClientId: null },
+          lines,
+          shipping,
+          log: fastify.log,
+        });
+        await db
+          .update(orders)
+          .set({
+            seazonaOrderId: push.seazonaOrderId,
+            seazonaPushStatus: push.status,
+            seazonaPushError: push.error,
+            updatedAt: new Date(),
+          })
+          .where(eq(orders.id, orderId));
+        if (push.status === "pushed") {
+          fastify.log.info({ orderNumber, seazonaOrderId: push.seazonaOrderId }, "catalog order pushed to Seazona");
+        } else {
+          fastify.log.error({ orderNumber, error: push.error }, "catalog order Seazona push failed — order recorded locally, needs manual reconcile");
+        }
+      } else {
+        fastify.log.info({ orderNumber, pushStatus }, "catalog order recorded — Seazona push not attempted");
+      }
+    } catch (orderErr) {
+      fastify.log.error(
+        { orderErr, orderNumber, transactionId: result.transactionId },
+        "FAILED to record catalog order after a successful charge — manual reconcile required"
+      );
+    }
 
     // Cache the completed result so a repeat with the same key replays it. The
     // card is ALREADY charged at this point — a kv-store write failure here must
@@ -370,16 +535,16 @@ export default async function paymentRoutes(fastify) {
       try {
         await redis.set(resultKey, JSON.stringify(responseData), "EX", IDEMPOTENCY_RESULT_TTL);
       } catch (cacheErr) {
-        fastify.log.warn({ cacheErr, invoiceNumber }, "checkout result cache write failed — charge already succeeded");
+        fastify.log.warn({ cacheErr, orderNumber }, "checkout result cache write failed — charge already succeeded");
       }
     }
 
     fastify.log.info(
-      { invoiceNumber, transactionId: result.transactionId, email, itemCount: items.length, total },
+      { orderNumber, transactionId: result.transactionId, email, itemCount: items.length, total },
       "public catalog checkout succeeded"
     );
 
-    // TODO: create a Seazona invoice + payment record; send order confirmation email.
+    // TODO (Task 10): send order confirmation / receipt email.
 
     return { data: responseData };
   });
