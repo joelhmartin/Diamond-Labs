@@ -178,6 +178,15 @@ export default async function paymentRoutes(fastify) {
     if (allocErr) {
       return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: allocErr } });
     }
+    // Every allocated invoice must belong to this doctor's Seazona client —
+    // otherwise the recorded payment could be attributed to someone else's invoice.
+    if (!request.user.seazonaClientId) {
+      return reply.code(400).send({ error: ERROR_CODES.SEAZONA_CLIENT_NOT_LINKED });
+    }
+    const ownErr = await verifyInvoiceOwnership(allocations, request.user.seazonaClientId);
+    if (ownErr) {
+      return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: ownErr } });
+    }
 
     const result = await authorizenetService.chargeWithNonce({
       amount,
@@ -269,6 +278,15 @@ export default async function paymentRoutes(fastify) {
     const allocErr = validateAllocations(allocations, amount);
     if (allocErr) {
       return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: allocErr } });
+    }
+    // Same ownership guard as the nonce/hosted paths — never charge a saved card
+    // against an invoice that isn't this doctor's.
+    if (!request.user.seazonaClientId) {
+      return reply.code(400).send({ error: ERROR_CODES.SEAZONA_CLIENT_NOT_LINKED });
+    }
+    const ownErr = await verifyInvoiceOwnership(allocations, request.user.seazonaClientId);
+    if (ownErr) {
+      return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: ownErr } });
     }
 
     const result = await authorizenetService.chargeCustomerProfile({
