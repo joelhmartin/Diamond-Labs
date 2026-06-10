@@ -2,6 +2,7 @@ import { authenticate } from "../middleware/authenticate.js";
 import { requireApprovedDoctor } from "../middleware/require-role.js";
 import * as authorizenetService from "../services/authorizenet.service.js";
 import * as seazonaService from "../services/seazona.service.js";
+import { sendOrderReceipt } from "../services/email.service.js";
 import { db } from "../config/database.js";
 import { redis } from "../config/redis.js";
 import { users, invoicePayments, products, orders, orderItems } from "../db/schema/index.js";
@@ -593,6 +594,39 @@ export default async function paymentRoutes(fastify) {
       log: fastify.log,
     });
 
+    // ── Order receipt email (SOFT-FAIL). Only attempted when the order was
+    // genuinely recorded — never email for a sale we couldn't persist. An email
+    // failure (or Resend's own throw) must NEVER fail checkout: the card is already
+    // charged. We capture whether an email actually went out and report it honestly
+    // on the response (in dev with no RESEND_API_KEY this is false — a logged no-op).
+    // This runs BEFORE the result-cache write, so `emailSent` is baked into the cached
+    // payload: an idempotent replay returns the cached response without re-sending,
+    // and truthfully reflects whether the original attempt mailed a receipt.
+    let emailSent = false;
+    if (!orderRecordFailed) {
+      try {
+        emailSent = Boolean(
+          await sendOrderReceipt({
+            to: email,
+            orderNumber,
+            items: lines,
+            subtotal,
+            tax,
+            shippingCost,
+            total,
+            shipping,
+            transactionId: result.transactionId,
+          })
+        );
+      } catch (emailErr) {
+        fastify.log.warn(
+          { emailErr, orderNumber },
+          "order receipt email failed — charge and order already recorded, no customer impact"
+        );
+      }
+    }
+    responseData.emailSent = emailSent;
+
     // Cache the completed result so a repeat with the same key replays it. The
     // card is ALREADY charged at this point — a kv-store write failure here must
     // never surface as a 500 to the shopper, so guard it and proceed regardless
@@ -623,8 +657,6 @@ export default async function paymentRoutes(fastify) {
       { orderNumber, transactionId: result.transactionId, email, itemCount: items.length, total },
       "public catalog checkout succeeded"
     );
-
-    // TODO (Task 10): send order confirmation / receipt email.
 
     return { data: responseData };
   });

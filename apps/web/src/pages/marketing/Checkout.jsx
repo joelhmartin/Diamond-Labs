@@ -222,7 +222,15 @@ export function CheckoutPage() {
               {success.invoiceNumber}
             </p>
             <p className="mt-4 text-sm text-navy/50 leading-relaxed">
-              Payment received. Save this reference number for your records.
+              {success.emailSent ? (
+                <>
+                  Payment received. A receipt has been emailed to{" "}
+                  <span className="text-navy/70">{success.email}</span>. Save this
+                  reference number for your records.
+                </>
+              ) : (
+                <>Payment received. Save this reference number for your records.</>
+              )}
             </p>
             <div className="mt-8 flex items-center justify-center gap-3">
               <Link
