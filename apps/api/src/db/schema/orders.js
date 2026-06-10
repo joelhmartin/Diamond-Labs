@@ -52,7 +52,11 @@ export const orders = pgTable("orders", {
   // Seazona createOrder push outcome (nullable until/unless a push runs).
   seazonaClientId: varchar("seazona_client_id", { length: 100 }),
   seazonaOrderId: varchar("seazona_order_id", { length: 128 }),
-  seazonaPushStatus: varchar("seazona_push_status", { length: 40 }).notNull().default("pending"),
+  // Nullable with NO default — the insert ALWAYS sets this explicitly via
+  // resolveOrderPushStatus(). A stray default-"pending" row (e.g. a future direct
+  // insert that forgot to set it) would otherwise pollute reconcile sweeps that
+  // filter on seazonaPushStatus = 'pending'.
+  seazonaPushStatus: varchar("seazona_push_status", { length: 40 }),
   seazonaPushError: text("seazona_push_error"),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -14,9 +14,11 @@ export const orderItems = pgTable("order_items", {
   id: varchar("id", { length: 128 }).primaryKey(),
   orderId: varchar("order_id", { length: 128 }).notNull().references(() => orders.id),
 
-  catalogId: varchar("catalog_id", { length: 100 }),
+  // Always populated — checkout 422s earlier on a non-purchasable/missing product,
+  // so every recorded line carries a catalogId and a snapshot name.
+  catalogId: varchar("catalog_id", { length: 100 }).notNull(),
   seazonaProductId: varchar("seazona_product_id", { length: 100 }),
-  name: text("name"),
+  name: text("name").notNull(),
   unitPrice: numeric("unit_price", { precision: 12, scale: 2 }).notNull(),
   qty: integer("qty").notNull(),
   lineTotal: numeric("line_total", { precision: 12, scale: 2 }).notNull(),

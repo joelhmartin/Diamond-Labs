@@ -1,5 +1,5 @@
 {
-  "id": "d54ed308-48a9-4b7f-bbc4-c14320364f81",
+  "id": "c7994bb1-4cdd-4140-abcd-b799cd273e5f",
   "prevId": "6821454f-9e63-46aa-a973-d232b1f3be2f",
   "version": "7",
   "dialect": "postgresql",
@@ -1007,7 +1007,7 @@
           "name": "catalog_id",
           "type": "varchar(100)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "seazona_product_id": {
           "name": "seazona_product_id",
@@ -1019,7 +1019,7 @@
           "name": "name",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "unit_price": {
           "name": "unit_price",
@@ -1192,8 +1192,7 @@
           "name": "seazona_push_status",
           "type": "varchar(40)",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
+          "notNull": false
         },
         "seazona_push_error": {
           "name": "seazona_push_error",

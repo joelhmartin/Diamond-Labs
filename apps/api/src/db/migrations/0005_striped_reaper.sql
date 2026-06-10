@@ -1,9 +1,9 @@
 CREATE TABLE "order_items" (
 	"id" varchar(128) PRIMARY KEY NOT NULL,
 	"order_id" varchar(128) NOT NULL,
-	"catalog_id" varchar(100),
+	"catalog_id" varchar(100) NOT NULL,
 	"seazona_product_id" varchar(100),
-	"name" text,
+	"name" text NOT NULL,
 	"unit_price" numeric(12, 2) NOT NULL,
 	"qty" integer NOT NULL,
 	"line_total" numeric(12, 2) NOT NULL,
@@ -27,7 +27,7 @@ CREATE TABLE "orders" (
 	"status" varchar(30) DEFAULT 'paid' NOT NULL,
 	"seazona_client_id" varchar(100),
 	"seazona_order_id" varchar(128),
-	"seazona_push_status" varchar(40) DEFAULT 'pending' NOT NULL,
+	"seazona_push_status" varchar(40),
 	"seazona_push_error" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL

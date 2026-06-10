@@ -261,6 +261,124 @@ async function pushOrderToSeazona({ order, lines, shipping, log }) {
   }
 }
 
+/**
+ * Record a successful guest catalog charge LOCALLY (authoritative) and attempt the
+ * gated Seazona createOrder push. Mirrors `recordPaymentAndAllocations` on the doctor
+ * path: SOFT-FAIL only — this never throws into checkout, because the card is already
+ * charged and failing the response would invite a double-charge on retry.
+ *
+ * The order insert (db.transaction) and the push + push-status update each get their
+ * OWN try/catch so their failures log DISTINCT messages: the order can be recorded
+ * even if the downstream push leg fails, and the two must not be conflated.
+ *
+ * Returns `{ orderRecordFailed }` so the handler can detect the idempotency-degraded
+ * case (order insert AND result-cache write both failing in the same request).
+ */
+async function recordGuestOrder({
+  orderId,
+  orderNumber,
+  email,
+  phone,
+  shipping,
+  subtotal,
+  tax,
+  shippingCost,
+  total,
+  result,
+  lines,
+  log,
+}) {
+  // Single source of truth for this order's Seazona client. Guest catalog checkout
+  // has no Seazona client (createOrder requires one), so this is null and the push
+  // resolves to `not_applicable_guest`. A future client-linked flow changes ONLY
+  // this assignment — it is then COUPLED through to resolveOrderPushStatus, the
+  // persisted orders.seazonaClientId column, AND pushOrderToSeazona, all of which
+  // read this one value. Don't reintroduce hardcoded nulls downstream.
+  const seazonaClientId = null; // guest catalog checkout has no Seazona client; see Phase 3c finding
+  const pushStatus = resolveOrderPushStatus({ seazonaClientId });
+
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(orders).values({
+        id: orderId,
+        orderNumber,
+        email,
+        phone: phone ? String(phone) : null,
+        shipping,
+        subtotal: subtotal.toFixed(2),
+        tax: tax.toFixed(2),
+        shippingCost: shippingCost.toFixed(2),
+        total: total.toFixed(2),
+        transactionId: result.transactionId,
+        authCode: result.authCode || null,
+        status: "paid",
+        seazonaClientId,
+        seazonaPushStatus: pushStatus,
+      });
+      await tx.insert(orderItems).values(
+        lines.map((l) => ({
+          id: createId(),
+          orderId,
+          catalogId: l.catalogId,
+          seazonaProductId: l.seazonaProductId || null,
+          name: l.name,
+          unitPrice: l.unitPrice.toFixed(2),
+          qty: l.qty,
+          lineTotal: l.lineTotal.toFixed(2),
+          taxable: l.taxable,
+        }))
+      );
+    });
+  } catch (orderErr) {
+    log.error(
+      { orderErr, orderNumber, transactionId: result.transactionId },
+      "FAILED to record catalog order after a successful charge — manual reconcile required"
+    );
+    return { orderRecordFailed: true };
+  }
+
+  // Gated live write. Unreachable for pure guest checkout (pushStatus is never
+  // "pending" when seazonaClientId is null) — built for a future client-linked
+  // order. Never executed in dev (skipped_not_production). The order is ALREADY
+  // recorded above, so the push + push-status update get their OWN nested try/catch:
+  // a failure here means "order persisted, push state needs reconcile", which is a
+  // DIFFERENT condition from "failed to record the order".
+  if (pushStatus === "pending") {
+    let push;
+    try {
+      push = await pushOrderToSeazona({
+        order: { orderNumber, email, seazonaClientId },
+        lines,
+        shipping,
+        log,
+      });
+      await db
+        .update(orders)
+        .set({
+          seazonaOrderId: push.seazonaOrderId,
+          seazonaPushStatus: push.status,
+          seazonaPushError: push.error,
+          updatedAt: new Date(),
+        })
+        .where(eq(orders.id, orderId));
+      if (push.status === "pushed") {
+        log.info({ orderNumber, seazonaOrderId: push.seazonaOrderId }, "catalog order pushed to Seazona");
+      } else {
+        log.error({ orderNumber, error: push.error }, "catalog order Seazona push failed — order recorded locally, needs manual reconcile");
+      }
+    } catch (pushErr) {
+      log.error(
+        { pushErr, orderNumber, transactionId: result.transactionId, seazonaOrderId: push?.seazonaOrderId || null },
+        "Seazona push or push-status update failed after order was recorded — order persisted; reconcile push state"
+      );
+    }
+  } else {
+    log.info({ orderNumber, pushStatus }, "catalog order recorded — Seazona push not attempted");
+  }
+
+  return { orderRecordFailed: false };
+}
+
 export default async function paymentRoutes(fastify) {
   // ───────────────────────────────────────────────────────────────
   // PUBLIC CHECKOUT — unauthenticated card charge for catalog orders.
@@ -445,7 +563,9 @@ export default async function paymentRoutes(fastify) {
       amount: total,
       subtotal,
       tax,
-      shipping: shippingCost,
+      // `shippingCost` (not `shipping`) — `shipping` elsewhere is the address object;
+      // this is the numeric shipping charge. Renamed to avoid that collision.
+      shippingCost,
       email,
     };
 
@@ -458,85 +578,45 @@ export default async function paymentRoutes(fastify) {
     // For guest checkout there is no Seazona clientId, so resolveOrderPushStatus
     // resolves to a skip/not-applicable status and Seazona is never called.
     const orderId = createId();
-    const pushStatus = resolveOrderPushStatus({ seazonaClientId: null });
-    try {
-      await db.transaction(async (tx) => {
-        await tx.insert(orders).values({
-          id: orderId,
-          orderNumber,
-          email,
-          phone: phone ? String(phone) : null,
-          shipping,
-          subtotal: subtotal.toFixed(2),
-          tax: tax.toFixed(2),
-          shippingCost: shippingCost.toFixed(2),
-          total: total.toFixed(2),
-          transactionId: result.transactionId,
-          authCode: result.authCode || null,
-          status: "paid",
-          seazonaClientId: null, // guest checkout — no Seazona client
-          seazonaPushStatus: pushStatus,
-        });
-        await tx.insert(orderItems).values(
-          lines.map((l) => ({
-            id: createId(),
-            orderId,
-            catalogId: l.catalogId,
-            seazonaProductId: l.seazonaProductId || null,
-            name: l.name,
-            unitPrice: l.unitPrice.toFixed(2),
-            qty: l.qty,
-            lineTotal: l.lineTotal.toFixed(2),
-            taxable: l.taxable,
-          }))
-        );
-      });
-
-      // Gated live write. Unreachable for pure guest checkout (pushStatus is never
-      // "pending" when seazonaClientId is null) — built for a future client-linked
-      // order. Never executed in dev (skipped_not_production).
-      if (pushStatus === "pending") {
-        const push = await pushOrderToSeazona({
-          order: { orderNumber, email, seazonaClientId: null },
-          lines,
-          shipping,
-          log: fastify.log,
-        });
-        await db
-          .update(orders)
-          .set({
-            seazonaOrderId: push.seazonaOrderId,
-            seazonaPushStatus: push.status,
-            seazonaPushError: push.error,
-            updatedAt: new Date(),
-          })
-          .where(eq(orders.id, orderId));
-        if (push.status === "pushed") {
-          fastify.log.info({ orderNumber, seazonaOrderId: push.seazonaOrderId }, "catalog order pushed to Seazona");
-        } else {
-          fastify.log.error({ orderNumber, error: push.error }, "catalog order Seazona push failed — order recorded locally, needs manual reconcile");
-        }
-      } else {
-        fastify.log.info({ orderNumber, pushStatus }, "catalog order recorded — Seazona push not attempted");
-      }
-    } catch (orderErr) {
-      fastify.log.error(
-        { orderErr, orderNumber, transactionId: result.transactionId },
-        "FAILED to record catalog order after a successful charge — manual reconcile required"
-      );
-    }
+    const { orderRecordFailed } = await recordGuestOrder({
+      orderId,
+      orderNumber,
+      email,
+      phone,
+      shipping,
+      subtotal,
+      tax,
+      shippingCost,
+      total,
+      result,
+      lines,
+      log: fastify.log,
+    });
 
     // Cache the completed result so a repeat with the same key replays it. The
     // card is ALREADY charged at this point — a kv-store write failure here must
     // never surface as a 500 to the shopper, so guard it and proceed regardless
     // (worst case: an exact-same-key retry re-charges, but the frontend mints a
     // fresh idempotency key per submit, so that path isn't reachable in practice).
+    let cacheWriteFailed = false;
     if (resultKey) {
       try {
         await redis.set(resultKey, JSON.stringify(responseData), "EX", IDEMPOTENCY_RESULT_TTL);
       } catch (cacheErr) {
+        cacheWriteFailed = true;
         fastify.log.warn({ cacheErr, orderNumber }, "checkout result cache write failed — charge already succeeded");
       }
+    }
+
+    // Idempotency-degraded alarm: if BOTH the local order insert AND the result-cache
+    // write failed in this same request, there is no record of the sale on either
+    // side, and a retry after the lock TTL could double-charge with no operator
+    // signal. Flag it loudly — this charge needs BOTH charge-and-record reconcile.
+    if (orderRecordFailed && cacheWriteFailed) {
+      fastify.log.error(
+        { orderNumber, transactionId: result.transactionId },
+        "idempotency degraded — order insert AND result-cache write BOTH failed for a charged order; a retry could double-charge. Needs BOTH charge-and-record reconciliation"
+      );
     }
 
     fastify.log.info(
