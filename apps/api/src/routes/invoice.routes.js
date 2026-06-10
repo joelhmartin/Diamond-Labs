@@ -54,28 +54,37 @@ function normalizeInvoice(inv, portalPaid = 0) {
 }
 
 /**
- * Return a Map of { [seazonaInvoiceId]: totalPaidAmount } for all invoice_payments
- * rows belonging to `userId`. One grouped SELECT — avoids N queries on the list path.
- * Amounts are numeric(12,2) → Drizzle returns strings; we convert on the way out.
+ * Return a plain object keyed by seazonaInvoiceId → totalPaidAmount for all
+ * invoice_payments rows belonging to `userId`. One grouped SELECT — avoids N
+ * queries on the list path. Amounts are numeric(12,2) → Drizzle returns strings;
+ * we convert on the way out.
+ *
+ * On DB error the function logs and returns {} so callers degrade to showing no
+ * portal-payment data rather than propagating a 500.
  *
  * @param {string} userId
  * @returns {Promise<Record<string, number>>}
  */
 async function buildPortalPaidMap(userId) {
-  const rows = await db
-    .select({
-      seazonaInvoiceId: invoicePayments.seazonaInvoiceId,
-      totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
-    })
-    .from(invoicePayments)
-    .where(eq(invoicePayments.userId, userId))
-    .groupBy(invoicePayments.seazonaInvoiceId);
+  try {
+    const rows = await db
+      .select({
+        seazonaInvoiceId: invoicePayments.seazonaInvoiceId,
+        totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
+      })
+      .from(invoicePayments)
+      .where(eq(invoicePayments.userId, userId))
+      .groupBy(invoicePayments.seazonaInvoiceId);
 
-  const map = {};
-  for (const row of rows) {
-    map[row.seazonaInvoiceId] = parseFloat(row.totalPaid || 0);
+    const map = {};
+    for (const row of rows) {
+      map[row.seazonaInvoiceId] = parseFloat(row.totalPaid || 0);
+    }
+    return map;
+  } catch (err) {
+    console.error("[invoiceRoutes] buildPortalPaidMap DB error — degrading to empty map:", err);
+    return {};
   }
-  return map;
 }
 
 export default async function invoiceRoutes(fastify) {
@@ -94,6 +103,7 @@ export default async function invoiceRoutes(fastify) {
       seazonaService.listClients(),
     ]);
 
+    // Portal-payment fields default to 0 — admin bulk list has no per-user ledger context.
     const invoices = allRaw.map(normalizeInvoice);
 
     // Index clients by id for lookup
@@ -175,19 +185,28 @@ export default async function invoiceRoutes(fastify) {
 
     // Aggregate portal payments for this single invoice.
     const invoiceId = String(request.params.id);
-    const [paymentRow] = await db
-      .select({
-        totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
-      })
-      .from(invoicePayments)
-      .where(
-        and(
-          eq(invoicePayments.userId, request.user.id),
-          eq(invoicePayments.seazonaInvoiceId, invoiceId)
-        )
+    let portalPaid = 0;
+    try {
+      const [paymentRow] = await db
+        .select({
+          totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
+        })
+        .from(invoicePayments)
+        .where(
+          and(
+            eq(invoicePayments.userId, request.user.id),
+            eq(invoicePayments.seazonaInvoiceId, invoiceId)
+          )
+        );
+      portalPaid = parseFloat(paymentRow?.totalPaid || 0);
+    } catch (err) {
+      request.log.error(
+        { err },
+        "[invoiceRoutes] portal payment aggregate failed for invoice %s — degrading to 0",
+        invoiceId
       );
+    }
 
-    const portalPaid = parseFloat(paymentRow?.totalPaid || 0);
     return { data: normalizeInvoice(invoice, portalPaid) };
   });
 }
