@@ -1,23 +1,68 @@
-# Builds the API image from the monorepo root using apps/api/Dockerfile
-# (its COPY paths are repo-root-relative), then pushes to Artifact Registry.
-# Manual trigger for now:
+# CI/CD for the Diamond Labs API (Cloud Run).
+#
+# Triggered automatically on push to `main` (trigger: deploy-api-on-main).
+# Pipeline: build image -> push -> run DB migrations -> deploy service.
+# The migrate step runs BEFORE deploy and is a hard gate: if migrations fail,
+# the new revision is never rolled out.
+#
+# Manual run:
 #   gcloud builds submit --config cloudbuild.yaml --project diamond-labs-prod
+substitutions:
+  _REGION: us-central1
+  _REPO: us-central1-docker.pkg.dev/diamond-labs-prod/diamond-labs/api
+  _SERVICE: diamond-labs-api
+  _MIGRATE_JOB: diamond-labs-migrate
+
 steps:
-  - name: gcr.io/cloud-builders/docker
+  # 1. Build the API image from the monorepo root (Dockerfile COPY paths are
+  #    repo-root-relative). Tag with the commit SHA and `latest`.
+  - id: build
+    name: gcr.io/cloud-builders/docker
     args:
       - build
       - -f
       - apps/api/Dockerfile
       - -t
-      - us-central1-docker.pkg.dev/diamond-labs-prod/diamond-labs/api:${_TAG}
+      - ${_REPO}:${SHORT_SHA}
       - -t
-      - us-central1-docker.pkg.dev/diamond-labs-prod/diamond-labs/api:latest
+      - ${_REPO}:latest
       - .
-  - name: gcr.io/cloud-builders/docker
-    args: [push, --all-tags, us-central1-docker.pkg.dev/diamond-labs-prod/diamond-labs/api]
+
+  # 2. Push both tags.
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: [push, --all-tags, "${_REPO}"]
+
+  # 3. Point the migrate Job at the freshly built image and run it to apply any
+  #    pending Drizzle migrations. --wait makes the step fail (and abort the
+  #    deploy) if migrations error. The Job carries DATABASE_URL + the Cloud SQL
+  #    socket, so it connects exactly like the service.
+  - id: migrate
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - update
+      - ${_MIGRATE_JOB}
+      - --image=${_REPO}:${SHORT_SHA}
+      - --region=${_REGION}
+      - --execute-now
+      - --wait
+
+  # 4. Deploy the new revision of the service.
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REPO}:${SHORT_SHA}
+      - --region=${_REGION}
+
 images:
-  - us-central1-docker.pkg.dev/diamond-labs-prod/diamond-labs/api:latest
-substitutions:
-  _TAG: manual
+  - ${_REPO}:latest
+  - ${_REPO}:${SHORT_SHA}
 options:
   logging: CLOUD_LOGGING_ONLY
