@@ -5,10 +5,9 @@
 # Deps are reinstalled in the image
 **/node_modules
 
-# Not needed by the API image
+# Not needed by the image (apps/web IS needed now — its build is baked in)
 .git
 .gitignore
-apps/web
 packages/shared/node_modules
 *.zip
 Provided Images/
