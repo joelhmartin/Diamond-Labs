@@ -14,6 +14,7 @@ COPY apps/api/package.json ./apps/api/
 RUN pnpm install --frozen-lockfile
 COPY packages/shared/ ./packages/shared/
 COPY apps/web/ ./apps/web/
+COPY project.config.js ./
 # Public, build-time Vite env (safe to embed; the client key is public-safe and
 # the transaction key never reaches the bundle). Passed as build args from
 # Cloud Build; absent values just disable in-browser card tokenization.
