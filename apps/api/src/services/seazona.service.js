@@ -6,24 +6,15 @@ function getAuthHeader() {
 }
 
 /**
- * Outcome of the most recent Seazona HTTP call on THIS instance. Lets the health
- * route and the invoice routes distinguish "Seazona is unreachable" from "the
- * call succeeded and returned nothing" — without that, a 403/outage looks
- * identical to a doctor having zero invoices. Per-instance (Cloud Run may run
- * several); good enough for a health signal, and within a single request it
- * reflects that request's own call.
+ * Low-level Seazona call. Returns `{ ok, status, data }` so each caller learns its
+ * OWN call's outcome with no shared module state — important for the health probe,
+ * which must not pick up a concurrent request's status. `data` is the parsed JSON
+ * on 2xx, else null. Never throws: network errors resolve to `{ ok:false, status:0 }`.
  */
-let lastCall = { ok: null, status: null, at: null };
-
-export function getLastSeazonaCall() {
-  return { ...lastCall };
-}
-
-async function request(path, options = {}) {
+async function requestRaw(path, options = {}) {
   if (!env.SEAZONA_API_KEY || !env.SEAZONA_SECRET || !env.SEAZONA_BASE_URL) {
     console.warn("[Seazona] API credentials not configured");
-    lastCall = { ok: false, status: 0, at: new Date().toISOString() };
-    return null;
+    return { ok: false, status: 0, data: null };
   }
 
   const url = `${env.SEAZONA_BASE_URL}${path}`;
@@ -31,40 +22,49 @@ async function request(path, options = {}) {
   try {
     res = await fetch(url, {
       ...options,
+      // Auth + Content-Type are applied AFTER the caller's headers so a caller can
+      // never accidentally override them — the wrapper's contract is that every
+      // Seazona request is HTTP Basic authed and sends application/json.
       headers: {
+        ...options.headers,
         Authorization: getAuthHeader(),
         "Content-Type": "application/json",
-        ...options.headers,
       },
     });
   } catch (err) {
     // Network-level failure (DNS, TLS, connection reset). Treat like a non-2xx:
-    // log with the same `[Seazona]` token the alerting metric matches, record the
-    // outcome, and return null so callers degrade gracefully instead of throwing.
+    // log with the same `[Seazona]` token the alerting metric matches, and resolve
+    // to a not-ok result so callers degrade gracefully instead of throwing.
     console.error(`[Seazona] ${options.method || "GET"} ${path} → network error: ${err?.message || err}`);
-    lastCall = { ok: false, status: 0, at: new Date().toISOString() };
-    return null;
+    return { ok: false, status: 0, data: null };
   }
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     console.error(`[Seazona] ${options.method || "GET"} ${path} → ${res.status}: ${text}`);
-    lastCall = { ok: false, status: res.status, at: new Date().toISOString() };
-    return null;
+    return { ok: false, status: res.status, data: null };
   }
 
-  lastCall = { ok: true, status: res.status, at: new Date().toISOString() };
-  return res.json();
+  return { ok: true, status: res.status, data: await res.json() };
+}
+
+/**
+ * Convenience wrapper used by most callers: returns the parsed JSON on success, or
+ * null on any failure (already logged by requestRaw).
+ */
+async function request(path, options = {}) {
+  return (await requestRaw(path, options)).data;
 }
 
 /**
  * Cheap liveness probe for the health route. Uses login-exists (a single indexed
- * lookup) so it stays fast and side-effect-free. Returns { ok, status }.
+ * lookup) so it stays fast and side-effect-free. Reads its own probe result from
+ * requestRaw's return value — no shared state, so concurrent traffic can't taint
+ * it. Returns { ok, status }.
  */
 export async function checkHealth() {
-  await request("v1/clients/login-exists?email=__healthcheck__%40diamond.invalid");
-  const { ok, status } = lastCall;
-  return { ok: ok === true, status };
+  const { ok, status } = await requestRaw("v1/clients/login-exists?email=__healthcheck__%40diamond.invalid");
+  return { ok, status };
 }
 
 /**

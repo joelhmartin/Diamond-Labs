@@ -12,10 +12,13 @@ export function InvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(new Set());
   const [showPayment, setShowPayment] = useState(false);
-  // True when the billing system (Seazona) couldn't be reached — distinguishes an
-  // outage from a genuinely empty invoice list so we don't show a misleading
-  // "No invoices found".
+  // Seazona outage is reported ONLY by the backend (meta.seazonaUnavailable on a
+  // successful response) — never inferred from a failed request, which could be
+  // auth/CORS/client-network and would show a misleading "billing unreachable".
   const [seazonaDown, setSeazonaDown] = useState(false);
+  // A generic request failure (our API errored / network) — kept distinct so the
+  // empty state doesn't lie with "No invoices found" after a failed load.
+  const [loadFailed, setLoadFailed] = useState(false);
   const { addToast } = useToast();
 
   const fetchInvoices = useCallback(async () => {
@@ -23,8 +26,10 @@ export function InvoicesPage() {
       const { data } = await api.get("/invoices");
       setInvoices(data.data || []);
       setSeazonaDown(Boolean(data.meta?.seazonaUnavailable));
+      setLoadFailed(false);
     } catch (err) {
-      setSeazonaDown(true);
+      setSeazonaDown(false);
+      setLoadFailed(true);
       addToast({ message: "Failed to load invoices", type: "error" });
     } finally {
       setLoading(false);
@@ -99,7 +104,11 @@ export function InvoicesPage() {
       {invoices.length === 0 ? (
         <div className="rounded-xl border border-gray-200 bg-white p-12 text-center">
           <p className="text-gray-500">
-            {seazonaDown ? "Invoices are temporarily unavailable." : "No invoices found."}
+            {seazonaDown
+              ? "Invoices are temporarily unavailable."
+              : loadFailed
+                ? "Couldn't load your invoices. Please refresh to try again."
+                : "No invoices found."}
           </p>
         </div>
       ) : (
