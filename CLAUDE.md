@@ -121,10 +121,10 @@ Full cinematic landing experience:
 
 Source of truth for clients (doctors), invoices, orders, and recorded payments. Our DB stores `users.seazonaClientId` + `users.seazonaAccountNumber` to link a doctor to their Seazona client record.
 
-- **Base URL:** `https://diamondapi.labzona.net/` (env `SEAZONA_BASE_URL`)
-- **Auth:** HTTP Basic — `Authorization: Basic base64(SEAZONA_API_KEY:SEAZONA_SECRET)`
-- **Content-Type:** `application/json` on every request (set unconditionally in `seazona.service.js`)
-- **Wrapper:** `apps/api/src/services/seazona.service.js` — all calls go through `request()`; on non-2xx it logs and returns `null` (or `[]` for list endpoints) rather than throwing. Routes must handle `null`.
+- **Base URL:** `https://diamond.seazonaapi.net/` (env `SEAZONA_BASE_URL`) — **trailing slash required** (the wrapper joins `${BASE_URL}v1/...`). The old `https://diamondapi.labzona.net/` host was retired 2026-06-15 (returned 403 from everywhere); creds were rotated to a UUID Client ID + 64-hex Client Secret on the new host.
+- **Auth:** HTTP Basic — `Authorization: Basic base64(SEAZONA_API_KEY:SEAZONA_SECRET)`. Seazona's portal labels these "Client ID" / "Client Secret"; the code still reads them under the `SEAZONA_API_KEY` / `SEAZONA_SECRET` env names (values-only swap, no rename).
+- **Content-Type:** `application/json` on every request — applied AFTER caller headers in the wrapper so it (and `Authorization`) can't be overridden.
+- **Wrapper:** `apps/api/src/services/seazona.service.js` — `requestRaw()` returns `{ ok, status, data }`; the `request()` convenience wrapper returns `data` (or `null` on any failure; `[]` for list helpers). On non-2xx/network error it logs a `[Seazona] … → <status>` line (matched by the GCP alert) and never throws — routes must handle `null`/empty. Reachability-aware helpers `getInvoicesResult()` / `getAllInvoicesResult()` return `{ reachable, invoices }` so callers can tell "unreachable" from "empty"; `checkHealth()` backs `GET /api/v1/health/seazona`.
 
 **Endpoints (use exactly these paths — 404s on small variations):**
 
@@ -180,13 +180,15 @@ The frontend renders the normalized shape produced by `normalizeInvoice()` in `a
 | Method | Path | Auth | Body |
 |---|---|---|---|
 | POST | `/payments/checkout` | public | `{ opaqueData, amount, items, email, shipping{name,address1,city,state,postalCode}, phone? }` — guest catalog checkout, **no CIM**. Generates `invoiceNumber = DOL-<last8 of Date.now()>`. |
-| POST | `/payments/charge` | doctor (approved) | `{ opaqueData, amount, invoiceIds[], description? }` — also calls `seazonaService.createPayment` per invoice with `referenceNumber = transactionId`. |
+| POST | `/payments/charge` | doctor (approved) | `{ opaqueData, amount, allocations[], description? }` — after the charge, records ONE account-level `seazonaService.createPayment` for the whole charge (see pairing rule) and one local `invoice_payments` row per allocation. |
 | GET | `/payments/saved-cards` | doctor | — |
 | POST | `/payments/saved-cards` | doctor | `{ opaqueData }` — lazily creates the user's `authorizeNetCustomerProfileId` if missing, persists it on `users`. |
 | DELETE | `/payments/saved-cards/:profileId` | doctor | — |
-| POST | `/payments/charge-saved` | doctor | `{ paymentProfileId, amount, invoiceIds[] }` — also records Seazona payment per invoice. |
+| POST | `/payments/charge-saved` | doctor | `{ paymentProfileId, amount, allocations[] }` — records the same one account-level Seazona payment + local per-allocation ledger as `/payments/charge`. |
 
-**Pairing rule (charge → record):** every successful Authorize.net charge associated with a Seazona client must be followed by `seazonaService.createPayment({ clientId, accountNumber, referenceNumber: transactionId, notes, amount })`. The current routes loop per `invoiceId` and pass `amount` only when there's a single invoice (otherwise omit, treated as a credit). Don't break this pattern silently.
+**Pairing rule (charge → record):** every successful Authorize.net charge associated with a Seazona client must be followed by a Seazona payment write. Seazona's payment API has **no invoice-level granularity** (`GET /v1/payments/` → 405; create + get-one-by-id only), so the routes record **ONE account-level** `seazonaService.createPayment({ clientId, accountNumber, referenceNumber, notes, amount })` per charge — where `referenceNumber` is the `"Invoices <num>, <num>"` token Seazona's report parses to attribute the payment to specific invoices (by invoice NUMBER, verified live 2026-06-10), and `amount` is the full charge total. The per-invoice split is captured in the local `invoice_payments` ledger, all rows sharing the one `seazonaPaymentId`. Do NOT refactor this into N separate Seazona payments — that creates N account-level credits and breaks reconciliation. This funnels through `recordPaymentAndAllocations()` in `payment.routes.js`; if `createPayment` returns no id after a successful charge it logs an alertable `[Seazona][PAYMENT_WRITE_FAILED]` line (never throws — can't un-charge a card).
+
+**Paid/balance is NOT readable from Seazona** — even with full API permissions: invoices carry `total`/`due`(date)/`status`(workflow), no paid flag; clients carry no balance; `/v1/payments/` is write-only; ledger/statement endpoints 404. The portal's paid/balance state therefore comes from the local `invoice_payments` ledger (auto-marks an invoice paid when its portal balance hits 0); payments staff enter directly in Seazona are invisible to the portal.
 
 **Frontend Accept.js integration:**
 - Script tag in `apps/web/index.html`: `https://js.authorize.net/v1/Accept.js` (swap to `https://jstest.authorize.net/v1/Accept.js` for sandbox).
@@ -197,7 +199,7 @@ The frontend renders the normalized shape produced by `normalizeInvoice()` in `a
 ```
 SEAZONA_API_KEY=
 SEAZONA_SECRET=
-SEAZONA_BASE_URL=https://diamondapi.labzona.net/
+SEAZONA_BASE_URL=https://diamond.seazonaapi.net/   # trailing slash required
 AUTHORIZE_NET_API_LOGIN=
 AUTHORIZE_NET_TRANSACTION_KEY=
 AUTHORIZE_NET_ENV=production            # or "sandbox"
