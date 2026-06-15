@@ -73,7 +73,7 @@ export function InstructionalVideosPage() {
   return (
     <div ref={sectionRef}>
       {/* Hero */}
-      <section className="relative bg-gradient-to-b from-navy via-brand-900 to-surface-100 pt-32 pb-28">
+      <section className="relative hero-gradient pt-32 pb-28">
         <div className="section-pad text-center max-w-3xl mx-auto">
           <span
             data-vid-hero

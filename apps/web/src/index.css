@@ -78,6 +78,18 @@
   .card-radius-lg {
     @apply rounded-[3rem];
   }
+
+  /* Shared marketing hero header gradient — deep navy fading gradually to the
+     light page surface, top → bottom. Used by every page header that wants
+     this look (CaseSubmission, Downloads, ComingSoon, InstructionalVideos).
+     Edit the stops here once to restyle them all. */
+  .hero-gradient {
+    background-image: linear-gradient(
+      to bottom,
+      theme(colors.brand.600) 0%,
+      theme(colors.surface.100) 100%
+    );
+  }
 }
 
 @layer utilities {

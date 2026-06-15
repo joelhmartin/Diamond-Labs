@@ -443,7 +443,7 @@ function CaseHero() {
   return (
     <section
       ref={ref}
-      className="relative bg-gradient-to-b from-navy via-brand-900 to-surface-100 pt-32 pb-24"
+      className="relative hero-gradient pt-32 pb-24"
     >
       <div className="section-pad text-center max-w-2xl mx-auto">
         <span

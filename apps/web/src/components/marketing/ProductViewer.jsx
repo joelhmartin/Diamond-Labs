@@ -37,7 +37,7 @@ export function ProductViewer({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
       {/* Main display */}
-      <div className="lg:col-span-8">
+      <div className="lg:col-span-6">
         <div className="relative aspect-[4/3] rounded-[2rem] overflow-hidden bg-surface-100 border border-surface-300/50">
           {activeItem.is3D ? (
             <ModelViewer
@@ -110,7 +110,7 @@ export function ProductViewer({
       </div>
 
       {/* Details */}
-      <div className="lg:col-span-4">
+      <div className="lg:col-span-6">
         <div className="font-heading font-bold text-3xl md:text-4xl tracking-tight">
           {product.name}
           {registered && (
