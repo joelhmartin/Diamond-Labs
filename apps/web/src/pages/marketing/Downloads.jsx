@@ -30,7 +30,7 @@ export function DownloadsPage() {
   return (
     <div>
       {/* Hero */}
-      <section className="relative bg-gradient-to-b from-navy via-brand-900 to-surface-100 pt-32 pb-28">
+      <section className="relative hero-gradient pt-32 pb-28">
         <div className="section-pad text-center max-w-2xl mx-auto">
           <span className="font-mono text-xs text-white/30 uppercase tracking-widest">
             Resources

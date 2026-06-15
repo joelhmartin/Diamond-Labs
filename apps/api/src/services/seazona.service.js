@@ -5,29 +5,66 @@ function getAuthHeader() {
   return `Basic ${credentials}`;
 }
 
-async function request(path, options = {}) {
+/**
+ * Low-level Seazona call. Returns `{ ok, status, data }` so each caller learns its
+ * OWN call's outcome with no shared module state — important for the health probe,
+ * which must not pick up a concurrent request's status. `data` is the parsed JSON
+ * on 2xx, else null. Never throws: network errors resolve to `{ ok:false, status:0 }`.
+ */
+async function requestRaw(path, options = {}) {
   if (!env.SEAZONA_API_KEY || !env.SEAZONA_SECRET || !env.SEAZONA_BASE_URL) {
     console.warn("[Seazona] API credentials not configured");
-    return null;
+    return { ok: false, status: 0, data: null };
   }
 
   const url = `${env.SEAZONA_BASE_URL}${path}`;
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      Authorization: getAuthHeader(),
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  });
+  let res;
+  try {
+    res = await fetch(url, {
+      ...options,
+      // Auth + Content-Type are applied AFTER the caller's headers so a caller can
+      // never accidentally override them — the wrapper's contract is that every
+      // Seazona request is HTTP Basic authed and sends application/json.
+      headers: {
+        ...options.headers,
+        Authorization: getAuthHeader(),
+        "Content-Type": "application/json",
+      },
+    });
+  } catch (err) {
+    // Network-level failure (DNS, TLS, connection reset). Treat like a non-2xx:
+    // log with the same `[Seazona]` token the alerting metric matches, and resolve
+    // to a not-ok result so callers degrade gracefully instead of throwing.
+    console.error(`[Seazona] ${options.method || "GET"} ${path} → network error: ${err?.message || err}`);
+    return { ok: false, status: 0, data: null };
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     console.error(`[Seazona] ${options.method || "GET"} ${path} → ${res.status}: ${text}`);
-    return null;
+    return { ok: false, status: res.status, data: null };
   }
 
-  return res.json();
+  return { ok: true, status: res.status, data: await res.json() };
+}
+
+/**
+ * Convenience wrapper used by most callers: returns the parsed JSON on success, or
+ * null on any failure (already logged by requestRaw).
+ */
+async function request(path, options = {}) {
+  return (await requestRaw(path, options)).data;
+}
+
+/**
+ * Cheap liveness probe for the health route. Uses login-exists (a single indexed
+ * lookup) so it stays fast and side-effect-free. Reads its own probe result from
+ * requestRaw's return value — no shared state, so concurrent traffic can't taint
+ * it. Returns { ok, status }.
+ */
+export async function checkHealth() {
+  const { ok, status } = await requestRaw("v1/clients/login-exists?email=__healthcheck__%40diamond.invalid");
+  return { ok, status };
 }
 
 /**
@@ -74,9 +111,18 @@ export async function getClient(clientId) {
  * that means "everything".
  */
 export async function getInvoices(lastModified) {
+  return (await getInvoicesResult(lastModified)).invoices;
+}
+
+/**
+ * Like getInvoices but reports reachability: `reachable` is false when the
+ * underlying call errored (non-2xx / network), letting callers tell "Seazona is
+ * down" apart from "Seazona returned an empty list".
+ */
+export async function getInvoicesResult(lastModified) {
   const since = lastModified || "1900-01-01T00:00:00Z";
   const data = await request(`v1/invoices/?lastModified=${encodeURIComponent(since)}`);
-  return Array.isArray(data) ? data : [];
+  return { reachable: data !== null, invoices: Array.isArray(data) ? data : [] };
 }
 
 const INVOICE_PAGE_CAP = 10000;
@@ -96,11 +142,22 @@ function bumpOneSecond(ts) {
  * De-dupes by invoice id.
  */
 export async function getAllInvoices() {
+  return (await getAllInvoicesResult()).invoices;
+}
+
+/**
+ * getAllInvoices + reachability. `reachable` is false if ANY page failed (so the
+ * caller knows the set may be incomplete / Seazona is degraded), distinguishing a
+ * true empty archive from an outage.
+ */
+export async function getAllInvoicesResult() {
   const seen = new Map();
   let cursor = "1900-01-01T00:00:00Z";
+  let reachable = true;
 
   for (let i = 0; i < 50; i++) {
-    const batch = await getInvoices(cursor);
+    const { reachable: ok, invoices: batch } = await getInvoicesResult(cursor);
+    if (!ok) { reachable = false; break; }
     if (!batch.length) break;
 
     for (const inv of batch) seen.set(inv.id, inv);
@@ -114,7 +171,7 @@ export async function getAllInvoices() {
     cursor = allSame ? bumpOneSecond(maxLM) : maxLM;
   }
 
-  return [...seen.values()];
+  return { reachable, invoices: [...seen.values()] };
 }
 
 /**

@@ -96,15 +96,16 @@ export default async function invoiceRoutes(fastify) {
   fastify.get("/admin/invoices", {
     preHandler: [authenticate, requireAdmin],
   }, async (request) => {
-    const [allRaw, clientList] = await Promise.all([
+    const [invResult, clientList] = await Promise.all([
       request.query.lastModified
-        ? seazonaService.getInvoices(request.query.lastModified)
-        : seazonaService.getAllInvoices(),
+        ? seazonaService.getInvoicesResult(request.query.lastModified)
+        : seazonaService.getAllInvoicesResult(),
       seazonaService.listClients(),
     ]);
+    const seazonaUnavailable = !invResult.reachable;
 
     // Portal-payment fields default to 0 — admin bulk list has no per-user ledger context.
-    const invoices = allRaw.map(normalizeInvoice);
+    const invoices = invResult.invoices.map(normalizeInvoice);
 
     // Index clients by id for lookup
     const clients = {};
@@ -126,7 +127,7 @@ export default async function invoiceRoutes(fastify) {
       statuses: statusCounts,
     };
 
-    return { data: { invoices, clients, summary } };
+    return { data: { invoices, clients, summary }, meta: { seazonaUnavailable } };
   });
 
   // ADMIN — single client detail (for expanding rows, etc.)
@@ -149,18 +150,20 @@ export default async function invoiceRoutes(fastify) {
     }
 
     // Fetch Seazona invoices and the local portal-payment ledger in parallel.
-    const [allInvoices, portalPaidMap] = await Promise.all([
+    const [invResult, portalPaidMap] = await Promise.all([
       request.query.lastModified
-        ? seazonaService.getInvoices(request.query.lastModified)
-        : seazonaService.getAllInvoices(),
+        ? seazonaService.getInvoicesResult(request.query.lastModified)
+        : seazonaService.getAllInvoicesResult(),
       buildPortalPaidMap(request.user.id),
     ]);
 
-    const doctorInvoices = allInvoices
+    const doctorInvoices = invResult.invoices
       .filter((inv) => String(inv.clientId) === String(seazonaClientId))
       .map((inv) => normalizeInvoice(inv, portalPaidMap[String(inv.id)] || 0));
 
-    return { data: doctorInvoices };
+    // Tell the UI "billing system unreachable" apart from "you have no invoices":
+    // an empty list with seazonaUnavailable=true is an outage, not a clean slate.
+    return { data: doctorInvoices, meta: { seazonaUnavailable: !invResult.reachable } };
   });
 
   // Get a specific invoice
