@@ -134,6 +134,25 @@ async function recordPaymentAndAllocations({ user, amount, transactionId, alloca
       amount,
     });
     seazonaPaymentId = res?.paymentId || null;
+
+    // CRITICAL: the card was already charged at Authorize.net. If the Seazona
+    // write didn't land, the payment exists at the processor but NOT in the
+    // billing system of record — it must be entered manually. This was silently
+    // swallowed before. Log a distinct, alertable line (the `[Seazona]` token is
+    // what the GCP log-based metric matches) carrying everything needed to
+    // reconcile by hand. We do NOT throw — failing here can't un-charge the card.
+    if (!seazonaPaymentId) {
+      console.error(
+        `[Seazona][PAYMENT_WRITE_FAILED] charge ${transactionId} succeeded at Authorize.net but did NOT record in Seazona — manual entry required ` +
+          JSON.stringify({
+            transactionId,
+            clientId: user.seazonaClientId,
+            accountNumber: user.seazonaAccountNumber || null,
+            amount,
+            invoices: allocations.map((a) => a.invoiceNumber || a.invoiceId),
+          })
+      );
+    }
   }
 
   await db.insert(invoicePayments).values(

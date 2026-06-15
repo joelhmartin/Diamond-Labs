@@ -228,12 +228,16 @@ export function AdminInvoicesPage() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
+  // Set when the call returned but Seazona was unreachable/degraded (so the list
+  // may be empty or incomplete) — separate from `error`, which is a failed request.
+  const [seazonaDown, setSeazonaDown] = useState(false);
 
   const load = async () => {
     try {
       setRefreshing(true);
       const res = await api.get("/admin/invoices");
       setData(res.data.data);
+      setSeazonaDown(Boolean(res.data.meta?.seazonaUnavailable));
       setError(null);
     } catch (err) {
       setError(
@@ -327,6 +331,19 @@ export function AdminInvoicesPage() {
         </button>
       </div>
 
+      {seazonaDown && !error && (
+        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <AlertCircle size={18} className="mt-0.5 flex-shrink-0 text-amber-500" />
+          <div className="text-sm text-amber-800">
+            <p className="font-semibold">Seazona billing API is unreachable.</p>
+            <p className="mt-0.5 text-amber-700">
+              The invoice list below may be empty or incomplete — this is a connection issue with Seazona,
+              not a sign that these clients have no invoices. Doctor portals are showing the same outage banner.
+            </p>
+          </div>
+        </div>
+      )}
+
       {data.summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           <Stat label="Invoices" value={data.summary.count.toLocaleString()} />
@@ -406,7 +423,9 @@ export function AdminInvoicesPage() {
           <FileText size={32} className="mx-auto mb-3 text-navy/20" />
           <p className="text-sm text-navy/40">
             {data.invoices.length === 0
-              ? "No invoices returned by Seazona."
+              ? seazonaDown
+                ? "Invoices are temporarily unavailable (Seazona unreachable)."
+                : "No invoices returned by Seazona."
               : "No invoices match your filters."}
           </p>
         </div>

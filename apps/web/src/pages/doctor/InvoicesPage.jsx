@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { CreditCard, CheckSquare, Square, Loader2, CheckCircle2 } from "lucide-react";
+import { CreditCard, CheckSquare, Square, Loader2, CheckCircle2, AlertTriangle } from "lucide-react";
 import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { Button } from "../../components/ui/Button.jsx";
@@ -12,13 +12,19 @@ export function InvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(new Set());
   const [showPayment, setShowPayment] = useState(false);
+  // True when the billing system (Seazona) couldn't be reached — distinguishes an
+  // outage from a genuinely empty invoice list so we don't show a misleading
+  // "No invoices found".
+  const [seazonaDown, setSeazonaDown] = useState(false);
   const { addToast } = useToast();
 
   const fetchInvoices = useCallback(async () => {
     try {
       const { data } = await api.get("/invoices");
       setInvoices(data.data || []);
+      setSeazonaDown(Boolean(data.meta?.seazonaUnavailable));
     } catch (err) {
+      setSeazonaDown(true);
       addToast({ message: "Failed to load invoices", type: "error" });
     } finally {
       setLoading(false);
@@ -77,9 +83,24 @@ export function InvoicesPage() {
         )}
       </div>
 
+      {seazonaDown && (
+        <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-500" />
+          <div className="text-sm text-amber-800">
+            <p className="font-medium">We're having trouble reaching the billing system.</p>
+            <p className="mt-0.5 text-amber-700">
+              Your invoices may be temporarily unavailable or incomplete. This is on our end, not yours —
+              please check back shortly. If you need to make a payment urgently, contact the lab.
+            </p>
+          </div>
+        </div>
+      )}
+
       {invoices.length === 0 ? (
         <div className="rounded-xl border border-gray-200 bg-white p-12 text-center">
-          <p className="text-gray-500">No invoices found.</p>
+          <p className="text-gray-500">
+            {seazonaDown ? "Invoices are temporarily unavailable." : "No invoices found."}
+          </p>
         </div>
       ) : (
         <>
