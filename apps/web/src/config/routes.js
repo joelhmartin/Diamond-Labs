@@ -26,6 +26,7 @@ export const ROUTES = {
   // Doctor
   DOCTOR_INVOICES: "/doctor/invoices",
   DOCTOR_SAVED_CARDS: "/doctor/saved-cards",
+  DOCTOR_NEW_CASE: "/app/cases/new",
 
   // Commerce
   CHECKOUT: "/checkout",

@@ -59,6 +59,7 @@ import { CartWidget } from "./components/marketing/CartWidget.jsx";
 // Doctor pages
 import { InvoicesPage } from "./pages/doctor/InvoicesPage.jsx";
 import { SavedCardsPage } from "./pages/doctor/SavedCardsPage.jsx";
+import { NewCasePage } from "./pages/app/NewCasePage.jsx";
 import { RequireDoctor } from "./guards/RequireDoctor.jsx";
 import { PaymentTestPage } from "./pages/dev/PaymentTestPage.jsx";
 
@@ -212,6 +213,11 @@ function AppRoutes() {
       <Route path="/doctor" element={<RequireDoctor />}>
         <Route path="invoices" element={<InvoicesPage />} />
         <Route path="saved-cards" element={<SavedCardsPage />} />
+      </Route>
+
+      {/* Doctor case submission (full-page wizard, no AppShell) */}
+      <Route element={<RequireDoctor />}>
+        <Route path="/app/cases/new" element={<NewCasePage />} />
       </Route>
 
       {/* Dev-only payment test harness (any authenticated user) */}
