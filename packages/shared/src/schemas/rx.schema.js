@@ -14,8 +14,9 @@ export const rxCaseSubmitSchema = z.object({
   gender: z.string().max(20).optional(),
   contactPhone: z.string().max(30).optional(),
 
-  // Practice
-  practiceName: z.string().optional(),
+  // Practice — max matches the rx_cases.practice_name varchar(200) column so an
+  // overlength value is rejected at validation, not at insert time.
+  practiceName: z.string().max(200).optional(),
 
   // Device
   deviceKey: z.string().min(1, "Device key is required").max(60),
