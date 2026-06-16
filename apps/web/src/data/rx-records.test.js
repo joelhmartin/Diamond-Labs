@@ -11,8 +11,12 @@ test("first-device has 3 options incl previous/new records", () => {
   assert.deepEqual(FIRST_DEVICE, ["Yes", "No, use PREVIOUS RECORDS", "No, use NEW RECORDS"]);
 });
 test("physical-bite has the 3 canonical handling options", () => {
-  assert.equal(PHYSICAL_BITE.length, 3);
+  assert.deepEqual(PHYSICAL_BITE.map((o) => o.value), ["no_digital", "wait_physical", "start_verify"]);
 });
-test("rush tiers carry per-material price + label", () => {
-  assert.ok(RUSH_TIERS.nylon.price === 150 && RUSH_TIERS.biomedPmtAcrylic.price === 75);
+test("rush tiers carry per-material price", () => {
+  assert.equal(RUSH_TIERS.nylon.price, 150);
+  assert.equal(RUSH_TIERS.biomedPmtAcrylic.price, 75);
+});
+test("every records method has an /images/ img path", () => {
+  assert.ok(RECORDS_METHODS.every((r) => r.img && r.img.startsWith("/images/")));
 });
