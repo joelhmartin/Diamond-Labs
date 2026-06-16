@@ -6,6 +6,7 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
+import multipart from "@fastify/multipart";
 import { env } from "./config/env.js";
 import project from "../../../project.config.js";
 import { errorHandler } from "./middleware/error-handler.js";
@@ -18,6 +19,7 @@ import invitationRoutes from "./routes/invitation.routes.js";
 import invoiceRoutes from "./routes/invoice.routes.js";
 import paymentRoutes from "./routes/payment.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
+import rxRoutes from "./routes/rx.routes.js";
 
 const fastify = Fastify({
   logger: {
@@ -52,6 +54,16 @@ fastify.addContentTypeParser("*", { parseAs: "string" }, (req, body, done) => {
 });
 
 // Plugins
+await fastify.register(multipart, {
+  // 20 MB per file; individual routes may further constrain via per-request opts.
+  // The parts/files caps here are global backstops; the rx-cases route enforces
+  // tighter limits via its own per-request options object.
+  limits: {
+    fileSize: 20 * 1024 * 1024, // 20 MB
+    files: 20,
+    parts: 50,
+  },
+});
 await fastify.register(cookie);
 await fastify.register(cors, {
   origin: env.NODE_ENV === "production"
@@ -101,6 +113,7 @@ await fastify.register(invitationRoutes, { prefix: "/api/v1/invitations" });
 await fastify.register(invoiceRoutes, { prefix: "/api/v1" });
 await fastify.register(paymentRoutes, { prefix: "/api/v1" });
 await fastify.register(adminRoutes,   { prefix: "/api/v1" });
+await fastify.register(rxRoutes,      { prefix: "/api/v1" });
 
 // Serve the built React frontend from this same service (single Cloud Run app:
 // the SPA and the /api/v1 backend share one origin, which is what the frontend's
