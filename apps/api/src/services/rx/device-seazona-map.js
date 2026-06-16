@@ -4,8 +4,10 @@
  * Codes are resolved to ids by the payload builder against the live catalog.
  * UNMAPPED selections are returned as flags in `unmapped`; we NEVER guess a code.
  *
- * Seed values are best-guess placeholders — Task 3.2 fills real codes;
- * the dry-run coverage report verifies accuracy before any live order is placed.
+ * Seed values marked with a real numeric Seazona code have been confirmed by
+ * catalog fuzzy-match (Task 3.2); entries marked `// TODO verify` are best-guess
+ * placeholders pending lab sign-off (see docs/rx-forms/rx-map-draft.md).
+ * The dry-run (Task 8.2) will surface any remaining gaps before any live order.
  *
  * `resolveLineItems` returns:
  *   { items: [{ code, name, arch, source }], unmapped: [string] }
@@ -23,42 +25,42 @@ export const DEVICE_MAP = {
   "olmos-day": {
     arch: null,
     primary: {
-      "OD (PMT)":          { code: "OD_PMT",          name: "Olmos Day OD (PMT)" },
-      "OD BIOFLEX":        { code: "OD_BIOFLEX",       name: "Olmos Day OD Bioflex" },
-      "Printed Nylon":     { code: "OD_NYLON",         name: "Olmos Day Printed Nylon" },
-      "Acrylic w/clasps":  { code: "OD_ACRYLIC",       name: "Olmos Day Acrylic w/clasps" },
-      "Dual-Laminate":     { code: "OD_DUAL_LAM",      name: "Olmos Day Dual-Laminate" },
-      "Milled":            { code: "OD_MILLED",        name: "Olmos Day Milled" },
+      "OD (PMT)":          { code: "2102",          name: "Olmos Day OD (PMT)" },
+      "OD BIOFLEX":        { code: "OD_BIOFLEX",    name: "Olmos Day OD Bioflex" },          // TODO verify
+      "Printed Nylon":     { code: "OD_NYLON",      name: "Olmos Day Printed Nylon" },        // TODO verify
+      "Acrylic w/clasps":  { code: "OD_ACRYLIC",    name: "Olmos Day Acrylic w/clasps" },     // TODO verify
+      "Dual-Laminate":     { code: "OD_DUAL_LAM",   name: "Olmos Day Dual-Laminate" },        // TODO verify
+      "Milled":            { code: "OD_MILLED",     name: "Olmos Day Milled" },               // TODO verify
     },
   },
   "olmos-night": {
     arch: null,
     primary: {
-      "Deprogrammer ON-D (Anterior)":    { code: "ON_DEPROG",   name: "Olmos Night ON-D Deprogrammer" },
-      "Positioner ON-P (Anterior)":      { code: "ON_POS",      name: "Olmos Night ON-P Positioner" },
-      "Titration ON-T (Nylon only)":     { code: "ON_TITRATE",  name: "Olmos Night ON-T Titration (Nylon)" },
-      "Ramp ON-R (Anterior)":            { code: "ON_RAMP",     name: "Olmos Night ON-R Ramp" },
+      "Deprogrammer ON-D (Anterior)":    { code: "ON_DEPROG",   name: "Olmos Night ON-D Deprogrammer" },        // TODO verify
+      "Positioner ON-P (Anterior)":      { code: "ON_POS",      name: "Olmos Night ON-P Positioner" },          // TODO verify
+      "Titration ON-T (Nylon only)":     { code: "ON_TITRATE",  name: "Olmos Night ON-T Titration (Nylon)" },   // TODO verify
+      "Ramp ON-R (Anterior)":            { code: "ON_RAMP",     name: "Olmos Night ON-R Ramp" },                // TODO verify
     },
   },
   "onp": {
     arch: null,
     primary: {
-      "Deprogrammer ON-D (Anterior)":    { code: "ONP_DEPROG",  name: "ONP Deprogrammer" },
-      "Positioner ON-P (Anterior)":      { code: "ONP_POS",     name: "ONP Positioner" },
-      "Titration ON-T (Nylon only)":     { code: "ONP_TITRATE", name: "ONP Titration (Nylon)" },
-      "Ramp ON-R (Anterior)":            { code: "ONP_RAMP",    name: "ONP Ramp" },
+      "Deprogrammer ON-D (Anterior)":    { code: "ONP_DEPROG",  name: "ONP Deprogrammer" },        // TODO verify
+      "Positioner ON-P (Anterior)":      { code: "ONP_POS",     name: "ONP Positioner" },           // TODO verify
+      "Titration ON-T (Nylon only)":     { code: "ONP_TITRATE", name: "ONP Titration (Nylon)" },    // TODO verify
+      "Ramp ON-R (Anterior)":            { code: "ONP_RAMP",    name: "ONP Ramp" },                 // TODO verify
     },
   },
   "mora": {
     arch: null,
     primary: {
-      default: { code: "MORA", name: "MORA — Mandibular Orthopedic Repositioning Appliance" },
+      default: { code: "MORA", name: "MORA — Mandibular Orthopedic Repositioning Appliance" },      // TODO verify
     },
   },
   "ara": {
     arch: null,
     primary: {
-      default: { code: "ARA", name: "ARA — Anterior Repositioning Appliance" },
+      default: { code: "ARA", name: "ARA — Anterior Repositioning Appliance" },                     // TODO verify
     },
   },
 
@@ -66,29 +68,29 @@ export const DEVICE_MAP = {
   "ddso": {
     arch: null,
     primary: {
-      "Nylon":  { code: "DDSO_NYLON",  name: "DDSO Nylon" },
-      "Biomed": { code: "DDSO_BIOMED", name: "DDSO Biomed" },
+      "Nylon":  { code: "2147", name: "DDSO Nylon" },
+      "Biomed": { code: "2146", name: "DDSO Biomed" },
     },
   },
   "cadcam-d-pro": {
     arch: null,
     primary: {
-      default: { code: "CADCAM_D_PRO", name: "CAD/CAM D-Pro" },
+      default: { code: "CADCAM_D_PRO", name: "CAD/CAM D-Pro" },    // TODO verify
     },
   },
   "shirazi-hybrid": {
     arch: null,
     primary: {
-      default: { code: "SHIRAZI_HYBRID", name: "Shirazi Hybrid — CPAP Pro" },
+      default: { code: "SHIRAZI_HYBRID", name: "Shirazi Hybrid — CPAP Pro" },    // TODO verify
     },
   },
   "snorehook": {
     arch: null,
     primary: {
-      "SnoreHook":                 { code: "SNOREHOOK",          name: "SnoreHook" },
-      "SomnoDent Classic":         { code: "SOMNODENT_CLASSIC",  name: "SomnoDent Classic" },
-      "SomnoDent Flex":            { code: "SOMNODENT_FLEX",     name: "SomnoDent Flex" },
-      "SomnoDent Herbst Advance":  { code: "SOMNODENT_HERBST",   name: "SomnoDent Herbst Advance" },
+      "SnoreHook":                 { code: "2154",              name: "SnoreHook" },
+      "SomnoDent Classic":         { code: "SOMNODENT_CLASSIC", name: "SomnoDent Classic" },          // TODO verify
+      "SomnoDent Flex":            { code: "SOMNODENT_FLEX",    name: "SomnoDent Flex" },             // TODO verify
+      "SomnoDent Herbst Advance":  { code: "SOMNODENT_HERBST",  name: "SomnoDent Herbst Advance" },   // TODO verify
     },
   },
 
@@ -96,12 +98,12 @@ export const DEVICE_MAP = {
   "guard": {
     arch: null,  // arch comes from deviceOptions.arch at runtime
     primary: {
-      "Hard Nightguard":               { code: "GUARD_HARD",      name: "Hard Nightguard" },
-      "Soft Nightguard":               { code: "GUARD_SOFT",      name: "Soft Nightguard" },
-      "Dual-Laminate Nightguard":      { code: "GUARD_DUAL_LAM",  name: "Dual-Laminate Nightguard" },
-      "Essix retainer (tray)":         { code: "ESSIX",           name: "Essix Retainer (Tray)" },
-      "Whitening tray":                { code: "WHITE_TRAY",      name: "Whitening Tray" },
-      "Sports mouthguard (standard)":  { code: "SPORT_STD",       name: "Sports Mouthguard (Standard)" },
+      "Hard Nightguard":               { code: "GUARD_HARD",     name: "Hard Nightguard" },               // TODO verify
+      "Soft Nightguard":               { code: "GUARD_SOFT",     name: "Soft Nightguard" },               // TODO verify
+      "Dual-Laminate Nightguard":      { code: "2167",           name: "Dual-Laminate Nightguard" },
+      "Essix retainer (tray)":         { code: "ESSIX",          name: "Essix Retainer (Tray)" },         // TODO verify
+      "Whitening tray":                { code: "WHITE_TRAY",     name: "Whitening Tray" },                // TODO verify
+      "Sports mouthguard (standard)":  { code: "SPORT_STD",      name: "Sports Mouthguard (Standard)" },  // TODO verify
     },
   },
 
@@ -109,7 +111,7 @@ export const DEVICE_MAP = {
   "sport-guard": {
     arch: null,
     primary: {
-      default: { code: "SPORT_GUARD_CUSTOM", name: "Diamond Orthotic Sport-Guard (Custom)" },
+      default: { code: "SPORT_GUARD_CUSTOM", name: "Diamond Orthotic Sport-Guard (Custom)" },    // TODO verify
     },
   },
 
@@ -117,7 +119,7 @@ export const DEVICE_MAP = {
   "ortho-expander": {
     arch: null,
     primary: {
-      default: { code: "ORTHO_EXPANDER", name: "Orthodontic Appliance (Expander / Tandem / Twin Block)" },
+      default: { code: "ORTHO_EXPANDER", name: "Orthodontic Appliance (Expander / Tandem / Twin Block)" },    // TODO verify
     },
   },
 
@@ -125,7 +127,7 @@ export const DEVICE_MAP = {
   "remake": {
     arch: null,
     primary: {
-      default: { code: "REMAKE", name: "Remake / Repair / Redesign" },
+      default: { code: "REMAKE", name: "Remake / Repair / Redesign" },    // TODO verify
     },
   },
 };
@@ -137,39 +139,39 @@ export const DEVICE_MAP = {
 // ---------------------------------------------------------------------------
 export const MODIFICATION_MAP = {
   // ── Common modifications (shared across OD, CAD/CAM, SPIR, Guard) ───────
-  "Anterior ramp":                  { code: "MOD_ANT_RAMP",      name: "Anterior Ramp" },
-  "Posterior pads":                 { code: "MOD_POST_PADS",     name: "Posterior Pads" },
-  "Labial bow":                     { code: "MOD_LABIAL_BOW",    name: "Labial Bow" },
-  "Relief over bony prominences":   { code: "MOD_BONY_RELIEF",   name: "Relief over Bony Prominences" },
-  "Soft liner":                     { code: "MOD_SOFT_LINER",    name: "Soft Liner" },
-  "Lingual bar":                    { code: "MOD_LINGUAL_BAR",   name: "Lingual Bar" },
+  "Anterior ramp":                  { code: "MOD_ANT_RAMP",      name: "Anterior Ramp" },                     // TODO verify
+  "Posterior pads":                 { code: "MOD_POST_PADS",     name: "Posterior Pads" },                    // TODO verify
+  "Labial bow":                     { code: "2184",              name: "Labial Bow" },
+  "Relief over bony prominences":   { code: "MOD_BONY_RELIEF",   name: "Relief over Bony Prominences" },      // TODO verify
+  "Soft liner":                     { code: "MOD_SOFT_LINER",    name: "Soft Liner" },                        // TODO verify
+  "Lingual bar":                    { code: "MOD_LINGUAL_BAR",   name: "Lingual Bar" },                       // TODO verify
 
   // ── Shirazi Hybrid extras ────────────────────────────────────────────────
-  "Opposing Trutaine only":         { code: "MOD_TRUTAINE",      name: "Opposing Trutaine Only" },
-  "CPAP-Pro coupler":               { code: "MOD_CPAP_COUPLER",  name: "CPAP-Pro Coupler" },
+  "Opposing Trutaine only":         { code: "MOD_TRUTAINE",      name: "Opposing Trutaine Only" },            // TODO verify
+  "CPAP-Pro coupler":               { code: "MOD_CPAP_COUPLER",  name: "CPAP-Pro Coupler" },                  // TODO verify
 
   // ── Olmos Night extras ───────────────────────────────────────────────────
-  "Anterior ring (positioner)":     { code: "MOD_ANT_RING",      name: "Anterior Ring (Positioner)" },
-  "Tongue space":                   { code: "MOD_TONGUE_SPACE",  name: "Tongue Space" },
-  "Lingual ramp":                   { code: "MOD_LINGUAL_RAMP",  name: "Lingual Ramp" },
-  "Occlusal pad":                   { code: "MOD_OCC_PAD",       name: "Occlusal Pad" },
+  "Anterior ring (positioner)":     { code: "MOD_ANT_RING",      name: "Anterior Ring (Positioner)" },        // TODO verify
+  "Tongue space":                   { code: "MOD_TONGUE_SPACE",  name: "Tongue Space" },                      // TODO verify
+  "Lingual ramp":                   { code: "MOD_LINGUAL_RAMP",  name: "Lingual Ramp" },                      // TODO verify
+  "Occlusal pad":                   { code: "MOD_OCC_PAD",       name: "Occlusal Pad" },                      // TODO verify
 
   // ── Guard-specific modifications ─────────────────────────────────────────
-  "Trim to gumline":                { code: "MOD_TRIM_GUM",      name: "Trim to Gumline" },
-  "Trim to occlusal plane":         { code: "MOD_TRIM_OCC",      name: "Trim to Occlusal Plane" },
+  "Trim to gumline":                { code: "MOD_TRIM_GUM",      name: "Trim to Gumline" },                   // TODO verify
+  "Trim to occlusal plane":         { code: "MOD_TRIM_OCC",      name: "Trim to Occlusal Plane" },            // TODO verify
 
   // ── Ortho modifications ──────────────────────────────────────────────────
-  "Buccal tubes to bands":               { code: "MOD_BUCCAL_TUBES",     name: "Buccal Tubes to Bands" },
-  "Palatal pads":                        { code: "MOD_PALATAL_PADS",     name: "Palatal Pads" },
-  "Anterior lap springs":                { code: "MOD_ANT_LAP_SPRINGS",  name: "Anterior Lap Springs" },
-  "Buccal hooks for tandem elastics":    { code: "MOD_BUCCAL_HOOKS",     name: "Buccal Hooks for Tandem Elastics" },
-  "Lingual guide arm to canines":        { code: "MOD_LINGUAL_ARM_CAN",  name: "Lingual Guide Arm to Canines" },
-  "Lingual guide arm (distal)":          { code: "MOD_LINGUAL_ARM_DIST", name: "Lingual Guide Arm (Distal)" },
-  "Transfer tray for composite buttons": { code: "MOD_TRANSFER_TRAY",    name: "Transfer Tray for Composite Buttons" },
-  "Occlusal Rest(s)":                    { code: "MOD_OCC_RESTS",        name: "Occlusal Rest(s)" },
-  "Finger Springs":                      { code: "MOD_FINGER_SPRINGS",   name: "Finger Springs" },
-  "Sheaths for Tandem Bow":              { code: "MOD_TANDEM_SHEATHS",   name: "Sheaths for Tandem Bow" },
-  "Other":                               { code: "MOD_OTHER",            name: "Other Modification (see notes)" },
+  "Buccal tubes to bands":               { code: "2307",                  name: "Buccal Tubes to Bands" },
+  "Palatal pads":                        { code: "MOD_PALATAL_PADS",      name: "Palatal Pads" },                          // TODO verify
+  "Anterior lap springs":                { code: "MOD_ANT_LAP_SPRINGS",   name: "Anterior Lap Springs" },                  // TODO verify
+  "Buccal hooks for tandem elastics":    { code: "MOD_BUCCAL_HOOKS",      name: "Buccal Hooks for Tandem Elastics" },      // TODO verify
+  "Lingual guide arm to canines":        { code: "MOD_LINGUAL_ARM_CAN",   name: "Lingual Guide Arm to Canines" },          // TODO verify
+  "Lingual guide arm (distal)":          { code: "MOD_LINGUAL_ARM_DIST",  name: "Lingual Guide Arm (Distal)" },            // TODO verify
+  "Transfer tray for composite buttons": { code: "MOD_TRANSFER_TRAY",     name: "Transfer Tray for Composite Buttons" },   // TODO verify
+  "Occlusal Rest(s)":                    { code: "MOD_OCC_RESTS",         name: "Occlusal Rest(s)" },                      // TODO verify
+  "Finger Springs":                      { code: "MOD_FINGER_SPRINGS",    name: "Finger Springs" },                        // TODO verify
+  "Sheaths for Tandem Bow":              { code: "MOD_TANDEM_SHEATHS",    name: "Sheaths for Tandem Bow" },                // TODO verify
+  "Other":                               { code: "MOD_OTHER",             name: "Other Modification (see notes)" },        // TODO verify
 };
 
 // ---------------------------------------------------------------------------
@@ -177,8 +179,8 @@ export const MODIFICATION_MAP = {
 // Ancillary line items added by the payload builder based on submission type.
 // ---------------------------------------------------------------------------
 export const LAB_SERVICE_CODES = {
-  modelFabPerArch: { code: "MODEL_FAB",  name: "Digital Model Fabrication (Per Arch)" },
-  articulate:      { code: "ARTICULATE", name: "Articulate Models (Per Arch)" },
+  modelFabPerArch: { code: "2367", name: "Digital Model Fabrication (Per Arch)" },
+  articulate:      { code: "2368", name: "Articulate Models (Per Arch)" },
 };
 
 // ---------------------------------------------------------------------------
