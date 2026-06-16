@@ -397,6 +397,82 @@ const SPORT_GUARD_OPTIONS = {
   },
 };
 
+/* ─── ORTHODONTIC ─── */
+const ORTHO_OPTIONS = {
+  applianceType: {
+    type: "radio",
+    label: "Appliance type",
+    required: true,
+    options: ["Modified Tandem", "Twin Block", "Other"],
+  },
+  retention: {
+    type: "radio",
+    label: "Arch retention / base material",
+    required: true,
+    options: [
+      "Fixed (Banded)",
+      "Fixed [3D Printed] Bands",
+      "Acrylic w/ clasp retention",
+      "Printed NYLON w/ composite retention",
+      "Other",
+    ],
+  },
+  expansionScrew: {
+    type: "radio",
+    label: "Expansion screw",
+    options: [
+      "No Expansion",
+      "Slim-Line Screw",
+      "Standard Transverse Screw",
+      "Slim-Line Variety-Click",
+      "Memory Screw",
+      "Standard Hyrax RPE",
+      "NiTi",
+      "Other",
+    ],
+  },
+  mandibularType: {
+    type: "radio",
+    label: "Mandibular (lower) component",
+    options: ["Removable", "Fixed"],
+  },
+  modifications: {
+    type: "checkbox",
+    label: "Add modifications",
+    options: [
+      "Buccal tubes to bands",
+      "Palatal pads",
+      "Anterior lap springs",
+      "Buccal hooks for tandem elastics",
+      "Lingual guide arm to canines",
+      "Lingual guide arm (distal)",
+      "Labial bow",
+      "Transfer tray for composite buttons",
+      "Occlusal Rest(s)",
+      "Finger Springs",
+      "Sheaths for Tandem Bow",
+      "Other",
+    ],
+  },
+  nuveloSetup: {
+    type: "radio",
+    label: "NUVELO Digital Setup",
+    options: [
+      "Digital Models ONLY - Horse-shoe base",
+      "Digital Models ONLY - ABO - Full Base",
+    ],
+  },
+  artboard: {
+    type: "artboard",
+    label: "Design your appliance",
+  },
+  comments: {
+    type: "textarea",
+    label: "Ortho — Additional comments / instructions",
+    placeholder: "Design notes, tooth numbers, special instructions…",
+  },
+};
+
 /* ─── REMAKE / REPAIR / REDESIGN ─── */
 const REMAKE_OPTIONS = {
   type: {
@@ -570,6 +646,17 @@ export const RX_DEVICES = [
     options: SPORT_GUARD_OPTIONS,
   },
 
+  // ORTHO
+  {
+    key: "ortho-expander",
+    name: "Ortho Appliance",
+    fullName: "Orthodontic Appliance (Expander / Tandem / Twin Block)",
+    category: "ortho",
+    image: "/images/onp-front.webp",
+    tagline: "Functional orthodontics: Modified Tandem, Twin Block, and custom expanders.",
+    options: ORTHO_OPTIONS,
+  },
+
   // REMAKE
   {
     key: "remake",
@@ -587,7 +674,8 @@ export const CATEGORY_LABELS = {
   sleep:  { label: "Sleep Appliances",     color: "bg-accent-500/10 text-accent-600" },
   guard:  { label: "Mouthguards",          color: "bg-emerald-500/10 text-emerald-600" },
   sport:  { label: "Sport-Guards",         color: "bg-violet-500/10 text-violet-600" },
+  ortho:  { label: "Orthodontic",          color: "bg-sky-500/10 text-sky-600" },
   remake: { label: "Remake / Repair",      color: "bg-navy/10 text-navy/70" },
 };
 
-export const CATEGORY_ORDER = ["tmd", "sleep", "guard", "sport", "remake"];
+export const CATEGORY_ORDER = ["tmd", "sleep", "guard", "sport", "ortho", "remake"];

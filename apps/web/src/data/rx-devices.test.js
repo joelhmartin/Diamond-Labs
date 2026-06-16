@@ -21,3 +21,10 @@ test("MORA and ARA exist in tmd category", () => {
   assert.ok(byKey["mora"] && byKey["mora"].category === "tmd");
   assert.ok(byKey["ara"] && byKey["ara"].category === "tmd");
 });
+test("ortho category exists with appliance type + expansion screw + retention", () => {
+  const o = byKey["ortho-expander"];
+  assert.equal(o.category, "ortho");
+  assert.deepEqual(o.options.applianceType.options, ["Modified Tandem", "Twin Block", "Other"]);
+  assert.ok(o.options.expansionScrew.options.includes("Slim-Line Variety-Click"));
+  assert.ok(o.options.retention.options.includes("Fixed (Banded)"));
+});
