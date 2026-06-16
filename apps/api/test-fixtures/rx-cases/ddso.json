@@ -1,0 +1,15 @@
+{
+  "seazonaClientId": "DRYRUN",
+  "patientFirst": "Sample",
+  "patientLast": "Patient",
+  "dueDate": "2025-12-15",
+  "deviceKey": "ddso",
+  "deviceCategory": "sleep",
+  "deviceOptions": {
+    "baseMaterial": "Nylon",
+    "occlusalContact": "Posterior",
+    "designPreference": "Buccal-Free"
+  },
+  "rush": false,
+  "generalComments": "Dry-run fixture — DDSO Nylon"
+}

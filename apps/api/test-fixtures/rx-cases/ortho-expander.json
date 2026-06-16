@@ -1,0 +1,16 @@
+{
+  "seazonaClientId": "DRYRUN",
+  "patientFirst": "Sample",
+  "patientLast": "Patient",
+  "dueDate": "2025-12-15",
+  "deviceKey": "ortho-expander",
+  "deviceCategory": "ortho",
+  "deviceOptions": {
+    "applianceType": "Modified Tandem",
+    "retention": "Fixed (Banded)",
+    "expansionScrew": "Slim-Line Variety-Click",
+    "modifications": ["Labial bow", "Buccal tubes to bands"]
+  },
+  "rush": false,
+  "generalComments": "Dry-run fixture — Modified Tandem Expander with labial bow and buccal tubes"
+}
