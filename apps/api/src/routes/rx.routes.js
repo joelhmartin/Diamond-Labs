@@ -4,17 +4,19 @@ import { db } from "../config/database.js";
 import { rxCases, rxCaseFiles } from "../db/schema/index.js";
 import { createId } from "../lib/id.js";
 import { env } from "../config/env.js";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { ERROR_CODES, rxCaseSubmitSchema } from "@my-app/shared";
 import * as seazonaService from "../services/seazona.service.js";
 import { buildSeazonaOrderPayload } from "../services/rx/build-order-payload.js";
-import { uploadCaseFile } from "../services/storage.service.js";
+import { uploadCaseFile, deleteStoredFile } from "../services/storage.service.js";
 
 // ─── Upload guards ────────────────────────────────────────────────────────────
 // 20 MB per file — consistent with storage.service.js local-disk path.
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024;
 // Sane total-file cap to prevent abuse; individual file-kind names gate further.
-const MAX_FILES = 20;
+const MAX_FILES = 8;
+// 60 MB cumulative across all files in a single submission.
+const MAX_TOTAL_BYTES = 60 * 1024 * 1024;
 
 // The five allowed file field names, each mapping directly to the rx_case_files.kind column.
 const FILE_FIELD_KINDS = new Set(["scan", "photo", "prescription", "sleep_study", "artboard"]);
@@ -47,6 +49,11 @@ export default async function rxRoutes(fastify) {
     const fields = {};
     const pendingFiles = []; // collected file descriptors before upload
     let fileCount = 0;
+    let totalBytes = 0;
+    // Flag-based early exit: setting this and breaking lets the async iterator
+    // close cleanly (calls iterator.return()), draining remaining parts and
+    // preventing client connection resets instead of an in-loop early return.
+    let limitError = null;
 
     // ── Parse parts ──────────────────────────────────────────────────────────
     for await (const part of request.parts({
@@ -60,29 +67,33 @@ export default async function rxRoutes(fastify) {
           await part.toBuffer().catch(() => {});
           continue;
         }
+
         fileCount++;
         if (fileCount > MAX_FILES) {
-          // Drain the current part before responding so the stream is closed cleanly.
+          // Drain the oversized part's buffer before breaking so the stream is
+          // in a clean state when the iterator is closed.
           await part.toBuffer().catch(() => {});
-          return reply.code(413).send({
-            error: {
-              ...ERROR_CODES.VALIDATION_ERROR,
-              message: `Too many files — maximum ${MAX_FILES} allowed per submission.`,
-            },
-          });
+          limitError = `Too many files — maximum ${MAX_FILES} allowed per submission.`;
+          break;
         }
+
         let buffer;
         try {
           buffer = await part.toBuffer();
         } catch {
           // @fastify/multipart throws when the file exceeds the configured limit.
-          return reply.code(413).send({
-            error: {
-              ...ERROR_CODES.VALIDATION_ERROR,
-              message: `File "${part.filename || part.fieldname}" exceeds the ${MAX_FILE_SIZE_BYTES / (1024 * 1024)} MB size limit.`,
-            },
-          });
+          // The current part's stream was consumed up to the limit; break so the
+          // iterator closes the remaining parts cleanly.
+          limitError = `File "${part.filename || part.fieldname}" exceeds the ${MAX_FILE_SIZE_BYTES / (1024 * 1024)} MB size limit.`;
+          break;
         }
+
+        totalBytes += buffer.length;
+        if (totalBytes > MAX_TOTAL_BYTES) {
+          limitError = `Total upload size exceeds the ${MAX_TOTAL_BYTES / (1024 * 1024)} MB limit.`;
+          break;
+        }
+
         pendingFiles.push({
           kind,
           buffer,
@@ -93,6 +104,15 @@ export default async function rxRoutes(fastify) {
         // Text field
         fields[part.fieldname] = part.value;
       }
+    }
+
+    if (limitError) {
+      return reply.code(413).send({
+        error: {
+          ...ERROR_CODES.VALIDATION_ERROR,
+          message: limitError,
+        },
+      });
     }
 
     // ── Pre-process JSON-encoded fields ──────────────────────────────────────
@@ -111,6 +131,11 @@ export default async function rxRoutes(fastify) {
     }
 
     // ── Validate ─────────────────────────────────────────────────────────────
+    // Belt-and-suspenders: strip identity fields that MUST come from request.user,
+    // never from the submitted form body (enforced again at line 129 below).
+    delete fields.seazonaClientId;
+    delete fields.seazonaAccountNumber;
+
     const parsed = rxCaseSubmitSchema.safeParse(fields);
     if (!parsed.success) {
       const messages = Object.values(parsed.error.flatten().fieldErrors)
@@ -154,36 +179,51 @@ export default async function rxRoutes(fastify) {
     }
 
     // ── Persist in a single transaction ──────────────────────────────────────
-    await db.transaction(async (tx) => {
-      await tx.insert(rxCases).values({
-        id: caseId,
-        caseNumber,
-        userId,
-        seazonaClientId: seazonaClientId || null,
-        seazonaAccountNumber: seazonaAccountNumber || null,
-        patientFirst: data.patientFirst,
-        patientLast: data.patientLast,
-        dob: data.dob || null,
-        gender: data.gender || null,
-        firstDevice: data.firstDevice || null,
-        contactPhone: data.contactPhone || null,
-        shipTo: data.shipTo || null,
-        recordsMethod: data.recordsMethod || null,
-        physicalBite: data.physicalBite || null,
-        deviceKey: data.deviceKey,
-        deviceCategory: data.deviceCategory,
-        deviceOptions: data.deviceOptions ?? {},
-        dueDate: data.dueDate || null,
-        rush: data.rush ?? false,
-        rushTier: data.rushTier || null,
-        signatureUrl: data.signatureUrl || null,
-        generalComments: data.generalComments || null,
-        // status defaults to 'pending_approval' at the schema level
+    // Files are uploaded before the transaction (simplest); if the transaction
+    // fails we best-effort delete the already-uploaded GCS objects so they don't
+    // become orphaned.
+    try {
+      await db.transaction(async (tx) => {
+        await tx.insert(rxCases).values({
+          id: caseId,
+          caseNumber,
+          userId,
+          seazonaClientId: seazonaClientId || null,
+          seazonaAccountNumber: seazonaAccountNumber || null,
+          patientFirst: data.patientFirst,
+          patientLast: data.patientLast,
+          dob: data.dob || null,
+          gender: data.gender || null,
+          firstDevice: data.firstDevice || null,
+          contactPhone: data.contactPhone || null,
+          shipTo: data.shipTo || null,
+          recordsMethod: data.recordsMethod || null,
+          physicalBite: data.physicalBite || null,
+          deviceKey: data.deviceKey,
+          deviceCategory: data.deviceCategory,
+          deviceOptions: data.deviceOptions ?? {},
+          dueDate: data.dueDate || null,
+          rush: data.rush ?? false,
+          rushTier: data.rushTier || null,
+          signatureUrl: data.signatureUrl || null,
+          generalComments: data.generalComments || null,
+          // status defaults to 'pending_approval' at the schema level
+        });
+        if (uploadedFiles.length > 0) {
+          await tx.insert(rxCaseFiles).values(uploadedFiles);
+        }
       });
-      if (uploadedFiles.length > 0) {
-        await tx.insert(rxCaseFiles).values(uploadedFiles);
-      }
-    });
+    } catch (err) {
+      // Best-effort cleanup of already-uploaded files before responding.
+      await Promise.allSettled(uploadedFiles.map((f) => deleteStoredFile(f.gcsUrl)));
+      request.log.error(
+        { caseId, fileCount: uploadedFiles.length, err: err.message },
+        "rx case transaction failed; orphan cleanup attempted"
+      );
+      return reply.code(500).send({
+        error: { code: "INTERNAL_ERROR", status: 500, message: "Failed to save case. Please try again." },
+      });
+    }
 
     request.log.info(
       { caseId, caseNumber, userId, fileCount: uploadedFiles.length },
@@ -208,7 +248,8 @@ export default async function rxRoutes(fastify) {
 
   // ─────────────────────────────────────────────────────────────────────────
   // GET /rx/cases/:id — single case + its files.
-  // Returns 404 if not found, 403 if the case belongs to a different doctor.
+  // Returns 404 for both missing cases and cases owned by another doctor
+  // (conservative: don't reveal that a case id exists for a different doctor).
   // ─────────────────────────────────────────────────────────────────────────
   fastify.get("/rx/cases/:id", {
     preHandler: [authenticate, requireApprovedDoctor],
@@ -222,7 +263,7 @@ export default async function rxRoutes(fastify) {
       return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
     }
     if (caseRow.userId !== request.user.id) {
-      return reply.code(403).send({ error: ERROR_CODES.FORBIDDEN });
+      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
     }
 
     const files = await db
@@ -261,8 +302,9 @@ export default async function rxRoutes(fastify) {
     if (!caseRow) {
       return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
     }
+    // 404 (not 403) for another doctor's case — don't reveal that the id exists.
     if (caseRow.userId !== request.user.id) {
-      return reply.code(403).send({ error: ERROR_CODES.FORBIDDEN });
+      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
     }
     if (caseRow.status !== "pending_approval") {
       return reply.code(409).send({
@@ -320,8 +362,12 @@ export default async function rxRoutes(fastify) {
       seazonaPushStatus = "push_skipped_dryrun";
     }
 
-    // ── Persist approval ──────────────────────────────────────────────────────
-    await db
+    // ── Persist approval (ATOMIC) ─────────────────────────────────────────────
+    // Fold the status predicate into the WHERE so two concurrent approves can't
+    // both pass the earlier app-level check and double-process (TOCTOU). Only the
+    // request that actually flips pending_approval → approved proceeds; a loser
+    // gets 409. Critical once the RX_LIVE_PUSH branch calls createOrder.
+    const updated = await db
       .update(rxCases)
       .set({
         status: "approved",
@@ -330,7 +376,18 @@ export default async function rxRoutes(fastify) {
         seazonaOrderId,
         updatedAt: new Date(),
       })
-      .where(eq(rxCases.id, caseRow.id));
+      .where(and(eq(rxCases.id, caseRow.id), eq(rxCases.status, "pending_approval")))
+      .returning({ id: rxCases.id });
+
+    if (updated.length === 0) {
+      return reply.code(409).send({
+        error: {
+          code: "CASE_NOT_PENDING",
+          status: 409,
+          message: "Case is no longer pending approval (already approved or being approved).",
+        },
+      });
+    }
 
     request.log.info(
       { caseId: caseRow.id, seazonaPushStatus, warningCount: warnings.length },

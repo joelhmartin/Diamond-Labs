@@ -1,4 +1,4 @@
-import { writeFile, mkdir } from "node:fs/promises";
+import { writeFile, mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import crypto from "node:crypto";
@@ -80,4 +80,36 @@ export async function uploadCaseFile({ caseId, kind, buffer, originalName, conte
   await mkdir(dirname(absPath), { recursive: true });
   await writeFile(absPath, buffer);
   return { gcsUrl: `file://${absPath}`, size: buffer.length };
+}
+
+/**
+ * Best-effort delete of a stored file.  Handles both local dev paths
+ * (file://<abs>) and GCS objects (gs://<bucket>/<path>).
+ * Never throws — logs on error so the caller can proceed without crashing.
+ *
+ * @param {string} gcsUrl
+ */
+export async function deleteStoredFile(gcsUrl) {
+  try {
+    if (gcsUrl.startsWith("file://")) {
+      const filePath = gcsUrl.slice("file://".length);
+      await rm(filePath, { force: true }); // force: ignore ENOENT
+    } else if (gcsUrl.startsWith("gs://")) {
+      // gs://<bucket>/<objectPath>
+      const withoutScheme = gcsUrl.slice("gs://".length);
+      const slashIdx = withoutScheme.indexOf("/");
+      const bucket = withoutScheme.slice(0, slashIdx);
+      const objectPath = withoutScheme.slice(slashIdx + 1);
+      const { Storage } = await import("@google-cloud/storage");
+      const storage = new Storage();
+      await storage.bucket(bucket).file(objectPath).delete({ ignoreNotFound: true });
+    } else {
+      console.warn("[storage] deleteStoredFile: unrecognised URL scheme", gcsUrl);
+    }
+  } catch (err) {
+    console.error("[storage] deleteStoredFile: best-effort delete failed", {
+      gcsUrl,
+      err: err.message,
+    });
+  }
 }
