@@ -42,6 +42,9 @@ const envSchema = z.object({
   AUTHORIZE_NET_SANDBOX_API_LOGIN: z.string().optional(),
   AUTHORIZE_NET_SANDBOX_TRANSACTION_KEY: z.string().optional(),
 
+  // Google Cloud Storage
+  RX_GCS_BUCKET: z.string().optional(),
+
   // Admin
   ADMIN_NOTIFICATION_EMAIL: z.string().email().optional(),
 });
