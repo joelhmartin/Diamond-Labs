@@ -147,9 +147,8 @@ export function CaseSubmissionPage() {
           {/* Secondary explanation — only relevant for unauthenticated visitors */}
           {!isApprovedDoctor && (
             <p className="mt-6 text-center text-xs text-navy/30 max-w-sm mx-auto leading-relaxed">
-              Already approved? After signing in you&apos;ll be redirected to the
-              full wizard — device picker, digital scans upload, e-signature, and
-              same-day queue entry.
+              Already an approved doctor? Sign in above — the link will take you
+              straight to the case submission wizard.
             </p>
           )}
         </div>

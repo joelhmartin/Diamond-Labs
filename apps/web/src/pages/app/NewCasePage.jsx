@@ -30,6 +30,9 @@ function buildFormData(data) {
   fd.append("deviceKey", data.deviceKey ?? "");
   fd.append("deviceCategory", data.deviceCategory ?? "");
 
+  // Optional — sent when the doctor has filled/edited it
+  if (data.practiceName) fd.append("practiceName", data.practiceName);
+
   // Device options. Two types of fields must be lifted out before JSON.stringify:
   //
   // 1. The ortho "artboard" field holds a PNG data URL — pull it out and send

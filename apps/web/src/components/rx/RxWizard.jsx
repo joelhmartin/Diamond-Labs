@@ -71,6 +71,16 @@ const INITIAL_FORM = {
 const INPUT =
   "w-full px-4 py-3 rounded-xl bg-surface-50 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-navy/25";
 
+/* Mirrors the shouldShow predicate in DeviceOptionsPanel.jsx — keep in sync. */
+function shouldShow(field, values) {
+  if (!field.showIf) return true;
+  const other = values[field.showIf.key];
+  if (field.showIf.equals != null) return other === field.showIf.equals;
+  if (field.showIf.prefix != null)
+    return typeof other === "string" && other.startsWith(field.showIf.prefix);
+  return true;
+}
+
 /* ════════════════════════════════════════════════════════════════
    SHARED SUB-COMPONENTS
    ════════════════════════════════════════════════════════════════ */
@@ -569,7 +579,7 @@ export function RxWizard({ prefill = {}, onSubmit, submitting = false }) {
     const errs = [];
     if (step === 0) {
       if (!form.doctorName.trim()) errs.push("doctorName");
-      if (!form.practiceName.trim()) errs.push("practiceName");
+      // practiceName is optional — prefilled when available, derivable server-side
       if (!form.email.trim()) errs.push("email");
       if (!form.patientFirst.trim()) errs.push("patientFirst");
       if (!form.patientLast.trim()) errs.push("patientLast");
@@ -578,6 +588,8 @@ export function RxWizard({ prefill = {}, onSubmit, submitting = false }) {
     if (step === 2 && form.device) {
       for (const [key, field] of Object.entries(form.device.options)) {
         if (!field.required) continue;
+        // Skip fields hidden by a showIf rule — they are never filled by the user.
+        if (!shouldShow(field, form.deviceOptions)) continue;
         const v = form.deviceOptions[key];
         const empty =
           v === undefined ||
@@ -614,6 +626,7 @@ export function RxWizard({ prefill = {}, onSubmit, submitting = false }) {
       dob: form.dob,
       gender: form.gender,
       firstDevice: form.firstDevice,
+      practiceName: form.practiceName,
       contactPhone: form.phone,
       dueDate: form.dueDate,
       rush: form.rush,
@@ -714,9 +727,9 @@ export function RxWizard({ prefill = {}, onSubmit, submitting = false }) {
                     </span>
                   </div>
                 </Field>
-                <Field label="Practice Name" required>
+                <Field label="Practice Name">
                   <input
-                    className={`${INPUT} ${errClass("practiceName")}`}
+                    className={INPUT}
                     value={form.practiceName}
                     onChange={(e) => update("practiceName", e.target.value)}
                     placeholder="Smile Dental Group"
@@ -1125,12 +1138,16 @@ export function RxWizard({ prefill = {}, onSubmit, submitting = false }) {
                         key={key}
                         label={field.label.replace(/[^a-zA-Z0-9 ]/g, "").slice(0, 28)}
                         value={
-                          typeof value === "object" && !Array.isArray(value)
-                            ? Object.entries(value)
-                                .filter(([, v]) => v)
-                                .map(([k, v]) => `${k}: ${v}`)
-                                .join(" · ")
-                            : value
+                          // Artboard is a base64 PNG data URL — show a short status
+                          key === "artboard" ||
+                          (typeof value === "string" && value.startsWith("data:"))
+                            ? "Artboard attached"
+                            : typeof value === "object" && !Array.isArray(value)
+                              ? Object.entries(value)
+                                  .filter(([, v]) => v)
+                                  .map(([k, v]) => `${k}: ${v}`)
+                                  .join(" · ")
+                              : value
                         }
                       />
                     );
