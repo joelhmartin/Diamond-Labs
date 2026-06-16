@@ -152,3 +152,34 @@ Each entry: `{ code, name, arch?, perTooth?, condition }`. Built from the 392-it
 - No charging/billing at submit.
 - No mapping guesses at push time — unmapped is a hard flag.
 - Reuse existing patterns: gated push + `seazonaPushStatus`, `[Seazona]` alerting, GCS via GCP (we're already all-GCP).
+
+---
+
+## Addendum — Authoritative data via JotForm API (2026-06-15)
+
+We have JotForm **HIPAA API** access (`https://hipaa-api.jotform.com`, key in `.env`). This is the source of truth for form definitions (PHI-free; we do NOT pull submission content, which is PHI).
+
+**Form landscape (active, by submission volume):**
+- `220598308432154` **Diamond Orthotic Lab Rx. 2025** — 26,909 subs — **CANONICAL device form** (build target).
+- `210768412588160` Diamond Orthotic Order Form — 16,685 subs — **legacy** predecessor, same structure (likely the `hippa-digital-order-form-rx` URL). Not a build target; useful for historical submission shapes.
+- `213545611846154` Diamond Orthodontic Rx. — 1,360 subs — **ortho appliances** (second build target).
+- `261374354546158` Diamond Orthotic Lab Rx. 2026 — 0 subs — **near-identical to 2025** (calendar swap, "MISTRY Protocol"→"MISTRY Orthotics", drops ARA). Building to 2025 satisfies 2026.
+- New Client Account `220535354143145`, Shipping Request `252404790475157` — out of scope.
+
+**Authoritative artifacts committed to repo:**
+- `docs/rx-forms/jotform-api/*-questions.json` — full question defs for the 4 relevant forms.
+- `docs/rx-forms/jotform-images/options/` — 43 option-diagram PNGs (occlusal/design/material/records/modification/device images) extracted from image-picker widget `items`. These become the wizard's image-picker assets.
+
+**Definitive option-sets (supersede §3 where they differ) — Rx 2025:**
+- **First device?:** Yes / No - use PREVIOUS RECORDS / No - use NEW RECORDS (3 options).
+- **Records method (12):** Physical Bite / PVS / Stone-Resin / 3Shape / Carestream / CEREC / iTero / Medit / Midmark / Shining 3D / Planmeca / All Other Scanners.
+- **OD base material (6):** OD (PMT) / OD BIOFLEX / Printed Nylon / Acrylic w/clasps / Dual-Laminate / Milled.
+- **ON design (4):** Deprogrammer ON-D / Positioner ON-P / Titration ON-T (Nylon only) / Ramp ON-R.
+- **Occlusal Contact (4):** Posterior / Anterior / Full / Tripod  *(no "Tripod+1" in the live form — 2022 PDF was stale)*.
+- **Design Preference (4):** Standard / Lingual-Free / Buccal-Free / Full Coverage.
+- **Modifications (device-specific):** Tongue Positioners / Hooks for Elastics / Vertical Shims / BAB Loop / ON Loop / ON Ramp.
+- **Guards device:** Dual Arch Slider / Dual Arch Flatplane / Single Arch Nightguard.
+- **Sport:** Trainer (Non-Contact, Md only) / PRO (light-heavy contact) / CAD-CAM.
+- **Extra TMD devices (MISTRY Protocol):** MORA, ARA — add to `tmd` category.
+
+**Implication:** `rx-devices.js` reconciliation must be driven from the committed `*-questions.json` (authoritative), not the 2022 PDF. The dry-run harness validates generated payloads against real orders regardless.
