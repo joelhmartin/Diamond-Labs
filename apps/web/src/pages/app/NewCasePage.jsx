@@ -11,6 +11,16 @@ import { ROUTES } from "../../config/routes.js";
    payload. Field names must match the backend
    contract for POST /api/v1/rx/cases exactly.
    ──────────────────────────────────────────────── */
+/** Convert a base64 PNG data URL to a Blob (synchronous, no fetch). */
+function dataUrlToBlob(dataUrl) {
+  const [head, b64] = dataUrl.split(",");
+  const mime = /:(.*?);/.exec(head)?.[1] || "image/png";
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
 function buildFormData(data) {
   const fd = new FormData();
 
@@ -20,9 +30,17 @@ function buildFormData(data) {
   fd.append("deviceKey", data.deviceKey ?? "");
   fd.append("deviceCategory", data.deviceCategory ?? "");
 
-  // Optional text fields
+  // Device options. The ortho "artboard" field holds a PNG data URL — it must
+  // NOT travel inside the options JSON (it would bloat the notes and DB row);
+  // pull it out and send it as the `artboard` file instead.
   if (data.deviceOptions && Object.keys(data.deviceOptions).length > 0) {
-    fd.append("deviceOptions", JSON.stringify(data.deviceOptions));
+    const { artboard, ...rest } = data.deviceOptions;
+    if (typeof artboard === "string" && artboard.startsWith("data:")) {
+      fd.append("artboard", dataUrlToBlob(artboard), "artboard.png");
+    }
+    if (Object.keys(rest).length > 0) {
+      fd.append("deviceOptions", JSON.stringify(rest));
+    }
   }
   if (data.dob) fd.append("dob", data.dob);
   if (data.gender) fd.append("gender", data.gender);
@@ -133,8 +151,11 @@ export function NewCasePage() {
       });
       setResult(data.data); // { id, caseNumber, status }
     } catch (err) {
+      // The API returns `error` as an object ({code,status,message}); extract a
+      // string so we never render an object as a React child.
+      const apiErr = err.response?.data?.error;
       const msg =
-        err.response?.data?.error ||
+        (typeof apiErr === "string" ? apiErr : apiErr?.message) ||
         err.response?.data?.message ||
         "Submission failed. Please check your connection and try again.";
       setError(msg);

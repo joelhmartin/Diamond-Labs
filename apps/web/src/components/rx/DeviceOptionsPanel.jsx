@@ -7,6 +7,7 @@ import {
   Image as ImageIcon,
   AlertCircle,
 } from "lucide-react";
+import { Artboard } from "./Artboard.jsx";
 
 const INPUT =
   "w-full px-4 py-3 rounded-xl bg-surface-50 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-navy/25";
@@ -394,6 +395,15 @@ function FileUploadField({ field, value, onChange }) {
   );
 }
 
+function ArtboardField({ field, value, onChange }) {
+  return (
+    <div>
+      <Label required={field.required}>{field.label}</Label>
+      <Artboard value={value} onChange={onChange} />
+    </div>
+  );
+}
+
 /* ─── MAIN PANEL ─── */
 
 const RENDERERS = {
@@ -405,6 +415,7 @@ const RENDERERS = {
   matrix: MatrixField,
   colorPalette: ColorPaletteField,
   fileUpload: FileUploadField,
+  artboard: ArtboardField,
 };
 
 /**
