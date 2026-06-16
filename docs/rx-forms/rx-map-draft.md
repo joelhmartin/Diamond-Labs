@@ -1,12 +1,12 @@
 # Rx → Seazona Product Code Draft Mapping
 
-_Generated: 2026-06-16T04:01:52.838Z_  
+_Generated: 2026-06-16T04:09:59.730Z_  
 _Catalog size: 392 products_  
 _Labels matched: 60_
 
 > **STATUS: DRAFT — pending lab verification before any live Seazona order is placed.**
-> High-confidence codes have been seeded into `device-seazona-map.js`.
-> Ambiguous entries are marked `// TODO verify` — the dry-run (Task 8.2) will surface gaps.
+> High-confidence entries carry a **recommended code** — this is a suggestion, not a confirmed assignment.
+> Ambiguous entries must be manually verified before any code is applied to `device-seazona-map.js`.
 
 ---
 
@@ -15,8 +15,8 @@ _Labels matched: 60_
 | | Count |
 |---|---|
 | Total labels | 60 |
-| High-confidence (seeded) | 15 |
-| Ambiguous / TODO verify | 45 |
+| High-confidence (recommended) | 13 |
+| Ambiguous / TODO verify | 47 |
 
 ---
 
@@ -27,9 +27,9 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 ### Olmos Day OD (PMT)
 
 - **Source:** `DEVICE_MAP["olmos-day"].primary["OD (PMT)"]`
-- **Current placeholder code:** `OD_PMT`
-- **Confidence:** ✅ HIGH CONFIDENCE
-- **Seeded code:** `2102`
+- **Current placeholder code:** `2102`
+- **Confidence tier:** ✅ High
+- **Recommended code:** `2102`
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -41,7 +41,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["olmos-day"].primary["OD BIOFLEX"]`
 - **Current placeholder code:** `OD_BIOFLEX`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2596` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -53,7 +54,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["olmos-day"].primary["Printed Nylon"]`
 - **Current placeholder code:** `OD_NYLON`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2204` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -65,7 +67,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["olmos-day"].primary["Acrylic w/clasps"]`
 - **Current placeholder code:** `OD_ACRYLIC`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2103` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -77,7 +80,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["olmos-day"].primary["Dual-Laminate"]`
 - **Current placeholder code:** `OD_DUAL_LAM`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2167` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -89,7 +93,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["olmos-day"].primary["Milled"]`
 - **Current placeholder code:** `OD_MILLED`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2106` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -101,7 +106,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["olmos-night"].primary["Deprogrammer ON-D (Anterior)"]`
 - **Current placeholder code:** `ON_DEPROG`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2540` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -113,7 +119,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["olmos-night"].primary["Positioner ON-P (Anterior)"]`
 - **Current placeholder code:** `ON_POS`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2561` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -125,7 +132,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["olmos-night"].primary["Titration ON-T (Nylon only)"]`
 - **Current placeholder code:** `ON_TITRATE`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2592` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -137,7 +145,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["olmos-night"].primary["Ramp ON-R (Anterior)"]`
 - **Current placeholder code:** `ON_RAMP`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2301` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -149,7 +158,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["onp"].primary["Deprogrammer ON-D (Anterior)"]`
 - **Current placeholder code:** `ONP_DEPROG`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2127` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -161,7 +171,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["onp"].primary["Positioner ON-P (Anterior)"]`
 - **Current placeholder code:** `ONP_POS`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2127` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -173,8 +184,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["onp"].primary["Titration ON-T (Nylon only)"]`
 - **Current placeholder code:** `ONP_TITRATE`
-- **Confidence:** ✅ HIGH CONFIDENCE
-- **Seeded code:** `2130`
+- **Confidence tier:** ✅ High
+- **Recommended code:** `2130`
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -186,7 +197,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["onp"].primary["Ramp ON-R (Anterior)"]`
 - **Current placeholder code:** `ONP_RAMP`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2127` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -198,7 +210,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["mora"].primary["default"]`
 - **Current placeholder code:** `MORA`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2591` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -210,7 +223,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["ara"].primary["default"]`
 - **Current placeholder code:** `ARA`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2289` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -221,9 +235,9 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 ### DDSO Nylon
 
 - **Source:** `DEVICE_MAP["ddso"].primary["Nylon"]`
-- **Current placeholder code:** `DDSO_NYLON`
-- **Confidence:** ✅ HIGH CONFIDENCE
-- **Seeded code:** `2147`
+- **Current placeholder code:** `2147`
+- **Confidence tier:** ✅ High
+- **Recommended code:** `2147`
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -234,9 +248,9 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 ### DDSO Biomed
 
 - **Source:** `DEVICE_MAP["ddso"].primary["Biomed"]`
-- **Current placeholder code:** `DDSO_BIOMED`
-- **Confidence:** ✅ HIGH CONFIDENCE
-- **Seeded code:** `2146`
+- **Current placeholder code:** `2146`
+- **Confidence tier:** ✅ High
+- **Recommended code:** `2146`
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -248,8 +262,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["cadcam-d-pro"].primary["default"]`
 - **Current placeholder code:** `CADCAM_D_PRO`
-- **Confidence:** ✅ HIGH CONFIDENCE
-- **Seeded code:** `2174`
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2174` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -261,7 +275,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["shirazi-hybrid"].primary["default"]`
 - **Current placeholder code:** `SHIRAZI_HYBRID`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2152` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -272,9 +287,9 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 ### SnoreHook
 
 - **Source:** `DEVICE_MAP["snorehook"].primary["SnoreHook"]`
-- **Current placeholder code:** `SNOREHOOK`
-- **Confidence:** ✅ HIGH CONFIDENCE
-- **Seeded code:** `2154`
+- **Current placeholder code:** `2154`
+- **Confidence tier:** ✅ High
+- **Recommended code:** `2154`
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -286,7 +301,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["snorehook"].primary["SomnoDent Classic"]`
 - **Current placeholder code:** `SOMNODENT_CLASSIC`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2251` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -298,7 +314,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["snorehook"].primary["SomnoDent Flex"]`
 - **Current placeholder code:** `SOMNODENT_FLEX`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2527` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -310,7 +327,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["snorehook"].primary["SomnoDent Herbst Advance"]`
 - **Current placeholder code:** `SOMNODENT_HERBST`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2271` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -322,7 +340,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["guard"].primary["Hard Nightguard"]`
 - **Current placeholder code:** `GUARD_HARD`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2428` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -334,7 +353,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["guard"].primary["Soft Nightguard"]`
 - **Current placeholder code:** `GUARD_SOFT`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2428` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -345,9 +365,9 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 ### Dual-Laminate Nightguard
 
 - **Source:** `DEVICE_MAP["guard"].primary["Dual-Laminate Nightguard"]`
-- **Current placeholder code:** `GUARD_DUAL_LAM`
-- **Confidence:** ✅ HIGH CONFIDENCE
-- **Seeded code:** `2167`
+- **Current placeholder code:** `2167`
+- **Confidence tier:** ✅ High
+- **Recommended code:** `2167`
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -359,7 +379,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["guard"].primary["Essix retainer (tray)"]`
 - **Current placeholder code:** `ESSIX`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2161` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -371,7 +392,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["guard"].primary["Whitening tray"]`
 - **Current placeholder code:** `WHITE_TRAY`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2155` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -383,7 +405,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["guard"].primary["Sports mouthguard (standard)"]`
 - **Current placeholder code:** `SPORT_STD`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2420` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -395,7 +418,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["sport-guard"].primary["default"]`
 - **Current placeholder code:** `SPORT_GUARD_CUSTOM`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2380` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -407,7 +431,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["ortho-expander"].primary["default"]`
 - **Current placeholder code:** `ORTHO_EXPANDER`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2220` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -419,7 +444,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `DEVICE_MAP["remake"].primary["default"]`
 - **Current placeholder code:** `REMAKE`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2490` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -431,7 +457,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Anterior ramp"]`
 - **Current placeholder code:** `MOD_ANT_RAMP`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2289` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -443,7 +470,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Posterior pads"]`
 - **Current placeholder code:** `MOD_POST_PADS`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2293` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -454,9 +482,9 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 ### Labial Bow
 
 - **Source:** `MODIFICATION_MAP["Labial bow"]`
-- **Current placeholder code:** `MOD_LABIAL_BOW`
-- **Confidence:** ✅ HIGH CONFIDENCE
-- **Seeded code:** `2184`
+- **Current placeholder code:** `2184`
+- **Confidence tier:** ✅ High
+- **Recommended code:** `2184`
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -468,7 +496,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Relief over bony prominences"]`
 - **Current placeholder code:** `MOD_BONY_RELIEF`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2288` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -480,7 +509,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Soft liner"]`
 - **Current placeholder code:** `MOD_SOFT_LINER`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2276` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -492,7 +522,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Lingual bar"]`
 - **Current placeholder code:** `MOD_LINGUAL_BAR`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2187` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -504,8 +535,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Opposing Trutaine only"]`
 - **Current placeholder code:** `MOD_TRUTAINE`
-- **Confidence:** ✅ HIGH CONFIDENCE
-- **Seeded code:** `2157`
+- **Confidence tier:** ✅ High
+- **Recommended code:** `2157`
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -517,7 +548,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["CPAP-Pro coupler"]`
 - **Current placeholder code:** `MOD_CPAP_COUPLER`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2540` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -529,7 +561,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Anterior ring (positioner)"]`
 - **Current placeholder code:** `MOD_ANT_RING`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2289` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -541,7 +574,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Tongue space"]`
 - **Current placeholder code:** `MOD_TONGUE_SPACE`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2214` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -553,7 +587,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Lingual ramp"]`
 - **Current placeholder code:** `MOD_LINGUAL_RAMP`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2187` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -565,7 +600,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Occlusal pad"]`
 - **Current placeholder code:** `MOD_OCC_PAD`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2328` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -577,7 +613,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Trim to gumline"]`
 - **Current placeholder code:** `MOD_TRIM_GUM`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2228` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -589,7 +626,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Trim to occlusal plane"]`
 - **Current placeholder code:** `MOD_TRIM_OCC`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2328` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -600,9 +638,9 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 ### Buccal Tubes to Bands
 
 - **Source:** `MODIFICATION_MAP["Buccal tubes to bands"]`
-- **Current placeholder code:** `MOD_BUCCAL_TUBES`
-- **Confidence:** ✅ HIGH CONFIDENCE
-- **Seeded code:** `2307`
+- **Current placeholder code:** `2307`
+- **Confidence tier:** ✅ High
+- **Recommended code:** `2307`
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -614,7 +652,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Palatal pads"]`
 - **Current placeholder code:** `MOD_PALATAL_PADS`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2181` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -626,7 +665,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Anterior lap springs"]`
 - **Current placeholder code:** `MOD_ANT_LAP_SPRINGS`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2215` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -638,8 +678,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Buccal hooks for tandem elastics"]`
 - **Current placeholder code:** `MOD_BUCCAL_HOOKS`
-- **Confidence:** ✅ HIGH CONFIDENCE
-- **Seeded code:** `2195`
+- **Confidence tier:** ✅ High
+- **Recommended code:** `2195`
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -651,7 +691,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Lingual guide arm to canines"]`
 - **Current placeholder code:** `MOD_LINGUAL_ARM_CAN`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2286` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -663,7 +704,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Lingual guide arm (distal)"]`
 - **Current placeholder code:** `MOD_LINGUAL_ARM_DIST`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2285` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -675,7 +717,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Transfer tray for composite buttons"]`
 - **Current placeholder code:** `MOD_TRANSFER_TRAY`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2313` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -687,7 +730,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Occlusal Rest(s)"]`
 - **Current placeholder code:** `MOD_OCC_RESTS`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2328` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -699,8 +743,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Finger Springs"]`
 - **Current placeholder code:** `MOD_FINGER_SPRINGS`
-- **Confidence:** ✅ HIGH CONFIDENCE
-- **Seeded code:** `2215`
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2215` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -712,8 +756,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Sheaths for Tandem Bow"]`
 - **Current placeholder code:** `MOD_TANDEM_SHEATHS`
-- **Confidence:** ✅ HIGH CONFIDENCE
-- **Seeded code:** `2217`
+- **Confidence tier:** ✅ High
+- **Recommended code:** `2217`
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -725,7 +769,8 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 
 - **Source:** `MODIFICATION_MAP["Other"]`
 - **Current placeholder code:** `MOD_OTHER`
-- **Confidence:** ⚠️ AMBIGUOUS — TODO verify
+- **Confidence tier:** ⚠️ Ambiguous — TODO verify
+- **Recommended code:** `2407` _(ambiguous — verify before applying)_
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -736,9 +781,9 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 ### Digital Model Fabrication (Per Arch)
 
 - **Source:** `LAB_SERVICE_CODES["modelFabPerArch"]`
-- **Current placeholder code:** `MODEL_FAB`
-- **Confidence:** ✅ HIGH CONFIDENCE
-- **Seeded code:** `2367`
+- **Current placeholder code:** `2367`
+- **Confidence tier:** ✅ High
+- **Recommended code:** `2367`
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|
@@ -749,9 +794,9 @@ Each section shows: current placeholder code, confidence rating, and top-3 catal
 ### Articulate Models (Per Arch)
 
 - **Source:** `LAB_SERVICE_CODES["articulate"]`
-- **Current placeholder code:** `ARTICULATE`
-- **Confidence:** ✅ HIGH CONFIDENCE
-- **Seeded code:** `2368`
+- **Current placeholder code:** `2368`
+- **Confidence tier:** ✅ High
+- **Recommended code:** `2368`
 
 | Rank | Seazona Code | Seazona Name | Score |
 |---|---|---|---|

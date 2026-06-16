@@ -135,14 +135,14 @@ function topMatches(labelName, catalog, n = 3) {
 }
 
 /**
- * High-confidence: top match scores >= 0.5 AND is at least 1.5× the second best.
+ * High-confidence: top match scores >= 0.6 AND is at least 1.5× the second best.
  * This is intentionally conservative — ambiguous beats a wrong code every time.
  */
 function isHighConfidence(matches) {
   if (!matches.length) return false;
   const top    = matches[0].score;
   const second = matches[1]?.score ?? 0;
-  return top >= 0.5 && (second < 0.001 || top / second >= 1.5);
+  return top >= 0.6 && (second < 0.001 || top / second >= 1.5);
 }
 
 // ---------------------------------------------------------------------------
@@ -227,8 +227,8 @@ md.push(`_Catalog size: ${catalog.length} products_  `);
 md.push(`_Labels matched: ${results.length}_`);
 md.push("");
 md.push("> **STATUS: DRAFT — pending lab verification before any live Seazona order is placed.**");
-md.push("> High-confidence codes have been seeded into `device-seazona-map.js`.");
-md.push("> Ambiguous entries are marked `// TODO verify` — the dry-run (Task 8.2) will surface gaps.");
+md.push("> High-confidence entries carry a **recommended code** — this is a suggestion, not a confirmed assignment.");
+md.push("> Ambiguous entries must be manually verified before any code is applied to `device-seazona-map.js`.");
 md.push("");
 md.push("---");
 md.push("");
@@ -237,7 +237,7 @@ md.push("");
 md.push("| | Count |");
 md.push("|---|---|");
 md.push(`| Total labels | ${results.length} |`);
-md.push(`| High-confidence (seeded) | ${highConf.length} |`);
+md.push(`| High-confidence (recommended) | ${highConf.length} |`);
 md.push(`| Ambiguous / TODO verify | ${ambiguous.length} |`);
 md.push("");
 md.push("---");
@@ -248,14 +248,16 @@ md.push("Each section shows: current placeholder code, confidence rating, and to
 md.push("");
 
 for (const r of results) {
-  const badge = r.highConfidence ? "✅ HIGH CONFIDENCE" : "⚠️ AMBIGUOUS — TODO verify";
+  const tier  = r.highConfidence ? "High" : "Ambiguous";
+  const badge = r.highConfidence ? "✅ High" : "⚠️ Ambiguous — TODO verify";
   md.push(`### ${r.label}`);
   md.push("");
   md.push(`- **Source:** \`${r.source}\``);
   md.push(`- **Current placeholder code:** \`${r.currentCode}\``);
-  md.push(`- **Confidence:** ${badge}`);
-  if (r.highConfidence) {
-    md.push(`- **Seeded code:** \`${r.matches[0].product.code}\``);
+  md.push(`- **Confidence tier:** ${badge}`);
+  if (r.matches[0]) {
+    const note = r.highConfidence ? "" : " _(ambiguous — verify before applying)_";
+    md.push(`- **Recommended code:** \`${r.matches[0].product.code}\`${note}`);
   }
   md.push("");
   md.push("| Rank | Seazona Code | Seazona Name | Score |");
