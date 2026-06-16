@@ -16,3 +16,12 @@ test("unknown device is flagged", () => {
   assert.equal(items.length, 0);
   assert.ok(unmapped.includes("device:__missing__"));
 });
+test("guard carries the selected arch through to the item", () => {
+  const { items } = resolveLineItems({ deviceKey: "guard", deviceOptions: { baseMaterial: "Hard Nightguard", arch: "Upper" } });
+  assert.ok(items.some((i) => i.arch === "Upper"));
+});
+test("a default-only device (mora) resolves its primary without a material", () => {
+  const { items, unmapped } = resolveLineItems({ deviceKey: "mora", deviceOptions: {} });
+  assert.ok(items.length >= 1);
+  assert.equal(unmapped.filter((u) => u.startsWith("primary:")).length, 0);
+});

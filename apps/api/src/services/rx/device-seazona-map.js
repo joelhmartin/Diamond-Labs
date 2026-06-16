@@ -192,7 +192,7 @@ export const LAB_SERVICE_CODES = {
  * @param {object} [params.deviceOptions] — form field values for the device sub-panel
  * @returns {{ items: Array<{code:string,name:string,arch:string|null,source:string}>, unmapped: string[] }}
  */
-export function resolveLineItems({ deviceKey, deviceOptions = {} }) {
+export function resolveLineItems({ deviceKey, deviceOptions = {} } = {}) {
   const items = [];
   const unmapped = [];
 
@@ -210,7 +210,7 @@ export function resolveLineItems({ deviceKey, deviceOptions = {} }) {
     items.push({
       code: primary.code,
       name: primary.name,
-      arch: dev.arch ?? null,
+      arch: dev.arch ?? deviceOptions.arch ?? null,
       source: "primary",
     });
   } else {
