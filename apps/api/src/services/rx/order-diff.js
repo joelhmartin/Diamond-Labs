@@ -10,11 +10,18 @@
  * @returns {{ matched: string[], missingFromOurs: string[], extraInOurs: string[] }}
  */
 export function diffOrderLines(generated, real) {
-  const getName = (item) => (typeof item === "string" ? item : item.name);
-  const normalize = (s) => s.toLowerCase().replace(/\s+/g, " ").trim();
+  // Null-safe: coerce missing/non-string names to "" so real Seazona order
+  // data with {name:null} or {} items never throws here.
+  const getName = (item) => {
+    if (typeof item === "string") return item;
+    if (item == null || typeof item.name !== "string") return "";
+    return item.name;
+  };
+  const normalize = (s) => (typeof s !== "string" ? "" : s.toLowerCase().replace(/\s+/g, " ").trim());
 
-  const genItems = generated.map(getName);
-  const realItems = real.map(getName);
+  // Filter out items whose name resolved to "" (null / malformed rows).
+  const genItems = generated.map(getName).filter((n) => n !== "");
+  const realItems = real.map(getName).filter((n) => n !== "");
 
   const normalizedReal = new Set(realItems.map(normalize));
   const normalizedGen = new Set(genItems.map(normalize));

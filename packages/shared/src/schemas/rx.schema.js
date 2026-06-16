@@ -14,9 +14,14 @@ export const rxCaseSubmitSchema = z.object({
   gender: z.string().max(20).optional(),
   contactPhone: z.string().max(30).optional(),
 
+  // Practice
+  practiceName: z.string().optional(),
+
   // Device
   deviceKey: z.string().min(1, "Device key is required").max(60),
   deviceCategory: z.string().min(1, "Device category is required").max(30),
+  // deviceOptions is free-form: values vary per device type and include "Other"
+  // catch-all fields, so no hard enum — validate shape downstream per deviceKey.
   deviceOptions: z.record(z.unknown()).default({}),
 
   // Clinical
@@ -27,7 +32,10 @@ export const rxCaseSubmitSchema = z.object({
   // Scheduling
   dueDate: z.string().max(30).optional(),
   rush: z.boolean().default(false),
-  rushTier: z.string().max(40).optional(),
+  // Only two tiers exist; constrained here so the route never persists an
+  // arbitrary string. Free-form device-choice fields are NOT constrained
+  // because they include "Other" options.
+  rushTier: z.enum(["nylon", "biomedPmtAcrylic"]).optional(),
 
   // Shipping / delivery
   shipTo: z.record(z.unknown()).optional(),
@@ -35,4 +43,7 @@ export const rxCaseSubmitSchema = z.object({
   // Extras
   generalComments: z.string().optional(),
   signatureUrl: z.string().optional(),
-});
+}).refine(
+  (data) => !data.rush || !!data.rushTier,
+  { message: "rushTier is required when rush is true", path: ["rushTier"] }
+);

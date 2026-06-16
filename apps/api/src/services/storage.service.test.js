@@ -3,6 +3,13 @@ import assert from "node:assert/strict";
 import { readFileSync, rmSync } from "fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+
+// Force the local-disk fallback regardless of the caller's environment.
+// storage.service.js reads process.env.RX_GCS_BUCKET at call time (not at
+// import time), so clearing it here before the first test is sufficient.
+// Without this, tests flap when RX_GCS_BUCKET is set in the shell env.
+delete process.env.RX_GCS_BUCKET;
+
 import { uploadCaseFile } from "./storage.service.js";
 
 // Resolve paths relative to this test file, not process.cwd(), so cleanup

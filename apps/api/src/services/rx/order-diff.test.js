@@ -19,3 +19,13 @@ test("handles empty inputs", () => {
   const d = diffOrderLines([], []);
   assert.deepEqual(d, { matched: [], missingFromOurs: [], extraInOurs: [] });
 });
+test("skips null and {} items without throwing", () => {
+  // Real Seazona order data can include {name:null} or bare {} rows.
+  const generated = [{ name: "DDSO Nylon" }, null, {}];
+  const real = [{ name: "DDSO Nylon" }, { name: null }, null];
+  const d = diffOrderLines(generated, real);
+  // null / {} items are silently skipped; only valid names participate in the diff.
+  assert.deepEqual(d.matched, ["DDSO Nylon"]);
+  assert.deepEqual(d.missingFromOurs, []);
+  assert.deepEqual(d.extraInOurs, []);
+});

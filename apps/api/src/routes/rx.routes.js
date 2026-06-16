@@ -117,13 +117,23 @@ export default async function rxRoutes(fastify) {
 
     // ── Pre-process JSON-encoded fields ──────────────────────────────────────
     // The wizard serialises these as JSON.stringify() strings in the form body.
+    // A malformed value is a client error — return 422 rather than silently
+    // substituting {} / dropping the field, which would discard doctor data.
     if (typeof fields.deviceOptions === "string") {
       try { fields.deviceOptions = JSON.parse(fields.deviceOptions); }
-      catch { fields.deviceOptions = {}; }
+      catch {
+        return reply.code(422).send({
+          error: { ...ERROR_CODES.VALIDATION_ERROR, message: "deviceOptions is not valid JSON." },
+        });
+      }
     }
     if (typeof fields.shipTo === "string") {
       try { fields.shipTo = JSON.parse(fields.shipTo); }
-      catch { delete fields.shipTo; }
+      catch {
+        return reply.code(422).send({
+          error: { ...ERROR_CODES.VALIDATION_ERROR, message: "shipTo is not valid JSON." },
+        });
+      }
     }
     // Multipart form data is always strings; coerce rush to boolean.
     if (typeof fields.rush === "string") {
@@ -157,32 +167,31 @@ export default async function rxRoutes(fastify) {
     const caseId = createId();
     const caseNumber = `RX-${createId().slice(0, 12).toUpperCase()}`;
 
-    // ── Upload files ──────────────────────────────────────────────────────────
+    // ── Upload files + persist ───────────────────────────────────────────────
+    // The upload loop and the DB transaction share ONE try block: if any upload
+    // throws, already-uploaded files are cleaned up in the catch just as they
+    // would be for a transaction failure, preventing GCS orphans either way.
     const uploadedFiles = [];
-    for (const pf of pendingFiles) {
-      const { gcsUrl, size } = await uploadCaseFile({
-        caseId,
-        kind: pf.kind,
-        buffer: pf.buffer,
-        originalName: pf.originalName,
-        contentType: pf.contentType,
-      });
-      uploadedFiles.push({
-        id: createId(),
-        caseId,
-        kind: pf.kind,
-        originalName: pf.originalName,
-        gcsUrl,
-        contentType: pf.contentType || null,
-        size: String(size),
-      });
-    }
-
-    // ── Persist in a single transaction ──────────────────────────────────────
-    // Files are uploaded before the transaction (simplest); if the transaction
-    // fails we best-effort delete the already-uploaded GCS objects so they don't
-    // become orphaned.
     try {
+      for (const pf of pendingFiles) {
+        const { gcsUrl, size } = await uploadCaseFile({
+          caseId,
+          kind: pf.kind,
+          buffer: pf.buffer,
+          originalName: pf.originalName,
+          contentType: pf.contentType,
+        });
+        uploadedFiles.push({
+          id: createId(),
+          caseId,
+          kind: pf.kind,
+          originalName: pf.originalName,
+          gcsUrl,
+          contentType: pf.contentType || null,
+          size: String(size),
+        });
+      }
+
       await db.transaction(async (tx) => {
         await tx.insert(rxCases).values({
           id: caseId,
@@ -205,6 +214,7 @@ export default async function rxRoutes(fastify) {
           dueDate: data.dueDate || null,
           rush: data.rush ?? false,
           rushTier: data.rushTier || null,
+          practiceName: data.practiceName || null,
           signatureUrl: data.signatureUrl || null,
           generalComments: data.generalComments || null,
           // status defaults to 'pending_approval' at the schema level
@@ -214,11 +224,11 @@ export default async function rxRoutes(fastify) {
         }
       });
     } catch (err) {
-      // Best-effort cleanup of already-uploaded files before responding.
+      // Best-effort cleanup of any files already uploaded before the failure.
       await Promise.allSettled(uploadedFiles.map((f) => deleteStoredFile(f.gcsUrl)));
       request.log.error(
         { caseId, fileCount: uploadedFiles.length, err: err.message },
-        "rx case transaction failed; orphan cleanup attempted"
+        "rx case upload/transaction failed; orphan cleanup attempted"
       );
       return reply.code(500).send({
         error: { code: "INTERNAL_ERROR", status: 500, message: "Failed to save case. Please try again." },

@@ -118,7 +118,8 @@ async function main() {
     const orders = await withRetry(`getOrders("${date}")`, () => getOrders(date));
     if (!orders) {
       orderFetchError = `getOrders("${date}") failed`;
-      break;
+      console.warn(`  [WARN] getOrders("${date}") failed — continuing with remaining date anchors.`);
+      continue;
     }
     totalOrderListEntries += orders.length;
     for (const o of orders) {
@@ -149,7 +150,7 @@ async function main() {
       "."
   );
   if (orderFetchError) {
-    console.warn(`  [WARN] Order fetch stopped early: ${orderFetchError}`);
+    console.warn(`  [WARN] One or more date anchors failed (last: ${orderFetchError}); remaining anchors were still tried.`);
   }
   console.log();
 

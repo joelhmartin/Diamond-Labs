@@ -9,6 +9,7 @@ export const rxCases = pgTable("rx_cases", {
   userId: varchar("user_id", { length: 128 }).notNull(),
   seazonaClientId: varchar("seazona_client_id", { length: 100 }),
   seazonaAccountNumber: varchar("seazona_account_number", { length: 50 }),
+  practiceName: varchar("practice_name", { length: 200 }),
   patientFirst: varchar("patient_first", { length: 120 }).notNull(),
   patientLast: varchar("patient_last", { length: 120 }).notNull(),
   dob: varchar("dob", { length: 20 }),

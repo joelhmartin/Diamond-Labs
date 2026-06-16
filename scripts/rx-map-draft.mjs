@@ -71,6 +71,9 @@ const STOPWORDS = new Set([
 ]);
 
 function normalize(str) {
+  // Guard against non-string catalog rows (e.g. {name: null}) so one
+  // malformed Seazona product doesn't crash the whole report.
+  if (typeof str !== "string") return "";
   return str
     .toLowerCase()
     .replace(/[/\-_()[\].,;!?'"``]/g, " ")

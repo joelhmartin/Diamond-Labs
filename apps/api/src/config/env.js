@@ -45,11 +45,14 @@ const envSchema = z.object({
   // Google Cloud Storage
   RX_GCS_BUCKET: z.string().optional(),
   // Digital Rx live Seazona push gate.
-  // When set to "true", the /rx/cases/:id/approve route will call
-  // seazonaService.createOrder with the built payload. When unset or any other
-  // value, the approve route runs in DRY-RUN mode and records
-  // seazonaPushStatus = "push_skipped_dryrun" without calling Seazona.
-  // This matches the gated pattern used by the shop's createOrder path.
+  // NOTE: the live-push branch is currently a stub — even when set to "true",
+  // the /rx/cases/:id/approve route still dry-runs (seazonaPushStatus =
+  // "push_skipped_dryrun") and does NOT call seazonaService.createOrder.
+  // The createOrder call is commented-out pending lab confirmation of the
+  // staff userId and end-to-end payload validation. When unset or any other
+  // value the route also dry-runs. Matches the gated pattern used by the
+  // shop's createOrder path; the gate itself will activate once the TODO
+  // block in rx.routes.js is uncommented.
   RX_LIVE_PUSH: z.string().optional(),
 
   // Admin
