@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import gsap from "gsap";
 import { Lock, Clock, Package, Send } from "lucide-react";
+import { useAuthStore } from "../../stores/auth.store.js";
+import { ROUTES } from "../../config/routes.js";
 
 /* ════════════════════════════════════════════════════════════════
    HERO
@@ -55,6 +57,8 @@ function CaseHero() {
    ════════════════════════════════════════════════════════════════ */
 
 export function CaseSubmissionPage() {
+  const isApprovedDoctor = useAuthStore((s) => s.isApprovedDoctor());
+
   return (
     <div>
       <CaseHero />
@@ -69,31 +73,57 @@ export function CaseSubmissionPage() {
                 <Lock size={28} className="text-brand-500" />
               </div>
 
-              <h2 className="font-heading font-bold text-2xl text-navy">
-                Doctors Only
-              </h2>
-              <p className="mt-3 text-sm text-navy/50 max-w-md mx-auto leading-relaxed">
-                The Digital Rx portal is available to approved Diamond Labs
-                partner doctors. Sign in with your doctor account to access the
-                full case submission wizard.
-              </p>
+              {isApprovedDoctor ? (
+                <>
+                  <h2 className="font-heading font-bold text-2xl text-navy">
+                    Ready to Submit
+                  </h2>
+                  <p className="mt-3 text-sm text-navy/50 max-w-md mx-auto leading-relaxed">
+                    Your account is approved. Open the live wizard to pick a
+                    device, upload scans and records, and sign your case for
+                    fabrication.
+                  </p>
+                  <div className="mt-8 flex items-center justify-center">
+                    <Link
+                      to={ROUTES.DOCTOR_NEW_CASE}
+                      className="btn-magnetic inline-flex items-center gap-2 px-8 py-3.5 rounded-full text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 transition-colors"
+                    >
+                      <span className="relative z-10 flex items-center gap-2">
+                        <Send size={15} /> Submit a New Case
+                      </span>
+                    </Link>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h2 className="font-heading font-bold text-2xl text-navy">
+                    Doctors Only
+                  </h2>
+                  <p className="mt-3 text-sm text-navy/50 max-w-md mx-auto leading-relaxed">
+                    The Digital Rx portal is available to approved Diamond Labs
+                    partner doctors. Sign in with your doctor account to access
+                    the full case submission wizard.
+                  </p>
 
-              <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-                <Link
-                  to="/auth/login"
-                  className="btn-magnetic inline-flex items-center gap-2 px-8 py-3.5 rounded-full text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 transition-colors"
-                >
-                  <span className="relative z-10 flex items-center gap-2">
-                    <Send size={15} /> Sign In to Submit a Case
-                  </span>
-                </Link>
-                <Link
-                  to="/auth/register/doctor"
-                  className="inline-flex items-center gap-2 px-6 py-3.5 rounded-full text-sm font-medium border border-surface-300/50 text-navy/60 hover:text-navy hover:border-brand-500/30 transition-all"
-                >
-                  Apply for a doctor account
-                </Link>
-              </div>
+                  <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+                    <Link
+                      to={ROUTES.LOGIN}
+                      state={{ from: { pathname: ROUTES.DOCTOR_NEW_CASE } }}
+                      className="btn-magnetic inline-flex items-center gap-2 px-8 py-3.5 rounded-full text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 transition-colors"
+                    >
+                      <span className="relative z-10 flex items-center gap-2">
+                        <Send size={15} /> Sign In to Submit a Case
+                      </span>
+                    </Link>
+                    <Link
+                      to={ROUTES.REGISTER_DOCTOR}
+                      className="inline-flex items-center gap-2 px-6 py-3.5 rounded-full text-sm font-medium border border-surface-300/50 text-navy/60 hover:text-navy hover:border-brand-500/30 transition-all"
+                    >
+                      Apply for a doctor account
+                    </Link>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Feature strip */}
@@ -114,12 +144,14 @@ export function CaseSubmissionPage() {
             </div>
           </div>
 
-          {/* Secondary explanation */}
-          <p className="mt-6 text-center text-xs text-navy/30 max-w-sm mx-auto leading-relaxed">
-            Already approved? After signing in you&apos;ll be redirected to the
-            full wizard — device picker, digital scans upload, e-signature, and
-            same-day queue entry.
-          </p>
+          {/* Secondary explanation — only relevant for unauthenticated visitors */}
+          {!isApprovedDoctor && (
+            <p className="mt-6 text-center text-xs text-navy/30 max-w-sm mx-auto leading-relaxed">
+              Already approved? After signing in you&apos;ll be redirected to the
+              full wizard — device picker, digital scans upload, e-signature, and
+              same-day queue entry.
+            </p>
+          )}
         </div>
       </section>
     </div>

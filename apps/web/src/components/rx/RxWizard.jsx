@@ -715,17 +715,12 @@ export function RxWizard({ prefill = {}, onSubmit, submitting = false }) {
                   </div>
                 </Field>
                 <Field label="Practice Name" required>
-                  <div className="relative">
-                    <input
-                      className={`${INPUT} bg-surface-100/80 opacity-70 ${errClass("practiceName")}`}
-                      value={form.practiceName}
-                      disabled
-                      placeholder="Smile Dental Group"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-mono text-navy/25 uppercase tracking-wider pointer-events-none">
-                      pre-filled
-                    </span>
-                  </div>
+                  <input
+                    className={`${INPUT} ${errClass("practiceName")}`}
+                    value={form.practiceName}
+                    onChange={(e) => update("practiceName", e.target.value)}
+                    placeholder="Smile Dental Group"
+                  />
                 </Field>
                 <Field label="Email (confirmation sent here)" required>
                   <div className="relative">

@@ -30,16 +30,38 @@ function buildFormData(data) {
   fd.append("deviceKey", data.deviceKey ?? "");
   fd.append("deviceCategory", data.deviceCategory ?? "");
 
-  // Device options. The ortho "artboard" field holds a PNG data URL — it must
-  // NOT travel inside the options JSON (it would bloat the notes and DB row);
-  // pull it out and send it as the `artboard` file instead.
+  // Device options. Two types of fields must be lifted out before JSON.stringify:
+  //
+  // 1. The ortho "artboard" field holds a PNG data URL — pull it out and send
+  //    it as the `artboard` file to avoid bloating the options JSON.
+  //
+  // 2. fileUpload option fields (e.g. sport-guard "logoUpload") hold arrays of
+  //    { id, file, name, … } objects. JSON.stringify silently drops the File
+  //    bytes. Detect those arrays by checking for a `.file` (File) on the first
+  //    element, collect every File, append them under the `photo` field (the
+  //    backend accepts logo art as photos), and remove the key from the JSON.
   if (data.deviceOptions && Object.keys(data.deviceOptions).length > 0) {
     const { artboard, ...rest } = data.deviceOptions;
     if (typeof artboard === "string" && artboard.startsWith("data:")) {
       fd.append("artboard", dataUrlToBlob(artboard), "artboard.png");
     }
-    if (Object.keys(rest).length > 0) {
-      fd.append("deviceOptions", JSON.stringify(rest));
+
+    // Strip any fileUpload arrays and collect their File objects → `photo`
+    const stripped = {};
+    for (const [key, val] of Object.entries(rest)) {
+      if (
+        Array.isArray(val) &&
+        val.length > 0 &&
+        val[0].file instanceof File
+      ) {
+        val.forEach((entry) => fd.append("photo", entry.file, entry.name));
+      } else {
+        stripped[key] = val;
+      }
+    }
+
+    if (Object.keys(stripped).length > 0) {
+      fd.append("deviceOptions", JSON.stringify(stripped));
     }
   }
   if (data.dob) fd.append("dob", data.dob);
