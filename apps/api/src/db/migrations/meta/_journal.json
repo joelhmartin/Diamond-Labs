@@ -43,6 +43,13 @@
       "when": 1781129139071,
       "tag": "0005_striped_reaper",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781581796660,
+      "tag": "0006_keen_spectrum",
+      "breakpoints": true
     }
   ]
 }
