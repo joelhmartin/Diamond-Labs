@@ -22,6 +22,10 @@ export function Artboard({ value, onChange }) {
   const drawRef = useRef(null); // transparent strokes layer
   const drawing = useRef(false);
   const last = useRef(null);
+  // Ref mirrors hasInk for synchronous reads in end() — React state may not have
+  // committed between move() (which sets it) and the mouseup that fires end(),
+  // which would otherwise drop the first stroke's exported PNG.
+  const inkRef = useRef(Boolean(value));
   const [color, setColor] = useState(PEN_COLORS[0]);
   const [size, setSize] = useState(PEN_SIZES[1]);
   const [eraser, setEraser] = useState(false);
@@ -96,7 +100,10 @@ export function Artboard({ value, onChange }) {
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
     last.current = p;
-    if (!hasInk) setHasInk(true);
+    if (!inkRef.current) {
+      inkRef.current = true;
+      setHasInk(true);
+    }
   }
 
   function exportPng() {
@@ -116,13 +123,14 @@ export function Artboard({ value, onChange }) {
     if (!drawing.current) return;
     drawing.current = false;
     last.current = null;
-    onChange?.(hasInk ? exportPng() : "");
+    onChange?.(inkRef.current ? exportPng() : "");
   }
 
   function clear() {
     const ctx = drawRef.current?.getContext("2d");
     if (!ctx) return;
     ctx.clearRect(0, 0, W, H);
+    inkRef.current = false;
     setHasInk(false);
     onChange?.("");
   }
