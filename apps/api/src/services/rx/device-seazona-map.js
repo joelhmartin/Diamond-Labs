@@ -14,6 +14,27 @@
  */
 
 // ---------------------------------------------------------------------------
+// DEVICE LABELS
+// Human-readable names for each device key — mirrors the frontend wizard labels.
+// Used by admin tooling that cannot import the frontend's rx-devices.js.
+// ---------------------------------------------------------------------------
+export const DEVICE_LABELS = {
+  ddso: "DDSO",
+  "olmos-day": "Olmos Day (OD)",
+  "olmos-night": "Olmos Night (ON)",
+  onp: "ONP",
+  "cadcam-d-pro": "CAD/CAM D-Pro",
+  "shirazi-hybrid": "Shirazi Hybrid",
+  snorehook: "SnoreHook",
+  guard: "Guard / Nightguard",
+  "sport-guard": "Sport-Guard",
+  mora: "MORA",
+  ara: "ARA",
+  "ortho-expander": "Orthodontic Appliance",
+  remake: "Remake / Repair",
+};
+
+// ---------------------------------------------------------------------------
 // DEVICE MAP
 // Each entry:
 //   arch    — "upper" | "lower" | "both" | null (null = determined by form field)

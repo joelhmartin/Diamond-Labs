@@ -59,7 +59,7 @@ function normalizeArch(arch) {
  * Compile structured deviceOptions + top-level case fields into a single notes string.
  * Seazona notes are limited to 2000 characters.
  */
-function compileNotes(c) {
+export function compileNotes(c) {
   const o = c.deviceOptions || {};
   const lines = [];
 
