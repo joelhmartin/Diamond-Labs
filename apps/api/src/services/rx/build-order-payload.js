@@ -10,8 +10,8 @@ import { resolveLineItems } from "./device-seazona-map.js";
  * @param {string}  opts.userId  — lab-staff Seazona user id to attach to the order
  * @returns {{ payload: object, warnings: string[], unmapped: string[] }}
  */
-export function buildSeazonaOrderPayload(rxCase, { codeToId = {}, userId } = {}) {
-  const { items: lineItems, unmapped } = resolveLineItems(rxCase);
+export function buildSeazonaOrderPayload(rxCase, { codeToId = {}, userId, overrides = {} } = {}) {
+  const { items: lineItems, unmapped } = resolveLineItems(rxCase, { overrides });
 
   const items = [];
   // Seed warnings from unmapped device/option selections that resolveLineItems already flagged.

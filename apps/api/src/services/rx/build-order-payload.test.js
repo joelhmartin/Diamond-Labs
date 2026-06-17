@@ -65,3 +65,13 @@ test("arch strings normalize to Seazona 1/2/null", () => {
   const { payload } = buildSeazonaOrderPayload(c, { codeToId: makeCodeToId(), userId: "x" });
   assert.ok(payload.items.some((i) => i.arch === 1));
 });
+
+test("buildSeazonaOrderPayload applies overrides", () => {
+  const c = { seazonaClientId: "x", patientFirst: "A", patientLast: "B", deviceKey: "ddso",
+    deviceOptions: { baseMaterial: "Nylon", modifications: ["__nope__"] } };
+  const overrides = { "mod:__nope__": { code: "9999", name: "Custom" } };
+  const codeToId = { "9999": "id-9999" };
+  const { payload, warnings } = buildSeazonaOrderPayload(c, { codeToId, userId: "u", overrides });
+  assert.ok(payload.items.some((i) => i.id === "id-9999"));
+  assert.ok(!warnings.some((w) => w.includes("__nope__")));
+});
