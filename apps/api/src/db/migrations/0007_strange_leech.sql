@@ -1,0 +1,1 @@
+ALTER TABLE "rx_cases" ADD COLUMN "practice_name" varchar(200);

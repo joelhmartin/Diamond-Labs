@@ -16,7 +16,8 @@
     "db:migrate": "pnpm --filter @my-app/api db:migrate",
     "db:seed": "pnpm --filter @my-app/api db:seed",
     "clean": "turbo clean",
-    "setup": "node scripts/setup.js"
+    "setup": "node scripts/setup.js",
+    "rx:dryrun": "node --env-file=.env scripts/rx-dryrun.mjs"
   },
   "devDependencies": {
     "turbo": "^2.3.0"

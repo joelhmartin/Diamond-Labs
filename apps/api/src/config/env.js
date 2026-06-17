@@ -42,6 +42,19 @@ const envSchema = z.object({
   AUTHORIZE_NET_SANDBOX_API_LOGIN: z.string().optional(),
   AUTHORIZE_NET_SANDBOX_TRANSACTION_KEY: z.string().optional(),
 
+  // Google Cloud Storage
+  RX_GCS_BUCKET: z.string().optional(),
+  // Digital Rx live Seazona push gate.
+  // NOTE: the live-push branch is currently a stub — even when set to "true",
+  // the /rx/cases/:id/approve route still dry-runs (seazonaPushStatus =
+  // "push_skipped_dryrun") and does NOT call seazonaService.createOrder.
+  // The createOrder call is commented-out pending lab confirmation of the
+  // staff userId and end-to-end payload validation. When unset or any other
+  // value the route also dry-runs. Matches the gated pattern used by the
+  // shop's createOrder path; the gate itself will activate once the TODO
+  // block in rx.routes.js is uncommented.
+  RX_LIVE_PUSH: z.string().optional(),
+
   // Admin
   ADMIN_NOTIFICATION_EMAIL: z.string().email().optional(),
 });

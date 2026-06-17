@@ -1,0 +1,14 @@
+{
+  "seazonaClientId": "DRYRUN",
+  "patientFirst": "Sample",
+  "patientLast": "Patient",
+  "dueDate": "2025-12-15",
+  "deviceKey": "olmos-day",
+  "deviceCategory": "tmd",
+  "deviceOptions": {
+    "baseMaterial": "OD (PMT)",
+    "occlusalContact": "Full"
+  },
+  "rush": false,
+  "generalComments": "Dry-run fixture — Olmos Day OD (PMT)"
+}

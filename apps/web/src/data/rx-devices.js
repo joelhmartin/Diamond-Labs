@@ -29,8 +29,8 @@
  * when occlusal contact = Tripod").
  */
 
-const OCCLUSAL_CONTACT = ["Tripod", "Full Coverage", "Variable"];
-const DESIGN_PREFERENCES = ["Standard", "Minimum Vertical", "Maximum Retention"];
+const OCCLUSAL_CONTACT = ["Posterior", "Anterior", "Full", "Tripod"];
+const DESIGN_PREFERENCES = ["Standard", "Lingual-Free", "Buccal-Free", "Full Coverage"];
 const COMMON_MODIFICATIONS = [
   "Anterior ramp",
   "Posterior pads",
@@ -52,7 +52,7 @@ const OLMOS_DAY_OPTIONS = {
     type: "radio",
     label: "(OD) Olmos Day — Base material",
     required: true,
-    options: ["Acrylic", "Expansion (no occlusal #22–27)", "PMT Thermoform", "Printed Nylon (PA12)"],
+    options: ["OD (PMT)", "OD BIOFLEX", "Printed Nylon", "Acrylic w/clasps", "Dual-Laminate", "Milled"],
   },
   occlusalContact: {
     type: "radio",
@@ -95,17 +95,11 @@ const OLMOS_NIGHT_OPTIONS = {
     label: "(ON) Olmos Night — Please select one design",
     required: true,
     options: [
-      "ON-D Decompressor (Acrylic)",
-      "ON-P Positioner (PMT)",
-      "ON-P Positioner (Acrylic)",
-      "ON-P Positioner (Printed Nylon)",
+      "Deprogrammer ON-D (Anterior)",
+      "Positioner ON-P (Anterior)",
+      "Titration ON-T (Nylon only)",
+      "Ramp ON-R (Anterior)",
     ],
-  },
-  baseMaterial: {
-    type: "radio",
-    label: "Base material",
-    required: true,
-    options: ["Acrylic", "PMT Thermoform", "Printed Nylon (PA12)"],
   },
   modifications: {
     type: "checkbox",
@@ -143,7 +137,7 @@ const DDSO_OPTIONS = {
     type: "radio",
     label: "Base material for DDSO",
     required: true,
-    options: ["MED-Grade Nylon PA12"],
+    options: ["Nylon", "Biomed"],
   },
   occlusalContact: {
     type: "radio",
@@ -162,11 +156,11 @@ const DDSO_OPTIONS = {
     showIf: { key: "occlusalContact", equals: "Tripod" },
     options: TRIPOD_TITRATION_SITES,
   },
-  titrationStart: {
-    type: "text",
-    label: "Starting protrusion (mm)",
-    placeholder: "e.g. 50%",
-    unit: "mm",
+  titration: {
+    type: "matrix",
+    label: "Additional titration (bands)",
+    rows: ["Wide (Rigid)", "Blue (Medium)", "Orange (Soft)"],
+    columns: ["17", "18", "19", "20", "21", "Qty"],
   },
   vdoMatrix: {
     type: "matrix",
@@ -403,6 +397,82 @@ const SPORT_GUARD_OPTIONS = {
   },
 };
 
+/* ─── ORTHODONTIC ─── */
+const ORTHO_OPTIONS = {
+  applianceType: {
+    type: "radio",
+    label: "Appliance type",
+    required: true,
+    options: ["Modified Tandem", "Twin Block", "Other"],
+  },
+  retention: {
+    type: "radio",
+    label: "Arch retention / base material",
+    required: true,
+    options: [
+      "Fixed (Banded)",
+      "Fixed [3D Printed] Bands",
+      "Acrylic w/ clasp retention",
+      "Printed NYLON w/ composite retention",
+      "Other",
+    ],
+  },
+  expansionScrew: {
+    type: "radio",
+    label: "Expansion screw",
+    options: [
+      "No Expansion",
+      "Slim-Line Screw",
+      "Standard Transverse Screw",
+      "Slim-Line Variety-Click",
+      "Memory Screw",
+      "Standard Hyrax RPE",
+      "NiTi",
+      "Other",
+    ],
+  },
+  mandibularType: {
+    type: "radio",
+    label: "Mandibular (lower) component",
+    options: ["Removable", "Fixed"],
+  },
+  modifications: {
+    type: "checkbox",
+    label: "Add modifications",
+    options: [
+      "Buccal tubes to bands",
+      "Palatal pads",
+      "Anterior lap springs",
+      "Buccal hooks for tandem elastics",
+      "Lingual guide arm to canines",
+      "Lingual guide arm (distal)",
+      "Labial bow",
+      "Transfer tray for composite buttons",
+      "Occlusal Rest(s)",
+      "Finger Springs",
+      "Sheaths for Tandem Bow",
+      "Other",
+    ],
+  },
+  nuveloSetup: {
+    type: "radio",
+    label: "NUVELO Digital Setup",
+    options: [
+      "Digital Models ONLY - Horse-shoe base",
+      "Digital Models ONLY - ABO - Full Base",
+    ],
+  },
+  artboard: {
+    type: "artboard",
+    label: "Design your appliance",
+  },
+  comments: {
+    type: "textarea",
+    label: "Ortho — Additional comments / instructions",
+    placeholder: "Design notes, tooth numbers, special instructions…",
+  },
+};
+
 /* ─── REMAKE / REPAIR / REDESIGN ─── */
 const REMAKE_OPTIONS = {
   type: {
@@ -462,6 +532,58 @@ export const RX_DEVICES = [
     image: "/images/onp-front.webp",
     tagline: "Full-coverage neuromuscular orthotic for TMJ repositioning and joint decompression.",
     options: OLMOS_NIGHT_OPTIONS,
+  },
+  {
+    key: "mora",
+    name: "MORA",
+    fullName: "Mandibular Orthopedic Repositioning Appliance",
+    category: "tmd",
+    image: "/images/od-pmt.webp",
+    tagline: "Mandibular repositioning orthotic (Mistry Protocol) for TMJ decompression and condylar seating.",
+    options: {
+      occlusalContact: {
+        type: "radio",
+        label: "Occlusal contact",
+        required: true,
+        options: OCCLUSAL_CONTACT,
+      },
+      designPreference: {
+        type: "select",
+        label: "Design preference",
+        options: DESIGN_PREFERENCES,
+      },
+      comments: {
+        type: "textarea",
+        label: "MORA — Additional comments / instructions",
+        placeholder: "Instructions specific to the MORA device only…",
+      },
+    },
+  },
+  {
+    key: "ara",
+    name: "ARA",
+    fullName: "Anterior Repositioning Appliance",
+    category: "tmd",
+    image: "/images/onp-bioflex-new.webp",
+    tagline: "Anterior repositioning orthotic (Mistry Protocol) for disc recapture and condylar repositioning.",
+    options: {
+      occlusalContact: {
+        type: "radio",
+        label: "Occlusal contact",
+        required: true,
+        options: OCCLUSAL_CONTACT,
+      },
+      designPreference: {
+        type: "select",
+        label: "Design preference",
+        options: DESIGN_PREFERENCES,
+      },
+      comments: {
+        type: "textarea",
+        label: "ARA — Additional comments / instructions",
+        placeholder: "Instructions specific to the ARA device only…",
+      },
+    },
   },
 
   // SLEEP
@@ -524,6 +646,17 @@ export const RX_DEVICES = [
     options: SPORT_GUARD_OPTIONS,
   },
 
+  // ORTHO
+  {
+    key: "ortho-expander",
+    name: "Ortho Appliance",
+    fullName: "Orthodontic Appliance (Expander / Tandem / Twin Block)",
+    category: "ortho",
+    image: "/images/onp-front.webp",
+    tagline: "Functional orthodontics: Modified Tandem, Twin Block, and custom expanders.",
+    options: ORTHO_OPTIONS,
+  },
+
   // REMAKE
   {
     key: "remake",
@@ -541,7 +674,8 @@ export const CATEGORY_LABELS = {
   sleep:  { label: "Sleep Appliances",     color: "bg-accent-500/10 text-accent-600" },
   guard:  { label: "Mouthguards",          color: "bg-emerald-500/10 text-emerald-600" },
   sport:  { label: "Sport-Guards",         color: "bg-violet-500/10 text-violet-600" },
+  ortho:  { label: "Orthodontic",          color: "bg-sky-500/10 text-sky-600" },
   remake: { label: "Remake / Repair",      color: "bg-navy/10 text-navy/70" },
 };
 
-export const CATEGORY_ORDER = ["tmd", "sleep", "guard", "sport", "remake"];
+export const CATEGORY_ORDER = ["tmd", "sleep", "guard", "sport", "ortho", "remake"];
