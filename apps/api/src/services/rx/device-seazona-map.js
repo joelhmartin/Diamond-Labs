@@ -192,9 +192,11 @@ export const LAB_SERVICE_CODES = {
  * @param {object} params
  * @param {string} params.deviceKey      — wizard device key (e.g. "ddso")
  * @param {object} [params.deviceOptions] — form field values for the device sub-panel
- * @returns {{ items: Array<{code:string,name:string,arch:string|null,source:string}>, unmapped: string[] }}
+ * @param {object} [opts]
+ * @param {object} [opts.overrides]      — mapKey → {code, name}; DB override wins over file-map default
+ * @returns {{ items: Array<{code:string,name:string,arch:string|null,source:string,mapKey:string}>, unmapped: string[] }}
  */
-export function resolveLineItems({ deviceKey, deviceOptions = {} } = {}) {
+export function resolveLineItems({ deviceKey, deviceOptions = {} } = {}, { overrides = {} } = {}) {
   const items = [];
   const unmapped = [];
 
@@ -206,14 +208,16 @@ export function resolveLineItems({ deviceKey, deviceOptions = {} } = {}) {
 
   // Primary line item: keyed by baseMaterial, variant, or "default" fallback.
   const material = deviceOptions.baseMaterial || deviceOptions.variant;
-  const primary = (material && dev.primary?.[material]) || dev.primary?.default;
+  const mapKey = `primary:${deviceKey}:${material || "default"}`;
+  const chosen = overrides[mapKey] || (material && dev.primary?.[material]) || dev.primary?.default;
 
-  if (primary) {
+  if (chosen) {
     items.push({
-      code: primary.code,
-      name: primary.name,
+      code: chosen.code,
+      name: chosen.name,
       arch: dev.arch ?? deviceOptions.arch ?? null,
       source: "primary",
+      mapKey,
     });
   } else {
     unmapped.push(`primary:${deviceKey}:${material || "?"}`);
@@ -221,11 +225,12 @@ export function resolveLineItems({ deviceKey, deviceOptions = {} } = {}) {
 
   // Modification line items — never guess, always flag if unknown.
   for (const mod of deviceOptions.modifications || []) {
-    const m = MODIFICATION_MAP[mod];
+    const modKey = `mod:${mod}`;
+    const m = overrides[modKey] || MODIFICATION_MAP[mod];
     if (m) {
-      items.push({ code: m.code, name: m.name, arch: null, source: `mod:${mod}` });
+      items.push({ code: m.code, name: m.name, arch: null, source: `mod:${mod}`, mapKey: modKey });
     } else {
-      unmapped.push(`modifications:${mod}`);
+      unmapped.push(`mod:${mod}`);
     }
   }
 

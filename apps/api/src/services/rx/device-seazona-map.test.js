@@ -9,7 +9,24 @@ test("DDSO Nylon resolves to the DDSO Nylon primary line", () => {
 });
 test("an unmapped modification is flagged, never guessed", () => {
   const { unmapped } = resolveLineItems({ deviceKey: "ddso", deviceOptions: { baseMaterial: "Nylon", modifications: ["__nope__"] } });
-  assert.ok(unmapped.includes("modifications:__nope__"));
+  assert.ok(unmapped.includes("mod:__nope__"));
+});
+test("resolveLineItems attaches a mapKey to each item", () => {
+  const { items } = resolveLineItems({ deviceKey: "ddso", deviceOptions: { baseMaterial: "Nylon" } });
+  assert.equal(items[0].mapKey, "primary:ddso:Nylon");
+});
+test("an override resolves a previously-unmapped line (override wins)", () => {
+  const overrides = { "mod:__nope__": { code: "9999", name: "Custom Mod" } };
+  const { items, unmapped } = resolveLineItems(
+    { deviceKey: "ddso", deviceOptions: { baseMaterial: "Nylon", modifications: ["__nope__"] } },
+    { overrides });
+  assert.ok(items.some((i) => i.code === "9999" && i.mapKey === "mod:__nope__"));
+  assert.ok(!unmapped.includes("mod:__nope__"));
+});
+test("override replaces a file-default primary code", () => {
+  const overrides = { "primary:ddso:Nylon": { code: "1234", name: "Override DDSO" } };
+  const { items } = resolveLineItems({ deviceKey: "ddso", deviceOptions: { baseMaterial: "Nylon" } }, { overrides });
+  assert.equal(items.find((i) => i.mapKey === "primary:ddso:Nylon").code, "1234");
 });
 test("unknown device is flagged", () => {
   const { items, unmapped } = resolveLineItems({ deviceKey: "__missing__", deviceOptions: {} });
