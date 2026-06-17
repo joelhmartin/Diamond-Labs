@@ -220,7 +220,9 @@ export function resolveLineItems({ deviceKey, deviceOptions = {} } = {}, { overr
       mapKey,
     });
   } else {
-    unmapped.push(`primary:${deviceKey}:${material || "?"}`);
+    // Flag with the SAME mapKey used for resolution so the override layer can key
+    // on the unmapped entry directly (no "?"→"default" translation needed).
+    unmapped.push(mapKey);
   }
 
   // Modification line items — never guess, always flag if unknown.
