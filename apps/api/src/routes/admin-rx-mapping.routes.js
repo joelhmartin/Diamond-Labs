@@ -118,6 +118,9 @@ export default async function adminRxMappingRoutes(fastify) {
         name: item.name,
         arch: item.arch,
         source: item.source,
+        // True when this line's code came from a saved DB override — drives the
+        // admin UI "Clear override" affordance.
+        overridden: Boolean(item.overridden),
         seazonaProductId:
           byCode.get(String(item.code))?.id ||
           overrides[item.mapKey]?.seazonaProductId ||

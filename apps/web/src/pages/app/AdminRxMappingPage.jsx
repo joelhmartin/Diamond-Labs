@@ -322,7 +322,7 @@ function PreviewModal({ deviceKey, deviceOptions, onClose }) {
                           >
                             {line.status}
                           </span>
-                          {line.source === "override" && (
+                          {line.overridden && (
                             <span className="ml-1.5 text-[10px] font-mono text-navy/30">
                               override
                             </span>
@@ -338,7 +338,7 @@ function PreviewModal({ deviceKey, deviceOptions, onClose }) {
                             />
                           )}
                           {line.status === "confirmed" &&
-                            line.source === "override" && (
+                            line.overridden && (
                               <button
                                 type="button"
                                 disabled={saving === line.mapKey}

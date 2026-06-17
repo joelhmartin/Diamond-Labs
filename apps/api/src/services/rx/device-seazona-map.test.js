@@ -42,3 +42,11 @@ test("a default-only device (mora) resolves its primary without a material", () 
   assert.ok(items.length >= 1);
   assert.equal(unmapped.filter((u) => u.startsWith("primary:")).length, 0);
 });
+
+test("override items carry overridden:true; file-default items do not", () => {
+  const overrides = { "primary:ddso:Nylon": { code: "1234", name: "Override DDSO" } };
+  const ov = resolveLineItems({ deviceKey: "ddso", deviceOptions: { baseMaterial: "Nylon" } }, { overrides });
+  assert.equal(ov.items.find((i) => i.mapKey === "primary:ddso:Nylon").overridden, true);
+  const plain = resolveLineItems({ deviceKey: "ddso", deviceOptions: { baseMaterial: "Nylon" } });
+  assert.ok(!plain.items.find((i) => i.mapKey === "primary:ddso:Nylon").overridden);
+});

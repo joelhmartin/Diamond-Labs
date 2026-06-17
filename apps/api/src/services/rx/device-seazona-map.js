@@ -239,6 +239,9 @@ export function resolveLineItems({ deviceKey, deviceOptions = {} } = {}, { overr
       arch: dev.arch ?? deviceOptions.arch ?? null,
       source: "primary",
       mapKey,
+      // True when this line came from a DB override (vs the file-map default) —
+      // lets the admin UI offer "Clear override" only on overridden lines.
+      overridden: Boolean(overrides[mapKey]),
     });
   } else {
     // Flag with the SAME mapKey used for resolution so the override layer can key
@@ -251,7 +254,7 @@ export function resolveLineItems({ deviceKey, deviceOptions = {} } = {}, { overr
     const modKey = `mod:${mod}`;
     const m = overrides[modKey] || MODIFICATION_MAP[mod];
     if (m) {
-      items.push({ code: m.code, name: m.name, arch: null, source: `mod:${mod}`, mapKey: modKey });
+      items.push({ code: m.code, name: m.name, arch: null, source: `mod:${mod}`, mapKey: modKey, overridden: Boolean(overrides[modKey]) });
     } else {
       unmapped.push(`mod:${mod}`);
     }
