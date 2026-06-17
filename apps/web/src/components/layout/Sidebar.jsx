@@ -8,6 +8,7 @@ import {
   FileText,
   ClipboardList,
   UserCog,
+  FlaskConical,
 } from "lucide-react";
 import { brand } from "../../config/brand.js";
 import { ROUTES } from "../../config/routes.js";
@@ -21,10 +22,11 @@ const mainItems = [
 ];
 
 const adminItems = [
-  { label: "Invoices", to: ROUTES.ADMIN_INVOICES, icon: FileText },
-  { label: "Orders",   to: ROUTES.ADMIN_ORDERS,   icon: ClipboardList },
-  { label: "Users",    to: ROUTES.ADMIN_USERS,    icon: UserCog },
-  { label: "Products", to: ROUTES.ADMIN_PRODUCTS, icon: Package },
+  { label: "Invoices",   to: ROUTES.ADMIN_INVOICES,    icon: FileText },
+  { label: "Orders",     to: ROUTES.ADMIN_ORDERS,      icon: ClipboardList },
+  { label: "Users",      to: ROUTES.ADMIN_USERS,       icon: UserCog },
+  { label: "Products",   to: ROUTES.ADMIN_PRODUCTS,    icon: Package },
+  { label: "Rx Mapping", to: ROUTES.ADMIN_RX_MAPPING,  icon: FlaskConical },
 ];
 
 function NavItem({ to, icon: Icon, label }) {
