@@ -8,9 +8,15 @@ import {
 } from "lucide-react";
 import api from "../../config/api.js";
 import { RX_DEVICES } from "../../data/rx-devices.js";
+import {
+  RECORDS_METHODS,
+  PHYSICAL_BITE,
+  FIRST_DEVICE,
+  RUSH_TIERS,
+} from "../../data/rx-records.js";
 import { DeviceOptionsPanel } from "../../components/rx/DeviceOptionsPanel.jsx";
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function errMsg(err) {
   return (
@@ -35,6 +41,30 @@ const ROW_TINT = {
   unmapped:    "bg-red-50/40",
 };
 
+// ── Default case fields ──────────────────────────────────────────────────────
+
+const DEFAULT_CASE_FIELDS = {
+  patientFirst:    "Test",
+  patientLast:     "Patient",
+  dob:             "",
+  recordsMethod:   "itero",
+  physicalBite:    PHYSICAL_BITE[0].value,      // "no_digital"
+  firstDevice:     FIRST_DEVICE[0],              // "Yes"
+  dueDate:         "",
+  rush:            false,
+  rushTier:        Object.keys(RUSH_TIERS)[0],  // "nylon"
+  generalComments: "",
+};
+
+// ── Shared input class for case-details fields ───────────────────────────────
+
+const CF_INPUT =
+  "w-full px-3 py-2 rounded-xl bg-surface-50 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-navy/25";
+
+// ── Lookup: deviceKey → RX_DEVICES entry (category etc.) ────────────────────
+
+const RX_DEVICE_BY_KEY = Object.fromEntries(RX_DEVICES.map((d) => [d.key, d]));
+
 // ── Sub-components ───────────────────────────────────────────────────────────
 
 function CoverageBadge({ mapped, total }) {
@@ -49,6 +79,213 @@ function CoverageBadge({ mapped, total }) {
     >
       {mapped}/{total}
     </span>
+  );
+}
+
+/** Grouped device list section with label header. */
+function DeviceGroup({ label, devices, selectedKey, onSelect }) {
+  if (devices.length === 0) return null;
+  return (
+    <div className="space-y-2">
+      <div className="text-[9px] font-mono uppercase tracking-widest text-navy/30 px-1 pt-3 pb-0.5">
+        {label}
+      </div>
+      {devices.map((d) => {
+        const active = selectedKey === d.deviceKey;
+        return (
+          <button
+            key={d.deviceKey}
+            type="button"
+            onClick={() => onSelect(d.deviceKey)}
+            className={`w-full text-left flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl border transition-all ${
+              active
+                ? "bg-brand-50 border-brand-300/60"
+                : "bg-white border-surface-300/50 hover:border-brand-300/40 hover:bg-surface-50"
+            }`}
+          >
+            <div className="min-w-0">
+              <div className="font-semibold text-sm text-navy truncate">
+                {d.name}
+              </div>
+              <div className="font-mono text-[10px] text-navy/40 truncate mt-0.5">
+                {d.deviceKey}
+              </div>
+            </div>
+            <CoverageBadge
+              mapped={d.coverage?.mapped ?? 0}
+              total={d.coverage?.total ?? 0}
+            />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Fake case-details form — gives the mapping tester full doctor-form context. */
+function CaseDetailsForm({ fields, onChange }) {
+  const rushTierEntries = Object.entries(RUSH_TIERS);
+
+  const set = (key) => (e) => {
+    const val = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    onChange({ ...fields, [key]: val });
+  };
+
+  return (
+    <div className="rounded-2xl border border-dashed border-surface-300/60 bg-surface-50/40 p-5 space-y-4">
+      <div className="text-[10px] font-mono uppercase tracking-widest text-navy/40">
+        Case details — fake test input
+      </div>
+
+      {/* Patient name */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-[11px] font-semibold text-navy/40 uppercase tracking-wider mb-1.5">
+            First name
+          </label>
+          <input
+            type="text"
+            className={CF_INPUT}
+            value={fields.patientFirst}
+            onChange={set("patientFirst")}
+          />
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold text-navy/40 uppercase tracking-wider mb-1.5">
+            Last name
+          </label>
+          <input
+            type="text"
+            className={CF_INPUT}
+            value={fields.patientLast}
+            onChange={set("patientLast")}
+          />
+        </div>
+      </div>
+
+      {/* DOB */}
+      <div>
+        <label className="block text-[11px] font-semibold text-navy/40 uppercase tracking-wider mb-1.5">
+          Date of birth{" "}
+          <span className="font-normal normal-case text-navy/25">(optional)</span>
+        </label>
+        <input
+          type="date"
+          className={CF_INPUT}
+          value={fields.dob}
+          onChange={set("dob")}
+        />
+      </div>
+
+      {/* Records method */}
+      <div>
+        <label className="block text-[11px] font-semibold text-navy/40 uppercase tracking-wider mb-1.5">
+          Records method
+        </label>
+        <select
+          className={CF_INPUT}
+          value={fields.recordsMethod}
+          onChange={set("recordsMethod")}
+        >
+          {RECORDS_METHODS.map((m) => (
+            <option key={m.value} value={m.value}>
+              {m.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Physical bite */}
+      <div>
+        <label className="block text-[11px] font-semibold text-navy/40 uppercase tracking-wider mb-1.5">
+          Physical bite
+        </label>
+        <select
+          className={CF_INPUT}
+          value={fields.physicalBite}
+          onChange={set("physicalBite")}
+        >
+          {PHYSICAL_BITE.map((b) => (
+            <option key={b.value} value={b.value}>
+              {b.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* First device */}
+      <div>
+        <label className="block text-[11px] font-semibold text-navy/40 uppercase tracking-wider mb-1.5">
+          First device for this patient?
+        </label>
+        <select
+          className={CF_INPUT}
+          value={fields.firstDevice}
+          onChange={set("firstDevice")}
+        >
+          {FIRST_DEVICE.map((v) => (
+            <option key={v} value={v}>
+              {v}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Due date */}
+      <div>
+        <label className="block text-[11px] font-semibold text-navy/40 uppercase tracking-wider mb-1.5">
+          Due date{" "}
+          <span className="font-normal normal-case text-navy/25">(optional)</span>
+        </label>
+        <input
+          type="date"
+          className={CF_INPUT}
+          value={fields.dueDate}
+          onChange={set("dueDate")}
+        />
+      </div>
+
+      {/* Rush */}
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={fields.rush}
+            onChange={set("rush")}
+            className="h-4 w-4 rounded border-surface-300 text-brand-500 focus:ring-brand-500/20 cursor-pointer"
+          />
+          <span className="text-sm text-navy/70">Rush order</span>
+        </label>
+        {fields.rush && (
+          <select
+            className={`${CF_INPUT} flex-1 min-w-[180px]`}
+            value={fields.rushTier}
+            onChange={set("rushTier")}
+          >
+            {rushTierEntries.map(([k, v]) => (
+              <option key={k} value={k}>
+                {v.label} (+${v.price})
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {/* General comments */}
+      <div>
+        <label className="block text-[11px] font-semibold text-navy/40 uppercase tracking-wider mb-1.5">
+          General comments{" "}
+          <span className="font-normal normal-case text-navy/25">(optional)</span>
+        </label>
+        <textarea
+          className={`${CF_INPUT} resize-none`}
+          rows={2}
+          placeholder="e.g. Patient has severe TMJ on right side…"
+          value={fields.generalComments}
+          onChange={set("generalComments")}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -154,7 +391,7 @@ function CatalogSearchRow({ mapKey, onAssign, busy }) {
 }
 
 /** Modal that runs the preview and lets you assign / clear overrides. */
-function PreviewModal({ deviceKey, deviceOptions, onClose }) {
+function PreviewModal({ deviceKey, deviceOptions, caseFields, onClose }) {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
   const [preview, setPreview] = useState(null);
@@ -164,17 +401,29 @@ function PreviewModal({ deviceKey, deviceOptions, onClose }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.post("/admin/rx-mapping/preview", {
+      const body = {
         deviceKey,
         deviceOptions,
-      });
+        patientFirst:    caseFields.patientFirst,
+        patientLast:     caseFields.patientLast,
+        recordsMethod:   caseFields.recordsMethod,
+        physicalBite:    caseFields.physicalBite,
+        firstDevice:     caseFields.firstDevice,
+        rush:            caseFields.rush,
+        generalComments: caseFields.generalComments,
+      };
+      if (caseFields.dob)     body.dob     = caseFields.dob;
+      if (caseFields.dueDate) body.dueDate = caseFields.dueDate;
+      if (caseFields.rush)    body.rushTier = caseFields.rushTier;
+
+      const res = await api.post("/admin/rx-mapping/preview", body);
       setPreview(res.data.data);
     } catch (err) {
       setError(errMsg(err));
     } finally {
       setLoading(false);
     }
-  }, [deviceKey, deviceOptions]);
+  }, [deviceKey, deviceOptions, caseFields]);
 
   useEffect(() => {
     runPreview();
@@ -260,6 +509,26 @@ function PreviewModal({ deviceKey, deviceOptions, onClose }) {
 
           {!loading && preview && (
             <>
+              {/* Patient + Due */}
+              <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 pb-3 border-b border-surface-300/30">
+                <div>
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-navy/40 mr-2">
+                    Patient
+                  </span>
+                  <span className="text-sm font-semibold text-navy">
+                    {preview.patientName || "—"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-navy/40 mr-2">
+                    Due
+                  </span>
+                  <span className="text-sm text-navy/70">
+                    {preview.due || "—"}
+                  </span>
+                </div>
+              </div>
+
               {/* Coverage summary */}
               {cov && (
                 <p className="text-sm font-mono text-navy/60">
@@ -355,7 +624,7 @@ function PreviewModal({ deviceKey, deviceOptions, onClose }) {
                 </table>
               </div>
 
-              {/* Notes block */}
+              {/* Notes block — full output incl. records/bite/occlusal/design/mods/rush/comments */}
               {preview.notes && (
                 <div>
                   <div className="text-[10px] font-mono uppercase tracking-widest text-navy/40 mb-2">
@@ -388,13 +657,14 @@ function PreviewModal({ deviceKey, deviceOptions, onClose }) {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export function AdminRxMappingPage() {
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState(null);
-  const [devices, setDevices]       = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState(null);
+  const [devices, setDevices]         = useState([]);
   const [selectedKey, setSelectedKey] = useState(null);
-  const [opts, setOpts]             = useState({});
-  const [showModal, setShowModal]   = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
+  const [opts, setOpts]               = useState({});
+  const [caseFields, setCaseFields]   = useState(DEFAULT_CASE_FIELDS);
+  const [showModal, setShowModal]     = useState(false);
+  const [refreshing, setRefreshing]   = useState(false);
 
   const load = async () => {
     try {
@@ -419,8 +689,19 @@ export function AdminRxMappingPage() {
     if (selectedKey === key) return;
     setSelectedKey(key);
     setOpts({});
+    setCaseFields(DEFAULT_CASE_FIELDS);
     setShowModal(false);
   };
+
+  // Partition devices by source form:
+  //   category "ortho" → Diamond Orthodontic Rx
+  //   everything else (tmd/sleep/guard/sport/remake + unknown) → Diamond Orthotic Lab Rx 2025
+  const rx2025Devices = devices.filter(
+    (d) => RX_DEVICE_BY_KEY[d.deviceKey]?.category !== "ortho"
+  );
+  const orthoDevices = devices.filter(
+    (d) => RX_DEVICE_BY_KEY[d.deviceKey]?.category === "ortho"
+  );
 
   // Prefer the full RX_DEVICES entry for the schema; the API list provides
   // name + coverage only (no options schema).
@@ -435,9 +716,9 @@ export function AdminRxMappingPage() {
             Rx Mapping Tester
           </h1>
           <p className="mt-1 text-sm text-navy/50">
-            Select a device, configure options, then preview the Seazona product
-            line mapping. Assign overrides inline to fix placeholder or unmapped
-            lines.
+            Select a device, fill in fake case details, then preview the full
+            Seazona product line mapping. Assign overrides inline to fix
+            placeholder or unmapped lines.
           </p>
         </div>
         <button
@@ -469,45 +750,29 @@ export function AdminRxMappingPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-          {/* ── Device list ── */}
-          <div className="space-y-2">
-            <div className="text-[10px] font-mono uppercase tracking-widest text-navy/40 px-1 mb-3">
+          {/* ── Device list (grouped by source form) ── */}
+          <div>
+            <div className="text-[10px] font-mono uppercase tracking-widest text-navy/40 px-1 mb-1">
               Devices ({devices.length})
             </div>
             {devices.length === 0 && (
-              <p className="text-sm text-navy/40 px-1">No devices returned.</p>
+              <p className="text-sm text-navy/40 px-1 mt-3">No devices returned.</p>
             )}
-            {devices.map((d) => {
-              const active = selectedKey === d.deviceKey;
-              return (
-                <button
-                  key={d.deviceKey}
-                  type="button"
-                  onClick={() => selectDevice(d.deviceKey)}
-                  className={`w-full text-left flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl border transition-all ${
-                    active
-                      ? "bg-brand-50 border-brand-300/60"
-                      : "bg-white border-surface-300/50 hover:border-brand-300/40 hover:bg-surface-50"
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <div className="font-semibold text-sm text-navy truncate">
-                      {d.name}
-                    </div>
-                    <div className="font-mono text-[10px] text-navy/40 truncate mt-0.5">
-                      {d.deviceKey}
-                    </div>
-                  </div>
-                  <CoverageBadge
-                    mapped={d.coverage?.mapped ?? 0}
-                    total={d.coverage?.total ?? 0}
-                  />
-                </button>
-              );
-            })}
+            <DeviceGroup
+              label="Diamond Orthotic Lab Rx 2025"
+              devices={rx2025Devices}
+              selectedKey={selectedKey}
+              onSelect={selectDevice}
+            />
+            <DeviceGroup
+              label="Diamond Orthodontic Rx"
+              devices={orthoDevices}
+              selectedKey={selectedKey}
+              onSelect={selectDevice}
+            />
           </div>
 
-          {/* ── Options panel ── */}
+          {/* ── Right panel: case details + device options ── */}
           <div className="lg:col-span-2">
             {!selectedKey ? (
               <div className="py-20 text-center text-navy/30">
@@ -530,7 +795,13 @@ export function AdminRxMappingPage() {
                   )}
                 </div>
 
-                {/* Option schema */}
+                {/* Fake doctor-submission fields */}
+                <CaseDetailsForm
+                  fields={caseFields}
+                  onChange={setCaseFields}
+                />
+
+                {/* Device-specific option schema */}
                 {selectedDevice?.options ? (
                   <DeviceOptionsPanel
                     schema={selectedDevice.options}
@@ -541,7 +812,8 @@ export function AdminRxMappingPage() {
                   />
                 ) : (
                   <p className="text-sm text-amber-700 bg-amber-50 rounded-xl px-4 py-3">
-                    No option schema found for <span className="font-mono">{selectedKey}</span> in{" "}
+                    No option schema found for{" "}
+                    <span className="font-mono">{selectedKey}</span> in{" "}
                     <span className="font-mono">rx-devices.js</span>. Preview will
                     use empty options.
                   </p>
@@ -568,6 +840,7 @@ export function AdminRxMappingPage() {
         <PreviewModal
           deviceKey={selectedKey}
           deviceOptions={opts}
+          caseFields={caseFields}
           onClose={() => setShowModal(false)}
         />
       )}
