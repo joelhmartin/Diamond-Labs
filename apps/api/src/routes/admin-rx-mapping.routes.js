@@ -92,7 +92,7 @@ export default async function adminRxMappingRoutes(fastify) {
   // Resolve a wizard selection to line items and show their mapping status.
   // READ-ONLY — no DB writes, no Seazona writes.
   // Body: a full (fake) case — { deviceKey, deviceOptions, patientFirst, patientLast,
-  // dob, gender, recordsMethod, physicalBite, dueDate, rush, rushTier, firstDevice,
+  // dob, recordsMethod, physicalBite, dueDate, rush, rushTier, firstDevice,
   // generalComments }. Only deviceKey/deviceOptions drive product line items; the
   // rest flow into patientName/due/notes so the preview shows the WHOLE order a
   // doctor would produce, not just the device lines.
