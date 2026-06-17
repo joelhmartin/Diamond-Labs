@@ -91,12 +91,17 @@ export default async function adminRxMappingRoutes(fastify) {
   // POST /admin/rx-mapping/preview
   // Resolve a wizard selection to line items and show their mapping status.
   // READ-ONLY — no DB writes, no Seazona writes.
-  // Body: { deviceKey, deviceOptions }
+  // Body: a full (fake) case — { deviceKey, deviceOptions, patientFirst, patientLast,
+  // dob, recordsMethod, physicalBite, dueDate, rush, rushTier, firstDevice,
+  // generalComments }. Only deviceKey/deviceOptions drive product line items; the
+  // rest flow into patientName/due/notes so the preview shows the WHOLE order a
+  // doctor would produce, not just the device lines.
   // ───────────────────────────────────────────────────────────────────────────
   fastify.post("/admin/rx-mapping/preview", {
     preHandler: [authenticate, requireAdmin],
   }, async (request, reply) => {
-    const { deviceKey, deviceOptions = {} } = request.body || {};
+    const body = request.body || {};
+    const { deviceKey, deviceOptions = {} } = body;
 
     if (!deviceKey) {
       return reply.code(422).send({
@@ -138,7 +143,12 @@ export default async function adminRxMappingRoutes(fastify) {
       })),
     ];
 
-    const notes = compileNotes({ deviceKey, deviceOptions });
+    // Compile notes from the FULL case (records method, physical bite, occlusal/
+    // design/modifications, rush, comments, etc.) — mirrors what the real payload
+    // builder produces for a doctor's submission.
+    const notes = compileNotes(body);
+    const patientName = `${body.patientFirst || ""} ${body.patientLast || ""}`.trim() || null;
+    const due = body.dueDate || null;
 
     const confirmed = lines.filter((l) => l.status === "confirmed").length;
     const placeholder = lines.filter((l) => l.status === "placeholder").length;
@@ -147,6 +157,8 @@ export default async function adminRxMappingRoutes(fastify) {
 
     return {
       data: {
+        patientName,
+        due,
         lines,
         notes,
         coverage: { confirmed, placeholder, unmapped: unmappedCount, total },
