@@ -7,7 +7,13 @@ import { eq } from "drizzle-orm";
 import { ERROR_CODES } from "@my-app/shared";
 import * as seazonaService from "../services/seazona.service.js";
 import { DEVICE_MAP, DEVICE_LABELS, resolveLineItems } from "../services/rx/device-seazona-map.js";
-import { compileNotes } from "../services/rx/build-order-payload.js";
+import { compileNotes, buildSeazonaOrderPayload } from "../services/rx/build-order-payload.js";
+
+// ─── Test-order target (Matt Rago, internal Diamond account) ──────────────────
+// "Send test order" ALWAYS targets this hardcoded client + lab user so a mapping
+// test can NEVER create an order under a real doctor. Confirmed live 2026-06-17.
+const TEST_ORDER_CLIENT_ID = "876bad9a-0257-49eb-bfd6-bce0a999b88a"; // Matt Rago (acct 1324)
+const TEST_ORDER_USER_ID = "9cae86a4-809e-4879-8ffb-b76d39b95978";   // Matt Rago (lab user)
 
 // ─── In-process catalog cache (5-minute TTL) ──────────────────────────────────
 let _catalog = null;
@@ -279,5 +285,102 @@ export default async function adminRxMappingRoutes(fastify) {
       .where(eq(rxCodeOverrides.mapKey, request.params.mapKey));
 
     return { data: { ok: true } };
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // POST /admin/rx-mapping/send-test
+  // The ONLY live Seazona write in this feature. Creates a REAL order in Seazona
+  // (no sandbox exists) so an admin can see how a filled form lands. It ALWAYS
+  // targets the hardcoded Matt Rago test client + user — body-supplied client/user
+  // are ignored — so it can never create an order under a real doctor. Requires
+  // an explicit confirm:true. Sends only line items whose code resolves to a real
+  // catalog id; reports any dropped (placeholder/unmapped) lines. Notes are
+  // prefixed [MAPPING TEST] so the order is obvious in Seazona (cancel it after).
+  // ───────────────────────────────────────────────────────────────────────────
+  fastify.post("/admin/rx-mapping/send-test", {
+    preHandler: [authenticate, requireAdmin],
+  }, async (request, reply) => {
+    const body = request.body || {};
+    if (body.confirm !== true) {
+      return reply.code(400).send({
+        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "confirm:true is required — this creates a real Seazona order." },
+      });
+    }
+    if (!body.deviceKey) {
+      return reply.code(422).send({
+        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "deviceKey is required." },
+      });
+    }
+
+    const [overrides, { byCode }] = await Promise.all([loadOverrides(), getCatalog()]);
+    const codeToId = {};
+    for (const [code, v] of byCode.entries()) codeToId[code] = v.id;
+
+    // Build the payload, but FORCE the client to the Matt Rago test account.
+    const { payload, warnings, unmapped } = buildSeazonaOrderPayload(
+      { ...body, seazonaClientId: TEST_ORDER_CLIENT_ID },
+      { codeToId, userId: TEST_ORDER_USER_ID, overrides }
+    );
+
+    if (!payload.items.length) {
+      return reply.code(422).send({
+        error: {
+          ...ERROR_CODES.VALIDATION_ERROR,
+          message: "No line items resolved to a real Seazona code — confirm codes for this device before sending a test order.",
+        },
+        meta: { warnings, unmapped },
+      });
+    }
+
+    // Mark the order unmistakably as a mapping test.
+    payload.notes = `[MAPPING TEST — Matt Rago] ${payload.notes || ""}`.slice(0, 2000);
+    if (!payload.patientName) payload.patientName = "Mapping Test";
+
+    // createOrder normally returns null on a non-2xx (the wrapper swallows those),
+    // but a network/HTTP throw would otherwise fall through to Fastify's generic
+    // 500 — catch it so every failure returns the sanitized 502 contract.
+    let res;
+    try {
+      res = await seazonaService.createOrder(payload);
+    } catch (err) {
+      request.log.error(
+        { err: String(err?.message || err), clientId: TEST_ORDER_CLIENT_ID, items: payload.items.length },
+        "[Seazona][RX_MAPPING_TEST_FAILED] createOrder threw for a mapping test order"
+      );
+      return reply.code(502).send({
+        error: { code: "SEAZONA_ORDER_FAILED", status: 502, message: "Seazona createOrder failed. See server logs." },
+        meta: { warnings },
+      });
+    }
+    const seazonaOrderId = res?.orderId != null ? String(res.orderId) : (res?.id != null ? String(res.id) : null);
+
+    if (!seazonaOrderId) {
+      // Don't log/echo the full payload (it carries request-derived patientName/
+      // notes — PHI if ever called with real data). A summary is enough to triage.
+      request.log.error(
+        { clientId: TEST_ORDER_CLIENT_ID, items: payload.items.length },
+        "[Seazona][RX_MAPPING_TEST_FAILED] createOrder returned no orderId for a mapping test order"
+      );
+      return reply.code(502).send({
+        error: { code: "SEAZONA_ORDER_FAILED", status: 502, message: "Seazona createOrder did not return an order id. See server logs." },
+        meta: { warnings },
+      });
+    }
+
+    request.log.info(
+      { seazonaOrderId, clientId: TEST_ORDER_CLIENT_ID, items: payload.items.length, droppedLines: warnings.length },
+      "[Seazona][RX_MAPPING_TEST_ORDER] created test order under Matt Rago"
+    );
+
+    return {
+      data: {
+        seazonaOrderId,
+        clientId: TEST_ORDER_CLIENT_ID,
+        patientName: payload.patientName,
+        itemCount: payload.items.length,
+        droppedLines: warnings, // placeholder/unmapped lines NOT sent
+        payloadSent: payload,
+      },
+    };
   });
 }
