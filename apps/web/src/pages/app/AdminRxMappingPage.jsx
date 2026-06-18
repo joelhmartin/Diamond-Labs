@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
+  CheckCircle2,
   Loader2,
   RefreshCw,
   Search,
@@ -392,38 +393,66 @@ function CatalogSearchRow({ mapKey, onAssign, busy }) {
 
 /** Modal that runs the preview and lets you assign / clear overrides. */
 function PreviewModal({ deviceKey, deviceOptions, caseFields, onClose }) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState(null);
-  const [preview, setPreview] = useState(null);
-  const [saving, setSaving]   = useState(null); // mapKey currently being saved
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState(null);
+  const [preview, setPreview]       = useState(null);
+  const [saving, setSaving]         = useState(null); // mapKey currently being saved
+  const [sending, setSending]       = useState(false);
+  const [sendResult, setSendResult] = useState(null); // { seazonaOrderId, itemCount, droppedLines }
+  const [sendError, setSendError]   = useState(null); // string
+
+  /** Build the shared request body used by both preview and send-test. */
+  const buildBody = useCallback(() => {
+    const body = {
+      deviceKey,
+      deviceOptions,
+      patientFirst:    caseFields.patientFirst,
+      patientLast:     caseFields.patientLast,
+      recordsMethod:   caseFields.recordsMethod,
+      physicalBite:    caseFields.physicalBite,
+      firstDevice:     caseFields.firstDevice,
+      rush:            caseFields.rush,
+      generalComments: caseFields.generalComments,
+    };
+    if (caseFields.dob)     body.dob      = caseFields.dob;
+    if (caseFields.dueDate) body.dueDate  = caseFields.dueDate;
+    if (caseFields.rush)    body.rushTier = caseFields.rushTier;
+    return body;
+  }, [deviceKey, deviceOptions, caseFields]);
 
   const runPreview = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const body = {
-        deviceKey,
-        deviceOptions,
-        patientFirst:    caseFields.patientFirst,
-        patientLast:     caseFields.patientLast,
-        recordsMethod:   caseFields.recordsMethod,
-        physicalBite:    caseFields.physicalBite,
-        firstDevice:     caseFields.firstDevice,
-        rush:            caseFields.rush,
-        generalComments: caseFields.generalComments,
-      };
-      if (caseFields.dob)     body.dob     = caseFields.dob;
-      if (caseFields.dueDate) body.dueDate = caseFields.dueDate;
-      if (caseFields.rush)    body.rushTier = caseFields.rushTier;
-
-      const res = await api.post("/admin/rx-mapping/preview", body);
+      const res = await api.post("/admin/rx-mapping/preview", buildBody());
       setPreview(res.data.data);
     } catch (err) {
       setError(errMsg(err));
     } finally {
       setLoading(false);
     }
-  }, [deviceKey, deviceOptions, caseFields]);
+  }, [buildBody]);
+
+  const handleSendTest = async () => {
+    const ok = window.confirm(
+      "This creates a REAL order in Seazona under the Matt Rago test account (no sandbox exists). Only do this for testing, and cancel the order in Seazona afterward. Continue?"
+    );
+    if (!ok) return;
+    setSending(true);
+    setSendResult(null);
+    setSendError(null);
+    try {
+      const res = await api.post("/admin/rx-mapping/send-test", {
+        ...buildBody(),
+        confirm: true,
+      });
+      setSendResult(res.data.data);
+    } catch (err) {
+      setSendError(errMsg(err));
+    } finally {
+      setSending(false);
+    }
+  };
 
   useEffect(() => {
     runPreview();
@@ -504,6 +533,42 @@ function PreviewModal({ deviceKey, deviceOptions, caseFields, onClose }) {
                 className="mt-0.5 flex-shrink-0 text-red-500"
               />
               <p className="text-sm text-red-700">{error}</p>
+            </div>
+          )}
+
+          {/* Send-test result banners (visible whenever a result/error exists) */}
+          {sendResult && (
+            <div className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <CheckCircle2
+                size={16}
+                className="mt-0.5 flex-shrink-0 text-emerald-600"
+              />
+              <div className="text-sm text-emerald-800 space-y-2">
+                <p className="font-semibold">
+                  Test order created in Seazona — Order {sendResult.seazonaOrderId} (
+                  {sendResult.itemCount} line item
+                  {sendResult.itemCount !== 1 ? "s" : ""})
+                </p>
+                {sendResult.droppedLines?.length > 0 && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 text-xs">
+                    <span className="font-semibold">
+                      {sendResult.droppedLines.length} line
+                      {sendResult.droppedLines.length !== 1 ? "s" : ""} were not sent
+                      (no confirmed code):
+                    </span>{" "}
+                    {sendResult.droppedLines.join(", ")}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          {sendError && (
+            <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4">
+              <AlertCircle
+                size={16}
+                className="mt-0.5 flex-shrink-0 text-red-500"
+              />
+              <p className="text-sm text-red-700">{sendError}</p>
             </div>
           )}
 
@@ -640,7 +705,22 @@ function PreviewModal({ deviceKey, deviceOptions, caseFields, onClose }) {
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end px-6 py-4 border-t border-surface-300/40">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-surface-300/40">
+          <button
+            type="button"
+            onClick={handleSendTest}
+            disabled={sending || !preview}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 transition-all disabled:opacity-40"
+          >
+            {sending ? (
+              <>
+                <Loader2 size={14} className="animate-spin" />
+                Sending…
+              </>
+            ) : (
+              "Send test order to Seazona (Matt Rago)"
+            )}
+          </button>
           <button
             type="button"
             onClick={onClose}
