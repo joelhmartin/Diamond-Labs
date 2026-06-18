@@ -423,6 +423,9 @@ function PreviewModal({ deviceKey, deviceOptions, caseFields, onClose }) {
   const runPreview = useCallback(async () => {
     setLoading(true);
     setError(null);
+    // A re-preview supersedes any prior send result/error — clear stale banners.
+    setSendResult(null);
+    setSendError(null);
     try {
       const res = await api.post("/admin/rx-mapping/preview", buildBody());
       setPreview(res.data.data);

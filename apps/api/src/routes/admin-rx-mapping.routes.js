@@ -345,7 +345,7 @@ export default async function adminRxMappingRoutes(fastify) {
         "[Seazona][RX_MAPPING_TEST_FAILED] createOrder returned no orderId for a mapping test order"
       );
       return reply.code(502).send({
-        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Seazona createOrder did not return an order id. See server logs." },
+        error: { code: "SEAZONA_ORDER_FAILED", status: 502, message: "Seazona createOrder did not return an order id. See server logs." },
         meta: { payloadSent: payload, warnings },
       });
     }
