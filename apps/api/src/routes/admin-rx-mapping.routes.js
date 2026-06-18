@@ -336,17 +336,34 @@ export default async function adminRxMappingRoutes(fastify) {
     payload.notes = `[MAPPING TEST — Matt Rago] ${payload.notes || ""}`.slice(0, 2000);
     if (!payload.patientName) payload.patientName = "Mapping Test";
 
-    const res = await seazonaService.createOrder(payload);
+    // createOrder normally returns null on a non-2xx (the wrapper swallows those),
+    // but a network/HTTP throw would otherwise fall through to Fastify's generic
+    // 500 — catch it so every failure returns the sanitized 502 contract.
+    let res;
+    try {
+      res = await seazonaService.createOrder(payload);
+    } catch (err) {
+      request.log.error(
+        { err: String(err?.message || err), clientId: TEST_ORDER_CLIENT_ID, items: payload.items.length },
+        "[Seazona][RX_MAPPING_TEST_FAILED] createOrder threw for a mapping test order"
+      );
+      return reply.code(502).send({
+        error: { code: "SEAZONA_ORDER_FAILED", status: 502, message: "Seazona createOrder failed. See server logs." },
+        meta: { warnings },
+      });
+    }
     const seazonaOrderId = res?.orderId != null ? String(res.orderId) : (res?.id != null ? String(res.id) : null);
 
     if (!seazonaOrderId) {
+      // Don't log/echo the full payload (it carries request-derived patientName/
+      // notes — PHI if ever called with real data). A summary is enough to triage.
       request.log.error(
-        { payload, res },
+        { clientId: TEST_ORDER_CLIENT_ID, items: payload.items.length },
         "[Seazona][RX_MAPPING_TEST_FAILED] createOrder returned no orderId for a mapping test order"
       );
       return reply.code(502).send({
         error: { code: "SEAZONA_ORDER_FAILED", status: 502, message: "Seazona createOrder did not return an order id. See server logs." },
-        meta: { payloadSent: payload, warnings },
+        meta: { warnings },
       });
     }
 

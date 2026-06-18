@@ -426,6 +426,9 @@ function PreviewModal({ deviceKey, deviceOptions, caseFields, onClose }) {
     // A re-preview supersedes any prior send result/error — clear stale banners.
     setSendResult(null);
     setSendError(null);
+    // Drop the stale preview so the real-send button (disabled on !preview) can't
+    // fire against outdated mapping output while a re-preview is in flight or fails.
+    setPreview(null);
     try {
       const res = await api.post("/admin/rx-mapping/preview", buildBody());
       setPreview(res.data.data);
@@ -451,7 +454,15 @@ function PreviewModal({ deviceKey, deviceOptions, caseFields, onClose }) {
       });
       setSendResult(res.data.data);
     } catch (err) {
-      setSendError(errMsg(err));
+      // The 422 "no valid items" path returns meta.warnings (the unmapped/no-code
+      // lines) — surface them so the admin sees exactly what to confirm first.
+      const dropped = err.response?.data?.meta?.warnings;
+      const msg = errMsg(err);
+      setSendError(
+        Array.isArray(dropped) && dropped.length
+          ? `${msg} — unresolved: ${dropped.join(", ")}`
+          : msg
+      );
     } finally {
       setSending(false);
     }
@@ -712,7 +723,7 @@ function PreviewModal({ deviceKey, deviceOptions, caseFields, onClose }) {
           <button
             type="button"
             onClick={handleSendTest}
-            disabled={sending || !preview}
+            disabled={sending || loading || !preview}
             className="flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 transition-all disabled:opacity-40"
           >
             {sending ? (
