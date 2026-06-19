@@ -5,6 +5,7 @@ export * from "./schemas/account.schema.js";
 export * from "./schemas/invite.schema.js";
 export * from "./schemas/membership.schema.js";
 export * from "./schemas/rx.schema.js";
+export * from "./schemas/theme.schema.js";
 
 // Constants
 export * from "./constants/roles.js";
