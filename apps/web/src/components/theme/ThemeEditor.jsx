@@ -23,7 +23,7 @@ export function ThemeEditor() {
   const [status, setStatus] = useState("");
 
   useEffect(() => { if (enabled) fetchTheme().then(setTokens); }, [enabled]);
-  useEffect(() => { if (enabled) applyTheme(tokens); }, [tokens, enabled]); // live preview
+  useEffect(() => { if (enabled && Object.keys(tokens).length > 0) applyTheme(tokens); }, [tokens, enabled]); // live preview
 
   if (!enabled) return null;
 
@@ -53,13 +53,17 @@ export function ThemeEditor() {
               <h4 className="text-xs uppercase tracking-wide text-color-text/40 mb-2">{g}</h4>
               {EDITOR_TOKENS.filter((t) => t.group === g).map((tok) => (
                 <div key={tok.key} className="flex items-center justify-between gap-3 mb-2">
-                  <label className="text-sm text-color-text/80">{tok.label}</label>
+                  {tok.type === "toggle" ? (
+                    <span className="text-sm text-color-text/80">{tok.label}</span>
+                  ) : (
+                    <label htmlFor={tok.key} className="text-sm text-color-text/80">{tok.label}</label>
+                  )}
                   {tok.type === "color" && (
-                    <input type="color" value={channelsToHex(valueFor(tok))}
+                    <input id={tok.key} type="color" value={channelsToHex(valueFor(tok))}
                       onChange={(e) => setToken(tok.key, hexToChannels(e.target.value))} />
                   )}
                   {tok.type === "font" && (
-                    <select value={valueFor(tok)} onChange={(e) => setToken(tok.key, e.target.value)}
+                    <select id={tok.key} value={valueFor(tok)} onChange={(e) => setToken(tok.key, e.target.value)}
                       className="text-xs border border-color-border rounded px-1 py-1 max-w-[55%]">
                       {FONT_OPTIONS.map((f) => <option key={f} value={f}>{f.split(",")[0].replace(/"/g, "")}</option>)}
                     </select>

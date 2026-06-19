@@ -56,7 +56,7 @@
   }
 
   body {
-    @apply bg-surface-100 text-navy font-sans;
+    @apply bg-color-page text-color-text font-sans;
   }
 
   ::selection {

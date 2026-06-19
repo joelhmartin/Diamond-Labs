@@ -3,7 +3,7 @@ import { z } from "zod";
 // Color tokens the editor may override (channel triplets). Keys WITHOUT the
 // leading "--"; the CSS var name is `--${key}`.
 export const THEME_COLOR_KEYS = [
-  "brand-500", "brand-600", "accent-500", "surface-100",
+  "brand-500", "brand-600", "accent-500", "surface-100", "surface-300",
   "navy", "navy-light", "navy-dark",
   "color-page", "color-text", "color-primary", "color-accent", "color-border",
   "text-on-dark", "accent-on-dark",

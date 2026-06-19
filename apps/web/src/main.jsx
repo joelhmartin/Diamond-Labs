@@ -11,7 +11,7 @@ window.__AUTHORIZE_NET_API_LOGIN__ = import.meta.env.VITE_AUTHORIZE_NET_API_LOGI
 window.__AUTHORIZE_NET_CLIENT_KEY__ = import.meta.env.VITE_AUTHORIZE_NET_CLIENT_KEY || "";
 
 // Apply any saved global theme override (falls back to core on failure/empty).
-fetchTheme().then(applyTheme);
+fetchTheme().then((t) => { if (Object.keys(t).length) applyTheme(t); });
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>

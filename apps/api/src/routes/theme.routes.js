@@ -19,7 +19,7 @@ export default async function themeRoutes(fastify) {
   fastify.put("/theme", { preHandler: [authenticate, requireAdmin] }, async (request, reply) => {
     const parsed = themeUpdateSchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.code(400).send({
+      return reply.code(ERROR_CODES.VALIDATION_ERROR.status).send({
         error: { ...ERROR_CODES.VALIDATION_ERROR, message: parsed.error.issues[0]?.message ?? "Invalid theme" },
       });
     }
@@ -34,10 +34,10 @@ export default async function themeRoutes(fastify) {
   });
 
   // Admin: clear the override (reset to core).
-  fastify.delete("/theme", { preHandler: [authenticate, requireAdmin] }, async () => {
+  fastify.delete("/theme", { preHandler: [authenticate, requireAdmin] }, async (request) => {
     await db.insert(appTheme)
       .values({ id: SINGLETON, tokens: {} })
-      .onConflictDoUpdate({ target: appTheme.id, set: { tokens: {}, updatedAt: new Date() } });
+      .onConflictDoUpdate({ target: appTheme.id, set: { tokens: {}, updatedBy: request.user.id, updatedAt: new Date() } });
     return { tokens: {} };
   });
 }

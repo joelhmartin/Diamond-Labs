@@ -36,6 +36,11 @@ export default {
         },
         "on-dark": "rgb(var(--text-on-dark) / <alpha-value>)",
         "accent-on-dark": "rgb(var(--accent-on-dark) / <alpha-value>)",
+        "color-page": "rgb(var(--color-page) / <alpha-value>)",
+        "color-text": "rgb(var(--color-text) / <alpha-value>)",
+        "color-border": "rgb(var(--color-border) / <alpha-value>)",
+        "color-primary": "rgb(var(--color-primary) / <alpha-value>)",
+        "color-accent": "rgb(var(--color-accent) / <alpha-value>)",
       },
       fontFamily: {
         sans: "var(--font-sans)",
