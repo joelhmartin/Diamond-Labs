@@ -13,3 +13,4 @@ export { orders } from "./orders.js";
 export { orderItems } from "./order-items.js";
 export { rxCases, rxCaseFiles } from "./rx-cases.js";
 export { rxCodeOverrides } from "./rx-code-overrides.js";
+export { appTheme } from "./app-theme.js";

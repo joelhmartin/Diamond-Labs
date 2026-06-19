@@ -64,6 +64,13 @@
       "when": 1781669504795,
       "tag": "0008_breezy_killmonger",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1781893272976,
+      "tag": "0009_green_devos",
+      "breakpoints": true
     }
   ]
 }

@@ -21,6 +21,7 @@ import paymentRoutes from "./routes/payment.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import rxRoutes from "./routes/rx.routes.js";
 import rxMappingRoutes from "./routes/admin-rx-mapping.routes.js";
+import themeRoutes from "./routes/theme.routes.js";
 
 const fastify = Fastify({
   logger: {
@@ -116,6 +117,7 @@ await fastify.register(paymentRoutes, { prefix: "/api/v1" });
 await fastify.register(adminRoutes,   { prefix: "/api/v1" });
 await fastify.register(rxRoutes,      { prefix: "/api/v1" });
 await fastify.register(rxMappingRoutes, { prefix: "/api/v1" });
+await fastify.register(themeRoutes,     { prefix: "/api/v1" });
 
 // Serve the built React frontend from this same service (single Cloud Run app:
 // the SPA and the /api/v1 backend share one origin, which is what the frontend's
