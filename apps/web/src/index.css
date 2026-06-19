@@ -121,8 +121,8 @@
   .hero-gradient {
     background-image: linear-gradient(
       to bottom,
-      theme(colors.brand.600) 0%,
-      theme(colors.surface.100) 100%
+      rgb(var(--brand-600)) 0%,
+      rgb(var(--surface-100)) 100%
     );
   }
 }
