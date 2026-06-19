@@ -26,6 +26,8 @@
   --navy-light: 19 40 68;
   --navy-dark: 6 13 23;
 
+  --alert: 230 59 46;   /* was #E63B2E — error/alert accent used in Home SVGs */
+
   /* ── Font tokens ── */
   --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
   --font-heading: "Plus Jakarta Sans", system-ui, sans-serif;

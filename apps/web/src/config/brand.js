@@ -10,8 +10,4 @@ export const brand = {
   name: displayName,
   tagline: project.description || "Your application scaffold",
   logo: null,
-  colors: {
-    primary: "#2563eb",
-    primaryHover: "#1d4ed8",
-  },
 };

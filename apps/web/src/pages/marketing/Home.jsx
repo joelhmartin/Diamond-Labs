@@ -212,7 +212,7 @@ function DiagnosticShuffler() {
               zIndex: 3 - pos,
               opacity: pos === 0 ? 1 : 0.4 - pos * 0.15,
               transform: `scale(${1 - pos * 0.04})`,
-              backgroundColor: pos === 0 ? "#FFFFFF" : "#F7F7F5",
+              backgroundColor: pos === 0 ? "rgb(var(--surface-50))" : "rgb(var(--surface-100))",
               transitionTimingFunction:
                 "cubic-bezier(0.34, 1.56, 0.64, 1)",
             }}
@@ -333,20 +333,20 @@ function TMJSleepCard() {
           <div className={`flex flex-col items-center transition-all duration-700 ${phase === 0 ? "opacity-100 scale-100" : "opacity-30 scale-95"}`}>
             <svg viewBox="0 0 80 90" className="w-16 h-20" fill="none">
               {/* Head */}
-              <circle cx="40" cy="28" r="18" stroke="#0B1A2E" strokeWidth="1.5" fill="none" />
+              <circle cx="40" cy="28" r="18" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
               {/* Jaw - offset to show pain */}
-              <path d="M28 36 Q40 52 52 36" stroke="#0B1A2E" strokeWidth="1.5" fill="none" />
+              <path d="M28 36 Q40 52 52 36" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
               {/* Pain lines */}
               <g className={`transition-opacity duration-500 ${phase === 0 ? "opacity-100" : "opacity-0"}`}>
-                <line x1="58" y1="28" x2="66" y2="24" stroke="#E63B2E" strokeWidth="1.5" strokeLinecap="round" />
-                <line x1="58" y1="33" x2="68" y2="33" stroke="#E63B2E" strokeWidth="1.5" strokeLinecap="round" />
-                <line x1="58" y1="38" x2="66" y2="42" stroke="#E63B2E" strokeWidth="1.5" strokeLinecap="round" />
+                <line x1="58" y1="28" x2="66" y2="24" stroke="rgb(var(--alert))" strokeWidth="1.5" strokeLinecap="round" />
+                <line x1="58" y1="33" x2="68" y2="33" stroke="rgb(var(--alert))" strokeWidth="1.5" strokeLinecap="round" />
+                <line x1="58" y1="38" x2="66" y2="42" stroke="rgb(var(--alert))" strokeWidth="1.5" strokeLinecap="round" />
               </g>
               {/* Shoulders */}
-              <path d="M20 58 Q40 48 60 58" stroke="#0B1A2E" strokeWidth="1.5" fill="none" />
+              <path d="M20 58 Q40 48 60 58" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
               {/* Eyes - squinting in pain */}
-              <line x1="33" y1="25" x2="37" y2="25" stroke="#0B1A2E" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="43" y1="25" x2="47" y2="25" stroke="#0B1A2E" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="33" y1="25" x2="37" y2="25" stroke="rgb(var(--navy))" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="43" y1="25" x2="47" y2="25" stroke="rgb(var(--navy))" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
             <span className={`mt-2 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all duration-500 ${
               phase === 0 ? "bg-brand-500 text-white" : "bg-surface-200/60 text-navy/30"
@@ -366,20 +366,20 @@ function TMJSleepCard() {
           <div className={`flex flex-col items-center transition-all duration-700 ${phase === 1 ? "opacity-100 scale-100" : "opacity-30 scale-95"}`}>
             <svg viewBox="0 0 80 90" className="w-16 h-20" fill="none">
               {/* Head - tilted on pillow */}
-              <circle cx="38" cy="30" r="18" stroke="#0B1A2E" strokeWidth="1.5" fill="none" />
+              <circle cx="38" cy="30" r="18" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
               {/* Closed eyes */}
-              <path d="M31 27 Q34 29 37 27" stroke="#0B1A2E" strokeWidth="1.5" fill="none" />
-              <path d="M41 27 Q44 29 47 27" stroke="#0B1A2E" strokeWidth="1.5" fill="none" />
+              <path d="M31 27 Q34 29 37 27" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
+              <path d="M41 27 Q44 29 47 27" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
               {/* Open mouth - snoring */}
-              <ellipse cx="39" cy="37" rx="4" ry="3" stroke="#0B1A2E" strokeWidth="1.5" fill="none" />
+              <ellipse cx="39" cy="37" rx="4" ry="3" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
               {/* Z's */}
               <g className={`transition-opacity duration-500 ${phase === 1 ? "opacity-100" : "opacity-0"}`}>
-                <text x="56" y="18" fill="#13AEEF" fontSize="11" fontWeight="700" fontFamily="IBM Plex Mono, monospace">Z</text>
-                <text x="63" y="10" fill="#13AEEF" fontSize="8" fontWeight="700" fontFamily="IBM Plex Mono, monospace" opacity="0.6">Z</text>
-                <text x="68" y="4" fill="#13AEEF" fontSize="6" fontWeight="700" fontFamily="IBM Plex Mono, monospace" opacity="0.3">Z</text>
+                <text x="56" y="18" fill="rgb(var(--brand-500))" fontSize="11" fontWeight="700" fontFamily="IBM Plex Mono, monospace">Z</text>
+                <text x="63" y="10" fill="rgb(var(--brand-500))" fontSize="8" fontWeight="700" fontFamily="IBM Plex Mono, monospace" opacity="0.6">Z</text>
+                <text x="68" y="4" fill="rgb(var(--brand-500))" fontSize="6" fontWeight="700" fontFamily="IBM Plex Mono, monospace" opacity="0.3">Z</text>
               </g>
               {/* Shoulders */}
-              <path d="M18 58 Q38 48 58 58" stroke="#0B1A2E" strokeWidth="1.5" fill="none" />
+              <path d="M18 58 Q38 48 58 58" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
             </svg>
             <span className={`mt-2 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all duration-500 ${
               phase === 1 ? "bg-accent-500 text-white" : "bg-surface-200/60 text-navy/30"
@@ -875,7 +875,7 @@ function RotatingGeometry() {
           cy="100"
           r="60"
           fill="none"
-          stroke="#13AEEF"
+          stroke="rgb(var(--brand-500))"
           strokeWidth="0.5"
           opacity="0.4"
         />
@@ -884,7 +884,7 @@ function RotatingGeometry() {
           cy="100"
           r="45"
           fill="none"
-          stroke="#13AEEF"
+          stroke="rgb(var(--brand-500))"
           strokeWidth="0.5"
           opacity="0.3"
         />
@@ -894,7 +894,7 @@ function RotatingGeometry() {
             cx={100 + 60 * Math.cos((angle * Math.PI) / 180)}
             cy={100 + 60 * Math.sin((angle * Math.PI) / 180)}
             r="3"
-            fill="#13AEEF"
+            fill="rgb(var(--brand-500))"
             opacity="0.6"
           />
         ))}
@@ -906,7 +906,7 @@ function RotatingGeometry() {
           width="70"
           height="70"
           fill="none"
-          stroke="#13AEEF"
+          stroke="rgb(var(--brand-500))"
           strokeWidth="0.5"
           opacity="0.2"
           rx="4"
@@ -917,13 +917,13 @@ function RotatingGeometry() {
           width="44"
           height="44"
           fill="none"
-          stroke="#13AEEF"
+          stroke="rgb(var(--brand-500))"
           strokeWidth="0.5"
           opacity="0.3"
           rx="4"
         />
       </g>
-      <circle cx="100" cy="100" r="4" fill="#13AEEF" opacity="0.8" />
+      <circle cx="100" cy="100" r="4" fill="rgb(var(--brand-500))" opacity="0.8" />
     </svg>
   );
 }
@@ -952,7 +952,7 @@ function ScanningGrid() {
           cx={40 + col * 17}
           cy={20 + row * 20}
           r="2"
-          fill="#13AEEF"
+          fill="rgb(var(--brand-500))"
           opacity="0.15"
         />
       );
@@ -972,7 +972,7 @@ function ScanningGrid() {
         y1="20"
         x2="170"
         y2="20"
-        stroke="#13AEEF"
+        stroke="rgb(var(--brand-500))"
         strokeWidth="1"
         opacity="0.6"
       />
@@ -986,9 +986,9 @@ function ScanningGrid() {
       />
       <defs>
         <linearGradient id="scanGradient" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#13AEEF" stopOpacity="0" />
-          <stop offset="50%" stopColor="#13AEEF" stopOpacity="0.1" />
-          <stop offset="100%" stopColor="#13AEEF" stopOpacity="0" />
+          <stop offset="0%" stopColor="rgb(var(--brand-500))" stopOpacity="0" />
+          <stop offset="50%" stopColor="rgb(var(--brand-500))" stopOpacity="0.1" />
+          <stop offset="100%" stopColor="rgb(var(--brand-500))" stopOpacity="0" />
         </linearGradient>
       </defs>
     </svg>
@@ -1019,7 +1019,7 @@ function PulsingWaveform() {
         data-waveform
         d="M0,50 L20,50 L25,50 L30,20 L35,80 L40,30 L45,70 L50,45 L55,55 L60,50 L80,50 L85,50 L90,15 L95,85 L100,25 L105,75 L110,40 L115,60 L120,50 L140,50 L145,50 L150,20 L155,80 L160,30 L165,70 L170,45 L175,55 L180,50 L200,50"
         fill="none"
-        stroke="#13AEEF"
+        stroke="rgb(var(--brand-500))"
         strokeWidth="1.5"
         strokeDasharray="200"
         strokeDashoffset="0"
@@ -1028,7 +1028,7 @@ function PulsingWaveform() {
       <path
         d="M0,50 L200,50"
         fill="none"
-        stroke="#13AEEF"
+        stroke="rgb(var(--brand-500))"
         strokeWidth="0.3"
         opacity="0.2"
       />
