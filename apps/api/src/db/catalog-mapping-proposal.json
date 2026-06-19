@@ -1,0 +1,821 @@
+{
+  "summary": {
+    "exact-code": 0,
+    "high": 23,
+    "medium": 16,
+    "low": 15,
+    "total": 54
+  },
+  "proposals": [
+    {
+      "catalogId": "16",
+      "catalogName": "NovaDent IP — 1 Box",
+      "catalogPrice": 15,
+      "seazonaProductId": "f40bb3f4-8407-40b8-bf5f-4d9e93409da2",
+      "seazonaCode": "2258",
+      "seazonaName": "Novadent IP (8 Pkts/56 Days)",
+      "seazonaPrice": 15,
+      "score": 1.25,
+      "tier": "high",
+      "runnerUp": {
+        "name": "BAB-LOOP",
+        "score": 0.25
+      }
+    },
+    {
+      "catalogId": "18",
+      "catalogName": "Diamond Rechargeable Sonic Cleaner",
+      "catalogPrice": 20,
+      "seazonaProductId": "5909f744-1929-434e-975c-cdcbb2ccbfad",
+      "seazonaCode": "2257",
+      "seazonaName": "Diamond Sonic Cleaner",
+      "seazonaPrice": 20,
+      "score": 1,
+      "tier": "high",
+      "runnerUp": {
+        "name": "NEW Diamond Sonic Cleaner",
+        "score": 0.94
+      }
+    },
+    {
+      "catalogId": "20",
+      "catalogName": "Bands (1 Pair)",
+      "catalogPrice": 4,
+      "seazonaProductId": "147a352c-7ca0-4d88-b8f1-cfae27f7b4e0",
+      "seazonaCode": "2521",
+      "seazonaName": "ALL BANDS",
+      "seazonaPrice": 36,
+      "score": 0.8,
+      "tier": "medium",
+      "runnerUp": {
+        "name": "Custom Bands",
+        "score": 0.8
+      }
+    },
+    {
+      "catalogId": "24",
+      "catalogName": "Diamond Best Bite (Rainbow Specialty)",
+      "catalogPrice": 15.5,
+      "seazonaProductId": "0a5aafc6-5a0d-4f29-8970-533d4d1cb031",
+      "seazonaCode": "2252",
+      "seazonaName": "Diamond Bite Sticks (10 Pk.)",
+      "seazonaPrice": 15,
+      "score": 0.842,
+      "tier": "medium",
+      "runnerUp": {
+        "name": "Diamond A Classic Bite Registration",
+        "score": 0.802
+      }
+    },
+    {
+      "catalogId": "25",
+      "catalogName": "Nylon Adjusting Burs (5 pcs.)",
+      "catalogPrice": 135,
+      "seazonaProductId": "4efc8d78-6078-40eb-bd11-4225f816fb52",
+      "seazonaCode": "2260",
+      "seazonaName": "Nylon Adjusting Burs (Pk)",
+      "seazonaPrice": 100,
+      "score": 1,
+      "tier": "high",
+      "runnerUp": {
+        "name": "Nylon Adjusting Bur (Single)",
+        "score": 0.6
+      }
+    },
+    {
+      "catalogId": "26",
+      "catalogName": "Nylon Adjusting Burs (single)",
+      "catalogPrice": 30,
+      "seazonaProductId": "4efc8d78-6078-40eb-bd11-4225f816fb52",
+      "seazonaCode": "2260",
+      "seazonaName": "Nylon Adjusting Burs (Pk)",
+      "seazonaPrice": 100,
+      "score": 1,
+      "tier": "high",
+      "runnerUp": {
+        "name": "Nylon Adjusting Bur (Single)",
+        "score": 0.85
+      }
+    },
+    {
+      "catalogId": "27",
+      "catalogName": "Sample Diamond Polishing Buffs",
+      "catalogPrice": 10,
+      "seazonaProductId": "1f9729f8-682e-49b6-896c-111ffda7596a",
+      "seazonaCode": "2255",
+      "seazonaName": "Diamond Impression",
+      "seazonaPrice": 12,
+      "score": 0.438,
+      "tier": "low",
+      "runnerUp": {
+        "name": "Polishing Wheels (4 PK)",
+        "score": 0.438
+      }
+    },
+    {
+      "catalogId": "28",
+      "catalogName": "Diamond Polishing Burs — Soft Green (10 pk)",
+      "catalogPrice": 20,
+      "seazonaProductId": "6b202265-5fa0-4f63-9f3d-0ee78df3b8af",
+      "seazonaCode": "2263",
+      "seazonaName": "Polishing Burs Fine 10 (PK)",
+      "seazonaPrice": 20,
+      "score": 0.604,
+      "tier": "medium",
+      "runnerUp": {
+        "name": "Soft White Polishing Wheel W/Polish",
+        "score": 0.579
+      }
+    },
+    {
+      "catalogId": "29",
+      "catalogName": "Diamond Polishing Burs — Medium (10 pk)",
+      "catalogPrice": 20,
+      "seazonaProductId": "6b202265-5fa0-4f63-9f3d-0ee78df3b8af",
+      "seazonaCode": "2263",
+      "seazonaName": "Polishing Burs Fine 10 (PK)",
+      "seazonaPrice": 20,
+      "score": 0.683,
+      "tier": "medium",
+      "runnerUp": {
+        "name": "Polishing Wheel Medium 10 Pk",
+        "score": 0.683
+      }
+    },
+    {
+      "catalogId": "30",
+      "catalogName": "Diamond Polishing Burs — Coarse (10 pk)",
+      "catalogPrice": 20,
+      "seazonaProductId": "6b202265-5fa0-4f63-9f3d-0ee78df3b8af",
+      "seazonaCode": "2263",
+      "seazonaName": "Polishing Burs Fine 10 (PK)",
+      "seazonaPrice": 20,
+      "score": 0.683,
+      "tier": "medium",
+      "runnerUp": {
+        "name": "Polishing Wheel Coarse 10/Pkg",
+        "score": 0.664
+      }
+    },
+    {
+      "catalogId": "31",
+      "catalogName": "Thermo (Crimping) Pliers — Dentsply Sirona",
+      "catalogPrice": 140,
+      "seazonaProductId": "b7d45125-a0ab-48da-8213-34cb1fb775d6",
+      "seazonaCode": "2169",
+      "seazonaName": "Michigan Splint Biomed",
+      "seazonaPrice": 140,
+      "score": 0.25,
+      "tier": "low",
+      "runnerUp": {
+        "name": "Michigan Splint Nylon",
+        "score": 0.25
+      }
+    },
+    {
+      "catalogId": "32",
+      "catalogName": "Heating Torch",
+      "catalogPrice": 9.99,
+      "seazonaProductId": "7ebe3869-4a0d-43ff-b60e-36b8d0a6fdaa",
+      "seazonaCode": "2270",
+      "seazonaName": "Heating Torch",
+      "seazonaPrice": 10,
+      "score": 1.25,
+      "tier": "high",
+      "runnerUp": {
+        "name": "Remake Model Fabrication",
+        "score": 0.25
+      }
+    },
+    {
+      "catalogId": "41",
+      "catalogName": "TAP",
+      "catalogPrice": 375,
+      "seazonaProductId": "058eff7b-5fab-4c91-81b1-97fde4c4e2c0",
+      "seazonaCode": "2144",
+      "seazonaName": "ONT Nylon",
+      "seazonaPrice": 375,
+      "score": 0.25,
+      "tier": "low",
+      "runnerUp": {
+        "name": "Klauer DDSO (Anterior and Posterior) Remake (25%)",
+        "score": 0.24
+      }
+    },
+    {
+      "catalogId": "50",
+      "catalogName": "Shipping Supply Kits",
+      "catalogPrice": 0,
+      "seazonaProductId": "8e19bd69-9b4e-4c06-b430-50466d5fa777",
+      "seazonaCode": "2284",
+      "seazonaName": "Add Ball Clasps",
+      "seazonaPrice": 0,
+      "score": 0.25,
+      "tier": "low",
+      "runnerUp": {
+        "name": "Add Lingual Arms Distal To Last Molars",
+        "score": 0.25
+      }
+    },
+    {
+      "catalogId": "51",
+      "catalogName": "Additional Shipping Supplies",
+      "catalogPrice": 0,
+      "seazonaProductId": "8e19bd69-9b4e-4c06-b430-50466d5fa777",
+      "seazonaCode": "2284",
+      "seazonaName": "Add Ball Clasps",
+      "seazonaPrice": 0,
+      "score": 0.25,
+      "tier": "low",
+      "runnerUp": {
+        "name": "Add Lingual Arms Distal To Last Molars",
+        "score": 0.25
+      }
+    },
+    {
+      "catalogId": "52",
+      "catalogName": "Small White Box",
+      "catalogPrice": 0,
+      "seazonaProductId": "ca4be7bd-a2d1-4829-aabe-35e314f1babb",
+      "seazonaCode": "2234",
+      "seazonaName": "Mute Small (3 PK)",
+      "seazonaPrice": 23,
+      "score": 0.433,
+      "tier": "low",
+      "runnerUp": {
+        "name": "Soft White Polishing Wheel W/Polish",
+        "score": 0.357
+      }
+    },
+    {
+      "catalogId": "53",
+      "catalogName": "FedEx Purple Shipping Pouch (Amt)",
+      "catalogPrice": 0,
+      "seazonaProductId": "8e19bd69-9b4e-4c06-b430-50466d5fa777",
+      "seazonaCode": "2284",
+      "seazonaName": "Add Ball Clasps",
+      "seazonaPrice": 0,
+      "score": 0.25,
+      "tier": "low",
+      "runnerUp": {
+        "name": "Add Lingual Arms Distal To Last Molars",
+        "score": 0.25
+      }
+    },
+    {
+      "catalogId": "54",
+      "catalogName": "FedEx Purple Shipping Pouch (Amt)",
+      "catalogPrice": 0,
+      "seazonaProductId": "8e19bd69-9b4e-4c06-b430-50466d5fa777",
+      "seazonaCode": "2284",
+      "seazonaName": "Add Ball Clasps",
+      "seazonaPrice": 0,
+      "score": 0.25,
+      "tier": "low",
+      "runnerUp": {
+        "name": "Add Lingual Arms Distal To Last Molars",
+        "score": 0.25
+      }
+    },
+    {
+      "catalogId": "55",
+      "catalogName": "FedEx Box",
+      "catalogPrice": 0,
+      "seazonaProductId": "8e19bd69-9b4e-4c06-b430-50466d5fa777",
+      "seazonaCode": "2284",
+      "seazonaName": "Add Ball Clasps",
+      "seazonaPrice": 0,
+      "score": 0.25,
+      "tier": "low",
+      "runnerUp": {
+        "name": "Add Lingual Arms Distal To Last Molars",
+        "score": 0.25
+      }
+    },
+    {
+      "catalogId": "58",
+      "catalogName": "Diamond (PMT/Acrylic) Sample Models",
+      "catalogPrice": 125,
+      "seazonaProductId": "2c39e281-dcba-4822-9b01-60e183ce3a12",
+      "seazonaCode": "2109",
+      "seazonaName": "OD Sample Model PMT",
+      "seazonaPrice": 125,
+      "score": 0.517,
+      "tier": "medium",
+      "runnerUp": {
+        "name": "OND Sample Model BioMed",
+        "score": 0.517
+      }
+    },
+    {
+      "catalogId": "59",
+      "catalogName": "Diamond Sample Models",
+      "catalogPrice": 175,
+      "seazonaProductId": "1c5ba18a-c355-4c65-893c-c8811821f4d2",
+      "seazonaCode": "2145",
+      "seazonaName": "ONT Nylon Sample Model",
+      "seazonaPrice": 175,
+      "score": 0.517,
+      "tier": "medium",
+      "runnerUp": {
+        "name": "DDSO Nylon Sample",
+        "score": 0.494
+      }
+    },
+    {
+      "catalogId": "61",
+      "catalogName": "Mute",
+      "catalogPrice": 21.99,
+      "seazonaProductId": "46fd0948-4df4-426e-aea9-865da1b59d0d",
+      "seazonaCode": "2232",
+      "seazonaName": "Mute Lg (3 PK)",
+      "seazonaPrice": 23,
+      "score": 1.039,
+      "tier": "high",
+      "runnerUp": {
+        "name": "Mute Med (3 PK)",
+        "score": 1.039
+      }
+    },
+    {
+      "catalogId": "62",
+      "catalogName": "Mute — Trial Pack",
+      "catalogPrice": 14.99,
+      "seazonaProductId": "27fe0059-a784-4d4c-a303-32195791de50",
+      "seazonaCode": "2235",
+      "seazonaName": "Mute Trial Pack",
+      "seazonaPrice": 17,
+      "score": 1.22,
+      "tier": "high",
+      "runnerUp": {
+        "name": "Mute Lg (3 PK)",
+        "score": 0.433
+      }
+    },
+    {
+      "catalogId": "63",
+      "catalogName": "DDSO Sample Models",
+      "catalogPrice": 150,
+      "seazonaProductId": "d479d96b-9bac-496a-8914-ad648febf33f",
+      "seazonaCode": "2148",
+      "seazonaName": "DDSO Nylon Sample",
+      "seazonaPrice": 150,
+      "score": 0.85,
+      "tier": "high",
+      "runnerUp": {
+        "name": "Dorsal Pro Nylon Sample",
+        "score": 0.517
+      }
+    },
+    {
+      "catalogId": "67",
+      "catalogName": "SomnoMed Sample Models",
+      "catalogPrice": 300,
+      "seazonaProductId": "5a90702b-df64-40bf-8c5a-865552adfb5f",
+      "seazonaCode": "2519",
+      "seazonaName": "Sample Model Tandem Bow",
+      "seazonaPrice": 300,
+      "score": 0.517,
+      "tier": "medium",
+      "runnerUp": {
+        "name": "Articulate Models",
+        "score": 0.3
+      }
+    },
+    {
+      "catalogId": "70",
+      "catalogName": "Shirazi Hybrid (Printed Nylon)",
+      "catalogPrice": 500,
+      "seazonaProductId": "445c26a5-b92b-47ed-bec1-88ab76ec2264",
+      "seazonaCode": "2153",
+      "seazonaName": "Shirazi Hybrid Nylon Sample",
+      "seazonaPrice": 500,
+      "score": 1.05,
+      "tier": "high",
+      "runnerUp": {
+        "name": "Shirazi Hybrid Demo Skull",
+        "score": 1
+      }
+    },
+    {
+      "catalogId": "72",
+      "catalogName": "Diamond D Scan",
+      "catalogPrice": 15,
+      "seazonaProductId": "a719ed5e-4de8-423c-b4b1-cb9c03a2bbed",
+      "seazonaCode": "2254",
+      "seazonaName": "Diamond D Scan Bite Registration",
+      "seazonaPrice": 15,
+      "score": 1.09,
+      "tier": "high",
+      "runnerUp": {
+        "name": "Diamond Bite Sticks (10 Pk.)",
+        "score": 0.53
+      }
+    },
+    {
+      "catalogId": "73",
+      "catalogName": "Diamond Bite Sticks",
+      "catalogPrice": 15,
+      "seazonaProductId": "0a5aafc6-5a0d-4f29-8970-533d4d1cb031",
+      "seazonaCode": "2252",
+      "seazonaName": "Diamond Bite Sticks (10 Pk.)",
+      "seazonaPrice": 15,
+      "score": 1.25,
+      "tier": "high",
+      "runnerUp": {
+        "name": "Diamond A Classic Bite Registration",
+        "score": 0.81
+      }
+    },
+    {
+      "catalogId": "74",
+      "catalogName": "Diamond Impression Material",
+      "catalogPrice": 12,
+      "seazonaProductId": "1f9729f8-682e-49b6-896c-111ffda7596a",
+      "seazonaCode": "2255",
+      "seazonaName": "Diamond Impression",
+      "seazonaPrice": 12,
+      "score": 0.917,
+      "tier": "high",
+      "runnerUp": {
+        "name": "Diamond CT Blue Bite Registration",
+        "score": 0.507
+      }
+    },
+    {
+      "catalogId": "75",
+      "catalogName": "Replacement Vertical Shim (Anterior)",
+      "catalogPrice": 3,
+      "seazonaProductId": "dc7255e5-5584-4d73-8317-67fd7fd3e88a",
+      "seazonaCode": "2332",
+      "seazonaName": "Replacement Anterior Vertical Shims Single",
+      "seazonaPrice": 3,
+      "score": 0.81,
+      "tier": "medium",
+      "runnerUp": {
+        "name": "Replacement Anterior Vertical Shims (3)",
+        "score": 0.56
+      }
+    },
+    {
+      "catalogId": "76",
+      "catalogName": "Replacement Vertical Shims (Posterior)",
+      "catalogPrice": 6,
+      "seazonaProductId": "f0bf159f-dad0-4f73-a25d-82ffe921ff34",
+      "seazonaCode": "2339",
+      "seazonaName": "Replacement Posterior Vertical Shims (Pr)",
+      "seazonaPrice": 6,
+      "score": 1.15,
+      "tier": "high",
+      "runnerUp": {
+        "name": "Replacement Anterior Vertical Shims (3)",
+        "score": 0.9
+      }
+    },
+    {
+      "catalogId": "77",
+      "catalogName": "Dr. B's Cleanadent Liquid",
+      "catalogPrice": 10.95,
+      "seazonaProductId": "7ebe3869-4a0d-43ff-b60e-36b8d0a6fdaa",
+      "seazonaCode": "2270",
+      "seazonaName": "Heating Torch",
+      "seazonaPrice": 10,
+      "score": 0.228,
+      "tier": "low",
+      "runnerUp": {
+        "name": "Remake Model Fabrication",
+        "score": 0.228
+      }
+    },
+    {
+      "catalogId": "78",
+      "catalogName": "Dr. B's Sonic Cleaner",
+      "catalogPrice": 14.95,
+      "seazonaProductId": "5909f744-1929-434e-975c-cdcbb2ccbfad",
+      "seazonaCode": "2257",
+      "seazonaName": "Diamond Sonic Cleaner",
+      "seazonaPrice": 20,
+      "score": 0.373,
+      "tier": "low",
+      "runnerUp": {
+        "name": "NEW Diamond Sonic Cleaner",
+        "score": 0.354
+      }
+    },
+    {
+      "catalogId": "83",
+      "catalogName": "NovaDent Cleaner IP Formula — 1 Box",
+      "catalogPrice": 15,
+      "seazonaProductId": "f40bb3f4-8407-40b8-bf5f-4d9e93409da2",
+      "seazonaCode": "2258",
+      "seazonaName": "Novadent IP (8 Pkts/56 Days)",
+      "seazonaPrice": 15,
+      "score": 0.75,
+      "tier": "medium",
+      "runnerUp": {
+        "name": "BAB-LOOP",
+        "score": 0.25
+      }
+    },
+    {
+      "catalogId": "84",
+      "catalogName": "NovaDent Cleaner IP Formula",
+      "catalogPrice": 13.5,
+      "seazonaProductId": "f40bb3f4-8407-40b8-bf5f-4d9e93409da2",
+      "seazonaCode": "2258",
+      "seazonaName": "Novadent IP (8 Pkts/56 Days)",
+      "seazonaPrice": 15,
+      "score": 0.725,
+      "tier": "medium",
+      "runnerUp": {
+        "name": "Ortho Band with brackets",
+        "score": 0.241
+      }
+    },
+    {
+      "catalogId": "85",
+      "catalogName": "NovaDent Cleaner IP Formula",
+      "catalogPrice": 23,
+      "seazonaProductId": "f40bb3f4-8407-40b8-bf5f-4d9e93409da2",
+      "seazonaCode": "2258",
+      "seazonaName": "Novadent IP (8 Pkts/56 Days)",
+      "seazonaPrice": 15,
+      "score": 0.5,
+      "tier": "medium",
+      "runnerUp": {
+        "name": "Diamond Sonic Cleaner",
+        "score": 0.434
+      }
+    },
+    {
+      "catalogId": "87",
+      "catalogName": "True Functional Airway Nasal Spray",
+      "catalogPrice": 21.99,
+      "seazonaProductId": "f94a8890-7b98-434a-8b8e-39b09b84e7d6",
+      "seazonaCode": "2268",
+      "seazonaName": "True Functional Airway Nasal Spray",
+      "seazonaPrice": 22,
+      "score": 1.25,
+      "tier": "high",
+      "runnerUp": {
+        "name": "Diamond Mixing Tips (20 PK)",
+        "score": 0.239
+      }
+    },
+    {
+      "catalogId": "88",
+      "catalogName": "X-Clear Nasal Spray",
+      "catalogPrice": 21.99,
+      "seazonaProductId": "f94a8890-7b98-434a-8b8e-39b09b84e7d6",
+      "seazonaCode": "2268",
+      "seazonaName": "True Functional Airway Nasal Spray",
+      "seazonaPrice": 22,
+      "score": 0.664,
+      "tier": "medium",
+      "runnerUp": {
+        "name": "Diamond Mixing Tips (20 PK)",
+        "score": 0.239
+      }
+    },
+    {
+      "catalogId": "90",
+      "catalogName": "Thermforming Crimpers",
+      "catalogPrice": 125,
+      "seazonaProductId": "3e361d19-4647-4ba0-bee3-c59891f37cdd",
+      "seazonaCode": "2267",
+      "seazonaName": "Thermoforming Crimpers",
+      "seazonaPrice": 135,
+      "score": 0.665,
+      "tier": "medium",
+      "runnerUp": {
+        "name": "Fixed 3-Way Expander",
+        "score": 0.25
+      }
+    },
+    {
+      "catalogId": "91",
+      "catalogName": "Nylon Adjusting Burs",
+      "catalogPrice": 135,
+      "seazonaProductId": "4efc8d78-6078-40eb-bd11-4225f816fb52",
+      "seazonaCode": "2260",
+      "seazonaName": "Nylon Adjusting Burs (Pk)",
+      "seazonaPrice": 100,
+      "score": 1,
+      "tier": "high",
+      "runnerUp": {
+        "name": "Nylon Adjusting Bur (Single)",
+        "score": 0.6
+      }
+    },
+    {
+      "catalogId": "92",
+      "catalogName": "Single Nylon Adjusting Bur",
+      "catalogPrice": 31.99,
+      "seazonaProductId": "2f4c5793-d5a6-4a60-a54e-306f0899ab24",
+      "seazonaCode": "2259",
+      "seazonaName": "Nylon Adjusting Bur (Single)",
+      "seazonaPrice": 30,
+      "score": 1.234,
+      "tier": "high",
+      "runnerUp": {
+        "name": "Nylon Adjusting Burs (Pk)",
+        "score": 0.6
+      }
+    },
+    {
+      "catalogId": "93",
+      "catalogName": "Sample Polishing Wheels",
+      "catalogPrice": 12,
+      "seazonaProductId": "52cc796c-90be-4fd6-a846-e2880049ecc8",
+      "seazonaCode": "2266",
+      "seazonaName": "Polishing Wheels (4 PK)",
+      "seazonaPrice": 12,
+      "score": 0.917,
+      "tier": "high",
+      "runnerUp": {
+        "name": "DDSO Nylon Sample",
+        "score": 0.28
+      }
+    },
+    {
+      "catalogId": "94",
+      "catalogName": "Polishing Wheels",
+      "catalogPrice": 20,
+      "seazonaProductId": "52cc796c-90be-4fd6-a846-e2880049ecc8",
+      "seazonaCode": "2266",
+      "seazonaName": "Polishing Wheels (4 PK)",
+      "seazonaPrice": 12,
+      "score": 1,
+      "tier": "high",
+      "runnerUp": {
+        "name": "Polishing Burs Fine 10 (PK)",
+        "score": 0.63
+      }
+    },
+    {
+      "catalogId": "95",
+      "catalogName": "FedEx Boxes — Small, Medium, or Large",
+      "catalogPrice": 0,
+      "seazonaProductId": "8728f022-b525-4c49-8658-108e09312164",
+      "seazonaCode": "2316",
+      "seazonaName": "Medium Indexing",
+      "seazonaPrice": 0,
+      "score": 0.437,
+      "tier": "low",
+      "runnerUp": {
+        "name": "Add Ball Clasps",
+        "score": 0.25
+      }
+    },
+    {
+      "catalogId": "96",
+      "catalogName": "FedEx Paks — Small or Large",
+      "catalogPrice": 0,
+      "seazonaProductId": "8e19bd69-9b4e-4c06-b430-50466d5fa777",
+      "seazonaCode": "2284",
+      "seazonaName": "Add Ball Clasps",
+      "seazonaPrice": 0,
+      "score": 0.25,
+      "tier": "low",
+      "runnerUp": {
+        "name": "Add Lingual Arms Distal To Last Molars",
+        "score": 0.25
+      }
+    },
+    {
+      "catalogId": "97",
+      "catalogName": "FedEx Shipping Pouch — One Size",
+      "catalogPrice": 0,
+      "seazonaProductId": "8e19bd69-9b4e-4c06-b430-50466d5fa777",
+      "seazonaCode": "2284",
+      "seazonaName": "Add Ball Clasps",
+      "seazonaPrice": 0,
+      "score": 0.25,
+      "tier": "low",
+      "runnerUp": {
+        "name": "Add Lingual Arms Distal To Last Molars",
+        "score": 0.25
+      }
+    },
+    {
+      "catalogId": "98",
+      "catalogName": "Shipping Supply Kit",
+      "catalogPrice": 0,
+      "seazonaProductId": "fe9f86da-f6b3-4963-9297-4dcbbc36f8b2",
+      "seazonaCode": "2282",
+      "seazonaName": "New Client Welcome Kit",
+      "seazonaPrice": 0,
+      "score": 0.517,
+      "tier": "medium",
+      "runnerUp": {
+        "name": "Add Ball Clasps",
+        "score": 0.25
+      }
+    },
+    {
+      "catalogId": "102",
+      "catalogName": "Replacement Modular Tongue Positioners",
+      "catalogPrice": 10,
+      "seazonaProductId": "4b200df6-179c-4127-9451-9e5f8c9904d3",
+      "seazonaCode": "2559",
+      "seazonaName": "Replacement Nylon Tongue Positioners",
+      "seazonaPrice": 8,
+      "score": 0.89,
+      "tier": "high",
+      "runnerUp": {
+        "name": "Removable Tongue Positioners (Nylon)",
+        "score": 0.46
+      }
+    },
+    {
+      "catalogId": "103",
+      "catalogName": "Heating Torch",
+      "catalogPrice": 9.99,
+      "seazonaProductId": "7ebe3869-4a0d-43ff-b60e-36b8d0a6fdaa",
+      "seazonaCode": "2270",
+      "seazonaName": "Heating Torch",
+      "seazonaPrice": 10,
+      "score": 1.25,
+      "tier": "high",
+      "runnerUp": {
+        "name": "Remake Model Fabrication",
+        "score": 0.25
+      }
+    },
+    {
+      "catalogId": "104",
+      "catalogName": "New Client Welcome Kit",
+      "catalogPrice": 0,
+      "seazonaProductId": "fe9f86da-f6b3-4963-9297-4dcbbc36f8b2",
+      "seazonaCode": "2282",
+      "seazonaName": "New Client Welcome Kit",
+      "seazonaPrice": 0,
+      "score": 1.25,
+      "tier": "high",
+      "runnerUp": {
+        "name": "Add Ball Clasps",
+        "score": 0.25
+      }
+    },
+    {
+      "catalogId": "105",
+      "catalogName": "Diamond A Classic",
+      "catalogPrice": 15,
+      "seazonaProductId": "5e76c7c8-188c-4a33-8827-f9bd4de91e9d",
+      "seazonaCode": "2251",
+      "seazonaName": "Diamond A Classic Bite Registration",
+      "seazonaPrice": 15,
+      "score": 1.05,
+      "tier": "high",
+      "runnerUp": {
+        "name": "Diamond Bite Sticks (10 Pk.)",
+        "score": 0.65
+      }
+    },
+    {
+      "catalogId": "25-2",
+      "catalogName": "Nylon Adjusting Burs (5 pcs.)",
+      "catalogPrice": 135,
+      "seazonaProductId": "4efc8d78-6078-40eb-bd11-4225f816fb52",
+      "seazonaCode": "2260",
+      "seazonaName": "Nylon Adjusting Burs (Pk)",
+      "seazonaPrice": 100,
+      "score": 1,
+      "tier": "high",
+      "runnerUp": {
+        "name": "Nylon Adjusting Bur (Single)",
+        "score": 0.6
+      }
+    },
+    {
+      "catalogId": "109",
+      "catalogName": "Rx. OD — Diamoform (PMT)",
+      "catalogPrice": 199,
+      "seazonaProductId": "7cbc9c30-f167-4efe-85d9-df3765100034",
+      "seazonaCode": "2107",
+      "seazonaName": "OD Biomed",
+      "seazonaPrice": 199,
+      "score": 0.55,
+      "tier": "medium",
+      "runnerUp": {
+        "name": "OD PMT",
+        "score": 0.55
+      }
+    },
+    {
+      "catalogId": "112",
+      "catalogName": "DDSO — Diamond Digital Sleep Orthotic",
+      "catalogPrice": 450,
+      "seazonaProductId": "c1d37a2d-0f09-4c3a-98c4-5c8a9a99cb5b",
+      "seazonaCode": "2532",
+      "seazonaName": "DDSO BioFlex",
+      "seazonaPrice": 465,
+      "score": 0.429,
+      "tier": "low",
+      "runnerUp": {
+        "name": "DDSO BIOMED",
+        "score": 0.429
+      }
+    }
+  ]
+}
