@@ -16,7 +16,11 @@ const channelsToHex = (ch) => {
 
 export function ThemeEditor() {
   const isAdmin = useAuthStore((s) => s.user?.role === "admin");
-  const enabled = import.meta.env.VITE_THEME_EDITOR === "on" && isAdmin;
+  // Visible to admins automatically in local dev; in a production build it
+  // requires the explicit VITE_THEME_EDITOR=on flag (the hard off-switch for
+  // launch). Either way it is admin-only and server-enforced on save.
+  const flagOn = import.meta.env.DEV || import.meta.env.VITE_THEME_EDITOR === "on";
+  const enabled = flagOn && isAdmin;
 
   const [open, setOpen] = useState(false);
   const [tokens, setTokens] = useState({});   // working override (channels/font strings)
