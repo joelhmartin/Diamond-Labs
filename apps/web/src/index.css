@@ -1,3 +1,38 @@
+:root {
+  /* ── Core palette (RGB channels; never hex — keeps Tailwind /alpha working) ── */
+  --brand-50: 244 249 251;
+  --brand-100: 227 241 247;
+  --brand-200: 194 230 244;
+  --brand-300: 157 216 241;
+  --brand-400: 101 199 241;
+  --brand-500: 19 174 239;
+  --brand-600: 19 147 201;
+  --brand-700: 19 115 155;
+  --brand-800: 17 86 115;
+  --brand-900: 13 56 74;
+  --brand-950: 10 36 46;
+
+  --accent-400: 251 185 77;
+  --accent-500: 247 157 30;
+  --accent-600: 217 133 10;
+
+  --surface-50: 255 255 255;
+  --surface-100: 247 247 245;
+  --surface-200: 238 237 233;
+  --surface-300: 226 224 219;
+  --surface-400: 209 207 200;
+
+  --navy: 11 26 46;
+  --navy-light: 19 40 68;
+  --navy-dark: 6 13 23;
+
+  /* ── Font tokens ── */
+  --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-heading: "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-drama: "Cormorant Garamond", Georgia, serif;
+  --font-mono: "IBM Plex Mono", monospace;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
