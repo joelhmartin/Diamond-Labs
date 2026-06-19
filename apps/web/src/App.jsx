@@ -64,6 +64,7 @@ import { SavedCardsPage } from "./pages/doctor/SavedCardsPage.jsx";
 import { NewCasePage } from "./pages/app/NewCasePage.jsx";
 import { RequireDoctor } from "./guards/RequireDoctor.jsx";
 import { PaymentTestPage } from "./pages/dev/PaymentTestPage.jsx";
+import { ThemeEditor } from "./components/theme/ThemeEditor.jsx";
 
 /* Scroll to top on route change, but NOT on initial load —
    that lets the browser restore scroll position on reload. */
@@ -260,6 +261,7 @@ export default function App() {
       <ScrollToTop />
       <ToastProvider>
         <AppRoutes />
+        <ThemeEditor />
       </ToastProvider>
     </BrowserRouter>
   );
