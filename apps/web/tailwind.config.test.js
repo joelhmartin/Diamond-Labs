@@ -19,3 +19,11 @@ describe("tailwind color tokens", () => {
       expect(v).toMatch(/var\(--font-/);
   });
 });
+
+describe("semantic role colors", () => {
+  it("exposes on-dark and accent-on-dark", () => {
+    const c = config.theme.extend.colors;
+    expect(c["on-dark"]).toMatch(/var\(--text-on-dark/);
+    expect(c["accent-on-dark"]).toMatch(/var\(--accent-on-dark/);
+  });
+});

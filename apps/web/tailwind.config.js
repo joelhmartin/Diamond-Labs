@@ -34,6 +34,8 @@ export default {
           light: "rgb(var(--navy-light) / <alpha-value>)",
           dark: "rgb(var(--navy-dark) / <alpha-value>)",
         },
+        "on-dark": "rgb(var(--text-on-dark) / <alpha-value>)",
+        "accent-on-dark": "rgb(var(--accent-on-dark) / <alpha-value>)",
       },
       fontFamily: {
         sans: "var(--font-sans)",

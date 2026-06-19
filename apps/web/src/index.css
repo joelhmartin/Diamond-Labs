@@ -31,6 +31,15 @@
   --font-heading: "Plus Jakarta Sans", system-ui, sans-serif;
   --font-drama: "Cormorant Garamond", Georgia, serif;
   --font-mono: "IBM Plex Mono", monospace;
+
+  /* ── Semantic role tokens (reference palette; what the editor exposes) ── */
+  --color-page: var(--surface-100);
+  --color-text: var(--navy);
+  --color-primary: var(--brand-500);
+  --color-accent: var(--accent-500);
+  --color-border: var(--surface-300);
+  --text-on-dark: 255 255 255;      /* white — flips to navy via the editor */
+  --accent-on-dark: var(--accent-500);
 }
 
 @tailwind base;
