@@ -32,13 +32,13 @@ export function DownloadsPage() {
       {/* Hero */}
       <section className="relative hero-gradient pt-32 pb-28">
         <div className="section-pad text-center max-w-2xl mx-auto">
-          <span className="font-mono text-xs text-white/30 uppercase tracking-widest">
+          <span className="font-mono text-xs text-on-dark/30 uppercase tracking-widest">
             Resources
           </span>
-          <h1 className="mt-4 font-heading font-bold text-3xl md:text-5xl text-white tracking-tight">
+          <h1 className="mt-4 font-heading font-bold text-3xl md:text-5xl text-on-dark tracking-tight">
             Downloads
           </h1>
-          <p className="mt-4 text-white/40 text-sm md:text-base max-w-md mx-auto leading-relaxed">
+          <p className="mt-4 text-on-dark/40 text-sm md:text-base max-w-md mx-auto leading-relaxed">
             Forms, brochures, and publications from Diamond Orthotic Laboratory.
           </p>
         </div>

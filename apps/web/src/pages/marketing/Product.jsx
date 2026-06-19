@@ -112,10 +112,10 @@ function ProductHero() {
       </div>
       <div className="relative z-10 pb-12 md:pb-16 w-full max-w-6xl mx-auto">
         <div className="max-w-3xl">
-        <span data-phero className="font-mono text-xs text-white/40 uppercase tracking-widest">
+        <span data-phero className="font-mono text-xs text-on-dark/40 uppercase tracking-widest">
           Our Products
         </span>
-        <h1 data-phero className="mt-4 text-white">
+        <h1 data-phero className="mt-4 text-on-dark">
           <span className="block font-heading font-bold text-3xl sm:text-4xl md:text-6xl tracking-tight leading-[0.95]">
             Precision appliances for
           </span>

@@ -80,11 +80,11 @@ function Hero() {
         <div className="max-w-4xl">
         <span
           data-olmos-hero
-          className="font-mono text-xs text-white/40 uppercase tracking-widest"
+          className="font-mono text-xs text-on-dark/40 uppercase tracking-widest"
         >
           Founder · Protocol Architect
         </span>
-        <h1 data-olmos-hero className="mt-4 text-white">
+        <h1 data-olmos-hero className="mt-4 text-on-dark">
           <span className="block font-heading font-bold text-4xl sm:text-5xl md:text-7xl tracking-tight leading-[0.95]">
             Dr. Steven
           </span>
@@ -94,7 +94,7 @@ function Hero() {
         </h1>
         <p
           data-olmos-hero
-          className="mt-6 text-white/50 text-base md:text-lg max-w-xl leading-relaxed"
+          className="mt-6 text-on-dark/50 text-base md:text-lg max-w-xl leading-relaxed"
         >
           Founder of TMJ &amp; Sleep Therapy Centres International. 35+ years
           in private practice. 30+ years devoted to research and treatment of
@@ -334,13 +334,13 @@ function GlobalReach() {
         <div className="max-w-6xl mx-auto">
           <div data-reach className="flex items-center gap-3 mb-6">
             <Globe2 size={16} className="text-brand-400" />
-            <span className="font-mono text-[10px] text-white/30 uppercase tracking-[0.2em]">
+            <span className="font-mono text-[10px] text-on-dark/30 uppercase tracking-[0.2em]">
               TMJ &amp; Sleep Therapy Centres International
             </span>
           </div>
           <h2
             data-reach
-            className="font-heading font-bold text-4xl md:text-6xl text-white tracking-tight leading-[1.05] text-balance"
+            className="font-heading font-bold text-4xl md:text-6xl text-on-dark tracking-tight leading-[1.05] text-balance"
           >
             <span className="text-brand-400">60+ centres.</span>{" "}
             <span className="font-drama italic">7 countries.</span>{" "}
@@ -348,7 +348,7 @@ function GlobalReach() {
           </h2>
           <p
             data-reach
-            className="mt-8 max-w-2xl text-white/45 text-base md:text-lg leading-relaxed"
+            className="mt-8 max-w-2xl text-on-dark/45 text-base md:text-lg leading-relaxed"
           >
             The network Dr. Olmos founded spans the US, Canada, Australia,
             and four additional countries — each centre dedicated
@@ -361,10 +361,10 @@ function GlobalReach() {
             {FOCUS_AREAS.map((f) => (
               <div key={f.title} data-reach>
                 <f.Icon size={22} className="text-brand-400 mb-4" />
-                <div className="font-heading font-bold text-lg text-white tracking-tight">
+                <div className="font-heading font-bold text-lg text-on-dark tracking-tight">
                   {f.title}
                 </div>
-                <p className="text-white/40 text-sm mt-2 leading-relaxed">
+                <p className="text-on-dark/40 text-sm mt-2 leading-relaxed">
                   {f.copy}
                 </p>
               </div>

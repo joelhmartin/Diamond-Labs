@@ -99,11 +99,11 @@ function Hero() {
         <div className="max-w-3xl">
         <span
           data-lab-hero
-          className="font-mono text-xs text-white/40 uppercase tracking-widest"
+          className="font-mono text-xs text-on-dark/40 uppercase tracking-widest"
         >
           Certified Laboratories
         </span>
-        <h1 data-lab-hero className="mt-4 text-white">
+        <h1 data-lab-hero className="mt-4 text-on-dark">
           <span className="block font-heading font-bold text-4xl sm:text-5xl md:text-6xl tracking-tight leading-[0.95]">
             One protocol.
           </span>
@@ -113,7 +113,7 @@ function Hero() {
         </h1>
         <p
           data-lab-hero
-          className="mt-6 text-white/50 text-base md:text-lg max-w-xl leading-relaxed"
+          className="mt-6 text-on-dark/50 text-base md:text-lg max-w-xl leading-relaxed"
         >
           Dr. Olmos has partnered with and certified 7 laboratories in the
           US, Canada, and Australia with the ability and commitment to
@@ -208,7 +208,7 @@ function LabCard({ lab }) {
     <div
       className={`card-radius p-6 md:p-7 border transition-all duration-500 flex flex-col ${
         lab.featured
-          ? "bg-navy text-white border-navy-light hover:border-brand-400/40"
+          ? "bg-navy text-on-dark border-navy-light hover:border-brand-400/40"
           : "bg-white border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-navy/5"
       }`}
     >
@@ -222,14 +222,14 @@ function LabCard({ lab }) {
       )}
       <h3
         className={`font-heading font-bold text-lg tracking-tight leading-snug ${
-          lab.featured ? "text-white" : "text-navy"
+          lab.featured ? "text-on-dark" : "text-navy"
         }`}
       >
         {lab.name}
       </h3>
       <div
         className={`mt-2 flex items-center gap-2 text-xs ${
-          lab.featured ? "text-white/50" : "text-navy/45"
+          lab.featured ? "text-on-dark/50" : "text-navy/45"
         }`}
       >
         <MapPin size={12} />
@@ -258,7 +258,7 @@ function LabCard({ lab }) {
         {lab.phone && (
           <div
             className={`flex items-center gap-2 text-sm ${
-              lab.featured ? "text-white/70" : "text-navy/70"
+              lab.featured ? "text-on-dark/70" : "text-navy/70"
             }`}
           >
             <Phone size={12} />

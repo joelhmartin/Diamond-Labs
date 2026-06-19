@@ -28,18 +28,18 @@ function CaseHero() {
   return (
     <section ref={ref} className="relative hero-gradient pt-32 pb-24">
       <div className="section-pad text-center max-w-2xl mx-auto">
-        <span data-ch className="font-mono text-xs text-white/40 uppercase tracking-widest">
+        <span data-ch className="font-mono text-xs text-on-dark/40 uppercase tracking-widest">
           Digital Rx
         </span>
         <h1
           data-ch
-          className="mt-4 font-heading font-bold text-3xl md:text-5xl text-white tracking-tight"
+          className="mt-4 font-heading font-bold text-3xl md:text-5xl text-on-dark tracking-tight"
         >
           Submit a New Case
         </h1>
         <p
           data-ch
-          className="mt-3 text-white/50 text-sm md:text-base max-w-lg mx-auto"
+          className="mt-3 text-on-dark/50 text-sm md:text-base max-w-lg mx-auto"
         >
           HIPAA-compliant digital submission for every Diamond-fabricated device.
           Pick the device, configure it, upload your scans and records, sign —

@@ -49,11 +49,11 @@ function AboutHero() {
         <div className="max-w-3xl">
         <span
           data-about-hero
-          className="font-mono text-xs text-white/40 uppercase tracking-widest"
+          className="font-mono text-xs text-on-dark/40 uppercase tracking-widest"
         >
           About Diamond
         </span>
-        <h1 data-about-hero className="mt-4 text-white">
+        <h1 data-about-hero className="mt-4 text-on-dark">
           <span className="block font-heading font-bold text-4xl sm:text-5xl md:text-7xl tracking-tight leading-[0.95]">
             The lab behind
           </span>
@@ -63,7 +63,7 @@ function AboutHero() {
         </h1>
         <p
           data-about-hero
-          className="mt-6 text-white/50 text-base md:text-lg max-w-lg leading-relaxed"
+          className="mt-6 text-on-dark/50 text-base md:text-lg max-w-lg leading-relaxed"
         >
           Diamond Orthotic Laboratory is the only lab built from the ground up
           around the Olmos Series system — the gold standard in TMJ and sleep
@@ -197,13 +197,13 @@ function DrOlmos() {
           <div>
             <span
               data-olmos
-              className="font-mono text-xs text-white/30 uppercase tracking-widest"
+              className="font-mono text-xs text-on-dark/30 uppercase tracking-widest"
             >
               The Protocol
             </span>
             <h2
               data-olmos
-              className="mt-4 font-heading font-bold text-3xl md:text-4xl text-white tracking-tight"
+              className="mt-4 font-heading font-bold text-3xl md:text-4xl text-on-dark tracking-tight"
             >
               Built on the work of
               <br />
@@ -213,7 +213,7 @@ function DrOlmos() {
             </h2>
             <p
               data-olmos
-              className="mt-6 text-white/50 text-base leading-relaxed"
+              className="mt-6 text-on-dark/50 text-base leading-relaxed"
             >
               Dr. Steven Olmos is the global authority on TMJ and sleep
               breathing disorders. His Olmos Series orthotic system represents
@@ -222,7 +222,7 @@ function DrOlmos() {
             </p>
             <p
               data-olmos
-              className="mt-4 text-white/50 text-base leading-relaxed"
+              className="mt-4 text-on-dark/50 text-base leading-relaxed"
             >
               Diamond Orthotic Laboratory is the only lab purpose-built around
               this system. We don&apos;t just fabricate appliances — we
@@ -235,13 +235,13 @@ function DrOlmos() {
             >
               <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10">
                 <Award size={14} className="text-accent-500" />
-                <span className="text-white/60 text-xs font-medium">
+                <span className="text-on-dark/60 text-xs font-medium">
                   Global TMJ Authority
                 </span>
               </div>
               <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10">
                 <Microscope size={14} className="text-brand-500" />
-                <span className="text-white/60 text-xs font-medium">
+                <span className="text-on-dark/60 text-xs font-medium">
                   Decades of Research
                 </span>
               </div>

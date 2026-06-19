@@ -35,10 +35,10 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-12 md:gap-8 pb-12 border-b border-white/10">
           {/* Brand block */}
           <div className="md:col-span-4">
-            <h3 className="font-heading font-bold text-white text-xl tracking-tight">
+            <h3 className="font-heading font-bold text-on-dark text-xl tracking-tight">
               Diamond Orthotic Laboratory
             </h3>
-            <p className="mt-3 text-white/50 text-sm leading-relaxed max-w-xs">
+            <p className="mt-3 text-on-dark/50 text-sm leading-relaxed max-w-xs">
               The premier Olmos-Method orthotic laboratory. Digital-first
               precision for TMJ and sleep breathing disorders.
             </p>
@@ -50,7 +50,7 @@ export function Footer() {
                   href={s.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-white/30 hover:text-white hover:bg-white/10 transition-all duration-300"
+                  className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-on-dark/30 hover:text-on-dark hover:bg-white/10 transition-all duration-300"
                   aria-label={s.label}
                 >
                   <s.icon size={14} />
@@ -58,7 +58,7 @@ export function Footer() {
               ))}
             </div>
 
-            <div className="mt-4 flex items-center gap-3 font-mono text-xs text-white/40">
+            <div className="mt-4 flex items-center gap-3 font-mono text-xs text-on-dark/40">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
@@ -71,7 +71,7 @@ export function Footer() {
           <div className="md:col-span-8 grid grid-cols-2 sm:grid-cols-3 gap-8">
             {Object.entries(FOOTER_NAV).map(([title, links]) => (
               <div key={title}>
-                <h4 className="font-heading font-semibold text-white/30 text-xs uppercase tracking-widest mb-4">
+                <h4 className="font-heading font-semibold text-on-dark/30 text-xs uppercase tracking-widest mb-4">
                   {title}
                 </h4>
                 <ul className="space-y-2.5">
@@ -79,7 +79,7 @@ export function Footer() {
                     <li key={link.label}>
                       <Link
                         to={link.to}
-                        className="group flex items-center gap-1 text-sm text-white/60 hover:text-white transition-colors duration-300"
+                        className="group flex items-center gap-1 text-sm text-on-dark/60 hover:text-on-dark transition-colors duration-300"
                       >
                         {link.label}
                         <ArrowUpRight
@@ -97,18 +97,18 @@ export function Footer() {
 
         {/* Bottom bar */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-8">
-          <p className="text-white/30 text-xs">
+          <p className="text-on-dark/30 text-xs">
             &copy; {new Date().getFullYear()} Diamond Orthotic Laboratory. All rights
             reserved.
           </p>
-          <div className="flex items-center gap-6 text-white/30 text-xs">
-            <span className="hover:text-white/60 transition-colors cursor-pointer">
+          <div className="flex items-center gap-6 text-on-dark/30 text-xs">
+            <span className="hover:text-on-dark/60 transition-colors cursor-pointer">
               Privacy Policy
             </span>
-            <span className="hover:text-white/60 transition-colors cursor-pointer">
+            <span className="hover:text-on-dark/60 transition-colors cursor-pointer">
               Terms of Service
             </span>
-            <span className="hover:text-white/60 transition-colors cursor-pointer">
+            <span className="hover:text-on-dark/60 transition-colors cursor-pointer">
               FDA Compliance
             </span>
           </div>

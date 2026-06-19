@@ -81,7 +81,7 @@ function Hero() {
       <div className="relative z-10 pt-44 pb-12 md:pt-48 md:pb-16 lg:pt-0 lg:pb-24 w-full max-w-6xl mx-auto">
         <div className="max-w-3xl">
         <div data-hero-anim className="mb-4">
-          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/10 text-white/70 font-mono text-xs font-semibold tracking-wider shadow-sm">
+          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/10 text-on-dark/70 font-mono text-xs font-semibold tracking-wider shadow-sm">
             <span className="relative flex h-1.5 w-1.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-500 opacity-75" />
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-brand-500" />
@@ -90,7 +90,7 @@ function Hero() {
           </span>
         </div>
 
-        <h1 data-hero-anim className="text-white">
+        <h1 data-hero-anim className="text-on-dark">
           <span className="block font-heading font-bold text-4xl sm:text-5xl md:text-6xl lg:text-7xl tracking-tight leading-[0.95]">
             Precision is the
           </span>
@@ -101,7 +101,7 @@ function Hero() {
 
         <p
           data-hero-anim
-          className="mt-6 text-white/60 text-base md:text-lg max-w-lg leading-relaxed font-medium"
+          className="mt-6 text-on-dark/60 text-base md:text-lg max-w-lg leading-relaxed font-medium"
         >
           The only orthotic lab built around the Olmos Series system. Digital
           workflow. Clinical accuracy. Every appliance, every time.
@@ -131,7 +131,7 @@ function Hero() {
 
         <div
           data-hero-anim
-          className="mt-10 md:mt-12 flex flex-wrap items-center gap-x-5 gap-y-2 md:gap-x-8 text-white/40 text-xs font-mono font-medium"
+          className="mt-10 md:mt-12 flex flex-wrap items-center gap-x-5 gap-y-2 md:gap-x-8 text-on-dark/40 text-xs font-mono font-medium"
         >
           <span>Quality</span>
           <span className="w-1 h-1 rounded-full bg-white/20" />
@@ -678,13 +678,13 @@ function Philosophy() {
         <div className="max-w-6xl mx-auto">
           {/* Top label */}
           <div data-phil className="mb-6">
-            <span className="font-mono text-[10px] font-semibold text-white/25 uppercase tracking-[0.2em]">
+            <span className="font-mono text-[10px] font-semibold text-on-dark/25 uppercase tracking-[0.2em]">
               Our Philosophy
             </span>
           </div>
 
           <div data-phil className="mt-8">
-            <h2 className="font-drama italic text-4xl sm:text-5xl md:text-6xl text-white leading-[1.1] tracking-tight">
+            <h2 className="font-drama italic text-4xl sm:text-5xl md:text-6xl text-on-dark leading-[1.1] tracking-tight">
               <span className="text-brand-400">Protocol-driven</span> precision
               for every{" "}
               <span className="relative inline-block">
@@ -697,7 +697,7 @@ function Philosophy() {
 
           {/* Supporting text */}
           <div data-phil className="mt-10 md:mt-14 max-w-xl">
-            <p className="text-white/40 text-sm md:text-base font-medium leading-relaxed">
+            <p className="text-on-dark/40 text-sm md:text-base font-medium leading-relaxed">
               Every orthotic we fabricate follows the Olmos-Method protocol
               — digitally designed, SLS-printed to sub-millimeter tolerance,
               and quality-checked before it leaves our lab.
@@ -709,10 +709,10 @@ function Philosophy() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12">
               {stats.map((s, i) => (
                 <div key={i} data-phil-stat>
-                  <span className="block font-heading font-bold text-3xl md:text-4xl text-white tracking-tight">
+                  <span className="block font-heading font-bold text-3xl md:text-4xl text-on-dark tracking-tight">
                     {s.value}
                   </span>
-                  <span className="block font-mono text-[10px] font-semibold text-white/30 uppercase tracking-wider mt-1">
+                  <span className="block font-mono text-[10px] font-semibold text-on-dark/30 uppercase tracking-wider mt-1">
                     {s.label}
                   </span>
                 </div>

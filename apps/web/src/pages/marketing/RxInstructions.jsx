@@ -141,11 +141,11 @@ function Hero() {
         <div className="max-w-3xl">
         <span
           data-rx-hero
-          className="font-mono text-xs text-white/40 uppercase tracking-widest"
+          className="font-mono text-xs text-on-dark/40 uppercase tracking-widest"
         >
           Prescription Workflow
         </span>
-        <h1 data-rx-hero className="mt-4 text-white">
+        <h1 data-rx-hero className="mt-4 text-on-dark">
           <span className="block font-heading font-bold text-4xl sm:text-5xl md:text-6xl tracking-tight leading-[0.95]">
             How to send us
           </span>
@@ -155,7 +155,7 @@ function Hero() {
         </h1>
         <p
           data-rx-hero
-          className="mt-6 text-white/50 text-base md:text-lg max-w-xl leading-relaxed"
+          className="mt-6 text-on-dark/50 text-base md:text-lg max-w-xl leading-relaxed"
         >
           Three pathways, one protocol. Digital submission is fastest —
           paper forms and video walk-throughs are available if you&apos;d
@@ -212,7 +212,7 @@ function Pathways() {
               data-path
               className={`card-radius p-7 md:p-8 border flex flex-col transition-all duration-500 ${
                 p.accent
-                  ? "bg-navy text-white border-navy-light hover:border-brand-400/40"
+                  ? "bg-navy text-on-dark border-navy-light hover:border-brand-400/40"
                   : "bg-white border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-navy/5"
               }`}
             >
@@ -240,13 +240,13 @@ function Pathways() {
 
               <h3
                 className={`font-heading font-bold text-2xl tracking-tight ${
-                  p.accent ? "text-white" : "text-navy"
+                  p.accent ? "text-on-dark" : "text-navy"
                 }`}
                 dangerouslySetInnerHTML={{ __html: p.title }}
               />
               <p
                 className={`mt-3 text-sm md:text-base leading-relaxed ${
-                  p.accent ? "text-white/60" : "text-navy/55"
+                  p.accent ? "text-on-dark/60" : "text-navy/55"
                 }`}
               >
                 {p.lead}
@@ -257,7 +257,7 @@ function Pathways() {
                   <li
                     key={i}
                     className={`flex gap-2.5 text-sm leading-snug ${
-                      p.accent ? "text-white/60" : "text-navy/60"
+                      p.accent ? "text-on-dark/60" : "text-navy/60"
                     }`}
                   >
                     <CheckCircle2

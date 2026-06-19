@@ -77,19 +77,19 @@ export function InstructionalVideosPage() {
         <div className="section-pad text-center max-w-3xl mx-auto">
           <span
             data-vid-hero
-            className="font-mono text-xs text-white/30 uppercase tracking-widest"
+            className="font-mono text-xs text-on-dark/30 uppercase tracking-widest"
           >
             Resources
           </span>
           <h1
             data-vid-hero
-            className="mt-4 font-heading font-bold text-3xl md:text-5xl text-white tracking-tight"
+            className="mt-4 font-heading font-bold text-3xl md:text-5xl text-on-dark tracking-tight"
           >
             Instructional Videos
           </h1>
           <p
             data-vid-hero
-            className="mt-4 text-white/40 text-sm md:text-base max-w-lg mx-auto leading-relaxed"
+            className="mt-4 text-on-dark/40 text-sm md:text-base max-w-lg mx-auto leading-relaxed"
           >
             Training and technique videos to help you get the best results with
             Diamond Orthotic Laboratory products.

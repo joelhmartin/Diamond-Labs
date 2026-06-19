@@ -80,11 +80,11 @@ function Hero() {
         <div className="max-w-3xl">
         <span
           data-team-hero
-          className="font-mono text-xs text-white/40 uppercase tracking-widest"
+          className="font-mono text-xs text-on-dark/40 uppercase tracking-widest"
         >
           Our Team
         </span>
-        <h1 data-team-hero className="mt-4 text-white">
+        <h1 data-team-hero className="mt-4 text-on-dark">
           <span className="block font-heading font-bold text-4xl sm:text-5xl md:text-7xl tracking-tight leading-[0.95]">
             Meet the
           </span>
@@ -94,7 +94,7 @@ function Hero() {
         </h1>
         <p
           data-team-hero
-          className="mt-6 text-white/80 text-base md:text-lg max-w-lg leading-relaxed"
+          className="mt-6 text-on-dark/80 text-base md:text-lg max-w-lg leading-relaxed"
         >
           Dental technicians, digital engineers, and clinical specialists —
           every case, every appliance, passes through these hands.

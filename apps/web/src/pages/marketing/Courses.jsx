@@ -99,11 +99,11 @@ function Hero() {
         <div className="max-w-3xl">
         <span
           data-crs-hero
-          className="font-mono text-xs text-white/40 uppercase tracking-widest"
+          className="font-mono text-xs text-on-dark/40 uppercase tracking-widest"
         >
           Dr. Steven Olmos · Courses
         </span>
-        <h1 data-crs-hero className="mt-4 text-white">
+        <h1 data-crs-hero className="mt-4 text-on-dark">
           <span className="block font-heading font-bold text-4xl sm:text-5xl md:text-6xl tracking-tight leading-[0.95]">
             Train with the
           </span>
@@ -113,7 +113,7 @@ function Hero() {
         </h1>
         <p
           data-crs-hero
-          className="mt-6 text-white/50 text-base md:text-lg max-w-xl leading-relaxed"
+          className="mt-6 text-on-dark/50 text-base md:text-lg max-w-xl leading-relaxed"
         >
           Continued education from TMJ &amp; Sleep Therapy Centres
           International — the clinical network Dr. Olmos founded. Beginning,
@@ -321,7 +321,7 @@ function Focus() {
             <div
               key={f.title}
               data-focus
-              className="bg-navy text-white card-radius p-8 border border-navy-light"
+              className="bg-navy text-on-dark card-radius p-8 border border-navy-light"
             >
               <div className="w-11 h-11 rounded-2xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center mb-5">
                 <f.Icon size={18} className="text-brand-400" />
@@ -329,7 +329,7 @@ function Focus() {
               <h3 className="font-heading font-bold text-lg tracking-tight">
                 {f.title}
               </h3>
-              <p className="mt-2 text-white/55 text-sm leading-relaxed">
+              <p className="mt-2 text-on-dark/55 text-sm leading-relaxed">
                 {f.body}
               </p>
             </div>
@@ -407,10 +407,10 @@ function Locations() {
             <Calendar size={18} className="text-brand-400" />
           </div>
           <div className="flex-1">
-            <div className="font-heading font-bold text-lg text-white tracking-tight">
+            <div className="font-heading font-bold text-lg text-on-dark tracking-tight">
               Upcoming course calendar
             </div>
-            <p className="mt-1 text-white/55 text-sm leading-relaxed">
+            <p className="mt-1 text-on-dark/55 text-sm leading-relaxed">
               Dates and locations are scheduled throughout the year. For the
               current calendar, registration, and seat availability, contact
               the lab or visit TMJ &amp; Sleep Therapy Centres International

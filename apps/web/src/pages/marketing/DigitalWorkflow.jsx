@@ -114,11 +114,11 @@ function Hero() {
         <div className="max-w-3xl">
         <span
           data-dw-hero
-          className="font-mono text-xs text-white/40 uppercase tracking-widest"
+          className="font-mono text-xs text-on-dark/40 uppercase tracking-widest"
         >
           Digital Workflow
         </span>
-        <h1 data-dw-hero className="mt-4 text-white">
+        <h1 data-dw-hero className="mt-4 text-on-dark">
           <span className="block font-heading font-bold text-4xl sm:text-5xl md:text-6xl tracking-tight leading-[0.95]">
             Scan to ship
           </span>
@@ -128,7 +128,7 @@ function Hero() {
         </h1>
         <p
           data-dw-hero
-          className="mt-6 text-white/50 text-base md:text-lg max-w-xl leading-relaxed"
+          className="mt-6 text-on-dark/50 text-base md:text-lg max-w-xl leading-relaxed"
         >
           Full digital fabrication pipeline. No analog guesswork. Every
           appliance archived, every occlusal surface calculated, every
@@ -177,10 +177,10 @@ function PipelineStats() {
       <div className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12">
         {items.map((s, i) => (
           <div key={i} data-dw-stat>
-            <span className="block font-heading font-bold text-3xl md:text-4xl text-white tracking-tight">
+            <span className="block font-heading font-bold text-3xl md:text-4xl text-on-dark tracking-tight">
               {s.value}
             </span>
-            <span className="block font-mono text-[10px] text-white/30 uppercase tracking-wider mt-1">
+            <span className="block font-mono text-[10px] text-on-dark/30 uppercase tracking-wider mt-1">
               {s.label}
             </span>
           </div>
@@ -310,15 +310,15 @@ function Advantages() {
             <div
               key={a.title}
               data-adv
-              className="bg-navy text-white card-radius p-8 border border-navy-light"
+              className="bg-navy text-on-dark card-radius p-8 border border-navy-light"
             >
               <div className="w-11 h-11 rounded-2xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center mb-6">
                 <a.Icon size={18} className="text-brand-400" />
               </div>
-              <h3 className="font-heading font-bold text-xl tracking-tight text-white">
+              <h3 className="font-heading font-bold text-xl tracking-tight text-on-dark">
                 {a.title}
               </h3>
-              <p className="mt-3 text-white/55 text-sm md:text-base leading-relaxed">
+              <p className="mt-3 text-on-dark/55 text-sm md:text-base leading-relaxed">
                 {a.body}
               </p>
             </div>
