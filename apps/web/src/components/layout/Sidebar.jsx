@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, Link } from "react-router-dom";
 import { clsx } from "clsx";
 import {
   LayoutDashboard,
@@ -9,6 +9,7 @@ import {
   ClipboardList,
   UserCog,
   FlaskConical,
+  ArrowLeft,
 } from "lucide-react";
 import { brand } from "../../config/brand.js";
 import { ROUTES } from "../../config/routes.js";
@@ -57,7 +58,12 @@ export function Sidebar() {
   return (
     <aside className="flex h-screen w-64 flex-col border-r border-gray-200 bg-white">
       <div className="flex h-16 items-center px-6">
-        <span className="text-lg font-bold text-gray-900">{brand.name}</span>
+        <Link
+          to="/"
+          className="text-lg font-bold text-gray-900 transition-colors hover:text-brand-700"
+        >
+          {brand.name}
+        </Link>
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-4">
@@ -77,6 +83,16 @@ export function Sidebar() {
           </>
         )}
       </nav>
+
+      <div className="border-t border-gray-200 px-3 py-4">
+        <Link
+          to="/"
+          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900"
+        >
+          <ArrowLeft size={16} />
+          Back to site
+        </Link>
+      </div>
     </aside>
   );
 }

@@ -10,6 +10,7 @@ import { useAccountStore } from "./stores/account.store.js";
 import { RequireAuth } from "./guards/RequireAuth.jsx";
 import { RequireAccount } from "./guards/RequireAccount.jsx";
 import { AppShell } from "./components/layout/AppShell.jsx";
+import { DoctorShell } from "./components/layout/DoctorShell.jsx";
 import { ROUTES } from "./config/routes.js";
 
 // Auth pages
@@ -213,8 +214,10 @@ function AppRoutes() {
 
       {/* Protected doctor routes */}
       <Route path="/doctor" element={<RequireDoctor />}>
-        <Route path="invoices" element={<InvoicesPage />} />
-        <Route path="saved-cards" element={<SavedCardsPage />} />
+        <Route element={<DoctorShell />}>
+          <Route path="invoices" element={<InvoicesPage />} />
+          <Route path="saved-cards" element={<SavedCardsPage />} />
+        </Route>
       </Route>
 
       {/* Doctor case submission (full-page wizard, no AppShell) */}
