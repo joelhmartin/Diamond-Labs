@@ -1,28 +1,23 @@
 /**
- * Diamond Orthotic Lab Rx. 2025 — faithful 1:1 port of JotForm 220598308432154.
+ * Diamond Orthotic Lab Rx. 2025 — doctor-facing digital Rx (reworked v2).
  *
  * Source snapshot: docs/rx-forms/jotform-api/rx-2025-220598308432154-questions.json
- * Ported field-for-field, sorted by JotForm `order`, grouped into sections at each
- * control_head / control_pagebreak / control_collapse boundary.
  *
- * Fidelity notes:
- *  - Hidden questions (`hidden:"Yes"`) are omitted — these are conditional alternate
- *    widgets the live form swaps in via JotForm logic (e.g. duplicate DDSO/D-Pro
- *    occlusal/design widgets q466-q470, q485-q488; rush widgets q335/q337; the
- *    additional-comments widget q141). They are not part of the default visible
- *    form. (Exception: q14 "Due Date Requested" is retained — it is a core
- *    scheduling field present on every Rx and is included in idBlock().)
- *  - Decorative-only elements (logo image q90, empty dividers,
- *    Ticker widgets q443/q451, Form Tabs widget q125, the submit button q22) are
- *    omitted per the layout-only rule.
- *  - Image-picker / image-radio / button-checkbox widgets capture a single choice or
- *    a multi-select; they are modelled as radio/checkbox capturing the SAME data,
- *    each annotated with its qid + widget name.
- *  - `required` is applied only to truly global fields (doctor, patient, email,
- *    records, signature). The live form marks several device-section widgets
- *    required, but those live inside collapsed/conditional device blocks; since this
- *    port renders all device sections always-visible (no JotForm collapse logic),
- *    forcing them required would block any submission. Left optional intentionally.
+ * v2 rework (per lab-owner feedback):
+ *  - Doctor identity fields removed — the doctor is logged in and the order is
+ *    auto-attributed, so DOCTOR fullname, the doctor email, CONTACT phone, and
+ *    the shipping ADDRESS are gone. A read-only note at the top of the first
+ *    section reflects the auto-filled account.
+ *  - Remake/Repair/Redesign section removed (new-device forms only).
+ *  - Empty heading-only / logo-only sections removed.
+ *  - A single device-selection gate (`devicesToOrder`, multi-select) drives which
+ *    per-device sections appear, via section-level `showIf.includes`. The
+ *    renderer auto-skips sections with no visible input fields, so unselected
+ *    devices never appear as steps.
+ *  - Image-bearing option groups (records picker, OD base-material, ON design)
+ *    carry `{ value, label, image }` options rendered as image cards. `value`
+ *    stays the canonical option string so downstream mapping is unchanged.
+ *  - Static production-calendar image removed; Due Date keeps a turnaround note.
  */
 
 import {
@@ -35,13 +30,13 @@ import {
   textarea,
   date,
   fullname,
-  email,
-  phone,
-  address,
   fileUpload,
   signature,
   matrix,
 } from "./form-fields.js";
+
+// JotForm upload host all snapshot widget images live under.
+const IMG = "https://www.jotform.com/uploads/Diamondlab/form_files";
 
 // Shared column set for the "Vertical Dimensions / Changes to Articulation" tables
 // (q221 / q483 / q484 — identical dcolumns in the snapshot).
@@ -60,74 +55,73 @@ const ADDITIONAL_OPTIONS = [
   "Create holes for cusps (minimum vertical)",
 ];
 
+// qid 86 "Records Selection" widget — option↔logo/photo pairing from the snapshot.
+const RECORDS_OPTIONS = [
+  { value: "Physical Bite Registration", label: "Physical Bite Registration", image: `${IMG}/bite_150.6036753edaecb2.18416798.png` },
+  { value: "PVS Impressions", label: "PVS Impressions", image: `${IMG}/PVS_150.603674f9e5d079.99098994.png` },
+  { value: "Stone/Resin Models", label: "Stone/Resin Models", image: `${IMG}/model_150.603674dc4347d4.50993365.png` },
+  { value: "3SHAPE", label: "3SHAPE", image: `${IMG}/3shape_.603677d2e93303.20086588.png` },
+  { value: "CARESTREAM", label: "CARESTREAM", image: `${IMG}/carestream_.603677dee1f5a9.76960426.png` },
+  { value: "CEREC", label: "CEREC", image: `${IMG}/cerec_.6036781230e490.29102641.png` },
+  { value: "ITERO", label: "ITERO", image: `${IMG}/itero_.6036781e5dbe09.92263476.png` },
+  { value: "MEDIT", label: "MEDIT", image: `${IMG}/medit_.60367827341479.40523658.png` },
+  { value: "MIDMARK", label: "MIDMARK", image: `${IMG}/midmark_.603678309a3864.60022150.png` },
+  { value: "SHINING 3D", label: "SHINING 3D", image: `${IMG}/shining.6724f26c6adb53.52202926.png` },
+  { value: "PLANMECA", label: "PLANMECA", image: `${IMG}/planmeca.6724f3fef1aef2.85030051.png` },
+  { value: "ALL OTHER SCANNERS", label: "ALL OTHER SCANNERS", image: `${IMG}/all.603679f333eaa7.69711684.png` },
+];
+
+// qid 390 "OD Material" widget — OD base-material device photos.
+const OD_MATERIAL_OPTIONS = [
+  { value: "OD (PMT)", label: "OD (PMT)", image: `${IMG}/od-pmt-sm.64a83f37076650.71764248.png` },
+  { value: "OD BIOFLEX", label: "OD BIOFLEX", image: `${IMG}/OD_BIoflex.68b72022743c65.45257842.png` },
+  { value: "Printed NYLON", label: "Printed NYLON", image: `${IMG}/od-nylon-sm.64a83f8a85a185.93407771.png` },
+  { value: "Acrylic w/clasps", label: "Acrylic w/clasps", image: `${IMG}/od-acrylic-sm.64a83f93d498c3.19148432.png` },
+  { value: "Dual-Laminate", label: "Dual-Laminate", image: `${IMG}/od-dual-laminate-sm.64a83f9c1b9b33.68871109.png` },
+  { value: "Milled (↑ wear)", label: "Milled (↑ wear)", image: `${IMG}/od-dual-laminate-sm.64a83f9c1b9b33.68871109.6526b2437b1164.26558223.png` },
+];
+
+// qid 197 "ON Occlusal Contact" widget — ON design render images.
+const ON_DESIGN_OPTIONS = [
+  { value: "DEPROGRAMMER (ON-D) - Anterior Occlusion", label: "DEPROGRAMMER (ON-D) - Anterior Occlusion", image: `${IMG}/OND%20rx%20image.6054f260382023.15548588.png` },
+  { value: "POSITIONER (ON-P) - Anterior Occlusion", label: "POSITIONER (ON-P) - Anterior Occlusion", image: `${IMG}/ONP-rx.6049363231e0f7.44336162.png` },
+  { value: "TITRATION (ON-T) - NYLON Only", label: "TITRATION (ON-T) - NYLON Only", image: `${IMG}/ont22.628cfea1a700d5.07116116.png` },
+  { value: "RAMP (ON-R) - Anterior Occlusion", label: "RAMP (ON-R) - Anterior Occlusion", image: `${IMG}/ON-Rrx.604935f090fbb0.76081828.png` },
+];
+
 export const digitalRxForm = {
   slug: "digital",
   jotformId: "220598308432154",
   title: "Diamond Orthotic Lab Rx. 2025",
   route: "/app/rx/digital",
   sections: [
-    // ---- Page 1 · CASE I.D. ------------------------------------------------
+    // ---- CASE IDENTIFICATION -----------------------------------------------
     {
       id: "case-id",
       heading: "Case Identification",
       fields: [
+        note(
+          "<strong>Doctor:</strong> Matt Rago · Account 1324 <span style='opacity:.6'>(auto-filled from your account)</span>",
+          { key: "noteDoctorAuto" }
+        ),
         heading("Case Identification", { key: "hdrCaseId" }),
-        // qid 3
-        fullname("doctorName", "DOCTOR:", { required: true }),
         // qid 19
         fullname("patientName", "PATIENT:", { required: true }),
-        // qid 380
-        email("email", "Email Address", { required: true }),
         // qid 309: widget "Checkbox in Dropdown" — single choice; modelled as radio
         radio("firstDevice", "Is this the patient's first device?", [
           "Yes",
           "No, use PREVIOUS RECORDS",
           "No, use NEW RECORDS",
         ]),
-        // qid 59
-        phone("contact", "CONTACT:", {
-          note: "Used only for case consultations",
-        }),
         // qid 14: "Due Date Requested" (production-scheduling date)
         date("dueDate", "Due Date Requested"),
-        // qid 249
-        address(
-          "shipAddress",
-          "ADDRESS: Once manufacturing is complete, where should Diamond send the case?"
-        ),
+        note("Typical turnaround is ~2 weeks; rush options available.", {
+          key: "noteTurnaround",
+        }),
       ],
     },
 
-    // ---- Remake / Repair / Redesign (collapse q296) ------------------------
-    {
-      id: "remake",
-      heading: "Remake/Repair/Redesign Request",
-      fields: [
-        heading("Remake/Repair/Redesign Request", { key: "hdrRemake" }),
-        // qid 328
-        date("dateReceived", "Date Received (INTERNAL USE ONLY)"),
-        // qid 322: widget "Remake Explaination" — free-text; modelled as textarea
-        textarea(
-          "remakeExplanation",
-          "Please explain in as much detail as possible, the nature of the defect/error: i.e. how did the device break? is there no retention on the upper arch? the lower? both?",
-          { rows: 4 }
-        ),
-        // qid 329
-        radio(
-          "returnedOriginals",
-          "Did you return the original models, bite and unaltered device(s) to Diamond within 72 hours of remake claim? REQUIRED for all no-cost warranty claims.",
-          ["Yes", "No"]
-        ),
-        // qid 330: control_head "Please note:" + subheader copy
-        heading("Please note:", { key: "hdrRemakeNote" }),
-        note(
-          'All "no cost" warranty, remake, and repair claims require the original bite, models and unaltered device to be returned to Diamond for evaluation. If the patient is unable to tolerate the absence of their device, Diamond will offer a 25% courtesy discount for the remake.',
-          { key: "noteWarranty" }
-        ),
-      ],
-    },
-
-    // ---- Page 2 · CASE SUBMISSION (head q81) -------------------------------
+    // ---- CASE SUBMISSION (head q81) ----------------------------------------
     {
       id: "case-submission",
       heading: "Case Submission",
@@ -139,25 +133,9 @@ export const digitalRxForm = {
           { key: "noteRecordsIntro" }
         ),
         // qid 86: widget "Records Selection" (image picker, up to 3) → checkbox
-        checkbox(
-          "records",
-          "PHYSICAL AND/OR DIGITAL RECORDS",
-          [
-            "Physical Bite Registration",
-            "PVS Impressions",
-            "Stone/Resin Models",
-            "3SHAPE",
-            "CARESTREAM",
-            "CEREC",
-            "ITERO",
-            "MEDIT",
-            "MIDMARK",
-            "SHINING 3D",
-            "PLANMECA",
-            "ALL OTHER SCANNERS",
-          ],
-          { required: true }
-        ),
+        checkbox("records", "PHYSICAL AND/OR DIGITAL RECORDS", RECORDS_OPTIONS, {
+          required: true,
+        }),
         // qid 423
         radio("physicalBite", "Will you be sending a physical bite?", [
           "No - Start case now with digital bite",
@@ -169,19 +147,31 @@ export const digitalRxForm = {
         fileUpload("recordsUpload", "Upload your files ↴ ↴ ↴ ↴", {
           note: "Upload .STL, PDF files, images, etc..",
           accept:
-            ".pdf,.STL,.doc,.docx,.xls,.xlsx,.csv,.txt,.rtf,.html,.zip,.mp3,.wma,.mpg,.flv,.avi,.jpg,.jpeg,.png,.gif",
+            ".stl,.pdf,.jpg,.jpeg,.png,.gif,.zip,.doc,.docx,.xls,.xlsx,.csv,.txt",
         }),
       ],
     },
 
-    // ---- Page 3 · SELECT DEVICE (head q92) ---------------------------------
+    // ---- DEVICE SELECTION GATE ---------------------------------------------
     {
       id: "select-device",
-      heading: "Please Select the device(s) you would like to order",
+      heading: "Select the device(s) you would like to order",
       fields: [
-        heading("Please Select the device(s) you would like to order:", {
-          key: "hdrSelectDevice",
-        }),
+        checkbox(
+          "devicesToOrder",
+          "Select the device(s) you would like to order",
+          [
+            { value: "olmos", label: "OLMOS Series — Craniofacial Pain / TMD Orthotics" },
+            { value: "mistry", label: "MISTRY Protocol" },
+            { value: "ddso", label: "DDSO — Diamond Digital Sleep Orthotic" },
+            { value: "dpro", label: "CAD/CAM D-Pro" },
+            { value: "shirazi", label: "Shirazi Hybrid — CPAP Pro" },
+            { value: "nightguards", label: "Nightguards / Mouthguards / Essix Trays" },
+            { value: "sportguards", label: "Diamond Orthotic Sport-Guards" },
+            { value: "snorehook", label: "SnoreHook" },
+          ],
+          { required: true }
+        ),
       ],
     },
 
@@ -189,6 +179,7 @@ export const digitalRxForm = {
     {
       id: "olmos",
       heading: "OLMOS SERIES - Craniofacial Pain/TMD Orthotics",
+      showIf: { key: "devicesToOrder", includes: "olmos" },
       fields: [
         heading("OLMOS SERIES - Craniofacial Pain/TMD Orthotics", {
           key: "hdrOlmos",
@@ -196,14 +187,11 @@ export const digitalRxForm = {
         // qid 480: animated heading separating the Day orthotic block
         heading("Olmos Day Orthotic (OD)", { key: "hdrOlmosDay" }),
         // qid 390: widget "OD Material" (image picker) → radio
-        radio("odMaterial", "(OD) Olmos Day Orthotic - Base material selection:", [
-          "OD (PMT)",
-          "OD BIOFLEX",
-          "Printed NYLON",
-          "Acrylic w/clasps",
-          "Dual-Laminate",
-          "Milled (↑ wear)",
-        ]),
+        radio(
+          "odMaterial",
+          "(OD) Olmos Day Orthotic - Base material selection:",
+          OD_MATERIAL_OPTIONS
+        ),
         // qid 212
         matrix(
           "odVertical",
@@ -241,12 +229,7 @@ export const digitalRxForm = {
         radio(
           "onDesign",
           "(ON) Olmos Night Orthotics - PLEASE SELECT ONE DESIGN:",
-          [
-            "DEPROGRAMMER (ON-D) - Anterior Occlusion",
-            "POSITIONER (ON-P) - Anterior Occlusion",
-            "TITRATION (ON-T) - NYLON Only",
-            "RAMP (ON-R) - Anterior Occlusion",
-          ]
+          ON_DESIGN_OPTIONS
         ),
         // qid 221
         matrix(
@@ -278,6 +261,7 @@ export const digitalRxForm = {
     {
       id: "mistry",
       heading: "MISTRY Protocol",
+      showIf: { key: "devicesToOrder", includes: "mistry" },
       fields: [
         heading("MISTRY Protocol", { key: "hdrMistry" }),
         // qid 513: widget "OD Material" single-item picker → checkbox (order this)
@@ -295,10 +279,9 @@ export const digitalRxForm = {
     {
       id: "ddso",
       heading: "DDSO - Diamond Digital Sleep Orthotic",
+      showIf: { key: "devicesToOrder", includes: "ddso" },
       fields: [
         heading("DDSO - Diamond Digital Sleep Orthotic", { key: "hdrDdso" }),
-        // qid 219: widget "Digital Device Selection" (image radio) → checkbox
-        checkbox("ddsoDevice", "Please select a device:", ["DDSO"]),
         // qid 389
         radio("ddsoMaterial", "Please select base material for DDSO", [
           "NYLON",
@@ -324,10 +307,9 @@ export const digitalRxForm = {
     {
       id: "dpro",
       heading: "CAD/CAM D-Pro",
+      showIf: { key: "devicesToOrder", includes: "dpro" },
       fields: [
         heading("CAD/CAM D-Pro", { key: "hdrDpro" }),
-        // qid 454: widget "Digital Device Selection" (image radio) → checkbox
-        checkbox("dproDevice", "Please select a device:", ["D-Pro"]),
         // qid 416
         checkbox("dproArticulation", "Changes to Articulation", [
           "As Needed (Lab Decision)",
@@ -355,10 +337,9 @@ export const digitalRxForm = {
     {
       id: "shirazi",
       heading: "Shirazi Hybrid - CPAP Pro",
+      showIf: { key: "devicesToOrder", includes: "shirazi" },
       fields: [
         heading("Shirazi Hybrid - CPAP Pro", { key: "hdrShirazi" }),
-        // qid 455: widget "Digital Device Selection" (image radio) → checkbox
-        checkbox("shiraziDevice", "Please select a device:", ["Shirazi Hybrid"]),
         // qid 460
         matrix(
           "shiraziTitration",
@@ -416,6 +397,7 @@ export const digitalRxForm = {
     {
       id: "nightguards",
       heading: "Nightguards - Mouthguards - Essix Trays",
+      showIf: { key: "devicesToOrder", includes: "nightguards" },
       fields: [
         heading("Nightguards - Mouthguards - Essix Trays", {
           key: "hdrNightguards",
@@ -470,6 +452,7 @@ export const digitalRxForm = {
     {
       id: "sport-guards",
       heading: "Diamond Orthotic Sport-Guards",
+      showIf: { key: "devicesToOrder", includes: "sportguards" },
       fields: [
         heading("Diamond Orthotic Sport-Guards", { key: "hdrSportGuards" }),
         // qid 235: widget "DIAMOND ORTHOTIC GUARDS" (image picker) → checkbox
@@ -508,10 +491,9 @@ export const digitalRxForm = {
     {
       id: "snorehook",
       heading: "SnoreHook",
+      showIf: { key: "devicesToOrder", includes: "snorehook" },
       fields: [
         heading("SnoreHook", { key: "hdrSnorehook" }),
-        // qid 408: widget "Digital Device Selection" (image radio) → checkbox
-        checkbox("snorehookDevice", "Please select a device:", ["SnoreHook"]),
         // qid 506
         textarea("snorehookComments", "Additional Comments/Instructions", {
           rows: 3,
@@ -519,7 +501,7 @@ export const digitalRxForm = {
       ],
     },
 
-    // ---- Page 4 · SUBMIT FORM (pagebreak q35) ------------------------------
+    // ---- SUBMIT FORM (pagebreak q35) ---------------------------------------
     {
       id: "submit-form",
       heading: "Submit Form",
@@ -529,14 +511,6 @@ export const digitalRxForm = {
           "PLEASE NOTE: All cases will be manufactured according to the production calendar (available for download on our website). Manufacturing begins when Diamond receives ALL items required for production; NOT the date the case is sent to the lab.",
           { key: "noteProductionCalendar" }
         ),
-        // qid 511: production calendar image (instructional)
-        {
-          type: "image",
-          key: "calendarImage",
-          label: "Production Calendar",
-          src: "https://www.jotform.com/uploads/Diamondlab/form_files/JUNE%202026%20Calendar.6a1deb52a820f0.97815692.jpg",
-          alt: "Diamond production calendar",
-        },
         // qid 76
         signature("doctorSignature", "Doctor Signature", { required: true }),
         // qid 391

@@ -27,10 +27,12 @@ const SUPPORTED_TYPES = new Set([
 ]);
 
 // Shared core labels (present on Digital, Ortho and OLMOS forms).
+// NOTE: doctor-identity ("DOCTOR:", "Email Address") and the entire
+// Remake/Repair/Redesign block ("Did you return the original models",
+// "Please explain in as much detail as possible", "Date Received …") were
+// removed per lab-owner feedback (new-device forms only).
 const SHARED_CORE_LABELS = [
   "PATIENT:",
-  "DOCTOR:",
-  "Email Address",
   "Date",
   "Due Date Requested",
   "Select Device",
@@ -47,21 +49,16 @@ const SHARED_CORE_LABELS = [
   "Removable Mandibular Expansion (Only)",
   "NUVELO Digital Setup ONLY",
   "Email to submit digital setup once completed:",
-  "Did you return the original models",
-  "Please explain in as much detail as possible",
   "Check this box if you would like to design (draw) your appliance",
   "Please use the artboard below to illustrate",
   "Additional Comments for ORTHO Design",
   "Additional Comments/Instructions",
   "Doctor Signature",
-  "Date Received (INTERNAL USE ONLY)",
   "Add:",
 ];
 
-// Ortho-only labels.
+// Ortho-only labels. (CONTACT / ADDRESS doctor-identity fields removed.)
 const ORTHO_ONLY_LABELS = [
-  "ADDRESS: (If different than address on account form)",
-  "CONTACT:",
   "UPPER Expansion type:",
   "Lower Expansion type:",
   "UPPER arch retention and base material:",
@@ -130,4 +127,28 @@ test("has at least one fileUpload, one signature, and one artboard field", () =>
   assert.ok(types.includes("fileUpload"), "missing fileUpload field");
   assert.ok(types.includes("signature"), "missing signature field");
   assert.ok(types.includes("artboard"), "missing artboard field");
+});
+
+test("no doctor-identity / contact / address field remains", () => {
+  // The digital-setup email (key digitalSetupEmail) is allowed to remain.
+  const offenders = allFields(orthodonticRxForm)
+    .map((f) => f.key)
+    .filter(Boolean)
+    .filter((k) => /doctorName|^email$|contactPhone|address/i.test(k));
+  assert.deepEqual(offenders, [], `unexpected identity field keys: ${offenders}`);
+});
+
+test("Remake/Repair/Redesign section is gone", () => {
+  const ids = orthodonticRxForm.sections.map((s) => s.id);
+  assert.ok(!ids.includes("remakeRequest"), "remakeRequest section still present");
+});
+
+test("fileUpload accept is a valid dotted list including .stl", () => {
+  const up = allFields(orthodonticRxForm).find((f) => f.type === "fileUpload");
+  assert.ok(up, "missing fileUpload field");
+  const exts = up.accept.split(",").map((s) => s.trim());
+  assert.ok(exts.includes(".stl"), `accept missing .stl: ${up.accept}`);
+  for (const ext of exts) {
+    assert.ok(/^\.[a-z0-9]+$/.test(ext), `malformed accept token: ${ext}`);
+  }
 });

@@ -67,29 +67,27 @@ function formatValue(field, value) {
 }
 
 /**
- * Digital form device-section detection, in priority order. Takes the FIRST
- * filled answer key → its deviceKey. Keys verified against digital-rx.form.js.
+ * Digital form device detection. The form now gates device sections behind a
+ * single multi-select `devicesToOrder` (values: olmos|mistry|ddso|dpro|shirazi|
+ * nightguards|sportguards|snorehook). The preview is per-device, so we map the
+ * FIRST selected device → its rx-devices key.
  */
-const DIGITAL_DEVICE_DETECTION = [
-  ["ddsoDevice", "ddso"],
-  ["dproDevice", "cadcam-d-pro"],
-  ["shiraziDevice", "shirazi-hybrid"],
-  ["snorehookDevice", "snorehook"],
-  ["nightguardDevice", "guard"],
-  ["sportGuardDevice", "sport-guard"],
-  // OLMOS Day (OD) — no single "device" checkbox, detect by its option/comment fields.
-  ["odExpansionOptions", "olmos-day"],
-  ["odComments", "olmos-day"],
-  // OLMOS Night (ON).
-  ["onComments", "olmos-night"],
-  // MISTRY protocol single-item pickers.
-  ["mora", "mora"],
-  ["ara", "ara"],
-];
+const DEVICE_VALUE_TO_KEY = {
+  olmos: "olmos-day",
+  mistry: "mora",
+  ddso: "ddso",
+  dpro: "cadcam-d-pro",
+  shirazi: "shirazi-hybrid",
+  nightguards: "guard",
+  sportguards: "sport-guard",
+  snorehook: "snorehook",
+};
 
 function detectDigitalDeviceKey(answers) {
-  for (const [key, deviceKey] of DIGITAL_DEVICE_DETECTION) {
-    if (answered(answers[key])) return deviceKey;
+  const sel = answers.devicesToOrder;
+  const values = Array.isArray(sel) ? sel : sel ? [sel] : [];
+  for (const v of values) {
+    if (DEVICE_VALUE_TO_KEY[v]) return DEVICE_VALUE_TO_KEY[v];
   }
   return null;
 }

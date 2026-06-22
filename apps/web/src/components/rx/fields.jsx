@@ -26,31 +26,85 @@ export function Label({ children, required }) {
 
 /* ─── FIELD RENDERERS ─── */
 
+/* Normalize an option to { value, label, image }. A plain string becomes
+   value=label with no image. */
+function normalizeOption(o) {
+  if (typeof o === "string") return { value: o, label: o, image: undefined };
+  return { value: o.value, label: o.label ?? o.value, image: o.image };
+}
+
+/* Selectable image card used by radio/checkbox image-option grids. The broken
+   image hides itself onError so a dead URL falls back to just the label. */
+function ImageOptionCard({ option, active, onClick }) {
+  const [imgOk, setImgOk] = useState(true);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`group flex flex-col items-center gap-2 p-3 rounded-2xl border text-center transition-all duration-300 ${
+        active
+          ? "border-brand-500 ring-2 ring-brand-500/20 bg-brand-50"
+          : "border-surface-300/50 hover:border-brand-300 bg-surface-50"
+      }`}
+    >
+      {option.image && imgOk && (
+        <img
+          src={option.image}
+          alt=""
+          loading="lazy"
+          onError={() => setImgOk(false)}
+          className="object-contain w-full h-24"
+        />
+      )}
+      <span className="flex items-center justify-center gap-1.5 text-xs font-medium text-navy/70">
+        {active && <Check size={12} className="text-brand-500 flex-shrink-0" />}
+        {option.label}
+      </span>
+    </button>
+  );
+}
+
 export function RadioField({ field, value, onChange }) {
-  const opts = field.options.map((o) => (typeof o === "string" ? { value: o, label: o } : o));
+  const opts = field.options.map(normalizeOption);
+  const hasImages = opts.some((o) => o.image);
+
   return (
     <div>
       <Label required={field.required}>{field.label}</Label>
-      <div className="flex flex-wrap gap-2">
-        {opts.map((o) => {
-          const active = value === o.value;
-          return (
-            <button
+      {hasImages ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {opts.map((o) => (
+            <ImageOptionCard
               key={o.value}
-              type="button"
+              option={o}
+              active={value === o.value}
               onClick={() => onChange(o.value)}
-              className={`px-4 py-2.5 rounded-full text-sm font-medium transition-all duration-300 ${
-                active
-                  ? "bg-brand-500 text-white shadow-sm"
-                  : "bg-surface-50 text-navy/60 border border-surface-300/50 hover:border-brand-500/30 hover:text-navy"
-              }`}
-            >
-              {active && <Check size={12} className="inline mr-1.5 -mt-0.5" />}
-              {o.label}
-            </button>
-          );
-        })}
-      </div>
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {opts.map((o) => {
+            const active = value === o.value;
+            return (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => onChange(o.value)}
+                className={`px-4 py-2.5 rounded-full text-sm font-medium transition-all duration-300 ${
+                  active
+                    ? "bg-brand-500 text-white shadow-sm"
+                    : "bg-surface-50 text-navy/60 border border-surface-300/50 hover:border-brand-500/30 hover:text-navy"
+                }`}
+              >
+                {active && <Check size={12} className="inline mr-1.5 -mt-0.5" />}
+                {o.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
       {field.note && (
         <p className="mt-2 flex items-start gap-1.5 text-[11px] text-navy/45">
           <AlertCircle size={11} className="mt-0.5 text-accent-500 flex-shrink-0" />
@@ -63,34 +117,47 @@ export function RadioField({ field, value, onChange }) {
 
 export function CheckboxField({ field, value, onChange }) {
   const selected = Array.isArray(value) ? value : [];
+  const opts = field.options.map(normalizeOption);
+  const hasImages = opts.some((o) => o.image);
   const toggle = (v) =>
     onChange(selected.includes(v) ? selected.filter((x) => x !== v) : [...selected, v]);
 
   return (
     <div>
       <Label required={field.required}>{field.label}</Label>
-      <div className="flex flex-wrap gap-2">
-        {field.options.map((o) => {
-          const v = typeof o === "string" ? o : o.value;
-          const label = typeof o === "string" ? o : o.label;
-          const active = selected.includes(v);
-          return (
-            <button
-              key={v}
-              type="button"
-              onClick={() => toggle(v)}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
-                active
-                  ? "bg-brand-500 text-white"
-                  : "bg-surface-50 text-navy/60 border border-surface-300/50 hover:border-brand-500/30"
-              }`}
-            >
-              {active && <Check size={12} className="inline mr-1.5 -mt-0.5" />}
-              {label}
-            </button>
-          );
-        })}
-      </div>
+      {hasImages ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {opts.map((o) => (
+            <ImageOptionCard
+              key={o.value}
+              option={o}
+              active={selected.includes(o.value)}
+              onClick={() => toggle(o.value)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {opts.map((o) => {
+            const active = selected.includes(o.value);
+            return (
+              <button
+                key={o.value}
+                type="button"
+                onClick={() => toggle(o.value)}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
+                  active
+                    ? "bg-brand-500 text-white"
+                    : "bg-surface-50 text-navy/60 border border-surface-300/50 hover:border-brand-500/30"
+                }`}
+              >
+                {active && <Check size={12} className="inline mr-1.5 -mt-0.5" />}
+                {o.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -334,6 +401,11 @@ export function FileUploadField({ field, value, onChange }) {
           <span className="text-brand-500 font-medium">browse</span>
           {field.maxFiles && ` · up to ${max}`}
         </p>
+        {field.accept && (
+          <p className="mt-1 text-[10px] text-navy/30">
+            Accepted: {field.accept}
+          </p>
+        )}
         <input
           ref={inputRef}
           type="file"
