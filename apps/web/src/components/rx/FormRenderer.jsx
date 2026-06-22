@@ -27,6 +27,10 @@ import {
      form       — a form definition { slug, title, sections:[...] }
      prefill    — { doctorName, practiceName, email, phone }
      onSubmit   — (FormData) => Promise   (built via buildSubmitFormData)
+     onComplete — (answers) => void   (optional). When provided, the final
+                  validated submit calls onComplete(rawAnswers) INSTEAD of the
+                  onSubmit/FormData path, and the final button reads
+                  "Generate Seazona preview". Used by the admin mapping tester.
      submitting — boolean
    ════════════════════════════════════════════════════════════════ */
 
@@ -143,7 +147,7 @@ function ReviewRow({ label, value }) {
   );
 }
 
-export function FormRenderer({ form, prefill = {}, onSubmit, submitting = false }) {
+export function FormRenderer({ form, prefill = {}, onSubmit, onComplete, submitting = false }) {
   const sections = (form && form.sections) || [];
   const totalSteps = sections.length + 1; // + Review
   const reviewStep = sections.length;
@@ -208,6 +212,11 @@ export function FormRenderer({ form, prefill = {}, onSubmit, submitting = false 
         (s.fields || []).some((f) => allErrors[f.key])
       );
       if (firstBadIdx >= 0) setStep(firstBadIdx);
+      return;
+    }
+    // Admin mapping tester path: hand back the raw answers map untouched.
+    if (onComplete) {
+      onComplete(answers);
       return;
     }
     const signature = signatureField ? answers[signatureField.key] : undefined;
@@ -363,7 +372,8 @@ export function FormRenderer({ form, prefill = {}, onSubmit, submitting = false 
                 </>
               ) : (
                 <>
-                  Submit <Send size={16} />
+                  {onComplete ? "Generate Seazona preview" : "Submit"}{" "}
+                  <Send size={16} />
                 </>
               )}
             </span>
