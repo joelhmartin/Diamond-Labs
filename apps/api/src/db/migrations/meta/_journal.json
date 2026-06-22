@@ -71,6 +71,13 @@
       "when": 1781893272976,
       "tag": "0009_green_devos",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782140143052,
+      "tag": "0010_overconfident_zodiak",
+      "breakpoints": true
     }
   ]
 }
