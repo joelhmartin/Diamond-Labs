@@ -34,23 +34,29 @@ function normalizeOption(o) {
   return { value: o.value, label: o.label ?? o.value, image: o.image };
 }
 
-/* Full-screen lightbox for an option image. Closes on backdrop click, the X
-   button, or Escape. */
-function ImageLightbox({ src, label, onClose }) {
+/* Reusable lightbox hook. `open(src, label)` shows a full-screen overlay;
+   `lightbox` is the element to render (null when closed). Closes on backdrop
+   click, the X button, or Escape. Use anywhere an image should be zoomable. */
+export function useLightbox() {
+  const [item, setItem] = useState(null); // { src, label } | null
+  const open = (src, label = "") => setItem({ src, label });
+  const close = () => setItem(null);
+
   useEffect(() => {
-    const onKey = (e) => e.key === "Escape" && onClose();
+    if (!item) return;
+    const onKey = (e) => e.key === "Escape" && close();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [item]);
 
-  return (
+  const lightbox = item ? (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-navy/70 backdrop-blur-sm"
-      onClick={onClose}
+      onClick={close}
     >
       <button
         type="button"
-        onClick={onClose}
+        onClick={close}
         aria-label="Close"
         className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center rounded-full bg-white/90 text-navy hover:bg-white transition-all"
       >
@@ -61,15 +67,31 @@ function ImageLightbox({ src, label, onClose }) {
         onClick={(e) => e.stopPropagation()}
       >
         <img
-          src={src}
-          alt={label || ""}
+          src={item.src}
+          alt={item.label || ""}
           className="object-contain max-h-[80vh] max-w-[90vw] rounded-xl bg-white"
         />
-        {label && (
-          <figcaption className="text-white text-sm font-medium">{label}</figcaption>
+        {item.label && (
+          <figcaption className="text-white text-sm font-medium">{item.label}</figcaption>
         )}
       </figure>
     </div>
+  ) : null;
+
+  return { open, close, lightbox, isOpen: !!item };
+}
+
+/* Hover magnifier, absolutely positioned top-right inside a `group` parent. */
+function ZoomButton({ onClick, label }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`Enlarge ${label || "image"}`}
+      className="absolute top-2 right-2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white/90 text-navy/55 shadow-sm border border-surface-300/50 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-white hover:text-brand-600 transition-all"
+    >
+      <ZoomIn size={14} />
+    </button>
   );
 }
 
@@ -78,7 +100,7 @@ function ImageLightbox({ src, label, onClose }) {
    hover, a magnifier in the top-right opens the image in a lightbox. */
 function ImageOptionCard({ option, active, onClick }) {
   const [imgOk, setImgOk] = useState(true);
-  const [zoom, setZoom] = useState(false);
+  const { open, lightbox } = useLightbox();
   const showImg = option.image && imgOk;
 
   return (
@@ -109,26 +131,15 @@ function ImageOptionCard({ option, active, onClick }) {
       </button>
 
       {showImg && (
-        <button
-          type="button"
+        <ZoomButton
+          label={option.label}
           onClick={(e) => {
             e.stopPropagation();
-            setZoom(true);
+            open(option.image, option.label);
           }}
-          aria-label={`Enlarge ${option.label}`}
-          className="absolute top-2 right-2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white/90 text-navy/55 shadow-sm border border-surface-300/50 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-white hover:text-brand-600 transition-all"
-        >
-          <ZoomIn size={14} />
-        </button>
-      )}
-
-      {zoom && showImg && (
-        <ImageLightbox
-          src={option.image}
-          label={option.label}
-          onClose={() => setZoom(false)}
         />
       )}
+      {lightbox}
     </div>
   );
 }
@@ -695,14 +706,25 @@ export function DividerField() {
 }
 
 export function ImageField({ field }) {
+  const [ok, setOk] = useState(true);
+  const { open, lightbox } = useLightbox();
+  if (!field.src || !ok) return null;
   return (
-    <figure className="rounded-2xl overflow-hidden border border-surface-300/50 bg-surface-50">
-      <img src={field.src} alt={field.alt || ""} className="block w-full h-auto" />
+    <figure className="relative group rounded-2xl overflow-hidden border border-surface-300/50 bg-surface-50">
+      <img
+        src={field.src}
+        alt={field.alt || ""}
+        loading="lazy"
+        onError={() => setOk(false)}
+        className="block w-full h-auto"
+      />
+      <ZoomButton label={field.alt} onClick={() => open(field.src, field.alt)} />
       {field.alt && (
         <figcaption className="px-4 py-2 text-[11px] text-navy/40">
           {field.alt}
         </figcaption>
       )}
+      {lightbox}
     </figure>
   );
 }
