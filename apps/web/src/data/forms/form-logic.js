@@ -166,12 +166,19 @@ export function buildSubmitFormData({ formType, form, answers, signature }) {
   fd.append("formData", JSON.stringify(jsonAnswers));
 
   // fileUpload fields → append each File under `file`.
+  // FileUploadField stores wrapper objects `{ id, file, name, ... }`; raw
+  // File/Blob values are also accepted (used by tests). Unwrap to the real
+  // binary before appending so the File bytes are not lost.
   for (const field of fields) {
     if (field.type !== "fileUpload") continue;
     const files = ans[field.key];
     if (!Array.isArray(files)) continue;
-    for (const file of files) {
-      if (file) fd.append("file", file);
+    for (const entry of files) {
+      if (!entry) continue;
+      const blob = entry.file != null ? entry.file : entry;
+      const name = entry.name != null ? entry.name : undefined;
+      if (name) fd.append("file", blob, name);
+      else fd.append("file", blob);
     }
   }
 

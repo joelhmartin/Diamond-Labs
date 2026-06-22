@@ -29,6 +29,12 @@ export const ROUTES = {
   DOCTOR_SAVED_CARDS: "/doctor/saved-cards",
   DOCTOR_NEW_CASE: "/app/cases/new",
 
+  // Rx forms (faithful 1:1 JotForm ports)
+  RX_CHOOSER: "/app/rx",
+  RX_DIGITAL: "/app/rx/digital",
+  RX_ORTHO: "/app/rx/ortho",
+  RX_OLMOS: "/app/rx/olmos",
+
   // Commerce
   CHECKOUT: "/checkout",
 };

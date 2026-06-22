@@ -48,3 +48,21 @@ export const rxCaseSubmitSchema = z.object({
   (data) => !data.rush || !!data.rushTier,
   { message: "rushTier is required when rush is true", path: ["rushTier"] }
 );
+
+/**
+ * Validates the non-file fields of a generic faithful-form submission
+ * (POST /rx/form-submissions). These intake-only forms (digital / ortho /
+ * olmos) carry all of their answers in a free-form `formData` object rather
+ * than the device-wizard's structured columns. No Seazona mapping is involved.
+ *
+ * The route assembles this object from multipart text fields after parsing
+ * `formData` (a JSON string) into an object.
+ */
+export const rxFormSubmitSchema = z.object({
+  formType: z.enum(["digital", "ortho", "olmos"]),
+  patientFirst: z.string().min(1).max(120),
+  patientLast: z.string().min(1).max(120),
+  formData: z.record(z.unknown()).default({}),
+  dueDate: z.string().max(30).optional(),
+  signatureUrl: z.string().optional(),
+});
