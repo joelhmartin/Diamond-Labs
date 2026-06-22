@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { RX_DEVICES } from "./rx-devices.js";
 const byKey = Object.fromEntries(RX_DEVICES.map((d) => [d.key, d]));
