@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import {
   Check,
   Upload,
@@ -6,6 +6,7 @@ import {
   FileText,
   Image as ImageIcon,
   AlertCircle,
+  ZoomIn,
 } from "lucide-react";
 import { Artboard } from "./Artboard.jsx";
 import { Signature } from "./Signature.jsx";
@@ -33,35 +34,113 @@ function normalizeOption(o) {
   return { value: o.value, label: o.label ?? o.value, image: o.image };
 }
 
-/* Selectable image card used by radio/checkbox image-option grids. The broken
-   image hides itself onError so a dead URL falls back to just the label. */
-function ImageOptionCard({ option, active, onClick }) {
-  const [imgOk, setImgOk] = useState(true);
+/* Reusable lightbox hook. `open(src, label)` shows a full-screen overlay;
+   `lightbox` is the element to render (null when closed). Closes on backdrop
+   click, the X button, or Escape. Use anywhere an image should be zoomable. */
+export function useLightbox() {
+  const [item, setItem] = useState(null); // { src, label } | null
+  const open = (src, label = "") => setItem({ src, label });
+  const close = () => setItem(null);
+
+  useEffect(() => {
+    if (!item) return;
+    const onKey = (e) => e.key === "Escape" && close();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [item]);
+
+  const lightbox = item ? (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-navy/70 backdrop-blur-sm"
+      onClick={close}
+    >
+      <button
+        type="button"
+        onClick={close}
+        aria-label="Close"
+        className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center rounded-full bg-white/90 text-navy hover:bg-white transition-all"
+      >
+        <X size={18} />
+      </button>
+      <figure
+        className="flex flex-col items-center gap-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <img
+          src={item.src}
+          alt={item.label || ""}
+          className="object-contain max-h-[80vh] max-w-[90vw] rounded-xl bg-white"
+        />
+        {item.label && (
+          <figcaption className="text-white text-sm font-medium">{item.label}</figcaption>
+        )}
+      </figure>
+    </div>
+  ) : null;
+
+  return { open, close, lightbox, isOpen: !!item };
+}
+
+/* Hover magnifier, absolutely positioned top-right inside a `group` parent. */
+function ZoomButton({ onClick, label }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-pressed={active}
-      className={`group flex flex-col items-center gap-2 p-3 rounded-2xl border text-center transition-all duration-300 ${
-        active
-          ? "border-brand-500 ring-2 ring-brand-500/20 bg-brand-50"
-          : "border-surface-300/50 hover:border-brand-300 bg-surface-50"
-      }`}
+      aria-label={`Enlarge ${label || "image"}`}
+      className="absolute top-2 right-2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white/90 text-navy/55 shadow-sm border border-surface-300/50 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-white hover:text-brand-600 transition-all"
     >
-      {option.image && imgOk && (
-        <img
-          src={option.image}
-          alt=""
-          loading="lazy"
-          onError={() => setImgOk(false)}
-          className="object-contain w-full h-24"
+      <ZoomIn size={14} />
+    </button>
+  );
+}
+
+/* Selectable image card used by radio/checkbox image-option grids. The broken
+   image hides itself onError so a dead URL falls back to just the label. On
+   hover, a magnifier in the top-right opens the image in a lightbox. */
+function ImageOptionCard({ option, active, onClick }) {
+  const [imgOk, setImgOk] = useState(true);
+  const { open, lightbox } = useLightbox();
+  const showImg = option.image && imgOk;
+
+  return (
+    <div className="relative group">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-pressed={active}
+        className={`w-full flex flex-col items-center gap-2 p-3 rounded-2xl border text-center transition-all duration-300 ${
+          active
+            ? "border-brand-500 ring-2 ring-brand-500/20 bg-brand-50"
+            : "border-surface-300/50 hover:border-brand-300 bg-surface-50"
+        }`}
+      >
+        {showImg && (
+          <img
+            src={option.image}
+            alt=""
+            loading="lazy"
+            onError={() => setImgOk(false)}
+            className="object-contain w-full h-24"
+          />
+        )}
+        <span className="flex items-center justify-center gap-1.5 text-xs font-medium text-navy/70">
+          {active && <Check size={12} className="text-brand-500 flex-shrink-0" />}
+          {option.label}
+        </span>
+      </button>
+
+      {showImg && (
+        <ZoomButton
+          label={option.label}
+          onClick={(e) => {
+            e.stopPropagation();
+            open(option.image, option.label);
+          }}
         />
       )}
-      <span className="flex items-center justify-center gap-1.5 text-xs font-medium text-navy/70">
-        {active && <Check size={12} className="text-brand-500 flex-shrink-0" />}
-        {option.label}
-      </span>
-    </button>
+      {lightbox}
+    </div>
   );
 }
 
@@ -627,14 +706,25 @@ export function DividerField() {
 }
 
 export function ImageField({ field }) {
+  const [ok, setOk] = useState(true);
+  const { open, lightbox } = useLightbox();
+  if (!field.src || !ok) return null;
   return (
-    <figure className="rounded-2xl overflow-hidden border border-surface-300/50 bg-surface-50">
-      <img src={field.src} alt={field.alt || ""} className="block w-full h-auto" />
+    <figure className="relative group rounded-2xl overflow-hidden border border-surface-300/50 bg-surface-50">
+      <img
+        src={field.src}
+        alt={field.alt || ""}
+        loading="lazy"
+        onError={() => setOk(false)}
+        className="block w-full h-auto"
+      />
+      <ZoomButton label={field.alt} onClick={() => open(field.src, field.alt)} />
       {field.alt && (
         <figcaption className="px-4 py-2 text-[11px] text-navy/40">
           {field.alt}
         </figcaption>
       )}
+      {lightbox}
     </figure>
   );
 }

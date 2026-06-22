@@ -154,6 +154,28 @@ test("opening image-only intro section is gone", () => {
   }
 });
 
+test("image-bearing option groups carry an image on each option", () => {
+  // field key → expected number of image-bearing options (from JotForm snapshot).
+  const EXPECTED_IMAGE_OPTIONS = {
+    physicalDigitalRecords: 10, // qid 86 (OLMOS snapshot has 10 records)
+    fixedMaxillaryExpansion: 2, // qid 484
+    fixedMandibularExpansion: 3, // qid 487
+    removableMandibularExpansion: 3, // qid 496
+  };
+  for (const [key, count] of Object.entries(EXPECTED_IMAGE_OPTIONS)) {
+    const field = fields.find((f) => f.key === key);
+    assert.ok(field, `field ${key} is missing`);
+    const withImage = field.options.filter(
+      (o) => o && typeof o === "object" && typeof o.image === "string" && o.image,
+    );
+    assert.equal(
+      withImage.length,
+      count,
+      `field ${key}: expected ${count} options with images, got ${withImage.length}`,
+    );
+  }
+});
+
 test("fileUpload accept is a valid dotted list including .stl", () => {
   const up = fields.find((f) => f.type === "fileUpload");
   assert.ok(up, "missing fileUpload field");

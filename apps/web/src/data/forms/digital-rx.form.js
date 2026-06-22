@@ -38,6 +38,10 @@ import {
 // JotForm upload host all snapshot widget images live under.
 const IMG = "https://www.jotform.com/uploads/Diamondlab/form_files";
 
+// Image-bearing option: keeps `value` canonical (downstream mapping depends on
+// it) and pairs the JotForm snapshot image card. `label` defaults to `value`.
+const imgOpt = (value, image, label) => ({ value, label: label ?? value, image });
+
 // Shared column set for the "Vertical Dimensions / Changes to Articulation" tables
 // (q221 / q483 / q484 — identical dcolumns in the snapshot).
 const VERTICAL_COLS = [
@@ -87,6 +91,62 @@ const ON_DESIGN_OPTIONS = [
   { value: "POSITIONER (ON-P) - Anterior Occlusion", label: "POSITIONER (ON-P) - Anterior Occlusion", image: `${IMG}/ONP-rx.6049363231e0f7.44336162.png` },
   { value: "TITRATION (ON-T) - NYLON Only", label: "TITRATION (ON-T) - NYLON Only", image: `${IMG}/ont22.628cfea1a700d5.07116116.png` },
   { value: "RAMP (ON-R) - Anterior Occlusion", label: "RAMP (ON-R) - Anterior Occlusion", image: `${IMG}/ON-Rrx.604935f090fbb0.76081828.png` },
+];
+
+// qid 131 / 466 / 485 "Occlusal Contact:" widget — shared DDSO-render images.
+const OCCLUSAL_CONTACT_OPTIONS = [
+  imgOpt("Posterior Contact", `${IMG}/ddso_post.60674ed33f12b5.40981505.png`),
+  imgOpt("Anterior Contact", `${IMG}/ddso_anterior.6042f5957d1585.44124558.png`),
+  imgOpt("FULL Occlusal Contact", `${IMG}/ddso_full.6042f5e4e85d86.45327584.png`),
+  imgOpt("TRIPOD Occlusion", `${IMG}/ddso_tripod.6042f5bd9ae5c7.96139461.png`),
+];
+
+// qid 182 / 467 / 486 "Digital Device Occlusal Contact:" widget — design renders.
+const DESIGN_PREFERENCE_OPTIONS = [
+  imgOpt("Standard", `${IMG}/std.6049324e089ea3.94410401.png`),
+  imgOpt("Lingual-Free", `${IMG}/Standard.60493212d9f5d4.89345443.png`),
+  imgOpt("Buccal-Free", `${IMG}/buccalfree.60481f33a0f2c3.51060970.png`),
+  imgOpt("Full Coverage", `${IMG}/Full%20Coverage.60481f49bfbae0.35132618.png`),
+];
+
+// qid 224 / 468 "Digital Device Modifications" widget — modification renders.
+const MODIFICATIONS_A_OPTIONS = [
+  imgOpt(
+    "Tongue Positioners",
+    `${IMG}/Screenshot%202021-03-11%20194056.604aef23bb1f99.50382932.png`
+  ),
+  imgOpt("Hooks for Elastics", `${IMG}/hookss.604af0a6be90a0.56492546.png`),
+  imgOpt("Vertical Shims", `${IMG}/shims11.604af033763068.12170132.png`),
+];
+
+// qid 419 / 469 "Digital Device Modifications" widget (loop/ramp set).
+const MODIFICATIONS_B_OPTIONS = [
+  imgOpt("ON Loop", `${IMG}/ONP1.604aeebceb38b3.38867720.png`),
+  imgOpt("BAB Loop", `${IMG}/BAB.604aef02613a98.80574389.png`),
+  imgOpt("ON Ramp", `${IMG}/ONr1.604aeee7e6f210.61790851.png`),
+];
+
+// qid 453 "Diamond 3D Night-Guards" widget — device renders.
+const NIGHTGUARD_DEVICE_OPTIONS = [
+  imgOpt("Dual Arch - SLIDER", `${IMG}/slider-rx.621ef83f62b5c8.86340637.png`),
+  imgOpt("Dual Arch - FLATPLANE", `${IMG}/FLAT-RX.621ef9244b65e5.15214550.png`),
+  imgOpt("Single Arch - NIGHTGUARD", `${IMG}/nightguard.628d074869bc52.47872506.png`),
+];
+
+// qid 235 "DIAMOND ORTHOTIC GUARDS" widget — sport-guard renders.
+const SPORT_GUARD_DEVICE_OPTIONS = [
+  imgOpt(
+    "Trainer - Non-Contact [Md. Arch Only]",
+    `${IMG}/Picture2.604b28ab3c5bd1.97443638.png`
+  ),
+  imgOpt(
+    "PRO - Light to Heavy Contact [Mx. or Md. Arch]",
+    `${IMG}/DEP%20ProF.60524106c72700.00271306.png`
+  ),
+  imgOpt(
+    "CAD/CAM - Light to Heavy Contact [Mx or Md Arch]",
+    `${IMG}/cad-cam_sportsguard.6751fa5d087d96.34164760.png`
+  ),
 ];
 
 export const digitalRxForm = {
@@ -266,11 +326,17 @@ export const digitalRxForm = {
         heading("MISTRY Protocol", { key: "hdrMistry" }),
         // qid 513: widget "OD Material" single-item picker → checkbox (order this)
         checkbox("mora", "MORA - Mandibular Orthopedic Repositioning Appliance", [
-          "MORA - Mandibular Orthopedic Repositioning Appliance",
+          imgOpt(
+            "MORA - Mandibular Orthopedic Repositioning Appliance",
+            `${IMG}/od-dual-laminate-sm.64a83f9c1b9b33.68871109.6526b2437b1164.26558223.png`
+          ),
         ]),
         // qid 514: widget "OD Material" single-item picker → checkbox (order this)
         checkbox("ara", "ARA - Anterior Repositioning Appliance", [
-          "ARA - Anterior Repositioning Appliance",
+          imgOpt(
+            "ARA - Anterior Repositioning Appliance",
+            `${IMG}/ARA.6a2980497bcb64.01709811.png`
+          ),
         ]),
       ],
     },
@@ -361,31 +427,17 @@ export const digitalRxForm = {
           ["Increase Vertical", "Decrease Vertical", "Protrude", "Retrude"]
         ),
         // qid 131: widget "Occlusal Contact:" (image picker, single) → radio
-        radio("occlusalContact", "PLEASE SELECT OCCLUSAL CONTACT:", [
-          "Posterior Contact",
-          "Anterior Contact",
-          "FULL Occlusal Contact",
-          "TRIPOD Occlusion",
-        ]),
+        radio(
+          "occlusalContact",
+          "PLEASE SELECT OCCLUSAL CONTACT:",
+          OCCLUSAL_CONTACT_OPTIONS
+        ),
         // qid 182: widget "Digital Device Occlusal Contact:" (image picker) → radio
-        radio("designPreference", "DESIGN PREFERENCE:", [
-          "Standard",
-          "Lingual-Free",
-          "Buccal-Free",
-          "Full Coverage",
-        ]),
+        radio("designPreference", "DESIGN PREFERENCE:", DESIGN_PREFERENCE_OPTIONS),
         // qid 224: widget "Digital Device Modifications" (image picker) → checkbox
-        checkbox("modificationsA", "SELECT MODIFICATIONS:", [
-          "Tongue Positioners",
-          "Hooks for Elastics",
-          "Vertical Shims",
-        ]),
+        checkbox("modificationsA", "SELECT MODIFICATIONS:", MODIFICATIONS_A_OPTIONS),
         // qid 419: widget "Digital Device Modifications" (image picker) → checkbox
-        checkbox("modificationsB", "SELECT MODIFICATIONS:", [
-          "ON Loop",
-          "BAB Loop",
-          "ON Ramp",
-        ]),
+        checkbox("modificationsB", "SELECT MODIFICATIONS:", MODIFICATIONS_B_OPTIONS),
         // qid 501
         textarea("hybridComments", "HYBRID- Additional Comments/Instructions:", {
           rows: 3,
@@ -403,11 +455,7 @@ export const digitalRxForm = {
           key: "hdrNightguards",
         }),
         // qid 453: widget "Diamond 3D Night-Guards" (image picker) → checkbox
-        checkbox("nightguardDevice", "Select Device:", [
-          "Dual Arch - SLIDER",
-          "Dual Arch - FLATPLANE",
-          "Single Arch - NIGHTGUARD",
-        ]),
+        checkbox("nightguardDevice", "Select Device:", NIGHTGUARD_DEVICE_OPTIONS),
         // qid 169
         matrix(
           "standardGuards",
@@ -456,11 +504,11 @@ export const digitalRxForm = {
       fields: [
         heading("Diamond Orthotic Sport-Guards", { key: "hdrSportGuards" }),
         // qid 235: widget "DIAMOND ORTHOTIC GUARDS" (image picker) → checkbox
-        checkbox("sportGuardDevice", "DIAMOND ORTHOTIC SPORT-GUARDS", [
-          "Trainer - Non-Contact [Md. Arch Only]",
-          "PRO - Light to Heavy Contact [Mx. or Md. Arch]",
-          "CAD/CAM - Light to Heavy Contact [Mx or Md Arch]",
-        ]),
+        checkbox(
+          "sportGuardDevice",
+          "DIAMOND ORTHOTIC SPORT-GUARDS",
+          SPORT_GUARD_DEVICE_OPTIONS
+        ),
         // qid 338
         matrix(
           "sportGuardSpecs",

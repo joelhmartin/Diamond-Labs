@@ -114,6 +114,43 @@ test("at least one records option carries an image", () => {
   );
 });
 
+test("every image-bearing option group carries an image on each option", () => {
+  const fields = allFields(digitalRxForm);
+  // field key → expected number of image-bearing options (from the JotForm snapshot).
+  const EXPECTED_IMAGE_OPTIONS = {
+    records: 12, // qid 86
+    odMaterial: 6, // qid 390
+    onDesign: 4, // qid 197
+    occlusalContact: 4, // qid 131
+    designPreference: 4, // qid 182
+    modificationsA: 3, // qid 224
+    modificationsB: 3, // qid 419
+    nightguardDevice: 3, // qid 453
+    sportGuardDevice: 3, // qid 235
+    mora: 1, // qid 513
+    ara: 1, // qid 514
+  };
+  for (const [key, count] of Object.entries(EXPECTED_IMAGE_OPTIONS)) {
+    const field = fields.find((f) => f.key === key);
+    assert.ok(field, `field ${key} is missing`);
+    const withImage = field.options.filter(
+      (o) => o && typeof o === "object" && typeof o.image === "string" && o.image
+    );
+    assert.equal(
+      withImage.length,
+      count,
+      `field ${key}: expected ${count} options with images, got ${withImage.length}`
+    );
+    // Canonical value must be preserved as a non-empty string on every option.
+    for (const o of field.options) {
+      assert.ok(
+        o && typeof o === "object" && typeof o.value === "string" && o.value,
+        `field ${key}: an option is missing a canonical string value`
+      );
+    }
+  }
+});
+
 test("fileUpload accept includes .stl", () => {
   const fields = allFields(digitalRxForm);
   const upload = fields.find((f) => f.type === "fileUpload" && f.accept);

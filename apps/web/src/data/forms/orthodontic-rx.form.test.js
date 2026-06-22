@@ -143,6 +143,28 @@ test("Remake/Repair/Redesign section is gone", () => {
   assert.ok(!ids.includes("remakeRequest"), "remakeRequest section still present");
 });
 
+test("image-bearing option groups carry an image on each option", () => {
+  const fields = allFields(orthodonticRxForm);
+  // field key → expected number of image-bearing options (from JotForm snapshot).
+  const EXPECTED_IMAGE_OPTIONS = {
+    recordsType: 12, // qid 86
+    removableMandibularExpansion: 3, // qid 496
+    fixedMandibularExpansion: 3, // qid 487
+  };
+  for (const [key, count] of Object.entries(EXPECTED_IMAGE_OPTIONS)) {
+    const field = fields.find((f) => f.key === key);
+    assert.ok(field, `field ${key} is missing`);
+    const withImage = field.options.filter(
+      (o) => o && typeof o === "object" && typeof o.image === "string" && o.image,
+    );
+    assert.equal(
+      withImage.length,
+      count,
+      `field ${key}: expected ${count} options with images, got ${withImage.length}`,
+    );
+  }
+});
+
 test("fileUpload accept is a valid dotted list including .stl", () => {
   const up = allFields(orthodonticRxForm).find((f) => f.type === "fileUpload");
   assert.ok(up, "missing fileUpload field");
