@@ -1,12 +1,13 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { clsx } from "clsx";
-import { ArrowLeft, FileText, CreditCard } from "lucide-react";
+import { ArrowLeft, FileText, CreditCard, ClipboardPlus } from "lucide-react";
 import { brand } from "../../config/brand.js";
 import { ROUTES } from "../../config/routes.js";
 import { useAuth } from "../../hooks/useAuth.js";
 
 const navItems = [
   { label: "Invoices", to: ROUTES.DOCTOR_INVOICES, icon: FileText },
+  { label: "Rx Forms", to: ROUTES.RX_CHOOSER, icon: ClipboardPlus },
   { label: "Saved Cards", to: ROUTES.DOCTOR_SAVED_CARDS, icon: CreditCard },
 ];
 

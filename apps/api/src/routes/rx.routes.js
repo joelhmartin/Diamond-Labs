@@ -5,7 +5,7 @@ import { rxCases, rxCaseFiles } from "../db/schema/index.js";
 import { createId } from "../lib/id.js";
 import { env } from "../config/env.js";
 import { eq, desc, and } from "drizzle-orm";
-import { ERROR_CODES, rxCaseSubmitSchema } from "@my-app/shared";
+import { ERROR_CODES, rxCaseSubmitSchema, rxFormSubmitSchema } from "@my-app/shared";
 import * as seazonaService from "../services/seazona.service.js";
 import { buildSeazonaOrderPayload } from "../services/rx/build-order-payload.js";
 import { uploadCaseFile, deleteStoredFile } from "../services/storage.service.js";
@@ -238,6 +238,229 @@ export default async function rxRoutes(fastify) {
     request.log.info(
       { caseId, caseNumber, userId, fileCount: uploadedFiles.length },
       "rx case submitted"
+    );
+    return reply.code(201).send({ data: { id: caseId, caseNumber, status: "pending_approval" } });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // POST /rx/form-submissions — generic intake for the faithful 1:1 forms
+  // (digital | ortho | olmos). Multipart/form-data, mirroring /rx/cases for
+  // auth, file limits, upload, and atomic insert.
+  //
+  // Frontend (buildSubmitFormData in apps/web/src/data/forms/form-logic.js)
+  // emits these parts:
+  //   text   formType         — one of digital | ortho | olmos
+  //   text   patientFirst     — extracted from the patient fullname field
+  //   text   patientLast
+  //   text   formData         — JSON string of ALL non-file answers
+  //   file   file             — fileUpload files + artboard PNG blobs (0..n)
+  //   file   signature        — the signature pad PNG blob (data-URL → Blob)
+  //
+  // The `signature` part may instead arrive as a text field (a PNG data-URL
+  // string) depending on the caller; both shapes are accepted and resolved to
+  // `signatureUrl`. dueDate is read from the top-level field or formData.dueDate.
+  //
+  // INTAKE-ONLY: this endpoint NEVER calls Seazona and NEVER touches device
+  // mapping. It writes one rx_cases row with formType/formData and null device
+  // columns, plus rx_case_files rows for uploaded `file` parts.
+  // ─────────────────────────────────────────────────────────────────────────
+  fastify.post("/rx/form-submissions", {
+    preHandler: [authenticate, requireApprovedDoctor],
+  }, async (request, reply) => {
+    if (!request.isMultipart()) {
+      return reply.code(422).send({
+        error: {
+          ...ERROR_CODES.VALIDATION_ERROR,
+          message: "Content-Type must be multipart/form-data.",
+        },
+      });
+    }
+
+    const fields = {};
+    const pendingFiles = []; // collected file descriptors before upload (kind "upload")
+    let signaturePending = null; // a `signature` file part, if sent as a blob
+    let fileCount = 0;
+    let totalBytes = 0;
+    let limitError = null;
+
+    // ── Parse parts ──────────────────────────────────────────────────────────
+    for await (const part of request.parts({
+      limits: { fileSize: MAX_FILE_SIZE_BYTES, files: MAX_FILES },
+    })) {
+      if (part.type === "file") {
+        // Only `file` (uploads/artboards) and `signature` parts are recognised;
+        // any other file stream is drained so the multipart parser doesn't stall.
+        const isUpload = part.fieldname === "file";
+        const isSignature = part.fieldname === "signature";
+        if (!isUpload && !isSignature) {
+          await part.toBuffer().catch(() => {});
+          continue;
+        }
+
+        fileCount++;
+        if (fileCount > MAX_FILES) {
+          await part.toBuffer().catch(() => {});
+          limitError = `Too many files — maximum ${MAX_FILES} allowed per submission.`;
+          break;
+        }
+
+        let buffer;
+        try {
+          buffer = await part.toBuffer();
+        } catch {
+          limitError = `File "${part.filename || part.fieldname}" exceeds the ${MAX_FILE_SIZE_BYTES / (1024 * 1024)} MB size limit.`;
+          break;
+        }
+
+        totalBytes += buffer.length;
+        if (totalBytes > MAX_TOTAL_BYTES) {
+          limitError = `Total upload size exceeds the ${MAX_TOTAL_BYTES / (1024 * 1024)} MB limit.`;
+          break;
+        }
+
+        const descriptor = {
+          buffer,
+          originalName: part.filename || `${part.fieldname}-${Date.now()}`,
+          contentType: part.mimetype || null,
+        };
+        if (isSignature) {
+          signaturePending = descriptor;
+        } else {
+          pendingFiles.push({ kind: "upload", ...descriptor });
+        }
+      } else {
+        // Text field
+        fields[part.fieldname] = part.value;
+      }
+    }
+
+    if (limitError) {
+      return reply.code(413).send({
+        error: { ...ERROR_CODES.VALIDATION_ERROR, message: limitError },
+      });
+    }
+
+    // ── Parse the JSON-encoded formData blob ──────────────────────────────────
+    let formData = {};
+    if (typeof fields.formData === "string" && fields.formData.length > 0) {
+      try {
+        formData = JSON.parse(fields.formData);
+      } catch {
+        return reply.code(422).send({
+          error: { ...ERROR_CODES.VALIDATION_ERROR, message: "formData is not valid JSON." },
+        });
+      }
+    } else if (fields.formData && typeof fields.formData === "object") {
+      formData = fields.formData;
+    }
+
+    // Assemble the object to validate. signatureUrl comes from the text field
+    // when present (data URL); a signature blob is resolved to a URL after upload.
+    // dueDate falls back to formData.dueDate.
+    const assembled = {
+      formType: fields.formType,
+      patientFirst: fields.patientFirst,
+      patientLast: fields.patientLast,
+      formData,
+      dueDate: fields.dueDate || (formData && formData.dueDate) || undefined,
+    };
+    if (typeof fields.signature === "string" && fields.signature.length > 0) {
+      assembled.signatureUrl = fields.signature;
+    }
+
+    const parsed = rxFormSubmitSchema.safeParse(assembled);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: {
+          ...ERROR_CODES.VALIDATION_ERROR,
+          message: "Validation failed.",
+          issues: parsed.error.issues,
+        },
+      });
+    }
+    const data = parsed.data;
+
+    // ── Identity — from the authenticated doctor, never the form body ─────────
+    const { id: userId, seazonaClientId, seazonaAccountNumber } = request.user;
+
+    const caseId = createId();
+    const caseNumber = `RX-${createId().slice(0, 12).toUpperCase()}`;
+
+    // ── Upload files + persist (shared try block → orphan-safe cleanup) ───────
+    const uploadedFiles = [];
+    let signatureUrl = data.signatureUrl || null;
+    try {
+      for (const pf of pendingFiles) {
+        const { gcsUrl, size } = await uploadCaseFile({
+          caseId,
+          kind: pf.kind,
+          buffer: pf.buffer,
+          originalName: pf.originalName,
+          contentType: pf.contentType,
+        });
+        uploadedFiles.push({
+          id: createId(),
+          caseId,
+          kind: pf.kind,
+          originalName: pf.originalName,
+          gcsUrl,
+          contentType: pf.contentType || null,
+          size: String(size),
+        });
+      }
+
+      // Signature blob (if any) → upload and use its URL as signatureUrl.
+      if (signaturePending) {
+        const { gcsUrl } = await uploadCaseFile({
+          caseId,
+          kind: "signature",
+          buffer: signaturePending.buffer,
+          originalName: signaturePending.originalName,
+          contentType: signaturePending.contentType,
+        });
+        // Track for cleanup on a later failure, even though it's not a
+        // rx_case_files row (it maps to the signatureUrl column).
+        uploadedFiles.push({ gcsUrl, _signatureOnly: true });
+        signatureUrl = gcsUrl;
+      }
+
+      await db.transaction(async (tx) => {
+        await tx.insert(rxCases).values({
+          id: caseId,
+          caseNumber,
+          userId,
+          seazonaClientId: seazonaClientId || null,
+          seazonaAccountNumber: seazonaAccountNumber || null,
+          patientFirst: data.patientFirst,
+          patientLast: data.patientLast,
+          formType: data.formType,
+          formData: data.formData ?? {},
+          deviceKey: null,
+          deviceCategory: null,
+          deviceOptions: {},
+          dueDate: data.dueDate || null,
+          signatureUrl,
+          status: "pending_approval",
+        });
+        const fileRows = uploadedFiles.filter((f) => !f._signatureOnly);
+        if (fileRows.length > 0) {
+          await tx.insert(rxCaseFiles).values(fileRows);
+        }
+      });
+    } catch (err) {
+      await Promise.allSettled(uploadedFiles.map((f) => deleteStoredFile(f.gcsUrl)));
+      request.log.error(
+        { caseId, fileCount: uploadedFiles.length, err: err.message },
+        "rx form submission upload/transaction failed; orphan cleanup attempted"
+      );
+      return reply.code(500).send({
+        error: { code: "INTERNAL_ERROR", status: 500, message: "Failed to save submission. Please try again." },
+      });
+    }
+
+    request.log.info(
+      { caseId, caseNumber, userId, formType: data.formType, fileCount: pendingFiles.length },
+      "rx form submission saved"
     );
     return reply.code(201).send({ data: { id: caseId, caseNumber, status: "pending_approval" } });
   });

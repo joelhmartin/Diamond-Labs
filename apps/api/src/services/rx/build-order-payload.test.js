@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { buildSeazonaOrderPayload } from "./build-order-payload.js";
 import { DEVICE_MAP } from "./device-seazona-map.js";

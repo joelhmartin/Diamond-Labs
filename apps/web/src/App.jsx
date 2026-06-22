@@ -62,6 +62,8 @@ import { CartWidget } from "./components/marketing/CartWidget.jsx";
 import { InvoicesPage } from "./pages/doctor/InvoicesPage.jsx";
 import { SavedCardsPage } from "./pages/doctor/SavedCardsPage.jsx";
 import { NewCasePage } from "./pages/app/NewCasePage.jsx";
+import { RxChooserPage } from "./pages/app/RxChooserPage.jsx";
+import { RxFormPage } from "./pages/app/RxFormPage.jsx";
 import { RequireDoctor } from "./guards/RequireDoctor.jsx";
 import { PaymentTestPage } from "./pages/dev/PaymentTestPage.jsx";
 import { ThemeEditor } from "./components/theme/ThemeEditor.jsx";
@@ -224,6 +226,11 @@ function AppRoutes() {
       {/* Doctor case submission (full-page wizard, no AppShell) */}
       <Route element={<RequireDoctor />}>
         <Route path="/app/cases/new" element={<NewCasePage />} />
+        {/* Faithful 1:1 Rx forms — chooser + three forms */}
+        <Route path="/app/rx" element={<RxChooserPage />} />
+        <Route path="/app/rx/digital" element={<RxFormPage slug="digital" />} />
+        <Route path="/app/rx/ortho" element={<RxFormPage slug="ortho" />} />
+        <Route path="/app/rx/olmos" element={<RxFormPage slug="olmos" />} />
       </Route>
 
       {/* Dev-only payment test harness (any authenticated user) */}
