@@ -3,19 +3,13 @@ import {
   AlertCircle,
   CheckCircle2,
   Loader2,
-  RefreshCw,
   Search,
   X,
 } from "lucide-react";
 import api from "../../config/api.js";
-import { RX_DEVICES } from "../../data/rx-devices.js";
-import {
-  RECORDS_METHODS,
-  PHYSICAL_BITE,
-  FIRST_DEVICE,
-  RUSH_TIERS,
-} from "../../data/rx-records.js";
-import { DeviceOptionsPanel } from "../../components/rx/DeviceOptionsPanel.jsx";
+import { FormRenderer } from "../../components/rx/FormRenderer.jsx";
+import { FORM_LIST, getForm } from "../../data/forms/index.js";
+import { formAnswersToCaseInput } from "../../data/forms/form-to-case.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -42,253 +36,7 @@ const ROW_TINT = {
   unmapped:    "bg-red-50/40",
 };
 
-// ── Default case fields ──────────────────────────────────────────────────────
-
-const DEFAULT_CASE_FIELDS = {
-  patientFirst:    "Test",
-  patientLast:     "Patient",
-  dob:             "",
-  recordsMethod:   "itero",
-  physicalBite:    PHYSICAL_BITE[0].value,      // "no_digital"
-  firstDevice:     FIRST_DEVICE[0],              // "Yes"
-  dueDate:         "",
-  rush:            false,
-  rushTier:        Object.keys(RUSH_TIERS)[0],  // "nylon"
-  generalComments: "",
-};
-
-// ── Shared input class for case-details fields ───────────────────────────────
-
-const CF_INPUT =
-  "w-full px-3 py-2 rounded-xl bg-surface-50 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-navy/25";
-
-// ── Lookup: deviceKey → RX_DEVICES entry (category etc.) ────────────────────
-
-const RX_DEVICE_BY_KEY = Object.fromEntries(RX_DEVICES.map((d) => [d.key, d]));
-
 // ── Sub-components ───────────────────────────────────────────────────────────
-
-function CoverageBadge({ mapped, total }) {
-  const full = total > 0 && mapped === total;
-  return (
-    <span
-      className={`flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold font-mono tabular-nums ${
-        full
-          ? "bg-emerald-500/10 text-emerald-700"
-          : "bg-amber-500/10 text-amber-700"
-      }`}
-    >
-      {mapped}/{total}
-    </span>
-  );
-}
-
-/** Grouped device list section with label header. */
-function DeviceGroup({ label, devices, selectedKey, onSelect }) {
-  if (devices.length === 0) return null;
-  return (
-    <div className="space-y-2">
-      <div className="text-[9px] font-mono uppercase tracking-widest text-navy/30 px-1 pt-3 pb-0.5">
-        {label}
-      </div>
-      {devices.map((d) => {
-        const active = selectedKey === d.deviceKey;
-        return (
-          <button
-            key={d.deviceKey}
-            type="button"
-            onClick={() => onSelect(d.deviceKey)}
-            className={`w-full text-left flex items-center justify-between gap-3 px-4 py-3.5 rounded-2xl border transition-all ${
-              active
-                ? "bg-brand-50 border-brand-300/60"
-                : "bg-white border-surface-300/50 hover:border-brand-300/40 hover:bg-surface-50"
-            }`}
-          >
-            <div className="min-w-0">
-              <div className="font-semibold text-sm text-navy truncate">
-                {d.name}
-              </div>
-              <div className="font-mono text-[10px] text-navy/40 truncate mt-0.5">
-                {d.deviceKey}
-              </div>
-            </div>
-            <CoverageBadge
-              mapped={d.coverage?.mapped ?? 0}
-              total={d.coverage?.total ?? 0}
-            />
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-/** Fake case-details form — gives the mapping tester full doctor-form context. */
-function CaseDetailsForm({ fields, onChange }) {
-  const rushTierEntries = Object.entries(RUSH_TIERS);
-
-  const set = (key) => (e) => {
-    const val = e.target.type === "checkbox" ? e.target.checked : e.target.value;
-    onChange({ ...fields, [key]: val });
-  };
-
-  return (
-    <div className="rounded-2xl border border-dashed border-surface-300/60 bg-surface-50/40 p-5 space-y-4">
-      <div className="text-[10px] font-mono uppercase tracking-widest text-navy/40">
-        Case details — fake test input
-      </div>
-
-      {/* Patient name */}
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-[11px] font-semibold text-navy/40 uppercase tracking-wider mb-1.5">
-            First name
-          </label>
-          <input
-            type="text"
-            className={CF_INPUT}
-            value={fields.patientFirst}
-            onChange={set("patientFirst")}
-          />
-        </div>
-        <div>
-          <label className="block text-[11px] font-semibold text-navy/40 uppercase tracking-wider mb-1.5">
-            Last name
-          </label>
-          <input
-            type="text"
-            className={CF_INPUT}
-            value={fields.patientLast}
-            onChange={set("patientLast")}
-          />
-        </div>
-      </div>
-
-      {/* DOB */}
-      <div>
-        <label className="block text-[11px] font-semibold text-navy/40 uppercase tracking-wider mb-1.5">
-          Date of birth{" "}
-          <span className="font-normal normal-case text-navy/25">(optional)</span>
-        </label>
-        <input
-          type="date"
-          className={CF_INPUT}
-          value={fields.dob}
-          onChange={set("dob")}
-        />
-      </div>
-
-      {/* Records method */}
-      <div>
-        <label className="block text-[11px] font-semibold text-navy/40 uppercase tracking-wider mb-1.5">
-          Records method
-        </label>
-        <select
-          className={CF_INPUT}
-          value={fields.recordsMethod}
-          onChange={set("recordsMethod")}
-        >
-          {RECORDS_METHODS.map((m) => (
-            <option key={m.value} value={m.value}>
-              {m.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Physical bite */}
-      <div>
-        <label className="block text-[11px] font-semibold text-navy/40 uppercase tracking-wider mb-1.5">
-          Physical bite
-        </label>
-        <select
-          className={CF_INPUT}
-          value={fields.physicalBite}
-          onChange={set("physicalBite")}
-        >
-          {PHYSICAL_BITE.map((b) => (
-            <option key={b.value} value={b.value}>
-              {b.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* First device */}
-      <div>
-        <label className="block text-[11px] font-semibold text-navy/40 uppercase tracking-wider mb-1.5">
-          First device for this patient?
-        </label>
-        <select
-          className={CF_INPUT}
-          value={fields.firstDevice}
-          onChange={set("firstDevice")}
-        >
-          {FIRST_DEVICE.map((v) => (
-            <option key={v} value={v}>
-              {v}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Due date */}
-      <div>
-        <label className="block text-[11px] font-semibold text-navy/40 uppercase tracking-wider mb-1.5">
-          Due date{" "}
-          <span className="font-normal normal-case text-navy/25">(optional)</span>
-        </label>
-        <input
-          type="date"
-          className={CF_INPUT}
-          value={fields.dueDate}
-          onChange={set("dueDate")}
-        />
-      </div>
-
-      {/* Rush */}
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="flex items-center gap-2 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={fields.rush}
-            onChange={set("rush")}
-            className="h-4 w-4 rounded border-surface-300 text-brand-500 focus:ring-brand-500/20 cursor-pointer"
-          />
-          <span className="text-sm text-navy/70">Rush order</span>
-        </label>
-        {fields.rush && (
-          <select
-            className={`${CF_INPUT} flex-1 min-w-[180px]`}
-            value={fields.rushTier}
-            onChange={set("rushTier")}
-          >
-            {rushTierEntries.map(([k, v]) => (
-              <option key={k} value={k}>
-                {v.label} (+${v.price})
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-
-      {/* General comments */}
-      <div>
-        <label className="block text-[11px] font-semibold text-navy/40 uppercase tracking-wider mb-1.5">
-          General comments{" "}
-          <span className="font-normal normal-case text-navy/25">(optional)</span>
-        </label>
-        <textarea
-          className={`${CF_INPUT} resize-none`}
-          rows={2}
-          placeholder="e.g. Patient has severe TMJ on right side…"
-          value={fields.generalComments}
-          onChange={set("generalComments")}
-        />
-      </div>
-    </div>
-  );
-}
 
 /**
  * Inline catalog search + optional note field, rendered inside a table row's
@@ -751,190 +499,85 @@ function PreviewModal({ deviceKey, deviceOptions, caseFields, onClose }) {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export function AdminRxMappingPage() {
-  const [loading, setLoading]         = useState(true);
-  const [error, setError]             = useState(null);
-  const [devices, setDevices]         = useState([]);
-  const [selectedKey, setSelectedKey] = useState(null);
-  const [opts, setOpts]               = useState({});
-  const [caseFields, setCaseFields]   = useState(DEFAULT_CASE_FIELDS);
-  const [showModal, setShowModal]     = useState(false);
-  const [refreshing, setRefreshing]   = useState(false);
+  // Selected source form (default: first in the chooser).
+  const [slug, setSlug]             = useState(FORM_LIST[0]?.slug || "digital");
+  // Computed case input handed to PreviewModal once a form is completed.
+  const [caseInput, setCaseInput]   = useState(null); // { deviceKey, deviceOptions, caseFields }
+  const [showModal, setShowModal]   = useState(false);
 
-  const load = async () => {
-    try {
-      setRefreshing(true);
-      const res = await api.get("/admin/rx-mapping/devices");
-      setDevices(res.data.data || []);
-      setError(null);
-    } catch (err) {
-      setError(errMsg(err));
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+  const form = getForm(slug);
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const selectDevice = (key) => {
-    if (selectedKey === key) return;
-    setSelectedKey(key);
-    setOpts({});
-    setCaseFields(DEFAULT_CASE_FIELDS);
+  const chooseForm = (nextSlug) => {
+    if (nextSlug === slug) return;
+    setSlug(nextSlug);
     setShowModal(false);
+    setCaseInput(null);
   };
 
-  // Partition devices by source form:
-  //   category "ortho" → Diamond Orthodontic Rx
-  //   everything else (tmd/sleep/guard/sport/remake + unknown) → Diamond Orthotic Lab Rx 2025
-  const rx2025Devices = devices.filter(
-    (d) => RX_DEVICE_BY_KEY[d.deviceKey]?.category !== "ortho"
-  );
-  const orthoDevices = devices.filter(
-    (d) => RX_DEVICE_BY_KEY[d.deviceKey]?.category === "ortho"
-  );
-
-  // Prefer the full RX_DEVICES entry for the schema; the API list provides
-  // name + coverage only (no options schema).
-  const selectedDevice = RX_DEVICES.find((d) => d.key === selectedKey);
+  // Final validated submit from FormRenderer → compute case input + open preview.
+  const handleComplete = (answers) => {
+    const input = formAnswersToCaseInput(slug, form, answers);
+    setCaseInput(input);
+    setShowModal(true);
+  };
 
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto">
       {/* Page header */}
-      <div className="flex items-end justify-between mb-8 flex-wrap gap-4">
-        <div>
-          <h1 className="font-heading font-bold text-3xl text-navy tracking-tight">
-            Rx Mapping Tester
-          </h1>
-          <p className="mt-1 text-sm text-navy/50">
-            Select a device, fill in fake case details, then preview the full
-            Seazona product line mapping. Assign overrides inline to fix
-            placeholder or unmapped lines.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={load}
-          disabled={refreshing}
-          className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all disabled:opacity-50"
-        >
-          <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
-          Refresh
-        </button>
+      <div className="mb-8">
+        <h1 className="font-heading font-bold text-3xl text-navy tracking-tight">
+          Rx Mapping Tester
+        </h1>
+        <p className="mt-1 text-sm text-navy/50">
+          Fill out a full Rx form exactly as a doctor would, then preview the
+          Seazona order it generates and optionally send a test order.
+        </p>
       </div>
 
-      {/* Error banner */}
-      {error && (
-        <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4">
-          <AlertCircle size={18} className="mt-0.5 flex-shrink-0 text-red-500" />
-          <div className="text-sm text-red-700">
-            <p className="font-semibold">Failed to load devices</p>
-            <p className="mt-0.5">{error}</p>
-          </div>
+      {/* ── Form chooser ── */}
+      <div className="mb-8">
+        <div className="text-[10px] font-mono uppercase tracking-widest text-navy/40 px-1 mb-2">
+          Select a form
         </div>
-      )}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {FORM_LIST.map((f) => {
+            const active = f.slug === slug;
+            return (
+              <button
+                key={f.slug}
+                type="button"
+                onClick={() => chooseForm(f.slug)}
+                className={`text-left px-5 py-4 rounded-2xl border transition-all ${
+                  active
+                    ? "bg-brand-50 border-brand-300/60"
+                    : "bg-white border-surface-300/50 hover:border-brand-300/40 hover:bg-surface-50"
+                }`}
+              >
+                <div className="font-semibold text-sm text-navy">{f.title}</div>
+                <div className="font-mono text-[10px] text-navy/40 mt-1">
+                  {f.slug}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
-      {loading ? (
-        <div className="py-20 flex items-center justify-center text-navy/40">
-          <Loader2 size={18} className="animate-spin mr-2" />
-          Loading devices…
-        </div>
+      {/* ── Full faithful form ── */}
+      {form ? (
+        <FormRenderer key={slug} form={form} onComplete={handleComplete} />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-          {/* ── Device list (grouped by source form) ── */}
-          <div>
-            <div className="text-[10px] font-mono uppercase tracking-widest text-navy/40 px-1 mb-1">
-              Devices ({devices.length})
-            </div>
-            {devices.length === 0 && (
-              <p className="text-sm text-navy/40 px-1 mt-3">No devices returned.</p>
-            )}
-            <DeviceGroup
-              label="Diamond Orthotic Lab Rx 2025"
-              devices={rx2025Devices}
-              selectedKey={selectedKey}
-              onSelect={selectDevice}
-            />
-            <DeviceGroup
-              label="Diamond Orthodontic Rx"
-              devices={orthoDevices}
-              selectedKey={selectedKey}
-              onSelect={selectDevice}
-            />
-          </div>
-
-          {/* ── Right panel: case details + device options ── */}
-          <div className="lg:col-span-2">
-            {!selectedKey ? (
-              <div className="py-20 text-center text-navy/30">
-                <p className="text-3xl mb-3 select-none">⟵</p>
-                <p className="text-sm">Select a device to configure its options</p>
-              </div>
-            ) : (
-              <div className="bg-white rounded-3xl border border-surface-300/50 p-6 space-y-6">
-                {/* Device header */}
-                <div>
-                  <h2 className="font-heading font-semibold text-xl text-navy">
-                    {selectedDevice?.fullName ||
-                      selectedDevice?.name ||
-                      selectedKey}
-                  </h2>
-                  {selectedDevice?.tagline && (
-                    <p className="mt-1 text-xs text-navy/50">
-                      {selectedDevice.tagline}
-                    </p>
-                  )}
-                </div>
-
-                {/* Fake doctor-submission fields */}
-                <CaseDetailsForm
-                  fields={caseFields}
-                  onChange={setCaseFields}
-                />
-
-                {/* Device-specific option schema */}
-                {selectedDevice?.options ? (
-                  <DeviceOptionsPanel
-                    schema={selectedDevice.options}
-                    values={opts}
-                    onChange={(key, val) =>
-                      setOpts((prev) => ({ ...prev, [key]: val }))
-                    }
-                  />
-                ) : (
-                  <p className="text-sm text-amber-700 bg-amber-50 rounded-xl px-4 py-3">
-                    No option schema found for{" "}
-                    <span className="font-mono">{selectedKey}</span> in{" "}
-                    <span className="font-mono">rx-devices.js</span>. Preview will
-                    use empty options.
-                  </p>
-                )}
-
-                {/* Preview trigger */}
-                <div className="pt-2 border-t border-surface-300/30">
-                  <button
-                    type="button"
-                    onClick={() => setShowModal(true)}
-                    className="px-6 py-3 rounded-full bg-brand-500 text-white text-sm font-semibold hover:bg-brand-600 transition-all"
-                  >
-                    Preview mapping
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        <p className="text-sm text-amber-700 bg-amber-50 rounded-xl px-4 py-3">
+          No form definition found for <span className="font-mono">{slug}</span>.
+        </p>
       )}
 
       {/* Preview modal */}
-      {showModal && selectedKey && (
+      {showModal && caseInput && (
         <PreviewModal
-          deviceKey={selectedKey}
-          deviceOptions={opts}
-          caseFields={caseFields}
+          deviceKey={caseInput.deviceKey}
+          deviceOptions={caseInput.deviceOptions}
+          caseFields={caseInput.caseFields}
           onClose={() => setShowModal(false)}
         />
       )}
