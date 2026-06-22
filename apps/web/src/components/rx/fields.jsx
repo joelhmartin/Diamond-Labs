@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import {
   Check,
   Upload,
@@ -6,6 +6,7 @@ import {
   FileText,
   Image as ImageIcon,
   AlertCircle,
+  ZoomIn,
 } from "lucide-react";
 import { Artboard } from "./Artboard.jsx";
 import { Signature } from "./Signature.jsx";
@@ -33,35 +34,102 @@ function normalizeOption(o) {
   return { value: o.value, label: o.label ?? o.value, image: o.image };
 }
 
+/* Full-screen lightbox for an option image. Closes on backdrop click, the X
+   button, or Escape. */
+function ImageLightbox({ src, label, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-navy/70 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close"
+        className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center rounded-full bg-white/90 text-navy hover:bg-white transition-all"
+      >
+        <X size={18} />
+      </button>
+      <figure
+        className="flex flex-col items-center gap-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <img
+          src={src}
+          alt={label || ""}
+          className="object-contain max-h-[80vh] max-w-[90vw] rounded-xl bg-white"
+        />
+        {label && (
+          <figcaption className="text-white text-sm font-medium">{label}</figcaption>
+        )}
+      </figure>
+    </div>
+  );
+}
+
 /* Selectable image card used by radio/checkbox image-option grids. The broken
-   image hides itself onError so a dead URL falls back to just the label. */
+   image hides itself onError so a dead URL falls back to just the label. On
+   hover, a magnifier in the top-right opens the image in a lightbox. */
 function ImageOptionCard({ option, active, onClick }) {
   const [imgOk, setImgOk] = useState(true);
+  const [zoom, setZoom] = useState(false);
+  const showImg = option.image && imgOk;
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`group flex flex-col items-center gap-2 p-3 rounded-2xl border text-center transition-all duration-300 ${
-        active
-          ? "border-brand-500 ring-2 ring-brand-500/20 bg-brand-50"
-          : "border-surface-300/50 hover:border-brand-300 bg-surface-50"
-      }`}
-    >
-      {option.image && imgOk && (
-        <img
+    <div className="relative group">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-pressed={active}
+        className={`w-full flex flex-col items-center gap-2 p-3 rounded-2xl border text-center transition-all duration-300 ${
+          active
+            ? "border-brand-500 ring-2 ring-brand-500/20 bg-brand-50"
+            : "border-surface-300/50 hover:border-brand-300 bg-surface-50"
+        }`}
+      >
+        {showImg && (
+          <img
+            src={option.image}
+            alt=""
+            loading="lazy"
+            onError={() => setImgOk(false)}
+            className="object-contain w-full h-24"
+          />
+        )}
+        <span className="flex items-center justify-center gap-1.5 text-xs font-medium text-navy/70">
+          {active && <Check size={12} className="text-brand-500 flex-shrink-0" />}
+          {option.label}
+        </span>
+      </button>
+
+      {showImg && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setZoom(true);
+          }}
+          aria-label={`Enlarge ${option.label}`}
+          className="absolute top-2 right-2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white/90 text-navy/55 shadow-sm border border-surface-300/50 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-white hover:text-brand-600 transition-all"
+        >
+          <ZoomIn size={14} />
+        </button>
+      )}
+
+      {zoom && showImg && (
+        <ImageLightbox
           src={option.image}
-          alt=""
-          loading="lazy"
-          onError={() => setImgOk(false)}
-          className="object-contain w-full h-24"
+          label={option.label}
+          onClose={() => setZoom(false)}
         />
       )}
-      <span className="flex items-center justify-center gap-1.5 text-xs font-medium text-navy/70">
-        {active && <Check size={12} className="text-brand-500 flex-shrink-0" />}
-        {option.label}
-      </span>
-    </button>
+    </div>
   );
 }
 
