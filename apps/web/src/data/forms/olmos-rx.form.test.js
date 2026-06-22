@@ -28,10 +28,10 @@ const SUPPORTED_TYPES = new Set([
 ]);
 
 // Labels shared with the Orthodontic Rx (SHARED core).
+// NOTE: doctor-identity ("DOCTOR:", "Email Address") and the entire
+// Remake/Repair/Redesign block were removed per lab-owner feedback.
 const SHARED_LABELS = [
   "PATIENT:",
-  "DOCTOR:",
-  "Email Address",
   "Date",
   "Due Date Requested",
   "Select Device",
@@ -48,14 +48,11 @@ const SHARED_LABELS = [
   "Removable Mandibular Expansion (Only)",
   "NUVELO Digital Setup ONLY",
   "Email to submit digital setup once completed:",
-  "Did you return the original models",
-  "Please explain in as much detail as possible",
   "Check this box if you would like to design (draw) your appliance",
   "Please use the artboard below to illustrate",
   "Additional Comments for ORTHO Design",
   "Additional Comments/Instructions",
   "Doctor Signature",
-  "Date Received (INTERNAL USE ONLY)",
   "Add:",
 ];
 
@@ -131,4 +128,38 @@ test("has at least one fileUpload, one signature, one artboard", () => {
   assert.ok(fields.some((f) => f.type === "fileUpload"), "no fileUpload field");
   assert.ok(fields.some((f) => f.type === "signature"), "no signature field");
   assert.ok(fields.some((f) => f.type === "artboard"), "no artboard field");
+});
+
+test("no doctor-identity / contact / address field remains", () => {
+  // The digital-setup email (key digitalSetupEmail) is allowed to remain.
+  const offenders = fields
+    .map((f) => f.key)
+    .filter(Boolean)
+    .filter((k) => /doctorName|^email$|contactPhone|address/i.test(k));
+  assert.deepEqual(offenders, [], `unexpected identity field keys: ${offenders}`);
+});
+
+test("Remake/Repair/Redesign section is gone", () => {
+  const ids = olmosRxForm.sections.map((s) => s.id);
+  assert.ok(!ids.includes("remakeRequest"), "remakeRequest section still present");
+});
+
+test("opening image-only intro section is gone", () => {
+  const ids = olmosRxForm.sections.map((s) => s.id);
+  assert.ok(!ids.includes("intro"), "intro image-only section still present");
+  // No section should consist solely of decorative image(s).
+  for (const s of olmosRxForm.sections) {
+    const inputish = (s.fields || []).filter((f) => f.type !== "image");
+    assert.ok(inputish.length > 0, `section ${s.id} is image-only`);
+  }
+});
+
+test("fileUpload accept is a valid dotted list including .stl", () => {
+  const up = fields.find((f) => f.type === "fileUpload");
+  assert.ok(up, "missing fileUpload field");
+  const exts = up.accept.split(",").map((s) => s.trim());
+  assert.ok(exts.includes(".stl"), `accept missing .stl: ${up.accept}`);
+  for (const ext of exts) {
+    assert.ok(/^\.[a-z0-9]+$/.test(ext), `malformed accept token: ${ext}`);
+  }
 });

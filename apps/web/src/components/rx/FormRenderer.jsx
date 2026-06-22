@@ -147,31 +147,87 @@ function ReviewRow({ label, value }) {
   );
 }
 
+// Presentational field types that don't count as "input" for step purposes.
+const NON_INPUT_TYPES = new Set(["heading", "divider", "image", "static"]);
+
+/* Whether a section is currently visible. Mirrors form-logic's shouldShow
+   semantics ({ key, equals } | { key, prefix }) and adds { key, includes }:
+   `includes` matches when answers[key] is an array containing the value, or a
+   string equal to it. */
+export function sectionVisible(section, answers) {
+  const cond = section && section.showIf;
+  if (!cond) return true;
+  const other = (answers || {})[cond.key];
+  if (cond.equals != null) return other === cond.equals;
+  if (cond.prefix != null)
+    return typeof other === "string" && other.startsWith(cond.prefix);
+  if (cond.includes != null)
+    return Array.isArray(other)
+      ? other.includes(cond.includes)
+      : other === cond.includes;
+  return true;
+}
+
+/* True when a section has at least one currently-visible INPUT field, i.e. it
+   isn't purely presentational (heading/divider/image/static). signature counts
+   as an input field. */
+function hasInputField(section, answers) {
+  return ((section && section.fields) || []).some(
+    (f) => !NON_INPUT_TYPES.has(f.type) && shouldShow(f, answers)
+  );
+}
+
 export function FormRenderer({ form, prefill = {}, onSubmit, onComplete, submitting = false }) {
   const sections = (form && form.sections) || [];
-  const totalSteps = sections.length + 1; // + Review
-  const reviewStep = sections.length;
 
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState(() => seedPrefill(form, prefill));
-  // Per-step validation errors: { [field.key]: message }
+  // Per-step validation errors: { [field.key]: message }. Populated only when a
+  // Continue/Submit attempt fails; reset on step navigation.
   const [errors, setErrors] = useState({});
   const contentRef = useRef(null);
 
-  const labels = useMemo(
-    () => [
-      ...sections.map((s, i) => s.heading || s.title || `Section ${i + 1}`),
-      "Review",
-    ],
-    [sections]
+  // Dynamic step list: only sections that are conditionally visible AND carry
+  // at least one visible input field. Recomputed whenever answers change.
+  const visibleSections = useMemo(
+    () =>
+      sections.filter(
+        (s) => sectionVisible(s, answers) && hasInputField(s, answers)
+      ),
+    [sections, answers]
   );
 
-  const setAnswer = (key, value) =>
+  const totalSteps = visibleSections.length + 1; // + Review
+  const reviewStep = visibleSections.length;
+
+  // Clamp the active step whenever the visible-section count shrinks, so it
+  // never points past the Review step.
+  useEffect(() => {
+    setStep((s) => Math.min(s, visibleSections.length));
+  }, [visibleSections.length]);
+
+  const labels = useMemo(
+    () => [
+      ...visibleSections.map((s, i) => s.heading || s.title || `Section ${i + 1}`),
+      "Review",
+    ],
+    [visibleSections]
+  );
+
+  // Editing a field updates its answer and immediately clears any error on it.
+  const setAnswer = (key, value) => {
     setAnswers((prev) => ({ ...prev, [key]: value }));
+    setErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
 
   /* Validate only the required+visible fields belonging to the current step. */
   const validateStep = (idx) => {
-    const section = sections[idx];
+    const section = visibleSections[idx];
     if (!section) return {};
     const { errors: allErrors } = validateForm(form, answers);
     const stepErrors = {};
@@ -196,6 +252,12 @@ export function FormRenderer({ form, prefill = {}, onSubmit, onComplete, submitt
     setStep((s) => Math.max(s - 1, 0));
   };
 
+  // Jump to a specific step (e.g. Review "Edit"). Clears displayed errors.
+  const goToStep = (idx) => {
+    setErrors({});
+    setStep(idx);
+  };
+
   /* Determine the signature field value (first signature-type field). */
   const signatureField = useMemo(
     () => allFields(form).find((f) => f.type === "signature"),
@@ -207,8 +269,8 @@ export function FormRenderer({ form, prefill = {}, onSubmit, onComplete, submitt
     const { ok, errors: allErrors } = validateForm(form, answers);
     if (!ok) {
       setErrors(allErrors);
-      // Jump to the first section that has an error so the doctor can fix it.
-      const firstBadIdx = sections.findIndex((s) =>
+      // Jump to the first visible section that has an error so the doctor can fix it.
+      const firstBadIdx = visibleSections.findIndex((s) =>
         (s.fields || []).some((f) => allErrors[f.key])
       );
       if (firstBadIdx >= 0) setStep(firstBadIdx);
@@ -242,7 +304,7 @@ export function FormRenderer({ form, prefill = {}, onSubmit, onComplete, submitt
 
   const hasErrors = Object.keys(errors).length > 0;
   const onReview = step === reviewStep;
-  const currentSection = sections[step];
+  const currentSection = visibleSections[step];
 
   return (
     <div className="bg-white rounded-[2rem] border border-surface-300/50 shadow-xl shadow-navy/5 overflow-hidden">
@@ -261,12 +323,7 @@ export function FormRenderer({ form, prefill = {}, onSubmit, onComplete, submitt
               if (!shouldShow(field, answers)) return null;
               const err = errors[field.key];
               return (
-                <div
-                  key={field.key || field.label}
-                  className={
-                    err ? "rounded-2xl ring-2 ring-red-400/20 p-0.5" : ""
-                  }
-                >
+                <div key={field.key || field.label}>
                   <FormField
                     field={field}
                     value={answers[field.key]}
@@ -274,8 +331,8 @@ export function FormRenderer({ form, prefill = {}, onSubmit, onComplete, submitt
                     onChange={(v) => setAnswer(field.key, v)}
                   />
                   {err && (
-                    <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-red-500 font-medium">
-                      <AlertCircle size={11} /> {err}
+                    <p className="mt-1.5 flex items-center gap-1.5 text-xs text-red-500">
+                      <AlertCircle size={13} className="flex-shrink-0" /> {err}
                     </p>
                   )}
                 </div>
@@ -290,7 +347,7 @@ export function FormRenderer({ form, prefill = {}, onSubmit, onComplete, submitt
             <p className="text-sm text-navy/45">
               Review your answers below. Use Back to make changes, then submit.
             </p>
-            {sections.map((section, idx) => {
+            {visibleSections.map((section, idx) => {
               const rows = (section.fields || [])
                 .filter((f) => shouldShow(f, answers))
                 .map((f) => ({
@@ -310,7 +367,7 @@ export function FormRenderer({ form, prefill = {}, onSubmit, onComplete, submitt
                     </h3>
                     <button
                       type="button"
-                      onClick={() => setStep(idx)}
+                      onClick={() => goToStep(idx)}
                       className="text-xs text-brand-500 hover:text-brand-600 font-medium transition-colors"
                     >
                       Edit
@@ -385,7 +442,7 @@ export function FormRenderer({ form, prefill = {}, onSubmit, onComplete, submitt
       {hasErrors && (
         <div className="px-6 md:px-8 pb-4 -mt-2">
           <p className="text-xs text-red-400 font-medium">
-            Please fill in the required fields highlighted above.
+            Please fix the required fields above before continuing.
           </p>
         </div>
       )}

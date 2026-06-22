@@ -11,12 +11,13 @@ import { buildSeazonaOrderPayload } from "../services/rx/build-order-payload.js"
 import { uploadCaseFile, deleteStoredFile } from "../services/storage.service.js";
 
 // ─── Upload guards ────────────────────────────────────────────────────────────
-// 20 MB per file — consistent with storage.service.js local-disk path.
-const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024;
+// 75 MB per file — intraoral STL / 3D-scan files are large.
+const MAX_FILE_SIZE_BYTES = 75 * 1024 * 1024;
 // Sane total-file cap to prevent abuse; individual file-kind names gate further.
-const MAX_FILES = 8;
-// 60 MB cumulative across all files in a single submission.
-const MAX_TOTAL_BYTES = 60 * 1024 * 1024;
+const MAX_FILES = 12;
+// Cumulative cap across all files in a single submission, scaled to the per-file
+// limit so it never undercuts a single large STL upload.
+const MAX_TOTAL_BYTES = MAX_FILES * MAX_FILE_SIZE_BYTES;
 
 // The five allowed file field names, each mapping directly to the rx_case_files.kind column.
 const FILE_FIELD_KINDS = new Set(["scan", "photo", "prescription", "sleep_study", "artboard"]);
