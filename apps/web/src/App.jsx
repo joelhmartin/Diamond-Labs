@@ -65,6 +65,7 @@ import { NewCasePage } from "./pages/app/NewCasePage.jsx";
 import { RxChooserPage } from "./pages/app/RxChooserPage.jsx";
 import { RxFormPage } from "./pages/app/RxFormPage.jsx";
 import { RequireDoctor } from "./guards/RequireDoctor.jsx";
+import { RequireRxAccess } from "./guards/RequireRxAccess.jsx";
 import { PaymentTestPage } from "./pages/dev/PaymentTestPage.jsx";
 import { ThemeEditor } from "./components/theme/ThemeEditor.jsx";
 
@@ -226,7 +227,11 @@ function AppRoutes() {
       {/* Doctor case submission (full-page wizard, no AppShell) */}
       <Route element={<RequireDoctor />}>
         <Route path="/app/cases/new" element={<NewCasePage />} />
-        {/* Faithful 1:1 Rx forms — chooser + three forms */}
+      </Route>
+
+      {/* Faithful 1:1 Rx forms — chooser + three forms.
+          Accessible to approved doctors AND admins (for testing/oversight). */}
+      <Route element={<RequireRxAccess />}>
         <Route path="/app/rx" element={<RxChooserPage />} />
         <Route path="/app/rx/digital" element={<RxFormPage slug="digital" />} />
         <Route path="/app/rx/ortho" element={<RxFormPage slug="ortho" />} />

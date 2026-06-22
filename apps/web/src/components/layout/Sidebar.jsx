@@ -9,6 +9,7 @@ import {
   ClipboardList,
   UserCog,
   FlaskConical,
+  ClipboardPlus,
   ArrowLeft,
 } from "lucide-react";
 import { brand } from "../../config/brand.js";
@@ -17,9 +18,10 @@ import { usePermission } from "../../hooks/usePermission.js";
 import { useAuth } from "../../hooks/useAuth.js";
 
 const mainItems = [
-  { label: "Dashboard", to: ROUTES.DASHBOARD, icon: LayoutDashboard, permission: null },
-  { label: "Members",   to: ROUTES.MEMBERS,   icon: Users,           permission: "users:read" },
-  { label: "Settings",  to: ROUTES.SETTINGS,  icon: Settings,        permission: "settings:read" },
+  { label: "Dashboard", to: ROUTES.DASHBOARD,   icon: LayoutDashboard, permission: null },
+  { label: "Rx Forms",  to: ROUTES.RX_CHOOSER,  icon: ClipboardPlus,   permission: null },
+  { label: "Members",   to: ROUTES.MEMBERS,     icon: Users,           permission: "users:read" },
+  { label: "Settings",  to: ROUTES.SETTINGS,    icon: Settings,        permission: "settings:read" },
 ];
 
 const adminItems = [
