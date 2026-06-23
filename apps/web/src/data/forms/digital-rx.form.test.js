@@ -125,6 +125,12 @@ test("every image-bearing option group carries an image on each option", () => {
     designPreference: 4, // qid 182
     modificationsA: 3, // qid 224
     modificationsB: 3, // qid 419
+    ddsoOcclusalContact: 4, // qid 466
+    ddsoDesignPreference: 4, // qid 467
+    ddsoModifications: 6, // qid 468 + 469
+    dproOcclusalContact: 4, // qid 485
+    dproDesignPreference: 4, // qid 486
+    dproModifications: 3, // qid 487
     nightguardDevice: 3, // qid 453
     sportGuardDevice: 3, // qid 235
     mora: 1, // qid 513
@@ -146,6 +152,55 @@ test("every image-bearing option group carries an image on each option", () => {
       assert.ok(
         o && typeof o === "object" && typeof o.value === "string" && o.value,
         `field ${key}: an option is missing a canonical string value`
+      );
+    }
+  }
+});
+
+test("DDSO and D-Pro carry their own occlusal/design/modification fields with unique image keys", () => {
+  const fields = allFields(digitalRxForm);
+  const ddso = digitalRxForm.sections.find((s) => s.id === "ddso");
+  const dpro = digitalRxForm.sections.find((s) => s.id === "dpro");
+  assert.ok(ddso && dpro, "ddso/dpro sections missing");
+
+  const ddsoKeys = ddso.fields.map((f) => f.key);
+  const dproKeys = dpro.fields.map((f) => f.key);
+
+  // New fields live in the correct sections under the ddso*/dpro* namespace.
+  for (const k of ["ddsoOcclusalContact", "ddsoDesignPreference", "ddsoModifications"]) {
+    assert.ok(ddsoKeys.includes(k), `ddso section missing ${k}`);
+  }
+  for (const k of ["dproOcclusalContact", "dproDesignPreference", "dproModifications"]) {
+    assert.ok(dproKeys.includes(k), `dpro section missing ${k}`);
+  }
+
+  // They must NOT collide with the Shirazi-section keys.
+  for (const k of ["occlusalContact", "designPreference", "modificationsA", "modificationsB"]) {
+    assert.ok(!ddsoKeys.includes(k), `ddso must not reuse Shirazi key ${k}`);
+    assert.ok(!dproKeys.includes(k), `dpro must not reuse Shirazi key ${k}`);
+  }
+
+  // Each new group is image-bearing on every option, with canonical string values.
+  const imageGroups = {
+    ddsoOcclusalContact: 4,
+    ddsoDesignPreference: 4,
+    ddsoModifications: 6,
+    dproOcclusalContact: 4,
+    dproDesignPreference: 4,
+    dproModifications: 3,
+  };
+  for (const [key, count] of Object.entries(imageGroups)) {
+    const field = fields.find((f) => f.key === key);
+    assert.ok(field, `field ${key} is missing`);
+    assert.equal(field.options.length, count, `${key}: expected ${count} options`);
+    for (const o of field.options) {
+      assert.ok(
+        o && typeof o === "object" && typeof o.image === "string" && o.image,
+        `${key}: an option has no image`
+      );
+      assert.ok(
+        typeof o.value === "string" && o.value,
+        `${key}: an option has no canonical string value`
       );
     }
   }
