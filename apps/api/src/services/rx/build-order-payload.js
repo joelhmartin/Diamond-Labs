@@ -58,28 +58,32 @@ function normalizeArch(arch) {
 /**
  * Format a single device's structured options into readable note fragments.
  * Shared by compileNotes (single device) and compileNotesMulti (per device).
+ *
+ * Matches how the lab actually builds orders in Seazona (verified against live
+ * orders, e.g. inv 10601): device + material/variant and each modification are
+ * PRODUCT LINE ITEMS (resolved by device-seazona-map), NOT notes. So material,
+ * variant, and modifications are deliberately excluded here. Notes carry only
+ * free-text clinical detail that has no product code — occlusal contact, design
+ * preference, VDO/titration, and device-specific instructions.
  */
 function deviceOptionLines(o = {}) {
   const lines = [];
   if (o.occlusalContact)  lines.push(`Occlusal Contact: ${o.occlusalContact}`);
   if (o.designPreference) lines.push(`Design Preference: ${o.designPreference}`);
-  if (o.baseMaterial)     lines.push(`Material: ${o.baseMaterial}`);
-  if (o.variant)          lines.push(`Design: ${o.variant}`);
-  if (Array.isArray(o.modifications) && o.modifications.length) {
-    lines.push(`Modifications: ${o.modifications.join(", ")}`);
-  }
-  if (o.titration)        lines.push(`Titration: ${JSON.stringify(o.titration)}`);
+  if (o.titration)        lines.push(`VDO/Titration: ${JSON.stringify(o.titration)}`);
   if (o.comments)         lines.push(`Device notes: ${o.comments}`);
   return lines;
 }
 
-/** Order-level (shared) note fragments — emitted ONCE per order. */
+/**
+ * Order-level (shared) note fragments — emitted ONCE per order. Records method,
+ * physical bite, and first-device are NOT noted on real orders (records are
+ * conveyed via the uploaded scan files). Rush is the only operational flag with
+ * no other home in the createOrder payload, so it stays.
+ */
 function sharedNoteLines(c = {}) {
   const lines = [];
-  if (c.physicalBite)  lines.push(`Physical bite: ${c.physicalBite}`);
-  if (c.recordsMethod) lines.push(`Records: ${c.recordsMethod}`);
-  if (c.firstDevice)   lines.push(`First device: ${c.firstDevice}`);
-  if (c.rush)          lines.push(`RUSH (${c.rushTier || "?"})`);
+  if (c.rush) lines.push(`RUSH (${c.rushTier || "?"})`);
   return lines;
 }
 
