@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { ERROR_CODES } from "@my-app/shared";
 import * as seazonaService from "../services/seazona.service.js";
 import { DEVICE_MAP, DEVICE_LABELS, resolveLineItems } from "../services/rx/device-seazona-map.js";
-import { compileNotes, buildSeazonaOrderPayload } from "../services/rx/build-order-payload.js";
+import { compileNotesMulti, buildSeazonaOrderPayloadMulti } from "../services/rx/build-order-payload.js";
 
 // ─── Test-order target (Matt Rago, internal Diamond account) ──────────────────
 // "Send test order" ALWAYS targets this hardcoded client + lab user so a mapping
@@ -95,23 +95,27 @@ export default async function adminRxMappingRoutes(fastify) {
 
   // ───────────────────────────────────────────────────────────────────────────
   // POST /admin/rx-mapping/preview
-  // Resolve a wizard selection to line items and show their mapping status.
-  // READ-ONLY — no DB writes, no Seazona writes.
-  // Body: a full (fake) case — { deviceKey, deviceOptions, patientFirst, patientLast,
-  // dob, recordsMethod, physicalBite, dueDate, rush, rushTier, firstDevice,
-  // generalComments }. Only deviceKey/deviceOptions drive product line items; the
-  // rest flow into patientName/due/notes so the preview shows the WHOLE order a
-  // doctor would produce, not just the device lines.
+  // Resolve a MULTI-DEVICE wizard selection to line items and show their mapping
+  // status. READ-ONLY — no DB writes, no Seazona writes.
+  // Body: a full (fake) case — { devices:[{deviceKey, deviceOptions, label}],
+  // patientFirst, patientLast, recordsMethod, physicalBite, dueDate, rush,
+  // rushTier, firstDevice }. Only devices drive product line items; the rest
+  // flow into patientName/due/notes so the preview shows the WHOLE order a
+  // doctor would produce. BACK-COMPAT: a single { deviceKey, deviceOptions } body
+  // (no `devices`) is wrapped into a one-device array.
   // ───────────────────────────────────────────────────────────────────────────
   fastify.post("/admin/rx-mapping/preview", {
     preHandler: [authenticate, requireAdmin],
   }, async (request, reply) => {
     const body = request.body || {};
-    const { deviceKey, deviceOptions = {} } = body;
 
-    if (!deviceKey) {
+    let devices = Array.isArray(body.devices) ? body.devices : null;
+    if (!devices && body.deviceKey) {
+      devices = [{ deviceKey: body.deviceKey, deviceOptions: body.deviceOptions || {}, label: body.deviceKey }];
+    }
+    if (!devices || !devices.length) {
       return reply.code(422).send({
-        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "deviceKey is required." },
+        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "devices (or a deviceKey) is required." },
       });
     }
 
@@ -120,39 +124,61 @@ export default async function adminRxMappingRoutes(fastify) {
       getCatalog(),
     ]);
 
-    const { items, unmapped } = resolveLineItems({ deviceKey, deviceOptions }, { overrides });
+    const lines = [];
+    const deviceSummaries = [];
 
-    const lines = [
-      ...items.map((item) => ({
-        mapKey: item.mapKey,
-        code: item.code,
-        name: item.name,
-        arch: item.arch,
-        source: item.source,
-        // True when this line's code came from a saved DB override — drives the
-        // admin UI "Clear override" affordance.
-        overridden: Boolean(item.overridden),
-        seazonaProductId:
-          byCode.get(String(item.code))?.id ||
-          overrides[item.mapKey]?.seazonaProductId ||
-          null,
-        status:
-          overrides[item.mapKey] || byCode.has(String(item.code))
-            ? "confirmed"
-            : "placeholder",
-      })),
-      ...unmapped.map((mapKey) => ({
-        mapKey,
-        code: null,
-        name: null,
-        status: "unmapped",
-      })),
-    ];
+    for (const d of devices) {
+      const label = d.label || DEVICE_LABELS[d.deviceKey] || d.deviceKey;
+      const { items, unmapped } = resolveLineItems(
+        { deviceKey: d.deviceKey, deviceOptions: d.deviceOptions || {} },
+        { overrides }
+      );
 
-    // Compile notes from the FULL case (records method, physical bite, occlusal/
-    // design/modifications, rush, comments, etc.) — mirrors what the real payload
-    // builder produces for a doctor's submission.
-    const notes = compileNotes(body);
+      const deviceLines = [
+        ...items.map((item) => ({
+          device: label,
+          deviceKey: d.deviceKey,
+          mapKey: item.mapKey,
+          code: item.code,
+          name: item.name,
+          arch: item.arch,
+          source: item.source,
+          // True when this line's code came from a saved DB override — drives the
+          // admin UI "Clear override" affordance.
+          overridden: Boolean(item.overridden),
+          seazonaProductId:
+            byCode.get(String(item.code))?.id ||
+            overrides[item.mapKey]?.seazonaProductId ||
+            null,
+          status:
+            overrides[item.mapKey] || byCode.has(String(item.code))
+              ? "confirmed"
+              : "placeholder",
+        })),
+        ...unmapped.map((mapKey) => ({
+          device: label,
+          deviceKey: d.deviceKey,
+          mapKey,
+          code: null,
+          name: null,
+          status: "unmapped",
+        })),
+      ];
+
+      deviceSummaries.push({
+        label,
+        deviceKey: d.deviceKey,
+        confirmed: deviceLines.filter((l) => l.status === "confirmed").length,
+        placeholder: deviceLines.filter((l) => l.status === "placeholder").length,
+        unmapped: deviceLines.filter((l) => l.status === "unmapped").length,
+        total: deviceLines.length,
+      });
+
+      lines.push(...deviceLines);
+    }
+
+    // Concise per-device notes + shared order fields once.
+    const notes = compileNotesMulti(body, devices);
     const patientName = `${body.patientFirst || ""} ${body.patientLast || ""}`.trim() || null;
     const due = body.dueDate || null;
 
@@ -168,6 +194,7 @@ export default async function adminRxMappingRoutes(fastify) {
         lines,
         notes,
         coverage: { confirmed, placeholder, unmapped: unmappedCount, total },
+        devices: deviceSummaries,
       },
     };
   });
@@ -306,9 +333,14 @@ export default async function adminRxMappingRoutes(fastify) {
         error: { ...ERROR_CODES.VALIDATION_ERROR, message: "confirm:true is required — this creates a real Seazona order." },
       });
     }
-    if (!body.deviceKey) {
+
+    let devices = Array.isArray(body.devices) ? body.devices : null;
+    if (!devices && body.deviceKey) {
+      devices = [{ deviceKey: body.deviceKey, deviceOptions: body.deviceOptions || {}, label: body.deviceKey }];
+    }
+    if (!devices || !devices.length) {
       return reply.code(422).send({
-        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "deviceKey is required." },
+        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "devices (or a deviceKey) is required." },
       });
     }
 
@@ -317,8 +349,9 @@ export default async function adminRxMappingRoutes(fastify) {
     for (const [code, v] of byCode.entries()) codeToId[code] = v.id;
 
     // Build the payload, but FORCE the client to the Matt Rago test account.
-    const { payload, warnings, unmapped } = buildSeazonaOrderPayload(
+    const { payload, warnings, unmapped } = buildSeazonaOrderPayloadMulti(
       { ...body, seazonaClientId: TEST_ORDER_CLIENT_ID },
+      devices,
       { codeToId, userId: TEST_ORDER_USER_ID, overrides }
     );
 
