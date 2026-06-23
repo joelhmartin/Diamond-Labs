@@ -56,13 +56,11 @@ function normalizeArch(arch) {
 }
 
 /**
- * Compile structured deviceOptions + top-level case fields into a single notes string.
- * Seazona notes are limited to 2000 characters.
+ * Format a single device's structured options into readable note fragments.
+ * Shared by compileNotes (single device) and compileNotesMulti (per device).
  */
-export function compileNotes(c) {
-  const o = c.deviceOptions || {};
+function deviceOptionLines(o = {}) {
   const lines = [];
-
   if (o.occlusalContact)  lines.push(`Occlusal Contact: ${o.occlusalContact}`);
   if (o.designPreference) lines.push(`Design Preference: ${o.designPreference}`);
   if (o.baseMaterial)     lines.push(`Material: ${o.baseMaterial}`);
@@ -72,12 +70,107 @@ export function compileNotes(c) {
   }
   if (o.titration)        lines.push(`Titration: ${JSON.stringify(o.titration)}`);
   if (o.comments)         lines.push(`Device notes: ${o.comments}`);
+  return lines;
+}
 
-  if (c.physicalBite)     lines.push(`Physical bite: ${c.physicalBite}`);
-  if (c.recordsMethod)    lines.push(`Records: ${c.recordsMethod}`);
-  if (c.firstDevice)      lines.push(`First device: ${c.firstDevice}`);
-  if (c.rush)             lines.push(`RUSH (${c.rushTier || "?"})`);
-  if (c.generalComments)  lines.push(`General: ${c.generalComments}`);
+/** Order-level (shared) note fragments — emitted ONCE per order. */
+function sharedNoteLines(c = {}) {
+  const lines = [];
+  if (c.physicalBite)  lines.push(`Physical bite: ${c.physicalBite}`);
+  if (c.recordsMethod) lines.push(`Records: ${c.recordsMethod}`);
+  if (c.firstDevice)   lines.push(`First device: ${c.firstDevice}`);
+  if (c.rush)          lines.push(`RUSH (${c.rushTier || "?"})`);
+  return lines;
+}
 
+/**
+ * Compile structured deviceOptions + top-level case fields into a single notes string.
+ * Seazona notes are limited to 2000 characters.
+ */
+export function compileNotes(c) {
+  const lines = [...deviceOptionLines(c.deviceOptions || {}), ...sharedNoteLines(c)];
+  if (c.generalComments) lines.push(`General: ${c.generalComments}`);
   return lines.join(" | ").slice(0, 2000);
+}
+
+/**
+ * Multi-device notes: one "[<label>] <opts>" fragment per device, then the
+ * shared order fields ONCE. Capped at 2000 chars. Never dumps arbitrary fields.
+ *
+ * @param {object} shared  — order-level fields (physicalBite/recordsMethod/firstDevice/rush/rushTier)
+ * @param {Array<{label?:string, deviceKey?:string, deviceOptions?:object}>} devices
+ */
+export function compileNotesMulti(shared = {}, devices = []) {
+  const lines = [];
+  for (const d of devices) {
+    const opts = deviceOptionLines(d.deviceOptions || {}).join(", ");
+    const label = d.label || d.deviceKey || "device";
+    lines.push(opts ? `[${label}] ${opts}` : `[${label}]`);
+  }
+  lines.push(...sharedNoteLines(shared));
+  return lines.join(" | ").slice(0, 2000);
+}
+
+/**
+ * Multi-device payload builder. Loops resolveLineItems per device, aggregates
+ * line items (resolving code→id against the live catalog; warns on misses), and
+ * compiles a concise per-device notes string. The single-device
+ * buildSeazonaOrderPayload is kept intact for the existing pipeline.
+ *
+ * @param {object} shared   — order-level fields incl. seazonaClientId, patientFirst/Last, dueDate
+ * @param {Array<{deviceKey:string, label?:string, deviceOptions?:object}>} devices
+ * @param {object} opts
+ * @param {Record<string,string>} opts.codeToId — Seazona product code → catalog id
+ * @param {string} opts.userId
+ * @param {object} opts.overrides
+ * @returns {{ payload, warnings: string[], unmapped: string[], perDevice: Array<{label,deviceKey,lineCount}> }}
+ */
+export function buildSeazonaOrderPayloadMulti(
+  shared = {},
+  devices = [],
+  { codeToId = {}, userId, overrides = {} } = {}
+) {
+  const items = [];
+  const warnings = [];
+  const unmapped = [];
+  const perDevice = [];
+
+  for (const d of devices) {
+    const { items: lineItems, unmapped: devUnmapped } = resolveLineItems(
+      { deviceKey: d.deviceKey, deviceOptions: d.deviceOptions || {} },
+      { overrides }
+    );
+
+    for (const u of devUnmapped) {
+      unmapped.push(u);
+      warnings.push(`unmapped ${u}`);
+    }
+
+    let lineCount = 0;
+    for (const li of lineItems) {
+      const id = codeToId[li.code];
+      if (!id) {
+        warnings.push(`no catalog id for code ${li.code} (${li.name})`);
+        continue;
+      }
+      items.push({ id, arch: normalizeArch(li.arch) });
+      lineCount++;
+    }
+
+    perDevice.push({ label: d.label || d.deviceKey, deviceKey: d.deviceKey, lineCount });
+  }
+
+  return {
+    payload: {
+      clientId: shared.seazonaClientId,
+      patientName: `${shared.patientFirst ?? ""} ${shared.patientLast ?? ""}`.trim(),
+      due: shared.dueDate || null,
+      items,
+      notes: compileNotesMulti(shared, devices),
+      userId,
+    },
+    warnings,
+    unmapped,
+    perDevice,
+  };
 }

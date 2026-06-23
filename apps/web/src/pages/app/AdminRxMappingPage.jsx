@@ -140,7 +140,7 @@ function CatalogSearchRow({ mapKey, onAssign, busy }) {
 }
 
 /** Modal that runs the preview and lets you assign / clear overrides. */
-function PreviewModal({ deviceKey, deviceOptions, caseFields, onClose }) {
+function PreviewModal({ devices, caseFields, onClose }) {
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState(null);
   const [preview, setPreview]       = useState(null);
@@ -152,21 +152,24 @@ function PreviewModal({ deviceKey, deviceOptions, caseFields, onClose }) {
   /** Build the shared request body used by both preview and send-test. */
   const buildBody = useCallback(() => {
     const body = {
-      deviceKey,
-      deviceOptions,
+      devices: (devices || []).map((d) => ({
+        deviceKey:     d.deviceKey,
+        deviceOptions: d.deviceOptions,
+        label:         d.label,
+      })),
       patientFirst:    caseFields.patientFirst,
       patientLast:     caseFields.patientLast,
       recordsMethod:   caseFields.recordsMethod,
       physicalBite:    caseFields.physicalBite,
       firstDevice:     caseFields.firstDevice,
       rush:            caseFields.rush,
-      generalComments: caseFields.generalComments,
     };
+    if (caseFields.generalComments) body.generalComments = caseFields.generalComments;
     if (caseFields.dob)     body.dob      = caseFields.dob;
     if (caseFields.dueDate) body.dueDate  = caseFields.dueDate;
     if (caseFields.rush)    body.rushTier = caseFields.rushTier;
     return body;
-  }, [deviceKey, deviceOptions, caseFields]);
+  }, [devices, caseFields]);
 
   const runPreview = useCallback(async () => {
     setLoading(true);
@@ -268,7 +271,9 @@ function PreviewModal({ deviceKey, deviceOptions, caseFields, onClose }) {
             <h2 className="font-heading font-bold text-lg text-navy">
               Mapping Preview
             </h2>
-            <p className="text-xs font-mono text-navy/40 mt-0.5">{deviceKey}</p>
+            <p className="text-xs font-mono text-navy/40 mt-0.5">
+              {(devices || []).map((d) => d.label || d.deviceKey).join(", ") || "—"}
+            </p>
           </div>
           <button
             type="button"
@@ -375,80 +380,110 @@ function PreviewModal({ deviceKey, deviceOptions, caseFields, onClose }) {
                 </p>
               )}
 
-              {/* Lines table */}
-              <div className="rounded-2xl border border-surface-300/50 overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-surface-100">
-                      {["Map Key", "Name", "Code", "Arch", "Status", "Action"].map(
-                        (h) => (
-                          <th
-                            key={h}
-                            className="text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-widest text-navy/40 font-normal whitespace-nowrap"
-                          >
-                            {h}
-                          </th>
-                        )
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(preview.lines || []).map((line) => (
-                      <tr
-                        key={line.mapKey}
-                        className={`border-t border-surface-300/30 align-top ${ROW_TINT[line.status] || ""}`}
-                      >
-                        <td className="px-4 py-3 font-mono text-[11px] text-navy/50 whitespace-nowrap">
-                          {line.mapKey}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-navy/80">
-                          {line.name || "—"}
-                        </td>
-                        <td className="px-4 py-3 font-mono text-xs text-navy/60 whitespace-nowrap">
-                          {line.code || "—"}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-navy/60 whitespace-nowrap">
-                          {line.arch || "—"}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span
-                            className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                              STATUS_CHIP[line.status] || "bg-gray-200 text-gray-700"
-                            }`}
-                          >
-                            {line.status}
+              {/* Lines, grouped by device */}
+              <div className="space-y-5">
+                {(preview.devices || []).map((grp) => {
+                  const groupLines = (preview.lines || []).filter(
+                    (l) => l.device === grp.label
+                  );
+                  return (
+                    <div key={`${grp.deviceKey}:${grp.label}`}>
+                      {/* Group header */}
+                      <div className="flex items-center justify-between mb-2 px-1">
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-sm font-semibold text-navy">
+                            {grp.label}
                           </span>
-                          {line.overridden && (
-                            <span className="ml-1.5 text-[10px] font-mono text-navy/30">
-                              override
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          {(line.status === "placeholder" ||
-                            line.status === "unmapped") && (
-                            <CatalogSearchRow
-                              mapKey={line.mapKey}
-                              onAssign={handleAssign}
-                              busy={saving === line.mapKey}
-                            />
-                          )}
-                          {line.status === "confirmed" &&
-                            line.overridden && (
-                              <button
-                                type="button"
-                                disabled={saving === line.mapKey}
-                                onClick={() => handleClear(line.mapKey)}
-                                className="text-[11px] font-mono text-red-400 hover:text-red-600 hover:underline transition-colors disabled:opacity-50"
+                          <span className="text-[10px] font-mono text-navy/30">
+                            {grp.deviceKey}
+                          </span>
+                        </div>
+                        <span className="text-xs font-mono text-navy/60">
+                          <span className="text-emerald-700 font-semibold">{grp.confirmed}</span>
+                          {" · "}
+                          <span className="text-amber-700 font-semibold">{grp.placeholder}</span>
+                          {" · "}
+                          <span className="text-red-600 font-semibold">{grp.unmapped}</span>
+                        </span>
+                      </div>
+
+                      <div className="rounded-2xl border border-surface-300/50 overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-surface-100">
+                              {["Map Key", "Name", "Code", "Arch", "Status", "Action"].map(
+                                (h) => (
+                                  <th
+                                    key={h}
+                                    className="text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-widest text-navy/40 font-normal whitespace-nowrap"
+                                  >
+                                    {h}
+                                  </th>
+                                )
+                              )}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {groupLines.map((line, idx) => (
+                              <tr
+                                key={`${line.device}:${line.mapKey}:${idx}`}
+                                className={`border-t border-surface-300/30 align-top ${ROW_TINT[line.status] || ""}`}
                               >
-                                {saving === line.mapKey ? "…" : "Clear override"}
-                              </button>
-                            )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                                <td className="px-4 py-3 font-mono text-[11px] text-navy/50 whitespace-nowrap">
+                                  {line.mapKey}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-navy/80">
+                                  {line.name || "—"}
+                                </td>
+                                <td className="px-4 py-3 font-mono text-xs text-navy/60 whitespace-nowrap">
+                                  {line.code || "—"}
+                                </td>
+                                <td className="px-4 py-3 text-xs text-navy/60 whitespace-nowrap">
+                                  {line.arch || "—"}
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap">
+                                  <span
+                                    className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                      STATUS_CHIP[line.status] || "bg-gray-200 text-gray-700"
+                                    }`}
+                                  >
+                                    {line.status}
+                                  </span>
+                                  {line.overridden && (
+                                    <span className="ml-1.5 text-[10px] font-mono text-navy/30">
+                                      override
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3">
+                                  {(line.status === "placeholder" ||
+                                    line.status === "unmapped") && (
+                                    <CatalogSearchRow
+                                      mapKey={line.mapKey}
+                                      onAssign={handleAssign}
+                                      busy={saving === line.mapKey}
+                                    />
+                                  )}
+                                  {line.status === "confirmed" &&
+                                    line.overridden && (
+                                      <button
+                                        type="button"
+                                        disabled={saving === line.mapKey}
+                                        onClick={() => handleClear(line.mapKey)}
+                                        className="text-[11px] font-mono text-red-400 hover:text-red-600 hover:underline transition-colors disabled:opacity-50"
+                                      >
+                                        {saving === line.mapKey ? "…" : "Clear override"}
+                                      </button>
+                                    )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Notes block — full output incl. records/bite/occlusal/design/mods/rush/comments */}
@@ -502,7 +537,7 @@ export function AdminRxMappingPage() {
   // Selected source form (default: first in the chooser).
   const [slug, setSlug]             = useState(FORM_LIST[0]?.slug || "digital");
   // Computed case input handed to PreviewModal once a form is completed.
-  const [caseInput, setCaseInput]   = useState(null); // { deviceKey, deviceOptions, caseFields }
+  const [caseInput, setCaseInput]   = useState(null); // { devices, caseFields }
   const [showModal, setShowModal]   = useState(false);
 
   const form = getForm(slug);
@@ -516,8 +551,8 @@ export function AdminRxMappingPage() {
 
   // Final validated submit from FormRenderer → compute case input + open preview.
   const handleComplete = (answers) => {
-    const input = formAnswersToCaseInput(slug, form, answers);
-    setCaseInput(input);
+    const { devices, caseFields } = formAnswersToCaseInput(slug, form, answers);
+    setCaseInput({ devices, caseFields });
     setShowModal(true);
   };
 
@@ -575,8 +610,7 @@ export function AdminRxMappingPage() {
       {/* Preview modal */}
       {showModal && caseInput && (
         <PreviewModal
-          deviceKey={caseInput.deviceKey}
-          deviceOptions={caseInput.deviceOptions}
+          devices={caseInput.devices}
           caseFields={caseInput.caseFields}
           onClose={() => setShowModal(false)}
         />

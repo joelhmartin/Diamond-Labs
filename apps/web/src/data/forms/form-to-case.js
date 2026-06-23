@@ -3,25 +3,20 @@
  *
  * Bridges the doctor-facing FormRenderer (which produces a flat
  * `{ [fieldKey]: value }` answers map) to the shape PreviewModal expects
- * (`{ deviceKey, deviceOptions, caseFields }`) WITHOUT touching the backend
- * preview/send pipeline or the device→Seazona map.
+ * (`{ devices: [{ deviceKey, label, deviceOptions }], caseFields }`) WITHOUT
+ * touching the device→Seazona map.
+ *
+ * A single completed form may order MULTIPLE devices (the digital form gates
+ * several device sections behind one `devicesToOrder` multi-select). Each
+ * selected device becomes its own entry in `devices`, so the preview resolves
+ * line items per-device instead of collapsing everything into one appliance
+ * plus a giant notes dump.
  *
  * Line-item coverage is intentionally partial — the whole point of the tester
  * is to surface which fields populate the Seazona order and which don't.
  */
 
 import { visibleFields } from "./form-logic.js";
-
-// Field types that carry no readable answer value (presentational/binary).
-const SKIP_TYPES = new Set([
-  "heading",
-  "divider",
-  "static",
-  "image",
-  "signature",
-  "artboard",
-  "fileUpload",
-]);
 
 /** Does an answer count as "filled"? (non-empty array / string / object). */
 function answered(v) {
@@ -32,73 +27,192 @@ function answered(v) {
   return Boolean(v);
 }
 
-/** Strip HTML tags + collapse whitespace for a readable label. */
-function cleanLabel(label, fallback) {
-  const raw = (label || fallback || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-  return raw || fallback || "";
+// Human-readable device names, keyed by rx-device key.
+const DEVICE_LABELS = {
+  "olmos-day": "OLMOS Day",
+  "olmos-night": "OLMOS Night",
+  mora: "MORA",
+  ara: "ARA",
+  ddso: "DDSO",
+  "cadcam-d-pro": "CAD/CAM D-Pro",
+  "shirazi-hybrid": "Shirazi Hybrid",
+  guard: "Nightguard",
+  "sport-guard": "Sport-Guard",
+  snorehook: "SnoreHook",
+  "ortho-expander": "Orthodontic Appliance",
+};
+
+/**
+ * Drop empty/undefined deviceOptions entries so the preview never carries
+ * blank fields. Keeps non-empty strings, non-empty arrays, and truthy scalars.
+ */
+function cleanOptions(options) {
+  const out = {};
+  for (const [k, v] of Object.entries(options)) {
+    if (v == null) continue;
+    if (Array.isArray(v)) {
+      if (v.length) out[k] = v;
+      continue;
+    }
+    if (typeof v === "string") {
+      if (v.trim() !== "") out[k] = v;
+      continue;
+    }
+    out[k] = v;
+  }
+  return out;
 }
 
-/** Render one answer value as a single readable string (or "" to skip). */
-function formatValue(field, value) {
-  switch (field.type) {
-    case "fullname":
-      return [value?.first, value?.last].filter(Boolean).join(" ");
-    case "address":
-      return [
-        value?.office,
-        value?.street,
-        [value?.city, value?.state, value?.zip].filter(Boolean).join(", "),
-        value?.country,
-      ]
-        .filter(Boolean)
-        .join(" · ");
-    case "checkbox":
-      return Array.isArray(value) ? value.filter(Boolean).join(", ") : "";
-    case "matrix": {
-      if (!value || typeof value !== "object") return "";
-      return Object.entries(value)
-        .filter(([, v]) => answered(v))
-        .map(([k, v]) => `${k.replace("__", " ")}=${Array.isArray(v) ? v.join("/") : v}`)
-        .join(", ");
-    }
-    default:
-      return Array.isArray(value) ? value.join(", ") : String(value ?? "");
-  }
+/** Build one device entry with a resolved label + cleaned options. */
+function makeDevice(deviceKey, deviceOptions) {
+  return {
+    deviceKey,
+    label: DEVICE_LABELS[deviceKey] || deviceKey,
+    deviceOptions: cleanOptions(deviceOptions),
+  };
 }
 
 /**
- * Digital form device detection. The form now gates device sections behind a
- * single multi-select `devicesToOrder` (values: olmos|mistry|ddso|dpro|shirazi|
- * nightguards|sportguards|snorehook). The preview is per-device, so we map the
- * FIRST selected device → its rx-devices key.
+ * Ortho / standalone-Olmos forms → a single Orthodontic Appliance.
+ * comments  ← every answered textarea whose key matches /comment/i, joined.
+ * modifications ← every answered expansion-checkbox array, flattened.
  */
-const DEVICE_VALUE_TO_KEY = {
-  olmos: "olmos-day",
-  mistry: "mora",
-  ddso: "ddso",
-  dpro: "cadcam-d-pro",
-  shirazi: "shirazi-hybrid",
-  nightguards: "guard",
-  sportguards: "sport-guard",
-  snorehook: "snorehook",
-};
+function buildOrthoDevices(fields, answers) {
+  const commentParts = [];
+  const modifications = [];
+  for (const field of fields) {
+    const value = answers[field.key];
+    if (!answered(value)) continue;
+    if (field.type === "textarea" && /comment/i.test(field.key || "")) {
+      commentParts.push(typeof value === "string" ? value.trim() : String(value));
+    } else if (
+      field.type === "checkbox" &&
+      /expansion/i.test(field.key || "") &&
+      Array.isArray(value)
+    ) {
+      modifications.push(...value);
+    }
+  }
+  return [
+    makeDevice("ortho-expander", {
+      comments: commentParts.filter(Boolean).join(" | "),
+      modifications,
+    }),
+  ];
+}
 
-function detectDigitalDeviceKey(answers) {
+/**
+ * Digital form → one or more devices, one per selected `devicesToOrder` value.
+ * Only emits devices for explicitly-selected values — never invents a device.
+ */
+function buildDigitalDevices(answers) {
   const sel = answers.devicesToOrder;
   const values = Array.isArray(sel) ? sel : sel ? [sel] : [];
+  const devices = [];
+
   for (const v of values) {
-    if (DEVICE_VALUE_TO_KEY[v]) return DEVICE_VALUE_TO_KEY[v];
+    switch (v) {
+      case "olmos": {
+        const odAnswered =
+          answered(answers.odMaterial) ||
+          answered(answers.odExpansionOptions) ||
+          answered(answers.odComments);
+        const onAnswered =
+          answered(answers.onDesign) || answered(answers.onSpecifications);
+        if (odAnswered) {
+          devices.push(
+            makeDevice("olmos-day", {
+              baseMaterial: answers.odMaterial,
+              modifications: answers.odExpansionOptions,
+              comments: answers.odComments,
+            })
+          );
+        }
+        if (onAnswered) {
+          devices.push(
+            makeDevice("olmos-night", {
+              variant: answers.onDesign,
+              modifications: answers.onSpecifications,
+            })
+          );
+        }
+        if (!odAnswered && !onAnswered) {
+          devices.push(makeDevice("olmos-day", {}));
+        }
+        break;
+      }
+      case "mistry": {
+        if (answered(answers.mora)) devices.push(makeDevice("mora", {}));
+        if (answered(answers.ara)) devices.push(makeDevice("ara", {}));
+        break;
+      }
+      case "ddso":
+        devices.push(
+          makeDevice("ddso", {
+            baseMaterial: answers.ddsoMaterial,
+            modifications: answers.ddsoAdditionalOptions,
+            comments: answers.ddsoComments,
+          })
+        );
+        break;
+      case "dpro":
+        devices.push(
+          makeDevice("cadcam-d-pro", {
+            modifications: answers.dproAdditionalOptions,
+            comments: answers.dproComments,
+          })
+        );
+        break;
+      case "shirazi":
+        devices.push(
+          makeDevice("shirazi-hybrid", {
+            occlusalContact: answers.occlusalContact,
+            designPreference: answers.designPreference,
+            modifications: [
+              ...(answers.modificationsA || []),
+              ...(answers.modificationsB || []),
+            ],
+            comments: answers.hybridComments,
+          })
+        );
+        break;
+      case "nightguards":
+        devices.push(
+          makeDevice("guard", {
+            variant: answers.nightguardDevice?.[0],
+            modifications: answers.attachmentsModifications,
+            comments: answers.nightguardComments,
+          })
+        );
+        break;
+      case "sportguards":
+        devices.push(
+          makeDevice("sport-guard", {
+            variant: answers.sportGuardDevice?.[0],
+            comments: answers.mouthguardComments,
+          })
+        );
+        break;
+      case "snorehook":
+        devices.push(
+          makeDevice("snorehook", { comments: answers.snorehookComments })
+        );
+        break;
+      default:
+        break;
+    }
   }
-  return null;
+
+  return devices;
 }
 
 /**
  * formAnswersToCaseInput(slug, form, answers)
- *   → { deviceKey, deviceOptions, caseFields }
+ *   → { devices: [{ deviceKey, label, deviceOptions }], caseFields }
  *
- * caseFields matches PreviewModal's expected shape:
- *   { patientFirst, patientLast, recordsMethod, physicalBite, firstDevice,
- *     rush, rushTier, generalComments, dueDate? }
+ * caseFields holds the order-level (shared) settings; per-device selections
+ * live on each device's `deviceOptions`. The whole-form notes dump is gone —
+ * notes are now compiled per-device on the backend.
  */
 export function formAnswersToCaseInput(slug, form, answers = {}) {
   const fields = visibleFields(form, answers);
@@ -117,55 +231,10 @@ export function formAnswersToCaseInput(slug, form, answers = {}) {
   );
   const dueDate = dueField ? answers[dueField.key] : undefined;
 
-  // ── General comments: readable dump of EVERY answered visible field ──
-  const commentLines = [];
-  for (const field of fields) {
-    if (SKIP_TYPES.has(field.type)) continue;
-    if (!field.key) continue;
-    const value = answers[field.key];
-    if (!answered(value)) continue;
-    const rendered = formatValue(field, value);
-    if (!rendered) continue;
-    commentLines.push(`${cleanLabel(field.label, field.key)}: ${rendered}`);
-  }
-
-  // ── deviceKey ──
-  let deviceKey;
-  if (slug === "ortho" || slug === "olmos") {
-    deviceKey = "ortho-expander";
-  } else {
-    // digital
-    deviceKey = detectDigitalDeviceKey(answers);
-    if (!deviceKey) {
-      deviceKey = "ddso";
-      commentLines.push(
-        "[tester] no device section detected — defaulted to DDSO for line preview"
-      );
-    }
-  }
-
-  // ── deviceOptions (conservative; partial coverage is expected) ──
-  const deviceOptions = {};
-  for (const [key, value] of Object.entries(answers)) {
-    if (!answered(value)) continue;
-    if (/material/i.test(key) && deviceOptions.baseMaterial == null) {
-      deviceOptions.baseMaterial = Array.isArray(value) ? value[0] : value;
-    } else if (
-      /modification/i.test(key) &&
-      Array.isArray(value) &&
-      deviceOptions.modifications == null
-    ) {
-      deviceOptions.modifications = value;
-    } else if (/occlusal/i.test(key) && deviceOptions.occlusalContact == null) {
-      deviceOptions.occlusalContact = Array.isArray(value) ? value[0] : value;
-    } else if (
-      /arch/i.test(key) &&
-      typeof value === "string" &&
-      deviceOptions.arch == null
-    ) {
-      deviceOptions.arch = value;
-    }
-  }
+  const devices =
+    slug === "ortho" || slug === "olmos"
+      ? buildOrthoDevices(fields, answers)
+      : buildDigitalDevices(answers);
 
   const caseFields = {
     patientFirst,
@@ -175,11 +244,10 @@ export function formAnswersToCaseInput(slug, form, answers = {}) {
     firstDevice: "Yes",
     rush: false,
     rushTier: "nylon",
-    generalComments: commentLines.join("\n"),
     ...(dueDate ? { dueDate } : {}),
   };
 
-  return { deviceKey, deviceOptions, caseFields };
+  return { devices, caseFields };
 }
 
 export default formAnswersToCaseInput;
