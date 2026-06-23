@@ -45,6 +45,21 @@ test("structured options + comments compile into notes", () => {
   assert.match(payload.notes, /cover 1st molar to 1st molar/);
 });
 
+test("material and modifications are NOT in notes (they are line items)", () => {
+  // Matches real Seazona orders: material is baked into the device product code
+  // and each modification is its own line item — never notes.
+  const c = {
+    ...baseCase,
+    deviceOptions: { baseMaterial: "Nylon", modifications: ["Labial bow"], occlusalContact: "Posterior" },
+  };
+  const { payload } = buildSeazonaOrderPayload(c, { codeToId: makeCodeToId(), userId: "x" });
+  assert.doesNotMatch(payload.notes, /Material:/);
+  assert.doesNotMatch(payload.notes, /Modifications:/);
+  assert.doesNotMatch(payload.notes, /Labial bow/);
+  // occlusal contact (no product code) still belongs in notes
+  assert.match(payload.notes, /Occlusal Contact: Posterior/);
+});
+
 test("unmapped lines surface as warnings and never enter items", () => {
   const c = {
     ...baseCase,
