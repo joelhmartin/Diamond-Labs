@@ -150,6 +150,23 @@ function ReviewRow({ label, value }) {
 // Presentational field types that don't count as "input" for step purposes.
 const NON_INPUT_TYPES = new Set(["heading", "divider", "image", "static"]);
 
+// Normalize text for comparison (strip HTML/markup + collapse whitespace).
+const normText = (s) =>
+  (s || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
+
+/* A field is a redundant header if it merely repeats the step title (a heading
+   matching the section title) or the section note (a static matching note text).
+   The StepHeader + the rendered note already cover these. */
+function isRedundantHeader(field, section, stepTitle) {
+  if (field.type === "heading") {
+    return normText(field.label) === normText(stepTitle);
+  }
+  if (field.type === "static" && section.note) {
+    return normText(field.html || field.label) === normText(section.note);
+  }
+  return false;
+}
+
 /* Whether a section is currently visible. Mirrors form-logic's shouldShow
    semantics ({ key, equals } | { key, prefix }) and adds { key, includes }:
    `includes` matches when answers[key] is an array containing the value, or a
@@ -321,6 +338,10 @@ export function FormRenderer({ form, prefill = {}, onSubmit, onComplete, submitt
             )}
             {(currentSection.fields || []).map((field) => {
               if (!shouldShow(field, answers)) return null;
+              // De-dupe: the StepHeader already shows the section title and the
+              // note renders above — skip a leading heading/static field that just
+              // repeats them (keeps genuine sub-headings like "DAY SELECTION").
+              if (isRedundantHeader(field, currentSection, labels[step])) return null;
               const err = errors[field.key];
               return (
                 <div key={field.key || field.label}>
