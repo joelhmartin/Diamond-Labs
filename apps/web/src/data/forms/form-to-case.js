@@ -150,7 +150,12 @@ function buildDigitalDevices(answers) {
         devices.push(
           makeDevice("ddso", {
             baseMaterial: answers.ddsoMaterial,
-            modifications: answers.ddsoAdditionalOptions,
+            occlusalContact: answers.ddsoOcclusalContact,
+            designPreference: answers.ddsoDesignPreference,
+            modifications: [
+              ...(answers.ddsoAdditionalOptions || []),
+              ...(answers.ddsoModifications || []),
+            ],
             comments: answers.ddsoComments,
           })
         );
@@ -158,7 +163,12 @@ function buildDigitalDevices(answers) {
       case "dpro":
         devices.push(
           makeDevice("cadcam-d-pro", {
-            modifications: answers.dproAdditionalOptions,
+            occlusalContact: answers.dproOcclusalContact,
+            designPreference: answers.dproDesignPreference,
+            modifications: [
+              ...(answers.dproAdditionalOptions || []),
+              ...(answers.dproModifications || []),
+            ],
             comments: answers.dproComments,
           })
         );

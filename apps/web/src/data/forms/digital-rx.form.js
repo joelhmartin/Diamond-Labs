@@ -353,6 +353,23 @@ export const digitalRxForm = {
           "NYLON",
           "BIOMED",
         ]),
+        // qid 466: widget "Occlusal Contact:" (image picker, single) → radio
+        radio(
+          "ddsoOcclusalContact",
+          "Please select occlusal contact",
+          OCCLUSAL_CONTACT_OPTIONS
+        ),
+        // qid 467: widget "Design Preference" (image picker) → radio
+        radio(
+          "ddsoDesignPreference",
+          "Design preference",
+          DESIGN_PREFERENCE_OPTIONS
+        ),
+        // qid 468 + 469: "Digital Device Modifications" (image pickers) → checkbox
+        checkbox("ddsoModifications", "Select modifications", [
+          ...MODIFICATIONS_A_OPTIONS,
+          ...MODIFICATIONS_B_OPTIONS,
+        ]),
         // qid 378
         checkbox("ddsoAdditionalOptions", "Additional Options", ADDITIONAL_OPTIONS),
         // qid 483
@@ -383,6 +400,20 @@ export const digitalRxForm = {
           "Decrease as much as possible",
           "Call if change is required",
         ]),
+        // qid 485: widget "Occlusal Contact:" (image picker, single) → radio
+        radio(
+          "dproOcclusalContact",
+          "Please select occlusal contact",
+          OCCLUSAL_CONTACT_OPTIONS
+        ),
+        // qid 486: widget "Design Preference" (image picker) → radio
+        radio(
+          "dproDesignPreference",
+          "Design preference",
+          DESIGN_PREFERENCE_OPTIONS
+        ),
+        // qid 487: "Digital Device Modifications" (image picker) → checkbox
+        checkbox("dproModifications", "Select modifications", MODIFICATIONS_A_OPTIONS),
         // qid 465
         checkbox("dproAdditionalOptions", "Additional Options", ADDITIONAL_OPTIONS),
         // qid 484
