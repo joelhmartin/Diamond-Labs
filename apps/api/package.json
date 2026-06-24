@@ -14,7 +14,8 @@
     "db:import-seazona": "node --env-file=.env src/db/import-seazona-clients.js",
     "db:sync-products": "node --env-file=.env src/db/sync-seazona-products.js",
     "test": "vitest run",
-    "lint": "echo 'lint placeholder'"
+    "lint": "echo 'lint placeholder'",
+    "db:seed-rx-overrides": "node --env-file=.env src/db/seed-rx-overrides.js"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.0",
