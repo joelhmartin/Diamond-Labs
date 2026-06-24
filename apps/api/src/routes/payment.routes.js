@@ -834,7 +834,10 @@ export default async function paymentRoutes(fastify) {
           });
           return { ...result, seazonaPaymentId, ...(ledgerWriteFailed ? { ledgerWriteFailed: true } : {}) };
         },
-        { log: fastify.log }
+        // Migration dual-read: results cached under the pre-user-scoping key
+        // (`charge-saved:<key>`, 24h TTL) still replay across this deploy so a
+        // retry that spans it can't double-charge.
+        { log: fastify.log, legacyKeys: [`charge-saved:${idempotencyKey}`] }
       );
     } catch (err) {
       if (err?.allocationError) return sendAllocationError(reply, err.allocationError);
