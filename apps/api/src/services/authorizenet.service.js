@@ -131,29 +131,6 @@ export async function createCustomerProfile({ email, description }) {
 }
 
 /**
- * Add a payment profile to a customer using an Accept.js nonce.
- */
-export async function addPaymentProfileFromNonce({ customerProfileId, opaqueData }) {
-  const data = await apiRequest({
-    createCustomerPaymentProfileRequest: {
-      merchantAuthentication: merchantAuth(),
-      customerProfileId,
-      paymentProfile: {
-        payment: {
-          opaqueData: {
-            dataDescriptor: opaqueData.dataDescriptor,
-            dataValue: opaqueData.dataValue,
-          },
-        },
-      },
-      validationMode: env.AUTHORIZE_NET_ENV === "production" ? "liveMode" : "testMode",
-    },
-  });
-
-  return data.customerPaymentProfileId;
-}
-
-/**
  * List saved payment profiles for a customer.
  */
 export async function listPaymentProfiles(customerProfileId) {
@@ -366,8 +343,15 @@ export async function getTransactionDetails(transId, mode) {
   if (!t) return null;
   return {
     transId: t.transId,
+    // refId is the merchant-supplied reference we baked into the hosted-page
+    // token — used to bind a completed transaction back to the issuing doctor.
+    refId: t.refId != null ? String(t.refId) : null,
     amount: Number(t.authAmount ?? t.settleAmount ?? 0),
     responseCode: t.responseCode,
+    // Settlement/workflow state (e.g. capturedPendingSettlement,
+    // settledSuccessfully, declined, voided). Kept as both `status` (existing
+    // callers) and `transactionStatus` (explicit) so nothing downstream breaks.
     status: t.transactionStatus,
+    transactionStatus: t.transactionStatus,
   };
 }

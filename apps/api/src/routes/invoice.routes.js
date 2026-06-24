@@ -3,8 +3,15 @@ import { requireApprovedDoctor, requireAdmin } from "../middleware/require-role.
 import * as seazonaService from "../services/seazona.service.js";
 import { ERROR_CODES } from "@my-app/shared";
 import { db } from "../config/database.js";
-import { invoicePayments } from "../db/schema/index.js";
-import { and, eq, sql } from "drizzle-orm";
+import { invoicePayments, users } from "../db/schema/index.js";
+import { eq } from "drizzle-orm";
+import { createId } from "../lib/id.js";
+import { getPortalPaidMap, getInvoicePortalPaid } from "../services/invoice-ledger.service.js";
+
+/** Round to cents consistently (avoids FP drift). */
+function round2(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
 
 /**
  * Normalize a Seazona invoice into the shape the frontend renders.
@@ -51,40 +58,6 @@ function normalizeInvoice(inv, portalPaid = 0) {
     portalBalance,
     portalPaid: portalPaidFlag,
   };
-}
-
-/**
- * Return a plain object keyed by seazonaInvoiceId → totalPaidAmount for all
- * invoice_payments rows belonging to `userId`. One grouped SELECT — avoids N
- * queries on the list path. Amounts are numeric(12,2) → Drizzle returns strings;
- * we convert on the way out.
- *
- * On DB error the function logs and returns {} so callers degrade to showing no
- * portal-payment data rather than propagating a 500.
- *
- * @param {string} userId
- * @returns {Promise<Record<string, number>>}
- */
-async function buildPortalPaidMap(userId) {
-  try {
-    const rows = await db
-      .select({
-        seazonaInvoiceId: invoicePayments.seazonaInvoiceId,
-        totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
-      })
-      .from(invoicePayments)
-      .where(eq(invoicePayments.userId, userId))
-      .groupBy(invoicePayments.seazonaInvoiceId);
-
-    const map = {};
-    for (const row of rows) {
-      map[row.seazonaInvoiceId] = parseFloat(row.totalPaid || 0);
-    }
-    return map;
-  } catch (err) {
-    console.error("[invoiceRoutes] buildPortalPaidMap DB error — degrading to empty map:", err);
-    return {};
-  }
 }
 
 export default async function invoiceRoutes(fastify) {
@@ -154,7 +127,7 @@ export default async function invoiceRoutes(fastify) {
       request.query.lastModified
         ? seazonaService.getInvoicesResult(request.query.lastModified)
         : seazonaService.getAllInvoicesResult(),
-      buildPortalPaidMap(request.user.id),
+      getPortalPaidMap(request.user.id),
     ]);
 
     const doctorInvoices = invResult.invoices
@@ -187,29 +160,98 @@ export default async function invoiceRoutes(fastify) {
     }
 
     // Aggregate portal payments for this single invoice.
-    const invoiceId = String(request.params.id);
-    let portalPaid = 0;
-    try {
-      const [paymentRow] = await db
-        .select({
-          totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
-        })
-        .from(invoicePayments)
-        .where(
-          and(
-            eq(invoicePayments.userId, request.user.id),
-            eq(invoicePayments.seazonaInvoiceId, invoiceId)
-          )
-        );
-      portalPaid = parseFloat(paymentRow?.totalPaid || 0);
-    } catch (err) {
-      request.log.error(
-        { err },
-        "[invoiceRoutes] portal payment aggregate failed for invoice %s — degrading to 0",
-        invoiceId
-      );
-    }
+    const portalPaid = await getInvoicePortalPaid(request.user.id, String(request.params.id));
 
     return { data: normalizeInvoice(invoice, portalPaid) };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // ADMIN — record an OFFLINE payment (#4 mitigation). Payments that staff
+  // entered DIRECTLY in Seazona are invisible to the portal balance (Seazona
+  // exposes no readable paid-state). This lets an admin reflect such a payment
+  // in the local invoice_payments ledger so the doctor's portal balance is
+  // accurate. No Seazona write is made (the payment already exists there);
+  // seazonaPaymentId is null and transactionId is an OFFLINE-<id> sentinel.
+  //
+  // Body: { amount, invoiceNumber?, seazonaClientId, userId? }. The ledger row's
+  // userId is the invoice's doctor — resolved from seazonaClientId, or taken from
+  // the body when provided. Capped at the invoice's remaining balance (C1 helper).
+  // ───────────────────────────────────────────────────────────────
+  fastify.post("/admin/invoices/:invoiceId/offline-payment", {
+    preHandler: [authenticate, requireAdmin],
+  }, async (request, reply) => {
+    const invoiceId = String(request.params.invoiceId);
+    const { amount, invoiceNumber, seazonaClientId, userId: bodyUserId } = request.body || {};
+
+    const amt = Number(amount);
+    if (!(amt > 0) || amt > 100000 || Number(amt.toFixed(2)) !== amt) {
+      return reply.code(422).send({
+        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "amount must be a positive value (≤ 100000) with at most 2 decimals." },
+      });
+    }
+    if (!seazonaClientId) {
+      return reply.code(422).send({
+        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "seazonaClientId is required." },
+      });
+    }
+
+    // The invoice must exist and belong to the named Seazona client.
+    const invoice = await seazonaService.getInvoice(invoiceId);
+    if (!invoice) {
+      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    }
+    if (String(invoice.clientId) !== String(seazonaClientId)) {
+      return reply.code(422).send({
+        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Invoice does not belong to the given seazonaClientId." },
+      });
+    }
+
+    // Resolve the doctor user for the ledger row: explicit userId wins, else the
+    // user linked to this Seazona client.
+    let ledgerUserId = bodyUserId || null;
+    if (!ledgerUserId) {
+      const [doctor] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.seazonaClientId, String(seazonaClientId)));
+      ledgerUserId = doctor?.id || null;
+    }
+    if (!ledgerUserId) {
+      return reply.code(422).send({
+        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "No portal user is linked to this seazonaClientId; pass an explicit userId." },
+      });
+    }
+
+    // Cap at the invoice's remaining balance (C1 helper). Already-paid portion
+    // is whatever the local ledger has recorded for THIS doctor + invoice.
+    const alreadyPaid = await getInvoicePortalPaid(ledgerUserId, invoiceId);
+    const remaining = round2(Number(invoice.total || 0) - alreadyPaid);
+    if (amt > remaining + 0.005) {
+      return reply.code(422).send({
+        error: {
+          ...ERROR_CODES.VALIDATION_ERROR,
+          message: `Offline payment $${amt.toFixed(2)} exceeds the invoice's remaining balance of $${remaining.toFixed(2)}.`,
+        },
+      });
+    }
+
+    const rowId = createId();
+    await db.insert(invoicePayments).values({
+      id: rowId,
+      userId: ledgerUserId,
+      seazonaClientId: String(seazonaClientId),
+      seazonaInvoiceId: invoiceId,
+      invoiceNumber: invoiceNumber ? String(invoiceNumber) : (invoice.invoiceNumber != null ? String(invoice.invoiceNumber) : null),
+      appliedAmount: amt.toFixed(2),
+      transactionId: `OFFLINE-${rowId}`,
+      seazonaPaymentId: null,
+    });
+
+    request.log.info(
+      { invoiceId, seazonaClientId, ledgerUserId, amount: amt },
+      "admin recorded offline payment in portal ledger"
+    );
+
+    return { data: { invoiceId, amount: amt, recorded: true, userId: ledgerUserId } };
   });
 }

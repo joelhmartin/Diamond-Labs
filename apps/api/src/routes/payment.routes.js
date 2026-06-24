@@ -1,7 +1,9 @@
 import { authenticate } from "../middleware/authenticate.js";
 import { requireApprovedDoctor } from "../middleware/require-role.js";
+import { validate } from "../middleware/validate.js";
 import * as authorizenetService from "../services/authorizenet.service.js";
 import * as seazonaService from "../services/seazona.service.js";
+import { getInvoicePortalPaid } from "../services/invoice-ledger.service.js";
 import { sendOrderReceipt } from "../services/email.service.js";
 import { db } from "../config/database.js";
 import { redis } from "../config/redis.js";
@@ -9,7 +11,29 @@ import { users, invoicePayments, products, orders, orderItems } from "../db/sche
 import { eq, and } from "drizzle-orm";
 import { createId } from "../lib/id.js";
 import { env } from "../config/env.js";
-import { ERROR_CODES } from "@my-app/shared";
+import {
+  ERROR_CODES,
+  checkoutSchema,
+  chargeSavedSchema,
+  hostedTokenSchema,
+  hostedCompleteSchema,
+} from "@my-app/shared";
+import {
+  withIdempotency,
+  ChargeInProgressError,
+  extractDeclineMessage,
+  safeParse,
+  idemResultKey,
+} from "../lib/payment-helpers.js";
+
+// Per-route strict rate limit for the charge-producing endpoints (M3). Layered
+// ON TOP of the global limiter; the global localhost allowList still applies in
+// dev so local testing isn't throttled.
+const CHARGE_RATE_LIMIT = { config: { rateLimit: { max: 8, timeWindow: "1 minute" } } };
+
+// Hosted-payment binding record TTL (C2): a doctor has ~30 min to complete a
+// hosted charge before the issued token's server-side binding expires.
+const HOSTED_BINDING_TTL = 30 * 60;
 
 // ─── Guest-checkout pricing constants ───────────────────────────────────────
 // INTERIM flat values — tax/shipping are not yet modeled per-jurisdiction or
@@ -22,21 +46,24 @@ const SHIPPING_FLAT = 12; // flat per-order, charged when subtotal > 0
 const MAX_QTY = 999; // per-line quantity ceiling — guards against an absurd qty
 // inflating the total past anything real and reaching the gateway as a 500.
 
-// Idempotency TTLs for /payments/checkout (kv-store / Redis shim).
-const IDEMPOTENCY_RESULT_TTL = 24 * 60 * 60; // 24h — cached completed response
-const IDEMPOTENCY_LOCK_TTL = 120; // 2 min — in-flight lock window for one charge
-
 /** Round to cents consistently (avoids FP drift like 0.1+0.2). */
 function round2(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 }
 
-function safeParse(json) {
-  try {
-    return JSON.parse(json);
-  } catch {
-    return null;
+/**
+ * Map a charge error to a user-safe reply (H2). An error carrying an
+ * Authorize.net response is a gateway-level decline → 402 CARD_DECLINED with the
+ * gateway's own (user-safe) decline text. Anything else (network, parse, config)
+ * is a system failure → 502 PAYMENT_GATEWAY_ERROR with a generic message. We
+ * never leak internals or stack traces to the client.
+ */
+function chargeErrorReply(reply, err) {
+  if (err?.authNetResponse) {
+    const message = extractDeclineMessage(err.authNetResponse) || ERROR_CODES.CARD_DECLINED.message;
+    return reply.code(402).send({ error: { ...ERROR_CODES.CARD_DECLINED, message } });
   }
+  return reply.code(502).send({ error: ERROR_CODES.PAYMENT_GATEWAY_ERROR });
 }
 
 /** Best-effort split of a single "Full Name" field into first/last. */
@@ -73,25 +100,6 @@ function buildAddresses(shipping, phone) {
   return { billTo, shipTo: { ...base } };
 }
 
-/**
- * Validate a payment allocation: a list of {invoiceId, invoiceNumber?, amount}
- * slices whose amounts must sum to the total charge (within a cent).
- */
-function validateAllocations(allocations, amount) {
-  if (!Array.isArray(allocations) || allocations.length === 0) {
-    return "allocations[] is required.";
-  }
-  for (const a of allocations) {
-    if (!a.invoiceId) return "Each allocation needs an invoiceId.";
-    if (!(Number(a.amount) > 0)) return "Each allocation amount must be greater than zero.";
-  }
-  const sum = allocations.reduce((s, a) => s + Number(a.amount), 0);
-  if (Math.abs(sum - Number(amount)) > 0.01) {
-    return `Allocations ($${sum.toFixed(2)}) must sum to the charge amount ($${Number(amount).toFixed(2)}).`;
-  }
-  return null;
-}
-
 function buildAllocationNotes(allocations, transactionId) {
   const parts = allocations.map(
     (a) => `${a.invoiceNumber || a.invoiceId} $${Number(a.amount).toFixed(2)}`
@@ -115,6 +123,11 @@ function buildInvoiceReference(allocations) {
  * After a successful charge: record ONE account-level payment in Seazona (their
  * payment API has no invoice-level granularity) with notes describing the split,
  * then write one local invoice_payments row per allocated invoice.
+ *
+ * Returns `{ seazonaPaymentId, ledgerWriteFailed }`. NEVER throws — the card is
+ * already charged, so a Seazona or local-ledger write failure is logged loudly
+ * (alertable) and reported back as a warning rather than surfaced as a 500
+ * (which would invite a re-charge on retry).
  */
 async function recordPaymentAndAllocations({ user, amount, transactionId, allocations }) {
   let seazonaPaymentId = null;
@@ -133,7 +146,13 @@ async function recordPaymentAndAllocations({ user, amount, transactionId, alloca
       notes: buildAllocationNotes(allocations, transactionId),
       amount,
     });
-    seazonaPaymentId = res?.paymentId || null;
+    // H3 — Seazona's payment-id field name is not firmly known. Accept the
+    // plausible shapes; if the call returned a body but no id resolves, log the
+    // KEYS ONLY (never values — avoid PHI) so the real field can be learned.
+    seazonaPaymentId = res?.paymentId ?? res?.id ?? res?.PaymentId ?? res?.paymentID ?? null;
+    if (res && !seazonaPaymentId) {
+      console.error(`[Seazona][PAYMENT_ID_SHAPE] keys=${Object.keys(res).join(",")}`);
+    }
 
     // CRITICAL: the card was already charged at Authorize.net. If the Seazona
     // write didn't land, the payment exists at the processor but NOT in the
@@ -155,38 +174,83 @@ async function recordPaymentAndAllocations({ user, amount, transactionId, alloca
     }
   }
 
-  await db.insert(invoicePayments).values(
-    allocations.map((a) => ({
-      id: createId(),
-      userId: user.id,
-      seazonaClientId: user.seazonaClientId || null,
-      seazonaInvoiceId: String(a.invoiceId),
-      invoiceNumber: a.invoiceNumber ? String(a.invoiceNumber) : null,
-      appliedAmount: Number(a.amount).toFixed(2),
-      transactionId,
-      seazonaPaymentId,
-    }))
-  );
+  // M4 — the card is already charged; a local-ledger insert failure must NOT
+  // 500 (that would invite a re-charge on retry). Guard it, log an alertable
+  // line carrying ONLY ids/amounts (no card or patient data), and report the
+  // charge as succeeded-with-warning.
+  let ledgerWriteFailed = false;
+  try {
+    await db.insert(invoicePayments).values(
+      allocations.map((a) => ({
+        id: createId(),
+        userId: user.id,
+        seazonaClientId: user.seazonaClientId || null,
+        seazonaInvoiceId: String(a.invoiceId),
+        invoiceNumber: a.invoiceNumber ? String(a.invoiceNumber) : null,
+        appliedAmount: Number(a.amount).toFixed(2),
+        transactionId,
+        seazonaPaymentId,
+      }))
+    );
+  } catch (ledgerErr) {
+    ledgerWriteFailed = true;
+    console.error(
+      `[PAYMENT][LEDGER_WRITE_FAILED] charge ${transactionId} succeeded but the local invoice_payments ledger insert failed — manual reconcile required ` +
+        JSON.stringify({
+          transactionId,
+          seazonaPaymentId,
+          userId: user.id,
+          amount,
+          invoices: allocations.map((a) => ({ invoiceId: a.invoiceId, amount: Number(a.amount) })),
+          error: String(ledgerErr?.message || ledgerErr).slice(0, 300),
+        })
+    );
+  }
 
-  return seazonaPaymentId;
+  return { seazonaPaymentId, ledgerWriteFailed };
 }
 
 /**
- * Verify every allocated invoice belongs to the doctor's Seazona client.
- * Returns an error string, or null if all good.
+ * Verify every allocated invoice belongs to the doctor's Seazona client, and
+ * (optionally, C1) that no allocation exceeds the invoice's remaining balance.
+ *
+ * Backfills each allocation's invoiceNumber from the live invoice (Seazona's
+ * report matches on number, not GUID). Returns `null` when all good, else
+ * `{ kind, message }` where kind is "forbidden" (not found / not owned, → 403)
+ * or "validation" (cap exceeded, → 422). Uses the SAME live invoice it already
+ * fetched for ownership to compute the remaining balance — no extra fetch.
  */
-async function verifyInvoiceOwnership(allocations, seazonaClientId) {
+async function verifyAllocations(allocations, user, { enforceCap = false } = {}) {
   for (const a of allocations) {
     const inv = await seazonaService.getInvoice(a.invoiceId);
-    if (!inv) return `Invoice ${a.invoiceNumber || a.invoiceId} not found.`;
-    // Backfill the invoice NUMBER — Seazona's report matches on number, not GUID,
-    // so buildInvoiceReference needs it even if the client didn't send it.
+    if (!inv) return { kind: "forbidden", message: `Invoice ${a.invoiceNumber || a.invoiceId} not found.` };
     if (!a.invoiceNumber && inv.invoiceNumber != null) a.invoiceNumber = inv.invoiceNumber;
-    if (String(inv.clientId) !== String(seazonaClientId)) {
-      return `Invoice ${a.invoiceNumber || a.invoiceId} does not belong to your account.`;
+    if (String(inv.clientId) !== String(user.seazonaClientId)) {
+      return { kind: "forbidden", message: `Invoice ${a.invoiceNumber || a.invoiceId} does not belong to your account.` };
+    }
+    if (enforceCap) {
+      // C1 — remaining = invoice total minus what's already been applied through
+      // the portal ledger for this doctor. The +0.005 tolerance absorbs cent
+      // rounding; a fully-paid invoice has remaining ~0 and is therefore blocked.
+      const paid = await getInvoicePortalPaid(user.id, a.invoiceId);
+      const remaining = round2(Number(inv.total || 0) - paid);
+      if (Number(a.amount) > remaining + 0.005) {
+        return {
+          kind: "validation",
+          message: `Allocation $${Number(a.amount).toFixed(2)} for invoice ${a.invoiceNumber || a.invoiceId} exceeds its remaining balance of $${remaining.toFixed(2)}.`,
+        };
+      }
     }
   }
   return null;
+}
+
+/** Send the appropriate reply for a verifyAllocations result. */
+function sendAllocationError(reply, v) {
+  if (v.kind === "validation") {
+    return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: v.message } });
+  }
+  return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: v.message } });
 }
 
 /**
@@ -406,7 +470,7 @@ export default async function paymentRoutes(fastify) {
   // Required: opaqueData (Accept.js nonce), amount, items[], email, shipping{}.
   // Intentionally does NOT store a CIM profile (guest checkout).
   // ───────────────────────────────────────────────────────────────
-  fastify.post("/payments/checkout", async (request, reply) => {
+  fastify.post("/payments/checkout", { ...CHARGE_RATE_LIMIT, preHandler: [validate(checkoutSchema)] }, async (request, reply) => {
     // `amount` from the client is accepted for back-compat/logging ONLY — it is
     // NEVER used to charge. The charged total is recomputed server-side from the
     // products table. This closes a price-tampering hole (pay $0.01 for $450).
@@ -414,39 +478,23 @@ export default async function paymentRoutes(fastify) {
       request.body || {};
     const idempotencyKey = request.headers["idempotency-key"] || bodyKey || null;
 
-    if (!opaqueData?.dataDescriptor || !opaqueData?.dataValue) {
+    // H1/L5 — the idempotency key is now REQUIRED. The frontend mints a fresh
+    // crypto.randomUUID() per submit; without one a duplicate submit could
+    // double-charge with no way to de-dupe, so refuse rather than warn-and-proceed.
+    if (!idempotencyKey) {
       return reply.code(422).send({
-        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Payment nonce (opaqueData) is required." },
-      });
-    }
-    if (!email || !email.includes("@")) {
-      return reply.code(422).send({
-        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Valid email is required." },
-      });
-    }
-    if (!shipping?.name || !shipping?.address1 || !shipping?.city || !shipping?.state || !shipping?.postalCode) {
-      return reply.code(422).send({
-        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Complete shipping address is required." },
-      });
-    }
-    if (!Array.isArray(items) || items.length === 0) {
-      return reply.code(422).send({
-        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "At least one item is required." },
+        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "An Idempotency-Key header is required." },
       });
     }
 
     // ── Idempotency fast-path: a completed result for this key replays verbatim
-    // without charging again. (Done before pricing so a replay is cheap.)
-    const resultKey = idempotencyKey ? `checkout:result:${idempotencyKey}` : null;
-    const lockKey = idempotencyKey ? `checkout:lock:${idempotencyKey}` : null;
-    if (resultKey) {
-      const cached = safeParse(await redis.get(resultKey));
-      if (cached) {
-        fastify.log.info({ idempotencyKey }, "checkout idempotent replay — returning cached result, no charge");
-        return { data: cached };
-      }
-    } else {
-      fastify.log.warn("checkout called without an Idempotency-Key — duplicate submits cannot be de-duplicated");
+    // without charging again. (Done before pricing so a replay is cheap and so a
+    // legitimate retry still succeeds even if a SKU later went non-purchasable.)
+    const idemKey = `checkout:${idempotencyKey}`;
+    const replay = safeParse(await redis.get(idemResultKey(idemKey)));
+    if (replay) {
+      fastify.log.info({ idempotencyKey }, "checkout idempotent replay — returning cached result, no charge");
+      return { data: replay };
     }
 
     // ── Server-side price authority: recompute every line from the products
@@ -525,199 +573,111 @@ export default async function paymentRoutes(fastify) {
       );
     }
 
-    // ── Acquire an in-flight lock right before charging. A single atomic
-    // SET key "1" EX <ttl> NX both creates the lock and stamps its TTL in one
-    // round-trip — no crash window can strand a never-expiring lock (the old
-    // incr + separate expire was non-atomic). The first caller gets "OK"; a
-    // concurrent duplicate for the same key gets null and is rejected 409 (or
-    // replays the cached result if the first one already finished).
-    if (lockKey) {
-      const acquired = await redis.set(lockKey, "1", "EX", IDEMPOTENCY_LOCK_TTL, "NX");
-      if (!acquired) {
-        const cached = safeParse(await redis.get(resultKey));
-        if (cached) return { data: cached };
-        return reply.code(409).send({
-          error: {
-            code: "CHARGE_IN_PROGRESS",
-            status: 409,
-            message: "A charge for this request is already being processed. Please wait.",
-          },
-        });
-      }
-    }
-
+    // ── Charge + record under an idempotency lock (H1/L5). withIdempotency:
+    //   • replays a cached success verbatim (no charge);
+    //   • rejects a concurrent duplicate with ChargeInProgressError (→ 409);
+    //   • releases the lock and rethrows if the charge throws (legit retry can proceed);
+    //   • caches fn's resolved value (incl. emailSent) so a replay is faithful.
     // ONE identifier end-to-end: generated before the charge, sent to the gateway
     // as the transaction invoiceNumber, then persisted as orders.orderNumber.
     const orderNumber = generateOrderNumber();
     const description = `Diamond Orthotic Catalog — ${items.length} item(s)`;
     const { billTo, shipTo } = buildAddresses(shipping, phone);
 
-    let result;
+    let orderRecordFailed = false;
+    let outcome;
     try {
-      result = await authorizenetService.chargeWithNonce({
-        amount: total, // SERVER-computed — never the client amount
-        opaqueData,
-        description,
-        invoiceNumber: orderNumber,
-        billTo,
-        shipTo,
-      });
-    } catch (err) {
-      // Release the lock (best-effort) so the shopper can legitimately retry the
-      // same submit. A kv-store failure here must NOT mask the real charge error
-      // — log it and rethrow the original. (A stranded lock self-expires via TTL.)
-      if (lockKey) {
-        await redis
-          .del(lockKey)
-          .catch((delErr) => fastify.log.warn({ delErr }, "checkout lock release failed"));
-      }
-      throw err;
-    }
+      outcome = await withIdempotency(
+        redis,
+        idemKey,
+        async () => {
+          // The ONLY throw in here is the charge call — withIdempotency releases
+          // the lock and rethrows it, and the outer catch maps it to a card/gateway
+          // error. Everything after the charge is soft-fail (the card is charged).
+          const result = await authorizenetService.chargeWithNonce({
+            amount: total, // SERVER-computed — never the client amount
+            opaqueData,
+            description,
+            invoiceNumber: orderNumber,
+            billTo,
+            shipTo,
+          });
 
-    const responseData = {
-      transactionId: result.transactionId,
-      // orderNumber is the new authoritative identifier; invoiceNumber mirrors it
-      // (same value) for frontend back-compat.
-      orderNumber,
-      invoiceNumber: orderNumber,
-      amount: total,
-      subtotal,
-      tax,
-      // `shippingCost` (not `shipping`) — `shipping` elsewhere is the address object;
-      // this is the numeric shipping charge. Renamed to avoid that collision.
-      shippingCost,
-      email,
-    };
-
-    // ── Record the order LOCALLY (authoritative) + attempt the gated Seazona push.
-    // The card is already charged, so NONE of this may throw to the customer:
-    //   • A DB failure here is logged loudly but the successful charge response
-    //     still returns (failing it would invite a double-charge on the retry).
-    //   • A Seazona push failure/skip never fails checkout — the local order
-    //     stands and the push outcome is recorded for later reconcile.
-    // For guest checkout there is no Seazona clientId, so resolveOrderPushStatus
-    // resolves to a skip/not-applicable status and Seazona is never called.
-    const orderId = createId();
-    const { orderRecordFailed } = await recordGuestOrder({
-      orderId,
-      orderNumber,
-      email,
-      phone,
-      shipping,
-      subtotal,
-      tax,
-      shippingCost,
-      total,
-      result,
-      lines,
-      log: fastify.log,
-    });
-
-    // ── Order receipt email (SOFT-FAIL). Only attempted when the order was
-    // genuinely recorded — never email for a sale we couldn't persist. An email
-    // failure (or Resend's own throw) must NEVER fail checkout: the card is already
-    // charged. We capture whether an email actually went out and report it honestly
-    // on the response (in dev with no RESEND_API_KEY this is false — a logged no-op).
-    // This runs BEFORE the result-cache write, so `emailSent` is baked into the cached
-    // payload: an idempotent replay returns the cached response without re-sending,
-    // and truthfully reflects whether the original attempt mailed a receipt.
-    let emailSent = false;
-    if (!orderRecordFailed) {
-      try {
-        emailSent = Boolean(
-          await sendOrderReceipt({
-            to: email,
+          const responseData = {
+            transactionId: result.transactionId,
+            // orderNumber is the new authoritative identifier; invoiceNumber mirrors
+            // it (same value) for frontend back-compat.
             orderNumber,
-            items: lines,
+            invoiceNumber: orderNumber,
+            amount: total,
             subtotal,
             tax,
+            // `shippingCost` (not `shipping`) — `shipping` elsewhere is the address
+            // object; this is the numeric shipping charge.
             shippingCost,
-            total,
-            shipping,
-            transactionId: result.transactionId,
-          })
-        );
-      } catch (emailErr) {
-        fastify.log.warn(
-          { emailErr, orderNumber },
-          "order receipt email failed — charge and order already recorded, no customer impact"
-        );
-      }
-    }
-    responseData.emailSent = emailSent;
+            email,
+          };
 
-    // Cache the completed result so a repeat with the same key replays it. The
-    // card is ALREADY charged at this point — a kv-store write failure here must
-    // never surface as a 500 to the shopper, so guard it and proceed regardless
-    // (worst case: an exact-same-key retry re-charges, but the frontend mints a
-    // fresh idempotency key per submit, so that path isn't reachable in practice).
-    let cacheWriteFailed = false;
-    if (resultKey) {
-      try {
-        await redis.set(resultKey, JSON.stringify(responseData), "EX", IDEMPOTENCY_RESULT_TTL);
-      } catch (cacheErr) {
-        cacheWriteFailed = true;
-        fastify.log.warn({ cacheErr, orderNumber }, "checkout result cache write failed — charge already succeeded");
+          // Record the order LOCALLY (authoritative) + attempt the gated Seazona
+          // push. Never throws (the card is already charged).
+          const orderId = createId();
+          const rec = await recordGuestOrder({
+            orderId, orderNumber, email, phone, shipping,
+            subtotal, tax, shippingCost, total, result, lines, log: fastify.log,
+          });
+          orderRecordFailed = rec.orderRecordFailed;
+
+          // Order receipt email (SOFT-FAIL). Only when the order genuinely recorded.
+          let emailSent = false;
+          if (!orderRecordFailed) {
+            try {
+              emailSent = Boolean(
+                await sendOrderReceipt({
+                  to: email, orderNumber, items: lines,
+                  subtotal, tax, shippingCost, total, shipping,
+                  transactionId: result.transactionId,
+                })
+              );
+            } catch (emailErr) {
+              fastify.log.warn(
+                { emailErr, orderNumber },
+                "order receipt email failed — charge and order already recorded, no customer impact"
+              );
+            }
+          }
+          responseData.emailSent = emailSent;
+          return responseData;
+        },
+        { log: fastify.log }
+      );
+    } catch (err) {
+      if (err instanceof ChargeInProgressError) {
+        return reply.code(409).send({ error: ERROR_CODES.CHARGE_IN_PROGRESS });
       }
+      // Charge failed (declined / gateway error). H2 — never leak internals.
+      fastify.log.warn({ orderNumber, err: String(err?.message || err) }, "checkout charge failed");
+      return chargeErrorReply(reply, err);
     }
+
+    const responseData = outcome.result;
 
     // Idempotency-degraded alarm: if BOTH the local order insert AND the result-cache
-    // write failed in this same request, there is no record of the sale on either
-    // side, and a retry after the lock TTL could double-charge with no operator
-    // signal. Flag it loudly — this charge needs BOTH charge-and-record reconcile.
-    if (orderRecordFailed && cacheWriteFailed) {
+    // write failed in the same request, there's no record of the sale on either side
+    // and a retry after the lock TTL could double-charge. Flag it loudly. (Skip on a
+    // replay — the order was recorded by the original request.)
+    if (!outcome.replayed && orderRecordFailed && outcome.cacheWriteFailed) {
       fastify.log.error(
-        { orderNumber, transactionId: result.transactionId },
+        { orderNumber, transactionId: responseData.transactionId },
         "idempotency degraded — order insert AND result-cache write BOTH failed for a charged order; a retry could double-charge. Needs BOTH charge-and-record reconciliation"
       );
     }
 
     fastify.log.info(
-      { orderNumber, transactionId: result.transactionId, email, itemCount: items.length, total },
+      { orderNumber, transactionId: responseData.transactionId, email, itemCount: items.length, total },
       "public catalog checkout succeeded"
     );
 
     return { data: responseData };
-  });
-
-  // Charge with an Accept.js nonce (one-time card payment), allocated across invoices
-  fastify.post("/payments/charge", {
-    preHandler: [authenticate, requireApprovedDoctor],
-  }, async (request, reply) => {
-    const { opaqueData, amount, allocations, description } = request.body;
-
-    if (!opaqueData?.dataDescriptor || !opaqueData?.dataValue || !amount) {
-      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "opaqueData and amount are required." } });
-    }
-    const allocErr = validateAllocations(allocations, amount);
-    if (allocErr) {
-      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: allocErr } });
-    }
-    // Every allocated invoice must belong to this doctor's Seazona client —
-    // otherwise the recorded payment could be attributed to someone else's invoice.
-    if (!request.user.seazonaClientId) {
-      return reply.code(400).send({ error: ERROR_CODES.SEAZONA_CLIENT_NOT_LINKED });
-    }
-    const ownErr = await verifyInvoiceOwnership(allocations, request.user.seazonaClientId);
-    if (ownErr) {
-      return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: ownErr } });
-    }
-
-    const result = await authorizenetService.chargeWithNonce({
-      amount,
-      opaqueData,
-      description: description || "Diamond Labs Invoice Payment",
-      invoiceNumber: allocations[0]?.invoiceNumber || allocations[0]?.invoiceId || undefined,
-    });
-
-    const seazonaPaymentId = await recordPaymentAndAllocations({
-      user: request.user,
-      amount,
-      transactionId: result.transactionId,
-      allocations,
-    });
-
-    return { data: { ...result, seazonaPaymentId } };
   });
 
   // List saved cards
@@ -730,25 +690,9 @@ export default async function paymentRoutes(fastify) {
     return { data: cards };
   });
 
-  // Add a saved card via Accept.js nonce
-  fastify.post("/payments/saved-cards", {
-    preHandler: [authenticate, requireApprovedDoctor],
-  }, async (request, reply) => {
-    const { opaqueData } = request.body;
-
-    if (!opaqueData?.dataDescriptor || !opaqueData?.dataValue) {
-      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "opaqueData is required." } });
-    }
-
-    const customerProfileId = await ensureCustomerProfile(request.user);
-
-    const paymentProfileId = await authorizenetService.addPaymentProfileFromNonce({
-      customerProfileId,
-      opaqueData,
-    });
-
-    return { data: { paymentProfileId } };
-  });
+  // NOTE: the Accept.js-nonce add-card path (POST /payments/saved-cards) was
+  // removed (L3) — adding a card goes through the SAQ-A hosted flow below
+  // (/payments/saved-cards/hosted-token), so card data never touches our DOM.
 
   // Get a hosted add-card token (SAQ A). The iframe is pointed at addCardUrl;
   // the token is submitted as a form-POST body to authenticate the hosted session —
@@ -835,45 +779,63 @@ export default async function paymentRoutes(fastify) {
     return { data: { message: "Card removed." } };
   });
 
-  // Charge a saved card, allocated across invoices
+  // Charge a saved card, allocated across invoices. Requires an Idempotency-Key
+  // header (H1/L5) — the frontend mints a crypto.randomUUID() per submit.
   fastify.post("/payments/charge-saved", {
-    preHandler: [authenticate, requireApprovedDoctor],
+    ...CHARGE_RATE_LIMIT,
+    preHandler: [authenticate, requireApprovedDoctor, validate(chargeSavedSchema)],
   }, async (request, reply) => {
     const { paymentProfileId, amount, allocations } = request.body;
     const customerProfileId = request.user.authorizeNetCustomerProfileId;
 
-    if (!customerProfileId || !paymentProfileId || !amount) {
-      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "paymentProfileId and amount are required." } });
+    const idempotencyKey = request.headers["idempotency-key"] || null;
+    if (!idempotencyKey) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "An Idempotency-Key header is required." } });
     }
-    const allocErr = validateAllocations(allocations, amount);
-    if (allocErr) {
-      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: allocErr } });
+    if (!customerProfileId) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "No saved-card profile on file for this account." } });
     }
-    // Same ownership guard as the nonce/hosted paths — never charge a saved card
+    // Same ownership guard as the hosted path — never charge a saved card
     // against an invoice that isn't this doctor's.
     if (!request.user.seazonaClientId) {
       return reply.code(400).send({ error: ERROR_CODES.SEAZONA_CLIENT_NOT_LINKED });
     }
-    const ownErr = await verifyInvoiceOwnership(allocations, request.user.seazonaClientId);
-    if (ownErr) {
-      return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: ownErr } });
+    // Ownership + C1 over-allocation cap (uses the live invoice total already
+    // fetched here; blocks paying more than each invoice's remaining balance).
+    const v = await verifyAllocations(allocations, request.user, { enforceCap: true });
+    if (v) return sendAllocationError(reply, v);
+
+    let outcome;
+    try {
+      outcome = await withIdempotency(
+        redis,
+        `charge-saved:${idempotencyKey}`,
+        async () => {
+          const result = await authorizenetService.chargeCustomerProfile({
+            customerProfileId,
+            paymentProfileId,
+            amount,
+            invoiceNumber: allocations[0]?.invoiceNumber || allocations[0]?.invoiceId || undefined,
+          });
+          const { seazonaPaymentId, ledgerWriteFailed } = await recordPaymentAndAllocations({
+            user: request.user,
+            amount,
+            transactionId: result.transactionId,
+            allocations,
+          });
+          return { ...result, seazonaPaymentId, ...(ledgerWriteFailed ? { ledgerWriteFailed: true } : {}) };
+        },
+        { log: fastify.log }
+      );
+    } catch (err) {
+      if (err instanceof ChargeInProgressError) {
+        return reply.code(409).send({ error: ERROR_CODES.CHARGE_IN_PROGRESS });
+      }
+      fastify.log.warn({ userId: request.user.id, err: String(err?.message || err) }, "charge-saved failed");
+      return chargeErrorReply(reply, err);
     }
 
-    const result = await authorizenetService.chargeCustomerProfile({
-      customerProfileId,
-      paymentProfileId,
-      amount,
-      invoiceNumber: allocations[0]?.invoiceNumber || allocations[0]?.invoiceId || undefined,
-    });
-
-    const seazonaPaymentId = await recordPaymentAndAllocations({
-      user: request.user,
-      amount,
-      transactionId: result.transactionId,
-      allocations,
-    });
-
-    return { data: { ...result, seazonaPaymentId } };
+    return { data: outcome.result };
   });
 
   // ───────────────────────────────────────────────────────────────
@@ -884,7 +846,8 @@ export default async function paymentRoutes(fastify) {
   // cannot pick the mode, so a payment record always reflects a real charge.
   // ───────────────────────────────────────────────────────────────
   fastify.post("/payments/hosted-token", {
-    preHandler: [authenticate, requireApprovedDoctor],
+    ...CHARGE_RATE_LIMIT,
+    preHandler: [authenticate, requireApprovedDoctor, validate(hostedTokenSchema)],
   }, async (request, reply) => {
     const { allocations, iframeCommunicatorUrl, saveCard } = request.body || {};
 
@@ -892,20 +855,14 @@ export default async function paymentRoutes(fastify) {
       return reply.code(400).send({ error: ERROR_CODES.SEAZONA_CLIENT_NOT_LINKED });
     }
     const amount = Math.round(
-      ((allocations || []).reduce((s, a) => s + Number(a.amount || 0), 0) + Number.EPSILON) * 100
+      (allocations.reduce((s, a) => s + Number(a.amount || 0), 0) + Number.EPSILON) * 100
     ) / 100;
-    const allocErr = validateAllocations(allocations, amount);
-    if (allocErr) {
-      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: allocErr } });
-    }
     if (iframeCommunicatorUrl && !/^https?:\/\//.test(iframeCommunicatorUrl)) {
       return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "iframeCommunicatorUrl must be an http(s) URL." } });
     }
 
-    const ownErr = await verifyInvoiceOwnership(allocations, request.user.seazonaClientId);
-    if (ownErr) {
-      return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: ownErr } });
-    }
+    const v = await verifyAllocations(allocations, request.user);
+    if (v) return sendAllocationError(reply, v);
 
     // When the frontend requests save-card, lazily create the CIM profile so
     // Authorize.net has a customer to attach the saved card to. The profile ID
@@ -915,7 +872,19 @@ export default async function paymentRoutes(fastify) {
       customerProfileId = await ensureCustomerProfile(request.user);
     }
 
-    const refId = `INV-${Date.now().toString().slice(-10)}`;
+    // C2 — bind the transaction to THIS doctor + THIS issued token. A short,
+    // unique refId (≤20 chars, cuid2-derived) is passed to Authorize.net AND
+    // stored server-side keyed by refId. hosted-complete will only record a
+    // transaction whose Authorize.net `refId` matches a stored record owned by
+    // the caller. This stops a doctor from claiming another doctor's transId.
+    const refId = `H${createId().slice(0, 14)}`;
+    await redis.set(
+      `rxpay:hosted:${refId}`,
+      JSON.stringify({ userId: request.user.id, allocations, amount }),
+      "EX",
+      HOSTED_BINDING_TTL
+    );
+
     const result = await authorizenetService.getHostedPaymentPageToken({
       amount,
       invoiceNumber: allocations[0]?.invoiceNumber || refId,
@@ -927,6 +896,8 @@ export default async function paymentRoutes(fastify) {
     });
 
     if (!result?.token) {
+      // Roll back the binding record so a stale refId doesn't linger.
+      await redis.del(`rxpay:hosted:${refId}`).catch(() => {});
       return reply.code(502).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Could not get a payment form token." } });
     }
     return { data: { token: result.token, formUrl: result.formUrl, refId, amount } };
@@ -944,18 +915,17 @@ export default async function paymentRoutes(fastify) {
   // IDs live at the gateway and are listed live via GET /payments/saved-cards.
   // No additional DB write is required; no new table is needed.
   fastify.post("/payments/hosted-complete", {
-    preHandler: [authenticate, requireApprovedDoctor],
+    ...CHARGE_RATE_LIMIT,
+    preHandler: [authenticate, requireApprovedDoctor, validate(hostedCompleteSchema)],
   }, async (request, reply) => {
-    const { transId, allocations } = request.body || {};
+    const { transId, refId, allocations } = request.body;
 
-    if (!transId) {
-      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "transId is required." } });
-    }
-    if (!Array.isArray(allocations) || !allocations.length) {
-      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "allocations[] is required." } });
+    // L2 — same early guard the other doctor endpoints have.
+    if (!request.user.seazonaClientId) {
+      return reply.code(400).send({ error: ERROR_CODES.SEAZONA_CLIENT_NOT_LINKED });
     }
 
-    // Idempotency — already recorded?
+    // Global dedup — a double postMessage / retry must never double-record.
     const existing = await db
       .select()
       .from(invoicePayments)
@@ -964,11 +934,39 @@ export default async function paymentRoutes(fastify) {
       return { data: { transId, alreadyRecorded: true, rows: existing.length } };
     }
 
+    // C2 (a) — a binding record must exist for this refId AND be owned by the
+    // caller. This is the doctor↔transaction binding: only the doctor the token
+    // was issued to can complete it.
+    const bindingRaw = await redis.get(`rxpay:hosted:${refId}`);
+    const binding = safeParse(bindingRaw);
+    if (!binding || String(binding.userId) !== String(request.user.id)) {
+      return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: "Payment session not found or does not belong to your account." } });
+    }
+
     // Anchor of trust: whatever we record must equal what Authorize.net captured.
     const details = await authorizenetService.getTransactionDetails(transId);
     if (!details) {
       return reply.code(404).send({ error: { ...ERROR_CODES.NOT_FOUND, message: "Transaction not found." } });
     }
+
+    // C2 (b) — the transaction's own refId must match the issued token's refId.
+    if (String(details.refId) !== String(refId)) {
+      return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: "Transaction does not match the issued payment session." } });
+    }
+
+    // C2 (c) / M2 — only an APPROVED, captured/settled (or pending-settlement)
+    // transaction may be recorded. Reject declined / voided / held / auth-only.
+    const SETTLED_OR_PENDING = new Set(["capturedPendingSettlement", "settledSuccessfully"]);
+    if (String(details.responseCode) !== "1" || !SETTLED_OR_PENDING.has(String(details.transactionStatus))) {
+      return reply.code(422).send({
+        error: {
+          ...ERROR_CODES.VALIDATION_ERROR,
+          message: `Transaction is not in a recordable state (status: ${details.transactionStatus || "unknown"}).`,
+        },
+      });
+    }
+
+    // C2 (d) — captured amount must equal the allocation sum.
     const allocSum = Math.round(
       (allocations.reduce((s, a) => s + Number(a.amount || 0), 0) + Number.EPSILON) * 100
     ) / 100;
@@ -976,19 +974,31 @@ export default async function paymentRoutes(fastify) {
       return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: `Allocation total ($${allocSum.toFixed(2)}) does not match the captured amount ($${details.amount.toFixed(2)}).` } });
     }
 
-    const ownErr = await verifyInvoiceOwnership(allocations, request.user.seazonaClientId);
-    if (ownErr) {
-      return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: ownErr } });
-    }
+    // C2 (e) + (f) — every allocation invoice belongs to the caller AND the C1
+    // over-allocation cap (no allocation exceeds the invoice's remaining balance).
+    const v = await verifyAllocations(allocations, request.user, { enforceCap: true });
+    if (v) return sendAllocationError(reply, v);
 
-    const seazonaPaymentId = await recordPaymentAndAllocations({
+    const { seazonaPaymentId, ledgerWriteFailed } = await recordPaymentAndAllocations({
       user: request.user,
       amount: details.amount,
       transactionId: String(transId),
       allocations,
     });
 
-    return { data: { transId, amount: details.amount, status: details.status, seazonaPaymentId, recorded: true } };
+    // One-time use — delete the binding so the same token/refId can't be replayed.
+    await redis.del(`rxpay:hosted:${refId}`).catch(() => {});
+
+    return {
+      data: {
+        transId,
+        amount: details.amount,
+        status: details.status,
+        seazonaPaymentId,
+        recorded: true,
+        ...(ledgerWriteFailed ? { ledgerWriteFailed: true } : {}),
+      },
+    };
   });
 
   // ───────────────────────────────────────────────────────────────
