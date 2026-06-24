@@ -12,10 +12,13 @@ import {
   User,
   Building2,
   MapPin,
+  Banknote,
+  X,
 } from "lucide-react";
 import api from "../../config/api.js";
 import { Pagination } from "../../components/ui/Pagination.jsx";
 import { usePagination } from "../../hooks/usePagination.js";
+import { useToast } from "../../components/ui/Toast.jsx";
 
 const INPUT =
   "w-full px-3.5 py-2.5 rounded-lg bg-white border border-surface-300/60 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-navy/25";
@@ -86,8 +89,147 @@ function Th({ children, className = "" }) {
   );
 }
 
-function InvoiceRow({ invoice }) {
+// Remaining balance we can record against. In the admin list normalizeInvoice
+// runs without per-user ledger context, so portalBalance === total here; the
+// backend re-caps against the real ledger and 422s if we exceed it.
+function remainingOf(inv) {
+  return Number(inv.portalBalance != null ? inv.portalBalance : inv.total || 0);
+}
+
+// Modal for recording a payment that staff already took directly in Seazona,
+// reflecting it in the portal's invoice_payments ledger so the doctor's balance
+// is accurate. No Seazona write is made (the payment already exists there).
+function OfflinePaymentModal({ invoice, onClose, onRecorded }) {
+  const remaining = remainingOf(invoice);
+  const [amountStr, setAmountStr] = useState(String(remaining.toFixed(2)));
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState(null);
+  const { addToast } = useToast();
+
+  const amount = parseFloat(amountStr);
+  const valid = !Number.isNaN(amount) && amount > 0 && amount <= remaining + 0.005;
+
+  const submit = async () => {
+    if (!valid) return;
+    setSubmitting(true);
+    setErr(null);
+    try {
+      await api.post(`/admin/invoices/${invoice.id}/offline-payment`, {
+        amount: Number(amount.toFixed(2)),
+        invoiceNumber: invoice.invoiceNumber,
+        seazonaClientId: invoice.clientId,
+      });
+      addToast({
+        message: `Recorded ${formatUSD(amount)} offline payment on #${invoice.invoiceNumber}.`,
+        type: "success",
+      });
+      onRecorded?.();
+      onClose();
+    } catch (e) {
+      setErr(
+        e.response?.data?.error?.message ||
+          e.message ||
+          "Failed to record the offline payment."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-4 top-4 text-navy/30 hover:text-navy"
+        >
+          <X size={18} />
+        </button>
+
+        <h3 className="font-heading font-bold text-lg text-navy">
+          Record offline payment
+        </h3>
+        <p className="mt-1 text-xs text-navy/50">
+          Entered in Seazona · reflects in the portal balance only. No charge is
+          made.
+        </p>
+
+        <div className="mt-4 rounded-xl bg-surface-50 border border-surface-300/50 p-3 text-xs text-navy/60 space-y-0.5">
+          <div className="flex justify-between">
+            <span>Invoice</span>
+            <span className="font-mono text-navy/80">#{invoice.invoiceNumber}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Patient</span>
+            <span className="text-navy/80">{invoice.patient || "—"}</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Remaining balance</span>
+            <span className="tabular-nums font-semibold text-navy">
+              {formatUSD(remaining)}
+            </span>
+          </div>
+        </div>
+
+        <label className="mt-4 block text-[10px] font-mono uppercase tracking-widest text-navy/40">
+          Amount
+        </label>
+        <div className="mt-1.5 flex items-center gap-2">
+          <span className="text-navy/40">$</span>
+          <input
+            type="number"
+            min="0"
+            max={remaining}
+            step="0.01"
+            value={amountStr}
+            onChange={(e) => setAmountStr(e.target.value)}
+            disabled={submitting}
+            className={`${INPUT} flex-1`}
+            autoFocus
+          />
+        </div>
+
+        {err && (
+          <div className="mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+            <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+            <span>{err}</span>
+          </div>
+        )}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="px-4 py-2.5 rounded-full text-xs font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={!valid || submitting}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold bg-brand-500 text-white hover:bg-brand-600 transition-all disabled:opacity-50"
+          >
+            {submitting && <Loader2 size={12} className="animate-spin" />}
+            Record payment
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InvoiceRow({ invoice, onRecorded }) {
   const color = statusColor(invoice.status);
+  const [modalOpen, setModalOpen] = useState(false);
   return (
     <tr className="border-t border-surface-300/30 hover:bg-surface-50/50">
       <td className="px-4 py-2.5 font-mono text-xs text-navy/60">
@@ -115,11 +257,29 @@ function InvoiceRow({ invoice }) {
           {invoice.status || "—"}
         </span>
       </td>
+      <td className="px-4 py-2.5 text-right whitespace-nowrap">
+        <button
+          type="button"
+          onClick={() => setModalOpen(true)}
+          title="Record offline payment (entered in Seazona)"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] font-semibold text-brand-600 hover:bg-brand-500/10 transition-all"
+        >
+          <Banknote size={13} />
+          Record payment
+        </button>
+        {modalOpen && (
+          <OfflinePaymentModal
+            invoice={invoice}
+            onClose={() => setModalOpen(false)}
+            onRecorded={onRecorded}
+          />
+        )}
+      </td>
     </tr>
   );
 }
 
-function ClientGroup({ clientId, client, invoices }) {
+function ClientGroup({ clientId, client, invoices, onRecorded }) {
   const [open, setOpen] = useState(false);
   const total = invoices.reduce((s, i) => s + i.total, 0);
   const label = clientLabel(invoices[0], client);
@@ -207,11 +367,12 @@ function ClientGroup({ clientId, client, invoices }) {
                 <Th className="text-right">Tax</Th>
                 <Th className="text-right">Total</Th>
                 <Th>Status</Th>
+                <Th className="text-right">Action</Th>
               </tr>
             </thead>
             <tbody>
               {invoices.map((inv) => (
-                <InvoiceRow key={inv.id} invoice={inv} />
+                <InvoiceRow key={inv.id} invoice={inv} onRecorded={onRecorded} />
               ))}
             </tbody>
           </table>
@@ -443,6 +604,7 @@ export function AdminInvoicesPage() {
                 clientId={g.clientId}
                 client={g.client}
                 invoices={g.invoices}
+                onRecorded={load}
               />
             ))}
           </div>

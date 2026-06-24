@@ -38,11 +38,19 @@ export function HostedPaymentForm({
   // fresh object/array literals each render.
   const tokenBodyRef = useRef(tokenBody);
   const completeBodyRef = useRef(completeBody);
+  // refId returned with the token. The invoice hosted-complete endpoint binds
+  // the completed transaction to this issued token (C2), so it must be echoed
+  // back on completion. The test endpoint ignores it.
+  const refIdRef = useRef(null);
 
   const completeTransaction = useCallback(async (transId) => {
     setVerifying(true);
     try {
-      const { data } = await api.post(completeEndpoint, { transId, ...completeBodyRef.current });
+      const { data } = await api.post(completeEndpoint, {
+        transId,
+        ...(refIdRef.current ? { refId: refIdRef.current } : {}),
+        ...completeBodyRef.current,
+      });
       onComplete?.(data.data);
     } catch (err) {
       onError?.(err.response?.data?.error?.message || "Could not verify the transaction.");
@@ -97,6 +105,7 @@ export function HostedPaymentForm({
         if (cancelled) return;
         setToken(data.data.token);
         setFormUrl(data.data.formUrl);
+        refIdRef.current = data.data.refId || null;
       })
       .catch((err) => {
         if (!cancelled) onError?.(err.response?.data?.error?.message || "Could not load the payment form.");

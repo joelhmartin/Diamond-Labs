@@ -41,6 +41,11 @@ export const ERROR_CODES = {
   APPROVAL_TOKEN_EXPIRED: { code: "APPROVAL_TOKEN_EXPIRED", status: 410, message: "Approval token has expired." },
   SEAZONA_CLIENT_NOT_LINKED: { code: "SEAZONA_CLIENT_NOT_LINKED", status: 400, message: "No Seazona client linked to this account." },
 
+  // Payment
+  CARD_DECLINED: { code: "CARD_DECLINED", status: 402, message: "Your card was declined." },
+  PAYMENT_GATEWAY_ERROR: { code: "PAYMENT_GATEWAY_ERROR", status: 502, message: "The payment gateway is temporarily unavailable. Please try again." },
+  CHARGE_IN_PROGRESS: { code: "CHARGE_IN_PROGRESS", status: 409, message: "A charge for this request is already being processed. Please wait." },
+
   // General
   VALIDATION_ERROR: { code: "VALIDATION_ERROR", status: 422, message: "Validation failed." },
   NOT_FOUND: { code: "NOT_FOUND", status: 404, message: "Resource not found." },

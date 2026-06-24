@@ -112,12 +112,19 @@ export function PaymentModal({ invoices, onClose, onSuccess }) {
       addToast({ message: "Select a card", type: "error" });
       return;
     }
+    // One idempotency key per submit attempt so a duplicate click / retry can't
+    // double-charge the saved card (backend requires the header).
+    const idempotencyKey = crypto.randomUUID();
     submit(() =>
-      api.post("/payments/charge-saved", {
-        paymentProfileId: selectedCard,
-        amount: payTotal,
-        allocations,
-      })
+      api.post(
+        "/payments/charge-saved",
+        {
+          paymentProfileId: selectedCard,
+          amount: payTotal,
+          allocations,
+        },
+        { headers: { "Idempotency-Key": idempotencyKey } }
+      )
     );
   };
 
