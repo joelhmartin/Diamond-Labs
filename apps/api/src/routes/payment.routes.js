@@ -800,15 +800,23 @@ export default async function paymentRoutes(fastify) {
     if (!request.user.seazonaClientId) {
       return reply.code(400).send({ error: ERROR_CODES.SEAZONA_CLIENT_NOT_LINKED });
     }
+    // Ownership (NO cap) runs OUTSIDE the idempotency replay path: every request —
+    // including one that replays a cached success — must first prove the submitted
+    // invoices belong to the caller. Combined with the user-scoped idempotency key
+    // below, this prevents reusing/guessing another doctor's key to replay their
+    // result. Only the remaining-balance CAP is deferred to first execution.
+    const own = await verifyAllocations(allocations, request.user);
+    if (own) return sendAllocationError(reply, own);
+
     let outcome;
     try {
       outcome = await withIdempotency(
         redis,
-        `charge-saved:${idempotencyKey}`,
+        `charge-saved:${request.user.id}:${idempotencyKey}`,
         async () => {
-          // Ownership + C1 over-allocation cap runs INSIDE the idempotent block so
-          // a retry of the same Idempotency-Key replays the cached success rather
-          // than re-failing the cap on an invoice the first attempt already paid.
+          // C1 over-allocation cap runs INSIDE the idempotent block so a retry of
+          // the same Idempotency-Key replays the cached success rather than
+          // re-failing the cap on an invoice the first attempt already paid.
           const capErr = await verifyAllocations(allocations, request.user, { enforceCap: true });
           if (capErr) throw Object.assign(new Error("allocation_error"), { allocationError: capErr });
 
