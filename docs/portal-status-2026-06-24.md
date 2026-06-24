@@ -93,8 +93,10 @@ portal now mirrors that exactly:
   file map, so codes can be confirmed without code changes.
 
 ### Current coverage (open item)
-Of ~58 device/modification mapping slots, **9 are confirmed real Seazona codes**;
-the rest (~51) are **placeholders awaiting lab confirmation**. Confirming a code is
+Of ~58 device/modification mapping slots, **~17 are now confirmed against real
+Seazona codes** (9 seeded in code plus 8 high-confidence matches loaded
+2026-06-24 — OD BioFlex/Nylon/Acrylic/Dual-Laminate/Milled, ARA, SnoreHook,
+Essix); the remaining **~43** still need lab confirmation. Confirming a code is
 done in the tester (§4) via catalog search — no engineering needed. Until a code is
 confirmed, that line shows as **placeholder** in the preview and is **not** sent on
 a test order. The three statuses:
@@ -134,60 +136,78 @@ line items, grouped in the preview.
 
 ---
 
-## 5. Invoice payments
+## 5. Invoice payments & card on file
 
-Doctors can view and pay their Seazona invoices online with a card.
+A doctor can log in, see their outstanding Seazona invoices, and pay them by card —
+a single invoice, several at once, or partial amounts — and the payment flows
+straight back into Seazona against the right invoices and marks them paid. Doctors
+can also keep a card on file for faster future payments. All of this is live.
+
+### What a doctor can do
+- **View their invoices** pulled live from Seazona — total, amount paid, and
+  remaining balance for each.
+- **Pay a single invoice** on its own.
+- **Pay several invoices in one card charge** (one transaction across multiple
+  invoices).
+- **Pay a partial amount** on any invoice — and mix it: e.g. invoice A in full plus
+  half of invoice B in the same payment.
+- **Save a card on file**, reuse it, and manage it (update expiration, remove).
 
 ### Viewing invoices
-At **`/doctor/invoices`**, the portal pulls the doctor's invoices from Seazona and
-shows total / paid / balance. Because Seazona's API has no readable "paid" flag,
-the portal computes paid/balance from its **own payment ledger** (`invoice_payments`)
-and recomputes it on every load. Fully-paid invoices are locked from re-selection.
+At **`/doctor/invoices`** the portal pulls the doctor's invoices directly from
+Seazona and shows total / paid / balance. Seazona's API has no readable "paid"
+flag, so the portal keeps its own payment ledger and recomputes each invoice's
+balance on every load. An invoice whose balance reaches zero is automatically shown
+as paid and locked from being paid again.
 
-### Paying (one payment, multiple invoices, partial amounts)
-The doctor selects one or more invoices and opens the payment dialog. Each invoice
-row defaults to its full balance and can be edited down to any amount.
+### Paying — individual, multiple, or partial
+The doctor selects one or more invoices and opens the payment dialog. Each selected
+invoice starts at its full balance and can be edited down to any amount, so every
+combination works:
+- Pay one invoice in full.
+- Pay a batch of invoices in a single card charge.
+- Pay part of an invoice now and the rest later.
+- Any mix — e.g. one invoice in full and half of another, all in one payment.
 
-**Confirmed working:** a doctor can, in **a single payment**, pay invoice A **in
-full** and invoice B **partially** (e.g. half). The dialog allocates the charge
-across invoices; the server records:
-- **One** account-level payment in Seazona for the full charge, with a reference of
-  the form **"Invoices A, B"** — the token Seazona's report parses to attribute the
-  payment to those invoices (verified live).
-- **One ledger row per invoice** (the per-invoice split), all tied to that one
-  Seazona payment.
+### Direct mapping back to Seazona
+Every successful card charge is recorded back into Seazona **automatically** and
+attributed to the specific invoices it paid:
+- The portal writes **one payment in Seazona** for the charge, tagged with a
+  reference of the form **"Invoices 10612, 10617"** — the exact token Seazona's
+  reporting parses to apply the payment to those invoice numbers (verified against
+  the live account).
+- The per-invoice split (how much went to each invoice) is kept in the portal's
+  ledger, all tied to that one Seazona payment.
+- The instant an invoice's balance reaches zero it is **marked paid
+  automatically** — no manual reconciliation step.
 
-On the next load, invoice A shows a zero balance and is marked paid; invoice B shows
-its remaining balance and stays payable. So invoices are **marked paid
-automatically** as soon as their balance reaches zero — no manual step.
+So from the doctor's side it's simply "pay my invoices," and on the lab's side the
+payment appears in Seazona applied to the correct invoices.
 
 ### Card on file
-Doctors can save a card for reuse:
-- Add a card (stored securely with Authorize.net's Customer Profiles — the portal
-  stores only a profile reference, never card data).
-- List saved cards (masked), update expiry/billing, and delete a card.
-- Pay an invoice (including the multi-invoice/partial flow above) with a saved card.
+- **Add a card** through Authorize.net's secure hosted form. The portal stores
+  **only a profile reference** — never the card number.
+- **See saved cards** (masked), **update** the expiration / billing address, or
+  **remove** a card.
+- **Charge a saved card** for any payment — including the multi-invoice and partial
+  flows above — without re-entering it.
 
-All of this is wired end-to-end.
+### Security & card data (PCI)
+- Card numbers are entered on Authorize.net's hosted form (or tokenized in the
+  browser for the shop) — **the portal's servers never see or store a raw card
+  number**, and only public keys reach the browser.
+- The payment system passed a dedicated security audit and every finding was fixed:
+  each card transaction is bound to the specific doctor and payment session; the
+  amount and which-invoices are verified server-side; an allocation can't exceed an
+  invoice's remaining balance; charges are idempotent (a double-click or retry
+  cannot double-charge); and declines return the real reason from the card
+  processor rather than a generic error.
 
-### Card data / PCI
-New cards are entered through Authorize.net's **hosted payment form** (an embedded
-secure iframe); the public shop uses in-browser tokenization. Either way the
-portal's servers never receive raw card numbers.
-
-### Security
-The payment system passed a dedicated security & correctness audit, and all
-findings were fixed: each hosted transaction is cryptographically bound to the
-doctor and the issued payment session; allocations are capped server-side at each
-invoice's remaining balance; charges are idempotent (no double-charge on retry);
-card declines return the gateway's reason; and inputs are validated through shared
-schemas. Card data never reaches the portal's servers, and only public keys are
-exposed to the browser.
-
-### Reconciling payments entered directly in Seazona
-Because Seazona's payments API is write-only (the portal can't read payments staff
-key in directly), an admin can **record an offline payment** against an invoice
-(Admin → Invoices → "Record offline payment") so the portal's balance reflects it.
+### Reconciling payments taken outside the portal
+If staff record a payment directly in Seazona (or take one over the phone), the
+portal can't see it automatically — Seazona's payments API is write-only. An admin
+can **record an offline payment** against an invoice (Admin → Invoices → "Record
+offline payment") to bring the portal's balance back in line.
 
 ---
 
@@ -201,11 +221,12 @@ key in directly), an admin can **record an offline payment** against an invoice
   amounts, card on file, automatic paid-marking, Seazona reconciliation.
 
 **Open items**
-1. **Confirm the remaining product codes** (~51 placeholders). This is lab data
-   entry via the tester's catalog search — the main thing standing between "test"
-   and "doctors ordering for real." We can also do a coverage pass to list exactly
-   which selections already have a matching product vs. which need a product created
-   in Seazona's portal.
+1. **Confirm the remaining product codes** (~43 placeholders; a coverage report
+   listing each with candidate SKUs is in the repo). This is lab data entry via the
+   tester's catalog search — the main thing standing between "test" and "doctors
+   ordering for real." Most remaining gaps are material/variant judgment calls
+   (e.g. ON-D/P/R material, MORA ClearSplint vs PMT) or items needing a product
+   created in Seazona's portal (e.g. whitening tray).
 2. **Lab-service line items** (model fabrication per arch, articulate) appear on
    nearly every real order but are not auto-added yet — a billing decision for the
    lab (auto-add to every order, make them per-case toggles, or leave manual).
