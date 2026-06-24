@@ -54,11 +54,21 @@ export async function withIdempotency(redis, key, fn, opts = {}) {
   const resultKey = idemResultKey(key);
   const lockKey = idemLockKey(key);
 
-  // 1. Replay a cached result without charging.
+  // 1. Replay a cached result without charging. Also honor any legacy keys so a
+  //    result cached under a previous key format (e.g. before the key was
+  //    namespaced by user id) still replays across the deploy instead of
+  //    re-charging the card.
   const cached = safeParse(await redis.get(resultKey));
   if (cached) {
     log?.info?.({ key }, "idempotent replay — returning cached result, no charge");
     return { result: cached, replayed: true, cacheWriteFailed: false };
+  }
+  for (const legacyKey of opts.legacyKeys || []) {
+    const legacyCached = safeParse(await redis.get(idemResultKey(legacyKey)));
+    if (legacyCached) {
+      log?.info?.({ key, legacyKey }, "idempotent replay (legacy key) — returning cached result, no charge");
+      return { result: legacyCached, replayed: true, cacheWriteFailed: false };
+    }
   }
 
   // 2. Acquire the in-flight lock (atomic set-if-absent + TTL).

@@ -87,4 +87,20 @@ describe("withIdempotency", () => {
     const out = await withIdempotency(redis, "k4", async () => ({ recovered: true }));
     expect(out.result).toEqual({ recovered: true });
   });
+
+  it("replays a result cached under a legacy key (migration dual-read) without charging", async () => {
+    const redis = makeFakeRedis();
+    // Simulate a success cached under the OLD (pre-user-scoping) key format.
+    redis.store.set("idem:result:charge-saved:uuid-1", JSON.stringify({ transactionId: "T1" }));
+    const fn = vi.fn(async () => ({ transactionId: "SHOULD_NOT_CHARGE" }));
+    const out = await withIdempotency(
+      redis,
+      "charge-saved:user-9:uuid-1",
+      fn,
+      { legacyKeys: ["charge-saved:uuid-1"] }
+    );
+    expect(fn).not.toHaveBeenCalled();
+    expect(out.replayed).toBe(true);
+    expect(out.result).toEqual({ transactionId: "T1" });
+  });
 });

@@ -343,9 +343,13 @@ export async function getTransactionDetails(transId, mode) {
   if (!t) return null;
   return {
     transId: t.transId,
-    // refId is the merchant-supplied reference we baked into the hosted-page
-    // token — used to bind a completed transaction back to the issuing doctor.
-    refId: t.refId != null ? String(t.refId) : null,
+    // The merchant reference we baked into the hosted-page token. The original
+    // createTransactionRequest refId is NOT reliably echoed on the transaction in
+    // getTransactionDetails, so the durable binding carrier is order.invoiceNumber
+    // (which we set = our refId at token time and which DOES round-trip here).
+    // `refId` is read from both possible spots purely as a defensive fallback.
+    refId: t.refId != null ? String(t.refId) : (data?.refId != null ? String(data.refId) : null),
+    orderInvoiceNumber: t.order?.invoiceNumber != null ? String(t.order.invoiceNumber) : null,
     amount: Number(t.authAmount ?? t.settleAmount ?? 0),
     responseCode: t.responseCode,
     // Settlement/workflow state (e.g. capturedPendingSettlement,
