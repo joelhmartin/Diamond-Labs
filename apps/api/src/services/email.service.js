@@ -1,14 +1,15 @@
-import { resend } from "../config/email.js";
+import { mailgun } from "../config/email.js";
 import { env } from "../config/env.js";
 
 /**
- * Dispatch an email through Resend. Returns `true` when the message was actually
- * handed to Resend, `false` when there's no API key configured (dev no-op — we
- * log instead of sending). Existing callers ignore the return value; the receipt
- * flow uses it to report honestly whether an email really went out.
+ * Dispatch an email through Mailgun's HTTP API. Returns `true` when the message
+ * was accepted, `false` when no Mailgun config is present (dev no-op — we log
+ * instead of sending) or the send was rejected. NEVER throws, so fire-and-forget
+ * callers are unaffected and the receipt flow can report honestly whether an
+ * email actually went out.
  */
 async function send({ to, subject, html, text }) {
-  if (!resend) {
+  if (!mailgun) {
     console.log(`[EMAIL] To: ${to} | Subject: ${subject}`);
     if (env.NODE_ENV === "development") {
       console.log(`[EMAIL] Body preview (first 200 chars): ${html?.slice(0, 200)}`);
@@ -16,22 +17,32 @@ async function send({ to, subject, html, text }) {
     return false;
   }
 
-  // The Resend SDK does NOT throw on API errors (bad key, invalid sender domain,
-  // rate limit, etc.) — it resolves with `{ data, error }`. Returning false (never
-  // throwing) keeps existing fire-and-forget callers unaffected while letting the
-  // receipt flow report honestly whether the email actually went out.
-  const { error } = await resend.emails.send({
-    from: env.EMAIL_FROM,
-    to,
-    subject,
-    html,
-    ...(text ? { text } : {}),
-  });
-  if (error) {
-    console.error(`[EMAIL] Resend rejected message to ${to} (subject: ${subject}):`, error);
+  const form = new URLSearchParams();
+  form.set("from", env.EMAIL_FROM);
+  form.set("to", to);
+  form.set("subject", subject);
+  if (html) form.set("html", html);
+  if (text) form.set("text", text);
+
+  try {
+    const res = await fetch(`${mailgun.apiBase}/v3/${mailgun.domain}/messages`, {
+      method: "POST",
+      headers: {
+        Authorization: "Basic " + Buffer.from(`api:${mailgun.apiKey}`).toString("base64"),
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: form.toString(),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(`[EMAIL] Mailgun rejected message to ${to} (subject: ${subject}): ${res.status} ${body.slice(0, 300)}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error(`[EMAIL] Mailgun send failed to ${to} (subject: ${subject}): ${String(err?.message || err)}`);
     return false;
   }
-  return true;
 }
 
 export async function sendWelcome({ email, name, verifyUrl }) {
@@ -263,4 +274,57 @@ export async function sendOrderReceipt({
     subject: `Your Diamond Orthotic Laboratory order — ${orderNumber}`,
     html,
   });
+}
+
+/**
+ * Doctor invoice-payment receipt. Sent (soft-fail) after a successful invoice
+ * payment is recorded — covers both the saved-card and hosted-card flows.
+ * `invoices` are { number, amount } per invoice the charge was applied to.
+ */
+export async function sendPaymentReceipt({ to, amount, invoices = [], transactionId, date }) {
+  if (!to) return false;
+  const when = (date instanceof Date ? date : new Date()).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const rows = invoices
+    .map(
+      (i) => `
+        <tr>
+          <td style="padding:10px 12px;border-bottom:1px solid #eef1f4;color:#1a2733;">Invoice ${esc(i.number)}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #eef1f4;color:#1a2733;text-align:right;">${money(i.amount)}</td>
+        </tr>`
+    )
+    .join("");
+
+  const html = `
+    <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a2733;">
+      <h1 style="font-size:20px;margin:0 0 4px;">Payment received</h1>
+      <p style="margin:0 0 20px;color:#5a6b7b;font-size:13px;">Thank you — your payment to Diamond Orthotic Laboratory was processed on ${when}.</p>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+        <thead>
+          <tr>
+            <th style="padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#8a98a6;border-bottom:2px solid #eef1f4;">Invoice</th>
+            <th style="padding:8px 12px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#8a98a6;border-bottom:2px solid #eef1f4;">Applied</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr>
+            <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">Total charged</td>
+            <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${money(amount)}</td>
+          </tr>
+        </tfoot>
+      </table>
+      <p style="margin:0 0 24px;font-size:12px;color:#8a98a6;">
+        Payment reference: <span style="font-family:monospace;">${esc(transactionId || "—")}</span>
+      </p>
+      <p style="margin:0;font-size:13px;color:#5a6b7b;line-height:1.6;">
+        Questions about this payment? Contact the lab and reference the payment id above.
+      </p>
+    </div>
+  `;
+
+  return send({ to, subject: "Payment received — Diamond Orthotic Laboratory", html });
 }

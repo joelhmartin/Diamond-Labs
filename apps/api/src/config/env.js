@@ -20,7 +20,11 @@ const envSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_CALLBACK_URL: z.string().optional(),
 
+  // Email (Mailgun HTTP API). RESEND_API_KEY kept (unused) for back-compat.
   RESEND_API_KEY: z.string().optional(),
+  MAILGUN_API_KEY: z.string().optional(),
+  MAILGUN_DOMAIN: z.string().optional(),
+  MAILGUN_API_BASE: z.string().optional(),
   EMAIL_FROM: z.string().default(`noreply@${project.domain}`),
 
   // Seazona
