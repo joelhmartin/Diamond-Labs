@@ -4,7 +4,7 @@ import { validate } from "../middleware/validate.js";
 import * as authorizenetService from "../services/authorizenet.service.js";
 import * as seazonaService from "../services/seazona.service.js";
 import { getInvoicePortalPaid } from "../services/invoice-ledger.service.js";
-import { sendOrderReceipt } from "../services/email.service.js";
+import { sendOrderReceipt, sendPaymentReceipt } from "../services/email.service.js";
 import { db } from "../config/database.js";
 import { redis } from "../config/redis.js";
 import { users, invoicePayments, products, orders, orderItems } from "../db/schema/index.js";
@@ -205,6 +205,25 @@ async function recordPaymentAndAllocations({ user, amount, transactionId, alloca
           error: String(ledgerErr?.message || ledgerErr).slice(0, 300),
         })
     );
+  }
+
+  // Payment receipt — soft-fail, never blocks (the card already charged). Covers
+  // both saved-card and hosted-card paths since both funnel through here.
+  if (user.email) {
+    try {
+      await sendPaymentReceipt({
+        to: user.email,
+        amount,
+        invoices: allocations.map((a) => ({
+          number: a.invoiceNumber || a.invoiceId,
+          amount: Number(a.amount),
+        })),
+        transactionId,
+        date: new Date(),
+      });
+    } catch {
+      /* send() never throws; this is belt-and-suspenders */
+    }
   }
 
   return { seazonaPaymentId, ledgerWriteFailed };
