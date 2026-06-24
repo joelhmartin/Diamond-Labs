@@ -43,18 +43,24 @@ async function ensureMembership(userId, accountId, role) {
 async function run() {
   const passwordHash = await hashPassword(PASSWORD);
 
-  // ── 1. Admin: reset password (find by email, else first admin) ──
-  let admin = (await db.select().from(users).where(eq(users.email, ADMIN_EMAIL)).limit(1))[0];
-  if (!admin) {
-    admin = (await db.select().from(users).where(eq(users.role, "admin")).limit(1))[0];
-  }
-  if (admin) {
-    await db.update(users)
-      .set({ passwordHash, role: "admin", approvalStatus: "not_required", status: "active", emailVerifiedAt: new Date(), updatedAt: new Date() })
-      .where(eq(users.id, admin.id));
-    console.log(`[creds] admin reset → ${admin.email} / ${PASSWORD}`);
+  // ── 1. Admin: ONLY when explicitly opted in (RESET_ADMIN=1). Off by default so
+  //    this script never silently changes the live admin password. "Reset" here
+  //    means set the password to a known value — nothing else changes. ──
+  if (process.env.RESET_ADMIN === "1") {
+    let admin = (await db.select().from(users).where(eq(users.email, ADMIN_EMAIL)).limit(1))[0];
+    if (!admin) {
+      admin = (await db.select().from(users).where(eq(users.role, "admin")).limit(1))[0];
+    }
+    if (admin) {
+      await db.update(users)
+        .set({ passwordHash, status: "active", emailVerifiedAt: new Date(), updatedAt: new Date() })
+        .where(eq(users.id, admin.id));
+      console.log(`[creds] admin password reset → ${admin.email} / ${PASSWORD}`);
+    } else {
+      console.log("[creds] WARNING: RESET_ADMIN=1 but no admin user found.");
+    }
   } else {
-    console.log("[creds] WARNING: no admin user found to reset.");
+    console.log("[creds] admin: LEFT UNTOUCHED (set RESET_ADMIN=1 only if you want to reset it).");
   }
 
   // ── 2. Matt Rago doctor: find by seazonaClientId, else by email, else create ──
