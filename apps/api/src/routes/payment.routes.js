@@ -800,17 +800,18 @@ export default async function paymentRoutes(fastify) {
     if (!request.user.seazonaClientId) {
       return reply.code(400).send({ error: ERROR_CODES.SEAZONA_CLIENT_NOT_LINKED });
     }
-    // Ownership + C1 over-allocation cap (uses the live invoice total already
-    // fetched here; blocks paying more than each invoice's remaining balance).
-    const v = await verifyAllocations(allocations, request.user, { enforceCap: true });
-    if (v) return sendAllocationError(reply, v);
-
     let outcome;
     try {
       outcome = await withIdempotency(
         redis,
         `charge-saved:${idempotencyKey}`,
         async () => {
+          // Ownership + C1 over-allocation cap runs INSIDE the idempotent block so
+          // a retry of the same Idempotency-Key replays the cached success rather
+          // than re-failing the cap on an invoice the first attempt already paid.
+          const capErr = await verifyAllocations(allocations, request.user, { enforceCap: true });
+          if (capErr) throw Object.assign(new Error("allocation_error"), { allocationError: capErr });
+
           const result = await authorizenetService.chargeCustomerProfile({
             customerProfileId,
             paymentProfileId,
@@ -828,6 +829,7 @@ export default async function paymentRoutes(fastify) {
         { log: fastify.log }
       );
     } catch (err) {
+      if (err?.allocationError) return sendAllocationError(reply, err.allocationError);
       if (err instanceof ChargeInProgressError) {
         return reply.code(409).send({ error: ERROR_CODES.CHARGE_IN_PROGRESS });
       }
@@ -887,8 +889,12 @@ export default async function paymentRoutes(fastify) {
 
     const result = await authorizenetService.getHostedPaymentPageToken({
       amount,
-      invoiceNumber: allocations[0]?.invoiceNumber || refId,
-      description: `Diamond Labs — ${allocations.length} invoice(s)`,
+      // Bind via order.invoiceNumber = refId. Unlike the transaction-level refId
+      // (which Authorize.net does NOT reliably echo back in getTransactionDetails),
+      // order.invoiceNumber DOES round-trip — so hosted-complete can match it.
+      // Human-readable invoice context goes in the description.
+      invoiceNumber: refId,
+      description: `Diamond Labs — invoice(s): ${allocations.map((a) => a.invoiceNumber || a.invoiceId).join(", ")}`.slice(0, 255),
       refId,
       iframeCommunicatorUrl,
       customerProfileId,
@@ -942,6 +948,12 @@ export default async function paymentRoutes(fastify) {
     if (!binding || String(binding.userId) !== String(request.user.id)) {
       return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: "Payment session not found or does not belong to your account." } });
     }
+    // Record the allocations bound at token time — NOT the caller-supplied ones.
+    // Otherwise a doctor could complete a captured charge against a different
+    // (equal-amount) invoice than the one the token was issued for.
+    const boundAllocations = Array.isArray(binding.allocations) && binding.allocations.length
+      ? binding.allocations
+      : allocations;
 
     // Anchor of trust: whatever we record must equal what Authorize.net captured.
     const details = await authorizenetService.getTransactionDetails(transId);
@@ -949,8 +961,10 @@ export default async function paymentRoutes(fastify) {
       return reply.code(404).send({ error: { ...ERROR_CODES.NOT_FOUND, message: "Transaction not found." } });
     }
 
-    // C2 (b) — the transaction's own refId must match the issued token's refId.
-    if (String(details.refId) !== String(refId)) {
+    // C2 (b) — the captured transaction must carry our binding token. We set it as
+    // order.invoiceNumber (which round-trips reliably); the transaction-level refId
+    // is accepted only as a fallback. Reject if neither matches the issued refId.
+    if (String(details.orderInvoiceNumber) !== String(refId) && String(details.refId) !== String(refId)) {
       return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: "Transaction does not match the issued payment session." } });
     }
 
@@ -966,24 +980,24 @@ export default async function paymentRoutes(fastify) {
       });
     }
 
-    // C2 (d) — captured amount must equal the allocation sum.
+    // C2 (d) — captured amount must equal the BOUND allocation sum.
     const allocSum = Math.round(
-      (allocations.reduce((s, a) => s + Number(a.amount || 0), 0) + Number.EPSILON) * 100
+      (boundAllocations.reduce((s, a) => s + Number(a.amount || 0), 0) + Number.EPSILON) * 100
     ) / 100;
     if (Math.abs(details.amount - allocSum) > 0.01) {
       return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: `Allocation total ($${allocSum.toFixed(2)}) does not match the captured amount ($${details.amount.toFixed(2)}).` } });
     }
 
-    // C2 (e) + (f) — every allocation invoice belongs to the caller AND the C1
-    // over-allocation cap (no allocation exceeds the invoice's remaining balance).
-    const v = await verifyAllocations(allocations, request.user, { enforceCap: true });
+    // C2 (e) + (f) — every BOUND allocation invoice belongs to the caller AND the
+    // C1 over-allocation cap (no allocation exceeds the invoice's remaining balance).
+    const v = await verifyAllocations(boundAllocations, request.user, { enforceCap: true });
     if (v) return sendAllocationError(reply, v);
 
     const { seazonaPaymentId, ledgerWriteFailed } = await recordPaymentAndAllocations({
       user: request.user,
       amount: details.amount,
       transactionId: String(transId),
-      allocations,
+      allocations: boundAllocations,
     });
 
     // One-time use — delete the binding so the same token/refId can't be replayed.
