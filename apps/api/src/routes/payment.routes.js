@@ -1167,6 +1167,28 @@ export default async function paymentRoutes(fastify) {
                   error: String(ledgerErr?.message || ledgerErr).slice(0, 300),
                 })
             );
+            // The reversal rows double as the durable double-refund guard. Since
+            // the bulk insert didn't land, persist a minimal zero-amount guard row
+            // so a later retry (after the 24h idempotency cache expires) can't
+            // refund this charge again. Worst case (this also fails) is logged.
+            try {
+              await db.insert(invoicePayments).values({
+                id: createId(),
+                userId: originalRows[0].userId,
+                seazonaClientId: originalRows[0].seazonaClientId || null,
+                seazonaInvoiceId: originalRows[0].seazonaInvoiceId,
+                invoiceNumber: originalRows[0].invoiceNumber || null,
+                appliedAmount: "0.00",
+                transactionId: refundTxnId,
+                refundsTransactionId: txid,
+                seazonaPaymentId: null,
+              });
+            } catch (guardErr) {
+              console.error(
+                `[PAYMENT][REFUND_GUARD_WRITE_FAILED] could not persist a double-refund guard for charge ${txid} — re-refund protection now relies only on the idempotency cache; manual lock required ` +
+                  JSON.stringify({ transactionId: txid, refundTransactionId: refundTxnId, error: String(guardErr?.message || guardErr).slice(0, 200) })
+              );
+            }
           }
 
           // 5. Seazona credit (best-effort, never throws). Mirrors the
@@ -1177,7 +1199,10 @@ export default async function paymentRoutes(fastify) {
               const res = await seazonaService.createPayment({
                 clientId: originalRows[0].seazonaClientId,
                 accountNumber: refundUser?.seazonaAccountNumber || null,
-                referenceNumber: invNums.length ? `Refund ${invNums.join(", ")}` : `Refund ${txid}`,
+                // Same "Invoices <num>" token the original payment used — Seazona's
+                // report attributes by that, so the negative credit lands on the
+                // right invoices. The refund context lives in notes.
+                referenceNumber: invNums.length ? `Invoices ${invNums.join(", ")}` : `Refund ${txid}`,
                 notes: `[REFUND] txn ${txid}`,
                 amount: -refundedAmount,
               });
