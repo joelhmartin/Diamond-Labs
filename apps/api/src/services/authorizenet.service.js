@@ -329,7 +329,8 @@ export async function updateCustomerPaymentProfile({ customerProfileId, paymentP
 
 /**
  * Look up a transaction by id — used to verify, server-side, the amount and
- * status that Authorize.net actually captured before we record anything.
+ * status that Authorize.net actually captured before we record anything, and to
+ * recover the masked card last-4 + expiry needed to refund a settled charge.
  */
 export async function getTransactionDetails(transId, mode) {
   const data = await apiRequest({
@@ -341,6 +342,11 @@ export async function getTransactionDetails(transId, mode) {
 
   const t = data?.transaction;
   if (!t) return null;
+  // Masked PAN comes back like "XXXX1234"; a refundTransaction wants only the
+  // trailing 4 digits. Expiry is often masked ("XXXX") on read — Authorize.net
+  // accepts "XXXX" for a refund against an existing transaction.
+  const maskedCard = t.payment?.creditCard?.cardNumber || null;
+  const cardLast4 = maskedCard ? (maskedCard.replace(/\D/g, "").slice(-4) || null) : null;
   return {
     transId: t.transId,
     // The merchant reference we baked into the hosted-page token. The original
@@ -357,5 +363,61 @@ export async function getTransactionDetails(transId, mode) {
     // callers) and `transactionStatus` (explicit) so nothing downstream breaks.
     status: t.transactionStatus,
     transactionStatus: t.transactionStatus,
+    // Card details required to refund a SETTLED transaction.
+    cardLast4,
+    expirationDate: t.payment?.creditCard?.expirationDate || null,
+  };
+}
+
+/**
+ * Void a transaction that has NOT yet settled (authorizedPendingCapture or
+ * capturedPendingSettlement). A void cancels the whole transaction — there is no
+ * partial void. Authorize.net echoes the ORIGINAL transId back on the void
+ * response (a void does not mint a new transaction id).
+ */
+export async function voidTransaction(transId, mode) {
+  const data = await apiRequest({
+    createTransactionRequest: {
+      merchantAuthentication: merchantAuth(mode),
+      transactionRequest: {
+        transactionType: "voidTransaction",
+        refTransId: String(transId),
+      },
+    },
+  }, mode);
+
+  return {
+    transactionId: data.transactionResponse?.transId,
+    responseCode: data.transactionResponse?.responseCode,
+  };
+}
+
+/**
+ * Refund a SETTLED transaction. Authorize.net requires the original transaction
+ * id PLUS the card's last-4 and expiry (read from getTransactionDetails) to match
+ * the refund to the original charge. A new (credit) transaction id is returned.
+ * `amount` may be the full or a partial amount.
+ */
+export async function refundTransaction({ transId, amount, cardLast4, expirationDate }, mode) {
+  const data = await apiRequest({
+    createTransactionRequest: {
+      merchantAuthentication: merchantAuth(mode),
+      transactionRequest: {
+        transactionType: "refundTransaction",
+        amount: String(amount),
+        payment: {
+          creditCard: {
+            cardNumber: cardLast4,
+            expirationDate: expirationDate || "XXXX",
+          },
+        },
+        refTransId: String(transId),
+      },
+    },
+  }, mode);
+
+  return {
+    transactionId: data.transactionResponse?.transId,
+    responseCode: data.transactionResponse?.responseCode,
   };
 }

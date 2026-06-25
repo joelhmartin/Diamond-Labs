@@ -1,0 +1,2 @@
+ALTER TABLE "invoice_payments" ADD COLUMN "refunds_transaction_id" varchar(100);--> statement-breakpoint
+CREATE INDEX "invoice_payments_refunds_transaction_id_idx" ON "invoice_payments" USING btree ("refunds_transaction_id");

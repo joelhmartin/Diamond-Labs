@@ -5,6 +5,7 @@ import {
   hostedTokenSchema,
   hostedCompleteSchema,
   checkoutSchema,
+  refundSchema,
 } from "@my-app/shared";
 
 describe("allocationSchema", () => {
@@ -79,6 +80,25 @@ describe("hostedCompleteSchema", () => {
     ).toBe(true);
     expect(hostedCompleteSchema.safeParse({ transId: "t1", allocations: [{ invoiceId: "a", amount: 5 }] }).success).toBe(false);
     expect(hostedCompleteSchema.safeParse({ refId: "H", allocations: [{ invoiceId: "a", amount: 5 }] }).success).toBe(false);
+  });
+});
+
+describe("refundSchema", () => {
+  it("accepts a transactionId with no amount (full refund)", () => {
+    expect(refundSchema.safeParse({ transactionId: "1234567890" }).success).toBe(true);
+  });
+  it("accepts a valid partial amount", () => {
+    expect(refundSchema.safeParse({ transactionId: "t", amount: 12.5 }).success).toBe(true);
+  });
+  it("requires a non-empty transactionId", () => {
+    expect(refundSchema.safeParse({ amount: 5 }).success).toBe(false);
+    expect(refundSchema.safeParse({ transactionId: "" }).success).toBe(false);
+  });
+  it("rejects non-positive, over-cap, or over-precision amounts", () => {
+    expect(refundSchema.safeParse({ transactionId: "t", amount: 0 }).success).toBe(false);
+    expect(refundSchema.safeParse({ transactionId: "t", amount: -1 }).success).toBe(false);
+    expect(refundSchema.safeParse({ transactionId: "t", amount: 100000.01 }).success).toBe(false);
+    expect(refundSchema.safeParse({ transactionId: "t", amount: 10.001 }).success).toBe(false);
   });
 });
 

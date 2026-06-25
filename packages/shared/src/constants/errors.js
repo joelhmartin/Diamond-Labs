@@ -45,6 +45,8 @@ export const ERROR_CODES = {
   CARD_DECLINED: { code: "CARD_DECLINED", status: 402, message: "Your card was declined." },
   PAYMENT_GATEWAY_ERROR: { code: "PAYMENT_GATEWAY_ERROR", status: 502, message: "The payment gateway is temporarily unavailable. Please try again." },
   CHARGE_IN_PROGRESS: { code: "CHARGE_IN_PROGRESS", status: 409, message: "A charge for this request is already being processed. Please wait." },
+  ALREADY_REFUNDED: { code: "ALREADY_REFUNDED", status: 409, message: "This transaction has already been refunded or voided." },
+  REFUND_FAILED: { code: "REFUND_FAILED", status: 502, message: "The refund could not be completed. Please try again." },
 
   // General
   VALIDATION_ERROR: { code: "VALIDATION_ERROR", status: 422, message: "Validation failed." },

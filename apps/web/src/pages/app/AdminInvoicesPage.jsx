@@ -13,6 +13,7 @@ import {
   Building2,
   MapPin,
   Banknote,
+  Undo2,
   X,
 } from "lucide-react";
 import api from "../../config/api.js";
@@ -227,6 +228,134 @@ function OfflinePaymentModal({ invoice, onClose, onRecorded }) {
   );
 }
 
+// Admin refund/void control. Takes the original Authorize.net Transaction ID
+// (and an optional partial amount) and posts to /admin/payments/refund. The
+// backend decides void vs refund from the transaction's settlement state and
+// reverses the local ledger so the affected invoices un-pay.
+function RefundPaymentModal({ onClose }) {
+  const [transactionId, setTransactionId] = useState("");
+  const [amountStr, setAmountStr] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState(null);
+  const { addToast } = useToast();
+
+  const trimmedTxn = transactionId.trim();
+  const amount = amountStr.trim() === "" ? null : parseFloat(amountStr);
+  const amountValid = amount === null || (!Number.isNaN(amount) && amount > 0);
+  const valid = trimmedTxn.length > 0 && amountValid && !submitting;
+
+  const submit = async () => {
+    if (!valid) return;
+    setSubmitting(true);
+    setErr(null);
+    try {
+      const body = { transactionId: trimmedTxn };
+      if (amount !== null) body.amount = Number(amount.toFixed(2));
+      const res = await api.post("/admin/payments/refund", body);
+      const d = res.data?.data || {};
+      addToast({
+        message: `${d.action === "void" ? "Voided" : "Refunded"} ${formatUSD(d.amount)} (txn ${trimmedTxn}).`,
+        type: "success",
+      });
+      onClose();
+    } catch (e) {
+      setErr(
+        e.response?.data?.error?.message ||
+          e.message ||
+          "Failed to refund the payment."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-4 top-4 text-navy/30 hover:text-navy"
+        >
+          <X size={18} />
+        </button>
+
+        <h3 className="font-heading font-bold text-lg text-navy">
+          Refund a payment
+        </h3>
+        <p className="mt-1 text-xs text-navy/50">
+          Voids an unsettled charge or refunds a settled one at the gateway, then
+          un-pays the affected invoices in the portal. Leave the amount blank for a
+          full refund.
+        </p>
+
+        <label className="mt-4 block text-[10px] font-mono uppercase tracking-widest text-navy/40">
+          Transaction ID
+        </label>
+        <input
+          type="text"
+          value={transactionId}
+          onChange={(e) => setTransactionId(e.target.value)}
+          disabled={submitting}
+          className={`${INPUT} mt-1.5`}
+          placeholder="Authorize.net transaction id"
+          autoFocus
+        />
+
+        <label className="mt-4 block text-[10px] font-mono uppercase tracking-widest text-navy/40">
+          Amount (optional — full refund if blank)
+        </label>
+        <div className="mt-1.5 flex items-center gap-2">
+          <span className="text-navy/40">$</span>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={amountStr}
+            onChange={(e) => setAmountStr(e.target.value)}
+            disabled={submitting}
+            className={`${INPUT} flex-1`}
+            placeholder="Full amount"
+          />
+        </div>
+
+        {err && (
+          <div className="mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+            <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+            <span>{err}</span>
+          </div>
+        )}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="px-4 py-2.5 rounded-full text-xs font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={!valid}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold bg-brand-500 text-white hover:bg-brand-600 transition-all disabled:opacity-50"
+          >
+            {submitting && <Loader2 size={12} className="animate-spin" />}
+            Issue refund
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function InvoiceRow({ invoice, onRecorded }) {
   const color = statusColor(invoice.status);
   const [modalOpen, setModalOpen] = useState(false);
@@ -392,6 +521,7 @@ export function AdminInvoicesPage() {
   // Set when the call returned but Seazona was unreachable/degraded (so the list
   // may be empty or incomplete) — separate from `error`, which is a failed request.
   const [seazonaDown, setSeazonaDown] = useState(false);
+  const [refundOpen, setRefundOpen] = useState(false);
 
   const load = async () => {
     try {
@@ -481,16 +611,28 @@ export function AdminInvoicesPage() {
             All invoices from Seazona, grouped by client.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={load}
-          disabled={refreshing}
-          className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all disabled:opacity-50"
-        >
-          <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setRefundOpen(true)}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all"
+          >
+            <Undo2 size={12} />
+            Refund a payment
+          </button>
+          <button
+            type="button"
+            onClick={load}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
+            Refresh
+          </button>
+        </div>
       </div>
+
+      {refundOpen && <RefundPaymentModal onClose={() => setRefundOpen(false)} />}
 
       {seazonaDown && !error && (
         <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">

@@ -78,6 +78,13 @@
       "when": 1782140143052,
       "tag": "0010_overconfident_zodiak",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1782398561655,
+      "tag": "0011_real_killer_shrike",
+      "breakpoints": true
     }
   ]
 }
