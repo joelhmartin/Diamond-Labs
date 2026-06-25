@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Search, RefreshCw, Undo2, Loader2, AlertCircle, History, ChevronDown } from "lucide-react";
 import api from "../../config/api.js";
 import { RefundPaymentModal } from "../../components/admin/RefundPaymentModal.jsx";
@@ -75,6 +75,9 @@ export function AdminPaymentsPage() {
   const [refundTxn, setRefundTxn] = useState(null);
   const [expandedTxn, setExpandedTxn] = useState(null);   // transactionId with history open
   const [auditByTxn, setAuditByTxn] = useState({});        // { [txn]: { loading, entries, failed } }
+  // Bumped on every list reload; an in-flight audit fetch whose generation is
+  // stale on return is discarded so it can't repopulate the just-cleared cache.
+  const loadGen = useRef(0);
 
   const toggleHistory = async (txn) => {
     if (expandedTxn === txn) {
@@ -83,11 +86,14 @@ export function AdminPaymentsPage() {
     }
     setExpandedTxn(txn);
     if (auditByTxn[txn]) return; // cached
+    const gen = loadGen.current;
     setAuditByTxn((prev) => ({ ...prev, [txn]: { loading: true, entries: [], failed: false } }));
     try {
       const { data } = await api.get("/admin/payments/audit", { params: { transactionId: txn } });
+      if (gen !== loadGen.current) return; // a reload happened mid-flight — drop stale result
       setAuditByTxn((prev) => ({ ...prev, [txn]: { loading: false, entries: data.data?.entries || [], failed: false } }));
     } catch {
+      if (gen !== loadGen.current) return;
       setAuditByTxn((prev) => ({ ...prev, [txn]: { loading: false, entries: [], failed: true } }));
     }
   };
@@ -97,6 +103,8 @@ export function AdminPaymentsPage() {
     // Invalidate cached audit history + collapse open rows so a reload (incl.
     // after a refund via onDone, or a manual Refresh) re-fetches fresh trails
     // rather than serving a stale cache that misses the just-recorded action.
+    // Bump the generation so any in-flight audit fetch is discarded on return.
+    loadGen.current += 1;
     setAuditByTxn({});
     setExpandedTxn(null);
     try {
@@ -222,8 +230,9 @@ export function AdminPaymentsPage() {
                           <button
                             type="button"
                             onClick={() => toggleHistory(p.transactionId)}
-                            title="Payment history"
-                            aria-label="Show payment action history"
+                            aria-expanded={open}
+                            title={open ? "Hide payment history" : "Payment history"}
+                            aria-label={open ? "Hide payment action history" : "Show payment action history"}
                             className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-semibold transition-all ${
                               open ? "bg-surface-100 text-navy" : "text-navy/50 hover:text-navy hover:bg-surface-100"
                             }`}
