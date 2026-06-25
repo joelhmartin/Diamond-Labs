@@ -20,15 +20,15 @@ gateway support it.
 | Surcharge / convenience fee | ✅ | ❌ | B2B labs sometimes pass card fees; needs disclosure rules |
 | Auth-only then capture later | ✅ | ❌ | not needed for invoice pay (auth+capture is right) |
 
-## 2. Refunds / voids  ← **building now (P0)**
+## 2. Refunds / voids  ← **shipped (P0 + partial)**
 | Capability | Auth.net | Status |
 |---|---|---|
-| Void (unsettled, same-day) | ✅ `voidTransaction` | ❌ → building |
-| Refund (settled) | ✅ `refundTransaction` | ❌ → building |
-| Partial refund | ✅ | ❌ (P1 — see roadmap) |
-| Ledger reversal (invoice un-pays) | — | ❌ → building |
-| Seazona credit/reversal | 🟡 (write-only API) | ❌ → best-effort, building |
-| Refund receipt email | — | ❌ → building |
+| Void (unsettled, same-day) | ✅ `voidTransaction` | ✅ |
+| Refund (settled) | ✅ `refundTransaction` | ✅ |
+| Partial refund | ✅ | ✅ (by invoice slice, settled charges; one reversal per charge) |
+| Ledger reversal (invoice un-pays) | — | ✅ (negative `invoice_payments` rows) |
+| Seazona credit/reversal | 🟡 (write-only API) | ✅ best-effort (alertable log on failure) |
+| Refund receipt email | — | ✅ (`sendRefundReceipt`) |
 
 ## 3. Card on file (CIM)
 | Capability | Auth.net | Status | Notes |
@@ -83,7 +83,7 @@ gateway support it.
 - **P1 (next, "fully functional" core):**
   1. ✅ _Done._ In-portal **payment history** (doctor, `/doctor/payments`) + **admin payment view** (`/admin/payments`, refund from a row).
   2. ✅ _Done._ **Default card** (`users.defaultPaymentProfileId`, pre-selected in the pay modal) + **multiple cards** verified end-to-end (list/add/edit/delete/select).
-  3. **Partial refunds** (by amount / by invoice).
+  3. ✅ _Done._ **Partial refunds** by invoice slice (settled charges; one reversal per charge — incremental top-ups are a future enhancement).
   4. **Webhooks**: settlement confirmation + dispute/chargeback alerts.
   5. ✅ _Done._ **Payment-action audit log** — `audit_log` rows for charge/refund/void/offline/card changes; per-transaction history on `/admin/payments`.
 - **P2 (later):** surcharge/convenience fee, autopay statements (ARB), settlement/reconciliation export, printable PDF receipts, card nicknames.

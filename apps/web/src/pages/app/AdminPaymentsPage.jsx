@@ -72,7 +72,7 @@ export function AdminPaymentsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(false);
   const [q, setQ] = useState("");
-  const [refundTxn, setRefundTxn] = useState(null);
+  const [refundPayment, setRefundPayment] = useState(null);
   const [expandedTxn, setExpandedTxn] = useState(null);   // transactionId with history open
   const [auditByTxn, setAuditByTxn] = useState({});        // { [txn]: { loading, entries, failed } }
   // Bumped on every list reload; an in-flight audit fetch whose generation is
@@ -243,7 +243,7 @@ export function AdminPaymentsPage() {
                           {p.refundable ? (
                             <button
                               type="button"
-                              onClick={() => setRefundTxn(p.transactionId)}
+                              onClick={() => setRefundPayment(p)}
                               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all"
                             >
                               <Undo2 size={12} /> Refund
@@ -299,10 +299,11 @@ export function AdminPaymentsPage() {
         )}
       </div>
 
-      {refundTxn && (
+      {refundPayment && (
         <RefundPaymentModal
-          presetTransactionId={refundTxn}
-          onClose={() => setRefundTxn(null)}
+          presetTransactionId={refundPayment.transactionId}
+          payment={refundPayment}
+          onClose={() => setRefundPayment(null)}
           onDone={() => load(q.trim())}
         />
       )}

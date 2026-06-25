@@ -84,19 +84,28 @@ describe("hostedCompleteSchema", () => {
 });
 
 describe("refundSchema", () => {
-  it("accepts a transactionId (full reversal — the only supported mode)", () => {
+  it("accepts a transactionId alone (full reversal)", () => {
     expect(refundSchema.safeParse({ transactionId: "1234567890" }).success).toBe(true);
   });
   it("requires a non-empty transactionId", () => {
     expect(refundSchema.safeParse({}).success).toBe(false);
     expect(refundSchema.safeParse({ transactionId: "" }).success).toBe(false);
   });
-  it("does not honor an amount — full-only contract strips it", () => {
-    // Partial refunds aren't supported yet, so the schema carries no `amount`.
-    // A stray `amount` parses (Zod strips unknown keys) but never reaches the route.
-    const parsed = refundSchema.safeParse({ transactionId: "t", amount: 12.5 });
-    expect(parsed.success).toBe(true);
-    expect(parsed.data).not.toHaveProperty("amount");
+  it("accepts partial allocations", () => {
+    expect(
+      refundSchema.safeParse({
+        transactionId: "t",
+        allocations: [{ invoiceId: "a", amount: 40 }, { invoiceId: "b", amount: 10.5 }],
+      }).success
+    ).toBe(true);
+  });
+  it("rejects an empty allocations array (must omit for full, or send ≥1)", () => {
+    expect(refundSchema.safeParse({ transactionId: "t", allocations: [] }).success).toBe(false);
+  });
+  it("rejects an allocation with a missing invoiceId or bad amount", () => {
+    expect(refundSchema.safeParse({ transactionId: "t", allocations: [{ amount: 5 }] }).success).toBe(false);
+    expect(refundSchema.safeParse({ transactionId: "t", allocations: [{ invoiceId: "a", amount: 0 }] }).success).toBe(false);
+    expect(refundSchema.safeParse({ transactionId: "t", allocations: [{ invoiceId: "a", amount: 10.001 }] }).success).toBe(false);
   });
 });
 
