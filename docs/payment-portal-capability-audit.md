@@ -20,15 +20,15 @@ gateway support it.
 | Surcharge / convenience fee | ✅ | ❌ | B2B labs sometimes pass card fees; needs disclosure rules |
 | Auth-only then capture later | ✅ | ❌ | not needed for invoice pay (auth+capture is right) |
 
-## 2. Refunds / voids  ← **building now (P0)**
+## 2. Refunds / voids  ← **shipped (P0 + partial)**
 | Capability | Auth.net | Status |
 |---|---|---|
-| Void (unsettled, same-day) | ✅ `voidTransaction` | ❌ → building |
-| Refund (settled) | ✅ `refundTransaction` | ❌ → building |
+| Void (unsettled, same-day) | ✅ `voidTransaction` | ✅ |
+| Refund (settled) | ✅ `refundTransaction` | ✅ |
 | Partial refund | ✅ | ✅ (by invoice slice, settled charges; one reversal per charge) |
-| Ledger reversal (invoice un-pays) | — | ❌ → building |
-| Seazona credit/reversal | 🟡 (write-only API) | ❌ → best-effort, building |
-| Refund receipt email | — | ❌ → building |
+| Ledger reversal (invoice un-pays) | — | ✅ (negative `invoice_payments` rows) |
+| Seazona credit/reversal | 🟡 (write-only API) | ✅ best-effort (alertable log on failure) |
+| Refund receipt email | — | ✅ (`sendRefundReceipt`) |
 
 ## 3. Card on file (CIM)
 | Capability | Auth.net | Status | Notes |

@@ -51,7 +51,11 @@ export function RefundPaymentModal({ onClose, presetTransactionId = "", payment 
     setLines((prev) => prev.map((l, j) => (j === i ? { ...l, ...patch } : l)));
 
   const parsed = lines.map((l) => {
-    const amt = parseFloat(l.amountStr);
+    const raw = parseFloat(l.amountStr);
+    // Validate the rounded cents value — the same value submit() sends — so a
+    // sub-cent entry (0.004 → 0.00, or 10.005 → 10.01) can't pass here and then
+    // change on the wire.
+    const amt = Number.isNaN(raw) ? NaN : round2(raw);
     const valid = !l.include || (!Number.isNaN(amt) && amt > 0 && amt <= l.max + 0.005);
     return { ...l, amt, valid };
   });
@@ -165,6 +169,7 @@ export function RefundPaymentModal({ onClose, presetTransactionId = "", payment 
                     value={l.amountStr}
                     onChange={(e) => setLine(i, { amountStr: e.target.value })}
                     disabled={submitting || !l.include}
+                    aria-label={`Refund amount for invoice ${l.label}`}
                     className={`${INPUT} flex-1 ${!l.valid ? "border-red-400" : ""}`}
                   />
                   <span className="whitespace-nowrap text-xs text-navy/40">/ {formatUSD(l.max)}</span>
