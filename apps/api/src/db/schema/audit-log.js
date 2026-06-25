@@ -15,4 +15,7 @@ export const auditLog = pgTable("audit_log", {
   index("audit_log_account_id_idx").on(table.accountId),
   index("audit_log_action_idx").on(table.action),
   index("audit_log_created_at_idx").on(table.createdAt),
+  // Per-target lookups (e.g. the admin per-transaction payment history fetch,
+  // which filters by targetId) — avoids a growing-table scan per expanded row.
+  index("audit_log_target_id_idx").on(table.targetId),
 ]);

@@ -7,6 +7,7 @@ import { invoicePayments, users } from "../db/schema/index.js";
 import { eq } from "drizzle-orm";
 import { createId } from "../lib/id.js";
 import { getPortalPaidMap, getInvoicePortalPaid } from "../services/invoice-ledger.service.js";
+import * as auditService from "../services/audit.service.js";
 
 /** Round to cents consistently (avoids FP drift). */
 function round2(n) {
@@ -251,6 +252,17 @@ export default async function invoiceRoutes(fastify) {
       { invoiceId, seazonaClientId, ledgerUserId, amount: amt },
       "admin recorded offline payment in portal ledger"
     );
+
+    // Durable audit trail (who recorded an offline payment). Soft-fail — the
+    // ledger row is already written; audit must not break the response.
+    await auditService.logSafe({
+      userId: request.user.id,
+      action: "payment.offline_recorded",
+      targetType: "transaction",
+      targetId: `OFFLINE-${rowId}`,
+      metadata: { invoiceId, invoiceNumber: invoiceNumber || invoice.invoiceNumber || null, amount: amt, ledgerUserId },
+      ipAddress: request.ip,
+    });
 
     return { data: { invoiceId, amount: amt, recorded: true, userId: ledgerUserId } };
   });
