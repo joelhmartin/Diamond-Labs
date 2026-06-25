@@ -59,13 +59,24 @@ export const hostedTokenSchema = z
 
 /**
  * POST /admin/payments/refund — admin-initiated refund/void of a recorded
- * payment. FULL reversal only: there is intentionally no `amount` field — the
- * route always reverses the whole charge. Partial refunds are a P1 follow-up
- * that will reintroduce a validated `amount`; until then any `amount` a caller
- * sends is stripped rather than honored.
+ * payment.
+ *
+ * - Omit `allocations` → FULL reversal: the route negates every original ledger
+ *   row (void if unsettled, refund if settled).
+ * - Provide `allocations` → PARTIAL refund of specific invoice slices (settled
+ *   charges only — Authorize.net can't partially VOID an unsettled charge). Each
+ *   entry's `invoiceId` must belong to the original charge and its `amount` must
+ *   not exceed what that invoice was charged. ONE reversal per charge: once any
+ *   refund (full or partial) is recorded, further refunds on it are rejected.
  */
+export const refundAllocationSchema = z.object({
+  invoiceId: z.string().min(1),
+  amount,
+});
+
 export const refundSchema = z.object({
   transactionId: z.string().min(1),
+  allocations: z.array(refundAllocationSchema).min(1).optional(),
 });
 
 /** POST /payments/hosted-complete — finalize a hosted charge (C2-bound). */

@@ -1144,10 +1144,14 @@ export default async function paymentRoutes(fastify) {
   // Seazona credit, receipt) is best-effort — once the money is back at the
   // gateway we must not 500 and invite a re-attempt.
   //
-  // P0 = FULL reversal ONLY. Partial-by-invoice allocation plus the fact that
-  // Authorize.net can't partially VOID an unsettled charge make partials a P1 —
-  // a partial `amount` is rejected (422) and the reversal ALWAYS negates every
-  // original row, so per-invoice totals can't be corrupted.
+  // Supports FULL or PARTIAL-by-invoice reversal (see refundSchema):
+  //   • no `allocations` → full reversal of every original row;
+  //   • `allocations` → reverse specific invoice slices, each capped at what it
+  //     was charged. Partial is settled-only (Authorize.net can't partially VOID
+  //     an unsettled charge — the gateway helper rejects that as a 422).
+  // ONE reversal per charge either way: the double-refund guard rejects a second
+  // refund on a charge that already has any reversal row (so a charge is refunded
+  // once, fully or partially — incremental top-ups are a future enhancement).
   //
   // Concurrency: the double-refund guard + gateway reversal + ledger insert +
   // Seazona credit + receipt all run inside withIdempotency keyed on the
@@ -1161,7 +1165,7 @@ export default async function paymentRoutes(fastify) {
   fastify.post("/admin/payments/refund", {
     preHandler: [authenticate, requireAdmin, validate(refundSchema)],
   }, async (request, reply) => {
-    const { transactionId } = request.body;
+    const { transactionId, allocations } = request.body;
     const txid = String(transactionId);
 
     // 1. Find the ORIGINAL charge's ledger rows (positive applied only — never
@@ -1176,10 +1180,46 @@ export default async function paymentRoutes(fastify) {
       });
     }
 
-    // 2. FULL refund/void only — the request schema (refundSchema) carries no
-    // `amount`, so there is nothing to validate here; the reversal below always
-    // mirrors the full set of original ledger rows. Partial refunds are a P1
-    // follow-up that will reintroduce a validated `amount`.
+    // 2. Reversal plan.
+    //   • No `allocations` → FULL reversal: negate every original row.
+    //   • `allocations` → PARTIAL: reverse only the specified invoice slices,
+    //     each capped at what that invoice was charged. Validated here (read-only,
+    //     no money moves) before the lock. Settled-only is enforced by the gateway
+    //     helper (Authorize.net can't partially void an unsettled charge).
+    let partialPlan = null; // null ⇒ full reversal
+    if (allocations) {
+      const appliedByInvoice = new Map();
+      const numberByInvoice = new Map();
+      for (const r of originalRows) {
+        const prev = appliedByInvoice.get(r.seazonaInvoiceId) || 0;
+        appliedByInvoice.set(r.seazonaInvoiceId, round2(prev + Number(r.appliedAmount)));
+        if (r.invoiceNumber && !numberByInvoice.has(r.seazonaInvoiceId)) {
+          numberByInvoice.set(r.seazonaInvoiceId, r.invoiceNumber);
+        }
+      }
+      const seen = new Set();
+      for (const a of allocations) {
+        const invId = String(a.invoiceId);
+        if (!appliedByInvoice.has(invId)) {
+          return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: `Invoice ${invId} is not part of this charge.` } });
+        }
+        if (seen.has(invId)) {
+          return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: `Invoice ${invId} appears more than once.` } });
+        }
+        seen.add(invId);
+        if (round2(Number(a.amount)) > appliedByInvoice.get(invId) + 0.005) {
+          return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: `Refund for invoice ${invId} exceeds the $${appliedByInvoice.get(invId).toFixed(2)} charged to it.` } });
+        }
+      }
+      partialPlan = {
+        total: round2(allocations.reduce((s, a) => s + Number(a.amount), 0)),
+        rows: allocations.map((a) => ({
+          seazonaInvoiceId: String(a.invoiceId),
+          invoiceNumber: numberByInvoice.get(String(a.invoiceId)) || null,
+          appliedAmount: (-round2(Number(a.amount))).toFixed(2),
+        })),
+      };
+    }
 
     // 3. Critical section under an idempotency lock keyed on the charge txn id.
     // Concurrent refunds serialize here; the double-refund guard lives INSIDE the
@@ -1225,7 +1265,8 @@ export default async function paymentRoutes(fastify) {
           });
 
           // 3d. Reverse at the gateway (void if unsettled, refund if settled).
-          // Always FULL — no amount passed.
+          // FULL when no plan; PARTIAL passes the requested total (settled-only —
+          // voidOrRefund rejects a partial amount on an unsettled charge).
           //
           // On failure, only roll back the write-ahead guard when we have
           // DEFINITIVE proof no money moved:
@@ -1238,7 +1279,7 @@ export default async function paymentRoutes(fastify) {
           // second reversal, and surface a reconcile-manually error instead.
           let result;
           try {
-            result = await voidOrRefund(txid);
+            result = await voidOrRefund(txid, partialPlan ? partialPlan.total : undefined);
           } catch (gwErr) {
             const definitivelyNoMoneyMoved = !!gwErr.refundErrorKind || !!gwErr.authNetResponse;
             if (definitivelyNoMoneyMoved) {
@@ -1258,19 +1299,34 @@ export default async function paymentRoutes(fastify) {
           const refundTxnId = result.transactionId || `REFUND-${txid}`;
           const refundedAmount = round2(Number(result.amount));
 
-          // 4. Reverse the LOCAL ledger — ALWAYS the negative of every original
-          // row (full only), so per-invoice totals can't be corrupted.
-          const reversalRows = originalRows.map((r) => ({
-            id: createId(),
-            userId: r.userId,
-            seazonaClientId: r.seazonaClientId || null,
-            seazonaInvoiceId: r.seazonaInvoiceId,
-            invoiceNumber: r.invoiceNumber || null,
-            appliedAmount: (-Number(r.appliedAmount)).toFixed(2),
-            transactionId: refundTxnId,
-            refundsTransactionId: txid,
-            seazonaPaymentId: null,
-          }));
+          // 4. Reverse the LOCAL ledger. FULL → negate every original row.
+          // PARTIAL → one negative row per requested invoice slice (validated
+          // above to not exceed what each invoice was charged). Either way the
+          // rows sum to exactly what was reversed at the gateway, so per-invoice
+          // totals stay consistent.
+          const reversalRows = partialPlan
+            ? partialPlan.rows.map((r) => ({
+                id: createId(),
+                userId: originalRows[0].userId,
+                seazonaClientId: originalRows[0].seazonaClientId || null,
+                seazonaInvoiceId: r.seazonaInvoiceId,
+                invoiceNumber: r.invoiceNumber,
+                appliedAmount: r.appliedAmount,
+                transactionId: refundTxnId,
+                refundsTransactionId: txid,
+                seazonaPaymentId: null,
+              }))
+            : originalRows.map((r) => ({
+                id: createId(),
+                userId: r.userId,
+                seazonaClientId: r.seazonaClientId || null,
+                seazonaInvoiceId: r.seazonaInvoiceId,
+                invoiceNumber: r.invoiceNumber || null,
+                appliedAmount: (-Number(r.appliedAmount)).toFixed(2),
+                transactionId: refundTxnId,
+                refundsTransactionId: txid,
+                seazonaPaymentId: null,
+              }));
 
           let ledgerWriteFailed = false;
           try {
@@ -1370,6 +1426,7 @@ export default async function paymentRoutes(fastify) {
             targetId: txid,
             metadata: {
               kind: result.action, // "void" | "refund"
+              partial: !!partialPlan,
               amount: refundedAmount,
               refundTransactionId: refundTxnId,
               invoices: refundAudit.invoices,
