@@ -386,10 +386,16 @@ export async function voidTransaction(transId, mode) {
     },
   }, mode);
 
-  return {
-    transactionId: data.transactionResponse?.transId,
-    responseCode: data.transactionResponse?.responseCode,
-  };
+  // The envelope can be "Ok" while the transaction itself was not approved
+  // (declined/held/error). Treat anything other than responseCode "1" as a
+  // failure so the caller never reverses the ledger for a void that didn't land.
+  const tr = data.transactionResponse;
+  if (String(tr?.responseCode) !== "1") {
+    const err = new Error(`Authorize.net void not approved (responseCode ${tr?.responseCode ?? "?"})`);
+    err.authNetResponse = data;
+    throw err;
+  }
+  return { transactionId: tr.transId, responseCode: tr.responseCode };
 }
 
 /**
@@ -416,8 +422,13 @@ export async function refundTransaction({ transId, amount, cardLast4, expiration
     },
   }, mode);
 
-  return {
-    transactionId: data.transactionResponse?.transId,
-    responseCode: data.transactionResponse?.responseCode,
-  };
+  // Envelope "Ok" ≠ refund approved — verify the transaction-level responseCode
+  // so we never reverse the ledger / credit Seazona for a refund that didn't land.
+  const tr = data.transactionResponse;
+  if (String(tr?.responseCode) !== "1") {
+    const err = new Error(`Authorize.net refund not approved (responseCode ${tr?.responseCode ?? "?"})`);
+    err.authNetResponse = data;
+    throw err;
+  }
+  return { transactionId: tr.transId, responseCode: tr.responseCode };
 }
