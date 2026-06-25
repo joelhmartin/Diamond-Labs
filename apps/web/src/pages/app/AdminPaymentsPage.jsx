@@ -94,6 +94,11 @@ export function AdminPaymentsPage() {
 
   const load = useCallback(async (query) => {
     setRefreshing(true);
+    // Invalidate cached audit history + collapse open rows so a reload (incl.
+    // after a refund via onDone, or a manual Refresh) re-fetches fresh trails
+    // rather than serving a stale cache that misses the just-recorded action.
+    setAuditByTxn({});
+    setExpandedTxn(null);
     try {
       const { data } = await api.get("/admin/payments", {
         params: query ? { q: query } : undefined,
