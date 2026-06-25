@@ -20,6 +20,10 @@ export const users = pgTable("users", {
   seazonaClientId: varchar("seazona_client_id", { length: 100 }),
   seazonaAccountNumber: varchar("seazona_account_number", { length: 100 }),
   authorizeNetCustomerProfileId: varchar("authorize_net_customer_profile_id", { length: 100 }),
+  // Doctor's preferred saved-card payment profile (Authorize.net CIM
+  // customerPaymentProfileId). Pre-selected in the pay-invoice modal; cleared
+  // if that card is deleted. Null = no preference (fall back to first card).
+  defaultPaymentProfileId: varchar("default_payment_profile_id", { length: 100 }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [

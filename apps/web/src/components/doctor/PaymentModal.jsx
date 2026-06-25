@@ -39,8 +39,13 @@ export function PaymentModal({ invoices, onClose, onSuccess }) {
   useEffect(() => {
     api.get("/payments/saved-cards")
       .then(({ data }) => {
-        setSavedCards(data.data || []);
-        if (data.data?.length > 0) setSelectedCard(data.data[0].paymentProfileId);
+        const list = data.data || [];
+        setSavedCards(list);
+        if (list.length > 0) {
+          // Pre-select the doctor's default card, else the first.
+          const preferred = list.find((c) => c.isDefault) || list[0];
+          setSelectedCard(preferred.paymentProfileId);
+        }
       })
       .catch(() => {})
       .finally(() => setLoadingCards(false));
@@ -261,6 +266,11 @@ export function PaymentModal({ invoices, onClose, onSuccess }) {
                       onChange={() => setSelectedCard(card.paymentProfileId)} className="accent-brand-600" />
                     <CreditCard className="h-5 w-5 text-gray-400" />
                     <span className="text-sm">{card.cardType || "Card"} ****{card.cardNumber?.slice(-4)}</span>
+                    {card.isDefault && (
+                      <span className="ml-auto rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-700">
+                        Default
+                      </span>
+                    )}
                   </label>
                 ))}
                 <Button onClick={handleSavedCardPayment} loading={processing} disabled={!canPay} className="w-full">

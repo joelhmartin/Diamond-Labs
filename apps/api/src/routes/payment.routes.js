@@ -705,14 +705,43 @@ export default async function paymentRoutes(fastify) {
     return { data: responseData };
   });
 
-  // List saved cards
+  // List saved cards, flagging the doctor's default (if still present).
   fastify.get("/payments/saved-cards", {
     preHandler: [authenticate, requireApprovedDoctor],
   }, async (request) => {
     const cards = await authorizenetService.listPaymentProfiles(
       request.user.authorizeNetCustomerProfileId
     );
-    return { data: cards };
+    const defaultId = request.user.defaultPaymentProfileId;
+    return {
+      data: cards.map((c) => ({ ...c, isDefault: c.paymentProfileId === defaultId })),
+    };
+  });
+
+  // Mark a saved card as the doctor's default (pre-selected when paying). The
+  // profile must belong to this doctor's CIM profile.
+  fastify.put("/payments/saved-cards/:profileId/default", {
+    preHandler: [authenticate, requireApprovedDoctor],
+  }, async (request, reply) => {
+    const { profileId } = request.params;
+    const customerProfileId = request.user.authorizeNetCustomerProfileId;
+    if (!customerProfileId) {
+      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    }
+
+    const profiles = await authorizenetService.listPaymentProfiles(customerProfileId);
+    if (!profiles.some((p) => p.paymentProfileId === profileId)) {
+      return reply.code(404).send({
+        error: { ...ERROR_CODES.NOT_FOUND, message: "Payment profile not found or does not belong to your account." },
+      });
+    }
+
+    await db
+      .update(users)
+      .set({ defaultPaymentProfileId: profileId, updatedAt: new Date() })
+      .where(eq(users.id, request.user.id));
+
+    return { data: { defaultPaymentProfileId: profileId } };
   });
 
   // NOTE: the Accept.js-nonce add-card path (POST /payments/saved-cards) was
@@ -800,6 +829,15 @@ export default async function paymentRoutes(fastify) {
       customerProfileId,
       paymentProfileId: request.params.profileId,
     });
+
+    // If the deleted card was the doctor's default, clear the preference so the
+    // pay modal doesn't pre-select a profile that no longer exists.
+    if (request.user.defaultPaymentProfileId === request.params.profileId) {
+      await db
+        .update(users)
+        .set({ defaultPaymentProfileId: null, updatedAt: new Date() })
+        .where(eq(users.id, request.user.id));
+    }
 
     return { data: { message: "Card removed." } };
   });
