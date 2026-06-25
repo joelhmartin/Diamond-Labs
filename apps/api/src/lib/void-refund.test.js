@@ -30,12 +30,27 @@ beforeEach(() => {
 });
 
 describe("voidOrRefund — status → action decision", () => {
-  it("VOIDs an authorizedPendingCapture transaction (full, amount ignored)", async () => {
+  it("VOIDs an authorizedPendingCapture transaction (full, no amount)", async () => {
     getTransactionDetails.mockResolvedValue({ ...baseDetails, transactionStatus: "authorizedPendingCapture" });
-    const out = await voidOrRefund("1234567890", 25);
+    const out = await voidOrRefund("1234567890");
     expect(out.action).toBe("void");
-    expect(out.amount).toBe(100); // full — the partial amount is not honored
+    expect(out.amount).toBe(100); // full transaction
     expect(voidTransaction).toHaveBeenCalledOnce();
+    expect(refundTransaction).not.toHaveBeenCalled();
+  });
+
+  it("VOIDs an unsettled transaction when given the full amount (not a partial)", async () => {
+    getTransactionDetails.mockResolvedValue({ ...baseDetails, transactionStatus: "capturedPendingSettlement" });
+    const out = await voidOrRefund("1234567890", 100);
+    expect(out.action).toBe("void");
+    expect(out.amount).toBe(100);
+    expect(voidTransaction).toHaveBeenCalledOnce();
+  });
+
+  it("REFUSES a PARTIAL void of an unsettled charge (can't partial-void) with a validation error", async () => {
+    getTransactionDetails.mockResolvedValue({ ...baseDetails, transactionStatus: "authorizedPendingCapture" });
+    await expect(voidOrRefund("1234567890", 25)).rejects.toMatchObject({ refundErrorKind: "validation" });
+    expect(voidTransaction).not.toHaveBeenCalled();
     expect(refundTransaction).not.toHaveBeenCalled();
   });
 

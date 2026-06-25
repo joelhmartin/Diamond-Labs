@@ -46,7 +46,17 @@ export async function voidOrRefund(transId, amount) {
   const status = String(details.transactionStatus || "");
 
   if (UNSETTLED.has(status)) {
-    // Void is always full — `amount` is intentionally not honored here.
+    // Authorize.net can't partially VOID an unsettled charge — a void is always
+    // the FULL transaction. If a caller asks for a partial amount here, refuse
+    // rather than silently voiding the whole charge; the partial must wait until
+    // the charge settles and can be refunded.
+    if (amount != null && Number(amount) < details.amount - 0.005) {
+      throw refundError(
+        "validation",
+        "Authorize.net can't partially void an unsettled charge; refund after it settles."
+      );
+    }
+    // Void is always full — `amount` is intentionally not honored beyond the guard.
     const r = await voidTransaction(transId);
     return { action: "void", transactionId: r.transactionId, amount: details.amount };
   }
