@@ -1,6 +1,7 @@
 import { db } from "../config/database.js";
 import { invoicePayments } from "../db/schema/index.js";
 import { and, eq, sql } from "drizzle-orm";
+import { summarizePayments } from "../lib/payment-summary.js";
 
 /**
  * Local portal-payment ledger reads. Seazona records payments only at the
@@ -38,6 +39,40 @@ export async function getPortalPaidMap(userId) {
   } catch (err) {
     console.error("[invoiceLedger] getPortalPaidMap DB error — degrading to empty map:", err);
     return {};
+  }
+}
+
+/**
+ * Transaction-level payment history for one user (the doctor's own payments).
+ * Fails SOFT to an empty list on a DB error, consistent with the other reads.
+ * @param {string} userId
+ * @returns {Promise<Array<object>>}
+ */
+export async function listPaymentsForUser(userId) {
+  try {
+    const rows = await db.select().from(invoicePayments).where(eq(invoicePayments.userId, userId));
+    return summarizePayments(rows);
+  } catch (err) {
+    console.error("[invoiceLedger] listPaymentsForUser DB error — degrading to empty list:", err);
+    return [];
+  }
+}
+
+/**
+ * Transaction-level payment history across all users (admin view). Optionally
+ * scoped to a single user. Name/email enrichment is the route's job. Fails SOFT.
+ * @param {{ userId?: string }} [opts]
+ * @returns {Promise<Array<object>>}
+ */
+export async function listAllPayments({ userId } = {}) {
+  try {
+    const rows = userId
+      ? await db.select().from(invoicePayments).where(eq(invoicePayments.userId, userId))
+      : await db.select().from(invoicePayments);
+    return summarizePayments(rows);
+  } catch (err) {
+    console.error("[invoiceLedger] listAllPayments DB error — degrading to empty list:", err);
+    return [];
   }
 }
 

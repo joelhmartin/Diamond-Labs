@@ -10,6 +10,7 @@ import {
   UserCog,
   FlaskConical,
   ClipboardPlus,
+  CreditCard,
   ArrowLeft,
 } from "lucide-react";
 import { brand } from "../../config/brand.js";
@@ -26,6 +27,7 @@ const mainItems = [
 
 const adminItems = [
   { label: "Invoices",   to: ROUTES.ADMIN_INVOICES,    icon: FileText },
+  { label: "Payments",   to: ROUTES.ADMIN_PAYMENTS,    icon: CreditCard },
   { label: "Orders",     to: ROUTES.ADMIN_ORDERS,      icon: ClipboardList },
   { label: "Users",      to: ROUTES.ADMIN_USERS,       icon: UserCog },
   { label: "Products",   to: ROUTES.ADMIN_PRODUCTS,    icon: Package },
