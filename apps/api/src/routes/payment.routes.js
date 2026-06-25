@@ -720,6 +720,14 @@ export default async function paymentRoutes(fastify) {
 
   // Mark a saved card as the doctor's default (pre-selected when paying). The
   // profile must belong to this doctor's CIM profile.
+  //
+  // Profiles live at the gateway (no local FK to enforce), so there's an
+  // inherent TOCTOU: a card deleted right after this ownership check could be
+  // written here as the default. That's harmless by design — the column is
+  // advisory UI state and the read path is self-healing: GET /payments/saved-cards
+  // flags `isDefault` only for a profile that still exists in the LIVE gateway
+  // list, and the pay modal falls back to the first card when nothing is flagged.
+  // So a dangling default never resolves to (or mischarges) a real card.
   fastify.put("/payments/saved-cards/:profileId/default", {
     preHandler: [authenticate, requireApprovedDoctor],
   }, async (request, reply) => {
@@ -830,14 +838,19 @@ export default async function paymentRoutes(fastify) {
       paymentProfileId: request.params.profileId,
     });
 
-    // If the deleted card was the doctor's default, clear the preference so the
-    // pay modal doesn't pre-select a profile that no longer exists.
-    if (request.user.defaultPaymentProfileId === request.params.profileId) {
-      await db
-        .update(users)
-        .set({ defaultPaymentProfileId: null, updatedAt: new Date() })
-        .where(eq(users.id, request.user.id));
-    }
+    // Atomically clear the preference if THIS card is the current default.
+    // Conditioning the WHERE on the live column value (not the auth-time
+    // `request.user` snapshot) avoids a race with a concurrent "set default"
+    // from another tab — a no-op when it isn't the default.
+    await db
+      .update(users)
+      .set({ defaultPaymentProfileId: null, updatedAt: new Date() })
+      .where(
+        and(
+          eq(users.id, request.user.id),
+          eq(users.defaultPaymentProfileId, request.params.profileId)
+        )
+      );
 
     return { data: { message: "Card removed." } };
   });
