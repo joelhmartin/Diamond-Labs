@@ -82,6 +82,17 @@ describe("summarizePayments", () => {
     expect(p.refundable).toBe(false); // a guard row blocks re-refund
   });
 
+  it("never marks an offline payment as refundable (no gateway txn behind it)", () => {
+    const out = summarizePayments([
+      row({ transactionId: "OFFLINE-abc123", appliedAmount: "75.00" }),
+    ]);
+    const p = out[0];
+    expect(p.gross).toBe(75);
+    expect(p.status).toBe("paid");
+    expect(p.offline).toBe(true);
+    expect(p.refundable).toBe(false);
+  });
+
   it("keeps separate transactions separate and sorts newest-first", () => {
     const out = summarizePayments([
       row({ transactionId: "OLD", appliedAmount: "10.00", createdAt: new Date("2026-06-01T00:00:00Z") }),

@@ -177,6 +177,8 @@ export function AdminPaymentsPage() {
                       >
                         <Undo2 size={12} /> Refund
                       </button>
+                    ) : p.offline ? (
+                      <span className="text-xs text-navy/40">Offline</span>
                     ) : (
                       <span className="text-xs text-navy/30">—</span>
                     )}

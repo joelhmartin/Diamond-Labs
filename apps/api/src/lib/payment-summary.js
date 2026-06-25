@@ -10,6 +10,10 @@ function round2(n) {
 }
 
 export const REFUND_PENDING_PREFIX = "REFUND-PENDING-";
+// Offline payments (admin "record offline payment") have no Authorize.net
+// transaction behind them — their transactionId is an `OFFLINE-<id>` sentinel.
+// They must NOT be gateway-refundable; reversing one would just 404 at the gateway.
+export const OFFLINE_PREFIX = "OFFLINE-";
 
 /**
  * Collapse raw `invoice_payments` rows into transaction-level payment summaries.
@@ -53,9 +57,13 @@ export function summarizePayments(rows) {
     else if (realReversals.length) status = "partially_refunded";
     else status = "paid";
 
-    // Refundable only when NO reversal/guard row exists — the refund route's
-    // double-refund guard rejects any charge that already has a refunds row.
-    const refundable = reversals.length === 0 && gross > 0.005;
+    // An offline (manually-recorded) payment has no gateway transaction behind it.
+    const offline = String(chargeTxn).startsWith(OFFLINE_PREFIX);
+
+    // Refundable only when there's a real gateway transaction, no reversal/guard
+    // row (the refund route's double-refund guard rejects any charge that already
+    // has a refunds row), and a positive balance to reverse.
+    const refundable = !offline && reversals.length === 0 && gross > 0.005;
 
     const sourceRows = charge.length ? charge : reversals;
     const createdAt = sourceRows.reduce(
@@ -72,6 +80,7 @@ export function summarizePayments(rows) {
       net,
       status,
       refundable,
+      offline,
       createdAt,
       refundTransactionId: realReversals[0]?.transactionId || null,
       invoices: charge.map((r) => ({
