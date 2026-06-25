@@ -10,10 +10,11 @@ import {
 } from "../services/invoice-ledger.service.js";
 import { sendOrderReceipt, sendPaymentReceipt, sendRefundReceipt } from "../services/email.service.js";
 import { voidOrRefund } from "../lib/void-refund.js";
+import * as auditService from "../services/audit.service.js";
 import { db } from "../config/database.js";
 import { redis } from "../config/redis.js";
-import { users, invoicePayments, products, orders, orderItems } from "../db/schema/index.js";
-import { eq, and, gt, inArray } from "drizzle-orm";
+import { users, invoicePayments, products, orders, orderItems, auditLog } from "../db/schema/index.js";
+import { eq, and, gt, inArray, like, desc } from "drizzle-orm";
 import { createId } from "../lib/id.js";
 import { env } from "../config/env.js";
 import {
@@ -231,6 +232,21 @@ async function recordPaymentAndAllocations({ user, amount, transactionId, alloca
       /* send() never throws; this is belt-and-suspenders */
     }
   }
+
+  // Durable audit trail (who paid what). Soft-fail — the card already charged.
+  // Covers both saved-card and hosted paths since both funnel through here.
+  await auditService.logSafe({
+    userId: user.id,
+    action: "payment.charge",
+    targetType: "transaction",
+    targetId: transactionId,
+    metadata: {
+      amount,
+      invoices: allocations.map((a) => a.invoiceNumber || a.invoiceId),
+      seazonaPaymentId: seazonaPaymentId || null,
+      ledgerWriteFailed,
+    },
+  });
 
   return { seazonaPaymentId, ledgerWriteFailed };
 }
@@ -749,6 +765,14 @@ export default async function paymentRoutes(fastify) {
       .set({ defaultPaymentProfileId: profileId, updatedAt: new Date() })
       .where(eq(users.id, request.user.id));
 
+    await auditService.logSafe({
+      userId: request.user.id,
+      action: "payment.card.set_default",
+      targetType: "payment_profile",
+      targetId: profileId,
+      ipAddress: request.ip,
+    });
+
     return { data: { defaultPaymentProfileId: profileId } };
   });
 
@@ -851,6 +875,14 @@ export default async function paymentRoutes(fastify) {
           eq(users.defaultPaymentProfileId, request.params.profileId)
         )
       );
+
+    await auditService.logSafe({
+      userId: request.user.id,
+      action: "payment.card.delete",
+      targetType: "payment_profile",
+      targetId: request.params.profileId,
+      ipAddress: request.ip,
+    });
 
     return { data: { message: "Card removed." } };
   });
@@ -1319,17 +1351,32 @@ export default async function paymentRoutes(fastify) {
             }
           }
 
-          // 7. Audit log (ids/amounts only — no card or patient data).
-          console.log(
-            "[PAYMENT][REFUND] " +
-              JSON.stringify({
-                admin: request.user.id,
-                transactionId: txid,
-                action: result.action,
-                amount: refundedAmount,
-                invoices: reversalRows.map((r) => r.invoiceNumber || r.seazonaInvoiceId),
-              })
-          );
+          // 7. Audit log (ids/amounts only — no card or patient data). A
+          // console line for log-based alerting PLUS a durable audit_log row
+          // (who refunded what) for the admin payments view. Inside the
+          // idempotent block so a replay doesn't double-record; soft-fail.
+          const refundAudit = {
+            admin: request.user.id,
+            transactionId: txid,
+            action: result.action,
+            amount: refundedAmount,
+            invoices: reversalRows.map((r) => r.invoiceNumber || r.seazonaInvoiceId),
+          };
+          console.log("[PAYMENT][REFUND] " + JSON.stringify(refundAudit));
+          await auditService.logSafe({
+            userId: request.user.id,
+            action: "payment.refund",
+            targetType: "transaction",
+            targetId: txid,
+            metadata: {
+              kind: result.action, // "void" | "refund"
+              amount: refundedAmount,
+              refundTransactionId: refundTxnId,
+              invoices: refundAudit.invoices,
+              ledgerWriteFailed,
+            },
+            ipAddress: request.ip,
+          });
 
           return {
             action: result.action,
@@ -1437,6 +1484,50 @@ export default async function paymentRoutes(fastify) {
     const max = Math.min(Number(limit) > 0 ? Number(limit) : 200, 500);
     const sliced = payments.slice(0, max);
     return { data: { payments: sliced, total, truncated: total > sliced.length } };
+  });
+
+  // Admin — payment-action audit trail (who did what: charges, refunds/voids,
+  // card changes). Optional `transactionId` scopes to one charge; newest first,
+  // enriched with the actor's name/email. Read-only.
+  fastify.get("/admin/payments/audit", {
+    preHandler: [authenticate, requireAdmin],
+  }, async (request) => {
+    const { transactionId, limit } = request.query || {};
+    const max = Math.min(Number(limit) > 0 ? Number(limit) : 100, 500);
+
+    const conds = [like(auditLog.action, "payment.%")];
+    if (transactionId) conds.push(eq(auditLog.targetId, String(transactionId)));
+
+    const rows = await db
+      .select()
+      .from(auditLog)
+      .where(and(...conds))
+      .orderBy(desc(auditLog.createdAt))
+      .limit(max);
+
+    const ids = [...new Set(rows.map((r) => r.userId).filter(Boolean))];
+    const userMap = {};
+    if (ids.length) {
+      const us = await db
+        .select({ id: users.id, name: users.name, email: users.email })
+        .from(users)
+        .where(inArray(users.id, ids));
+      for (const u of us) userMap[u.id] = u;
+    }
+
+    const entries = rows.map((r) => ({
+      id: r.id,
+      action: r.action,
+      targetType: r.targetType,
+      targetId: r.targetId,
+      metadata: r.metadata || {},
+      createdAt: r.createdAt,
+      actorId: r.userId,
+      actorName: r.userId ? userMap[r.userId]?.name || null : null,
+      actorEmail: r.userId ? userMap[r.userId]?.email || null : null,
+    }));
+
+    return { data: { entries } };
   });
 
   // ───────────────────────────────────────────────────────────────

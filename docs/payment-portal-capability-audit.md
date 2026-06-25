@@ -68,7 +68,7 @@ gateway support it.
 | Transaction bound to doctor+session | ✅ | refId binding |
 | 3-D Secure / SCA | n/a-ish | US B2B isn't under PSD2; Auth.net supports CardholderAuth if ever needed |
 | Advanced Fraud Detection (AFDS) filters | 🟡 | available in the Auth.net dashboard — configure velocity/AVS filters |
-| **Audit log of payment actions** (who refunded what) | ❌ | P1 — esp. once refunds exist |
+| **Audit log of payment actions** (who refunded what) | ✅ | `audit_log` rows on charge/refund/void/offline/card changes; admin sees per-transaction history on `/admin/payments` |
 
 ## 7. Recurring / statements (lab-specific)
 | Capability | Auth.net | Status | Notes |
@@ -85,7 +85,7 @@ gateway support it.
   2. ✅ _Done._ **Default card** (`users.defaultPaymentProfileId`, pre-selected in the pay modal) + **multiple cards** verified end-to-end (list/add/edit/delete/select).
   3. **Partial refunds** (by amount / by invoice).
   4. **Webhooks**: settlement confirmation + dispute/chargeback alerts.
-  5. **Payment-action audit log**.
+  5. ✅ _Done._ **Payment-action audit log** — `audit_log` rows for charge/refund/void/offline/card changes; per-transaction history on `/admin/payments`.
 - **P2 (later):** surcharge/convenience fee, autopay statements (ARB), settlement/reconciliation export, printable PDF receipts, card nicknames.
 
 ## Notes / decisions to confirm
