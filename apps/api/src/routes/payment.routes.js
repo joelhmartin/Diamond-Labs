@@ -1126,10 +1126,34 @@ export default async function paymentRoutes(fastify) {
           // while it's still safe (no money moved → lock releases → retryable).
           const refundUser = (await db.select().from(users).where(eq(users.id, originalRows[0].userId)))[0] || null;
 
-          // 3c. Reverse at the gateway (void if unsettled, refund if settled).
-          // Always FULL — no amount passed. This is the ONLY step that may throw
-          // out of the locked fn.
-          const result = await voidOrRefund(txid);
+          // 3c. WRITE-AHEAD guard: persist a durable double-refund marker BEFORE
+          // touching the gateway. If the process dies between the gateway reversal
+          // and the ledger write, this row still blocks a re-refund on retry (the
+          // idempotency cache wouldn't survive a crash). It's rolled back only if
+          // the gateway call itself fails (no money moved → safe to retry).
+          const guardRowId = createId();
+          await db.insert(invoicePayments).values({
+            id: guardRowId,
+            userId: originalRows[0].userId,
+            seazonaClientId: originalRows[0].seazonaClientId || null,
+            seazonaInvoiceId: originalRows[0].seazonaInvoiceId,
+            invoiceNumber: originalRows[0].invoiceNumber || null,
+            appliedAmount: "0.00",
+            transactionId: `REFUND-PENDING-${txid}`,
+            refundsTransactionId: txid,
+            seazonaPaymentId: null,
+          });
+
+          // 3d. Reverse at the gateway (void if unsettled, refund if settled).
+          // Always FULL — no amount passed. On gateway failure, roll back the
+          // write-ahead guard so a legitimate retry can proceed.
+          let result;
+          try {
+            result = await voidOrRefund(txid);
+          } catch (gwErr) {
+            await db.delete(invoicePayments).where(eq(invoicePayments.id, guardRowId)).catch(() => {});
+            throw gwErr;
+          }
 
           // The money is now reversed at Authorize.net. Everything below is
           // best-effort and MUST NOT throw — otherwise the lock would release and
@@ -1167,28 +1191,8 @@ export default async function paymentRoutes(fastify) {
                   error: String(ledgerErr?.message || ledgerErr).slice(0, 300),
                 })
             );
-            // The reversal rows double as the durable double-refund guard. Since
-            // the bulk insert didn't land, persist a minimal zero-amount guard row
-            // so a later retry (after the 24h idempotency cache expires) can't
-            // refund this charge again. Worst case (this also fails) is logged.
-            try {
-              await db.insert(invoicePayments).values({
-                id: createId(),
-                userId: originalRows[0].userId,
-                seazonaClientId: originalRows[0].seazonaClientId || null,
-                seazonaInvoiceId: originalRows[0].seazonaInvoiceId,
-                invoiceNumber: originalRows[0].invoiceNumber || null,
-                appliedAmount: "0.00",
-                transactionId: refundTxnId,
-                refundsTransactionId: txid,
-                seazonaPaymentId: null,
-              });
-            } catch (guardErr) {
-              console.error(
-                `[PAYMENT][REFUND_GUARD_WRITE_FAILED] could not persist a double-refund guard for charge ${txid} — re-refund protection now relies only on the idempotency cache; manual lock required ` +
-                  JSON.stringify({ transactionId: txid, refundTransactionId: refundTxnId, error: String(guardErr?.message || guardErr).slice(0, 200) })
-              );
-            }
+            // No extra guard needed here — the write-ahead guard row (3c, inserted
+            // BEFORE the gateway call) already blocks a re-refund of this charge.
           }
 
           // 5. Seazona credit (best-effort, never throws). Mirrors the
