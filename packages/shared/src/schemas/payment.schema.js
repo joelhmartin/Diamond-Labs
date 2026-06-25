@@ -57,6 +57,17 @@ export const hostedTokenSchema = z
   })
   .passthrough();
 
+/**
+ * POST /admin/payments/refund — admin-initiated refund/void of a recorded
+ * payment. FULL reversal only: there is intentionally no `amount` field — the
+ * route always reverses the whole charge. Partial refunds are a P1 follow-up
+ * that will reintroduce a validated `amount`; until then any `amount` a caller
+ * sends is stripped rather than honored.
+ */
+export const refundSchema = z.object({
+  transactionId: z.string().min(1),
+});
+
 /** POST /payments/hosted-complete — finalize a hosted charge (C2-bound). */
 export const hostedCompleteSchema = z.object({
   transId: z.string().min(1),

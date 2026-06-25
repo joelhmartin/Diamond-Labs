@@ -5,6 +5,7 @@ import {
   hostedTokenSchema,
   hostedCompleteSchema,
   checkoutSchema,
+  refundSchema,
 } from "@my-app/shared";
 
 describe("allocationSchema", () => {
@@ -79,6 +80,23 @@ describe("hostedCompleteSchema", () => {
     ).toBe(true);
     expect(hostedCompleteSchema.safeParse({ transId: "t1", allocations: [{ invoiceId: "a", amount: 5 }] }).success).toBe(false);
     expect(hostedCompleteSchema.safeParse({ refId: "H", allocations: [{ invoiceId: "a", amount: 5 }] }).success).toBe(false);
+  });
+});
+
+describe("refundSchema", () => {
+  it("accepts a transactionId (full reversal — the only supported mode)", () => {
+    expect(refundSchema.safeParse({ transactionId: "1234567890" }).success).toBe(true);
+  });
+  it("requires a non-empty transactionId", () => {
+    expect(refundSchema.safeParse({}).success).toBe(false);
+    expect(refundSchema.safeParse({ transactionId: "" }).success).toBe(false);
+  });
+  it("does not honor an amount — full-only contract strips it", () => {
+    // Partial refunds aren't supported yet, so the schema carries no `amount`.
+    // A stray `amount` parses (Zod strips unknown keys) but never reaches the route.
+    const parsed = refundSchema.safeParse({ transactionId: "t", amount: 12.5 });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data).not.toHaveProperty("amount");
   });
 });
 

@@ -328,3 +328,56 @@ export async function sendPaymentReceipt({ to, amount, invoices = [], transactio
 
   return send({ to, subject: "Payment received — Diamond Orthotic Laboratory", html });
 }
+
+/**
+ * Doctor refund receipt. Sent (soft-fail) after an admin refunds/voids a recorded
+ * payment. Mirrors sendPaymentReceipt. `invoices` are { number, amount } per
+ * invoice the refund was applied against (amount is the positive refunded value).
+ */
+export async function sendRefundReceipt({ to, amount, invoices = [], transactionId, date }) {
+  if (!to) return false;
+  const when = (date instanceof Date ? date : new Date()).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const rows = invoices
+    .map(
+      (i) => `
+        <tr>
+          <td style="padding:10px 12px;border-bottom:1px solid #eef1f4;color:#1a2733;">Invoice ${esc(i.number)}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #eef1f4;color:#1a2733;text-align:right;">${money(i.amount)}</td>
+        </tr>`
+    )
+    .join("");
+
+  const html = `
+    <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a2733;">
+      <h1 style="font-size:20px;margin:0 0 4px;">Refund issued</h1>
+      <p style="margin:0 0 20px;color:#5a6b7b;font-size:13px;">A refund from Diamond Orthotic Laboratory was issued on ${when}. It may take a few business days to appear on your statement.</p>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+        <thead>
+          <tr>
+            <th style="padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#8a98a6;border-bottom:2px solid #eef1f4;">Invoice</th>
+            <th style="padding:8px 12px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#8a98a6;border-bottom:2px solid #eef1f4;">Refunded</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot>
+          <tr>
+            <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">Total refunded</td>
+            <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${money(amount)}</td>
+          </tr>
+        </tfoot>
+      </table>
+      <p style="margin:0 0 24px;font-size:12px;color:#8a98a6;">
+        Original payment reference: <span style="font-family:monospace;">${esc(transactionId || "—")}</span>
+      </p>
+      <p style="margin:0;font-size:13px;color:#5a6b7b;line-height:1.6;">
+        Questions about this refund? Contact the lab and reference the payment id above.
+      </p>
+    </div>
+  `;
+
+  return send({ to, subject: "Refund issued — Diamond Orthotic Laboratory", html });
+}

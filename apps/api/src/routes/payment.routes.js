@@ -1,14 +1,15 @@
 import { authenticate } from "../middleware/authenticate.js";
-import { requireApprovedDoctor } from "../middleware/require-role.js";
+import { requireApprovedDoctor, requireAdmin } from "../middleware/require-role.js";
 import { validate } from "../middleware/validate.js";
 import * as authorizenetService from "../services/authorizenet.service.js";
 import * as seazonaService from "../services/seazona.service.js";
 import { getInvoicePortalPaid } from "../services/invoice-ledger.service.js";
-import { sendOrderReceipt, sendPaymentReceipt } from "../services/email.service.js";
+import { sendOrderReceipt, sendPaymentReceipt, sendRefundReceipt } from "../services/email.service.js";
+import { voidOrRefund } from "../lib/void-refund.js";
 import { db } from "../config/database.js";
 import { redis } from "../config/redis.js";
 import { users, invoicePayments, products, orders, orderItems } from "../db/schema/index.js";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gt } from "drizzle-orm";
 import { createId } from "../lib/id.js";
 import { env } from "../config/env.js";
 import {
@@ -17,6 +18,7 @@ import {
   chargeSavedSchema,
   hostedTokenSchema,
   hostedCompleteSchema,
+  refundSchema,
 } from "@my-app/shared";
 import {
   withIdempotency,
@@ -1043,6 +1045,276 @@ export default async function paymentRoutes(fastify) {
         ...(ledgerWriteFailed ? { ledgerWriteFailed: true } : {}),
       },
     };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // ADMIN REFUND / VOID — reverse a payment recorded through the portal.
+  //
+  // Voids an unsettled charge or refunds a settled one at Authorize.net, then
+  // reverses the LOCAL ledger (one negative invoice_payments row per original
+  // row) so the affected invoices un-pay. Money-critical: the gateway call is
+  // the only thing that may fail loudly; everything after it (ledger reversal,
+  // Seazona credit, receipt) is best-effort — once the money is back at the
+  // gateway we must not 500 and invite a re-attempt.
+  //
+  // P0 = FULL reversal ONLY. Partial-by-invoice allocation plus the fact that
+  // Authorize.net can't partially VOID an unsettled charge make partials a P1 —
+  // a partial `amount` is rejected (422) and the reversal ALWAYS negates every
+  // original row, so per-invoice totals can't be corrupted.
+  //
+  // Concurrency: the double-refund guard + gateway reversal + ledger insert +
+  // Seazona credit + receipt all run inside withIdempotency keyed on the
+  // charge's transaction id, so two concurrent refunds of the same charge
+  // serialize on the lock (the loser gets 409 CHARGE_IN_PROGRESS, or replays the
+  // cached result instead of double-refunding). Nothing after the voidOrRefund
+  // gateway call may throw out of the locked fn (ledger insert is soft-failed,
+  // Seazona + receipt never throw), so a successful reversal is always cached,
+  // never followed by a lock release that could permit a re-refund.
+  // ───────────────────────────────────────────────────────────────
+  fastify.post("/admin/payments/refund", {
+    preHandler: [authenticate, requireAdmin, validate(refundSchema)],
+  }, async (request, reply) => {
+    const { transactionId } = request.body;
+    const txid = String(transactionId);
+
+    // 1. Find the ORIGINAL charge's ledger rows (positive applied only — never
+    // match a prior refund's negative rows). We only refund payments we recorded.
+    const originalRows = await db
+      .select()
+      .from(invoicePayments)
+      .where(and(eq(invoicePayments.transactionId, txid), gt(invoicePayments.appliedAmount, "0")));
+    if (!originalRows.length) {
+      return reply.code(404).send({
+        error: { ...ERROR_CODES.NOT_FOUND, message: "No portal payment found for that transaction id." },
+      });
+    }
+
+    // 2. FULL refund/void only — the request schema (refundSchema) carries no
+    // `amount`, so there is nothing to validate here; the reversal below always
+    // mirrors the full set of original ledger rows. Partial refunds are a P1
+    // follow-up that will reintroduce a validated `amount`.
+
+    // 3. Critical section under an idempotency lock keyed on the charge txn id.
+    // Concurrent refunds serialize here; the double-refund guard lives INSIDE the
+    // lock so check-then-act can't race, and everything after the gateway call is
+    // soft-fail so a successful reversal is cached rather than lock-released.
+    let outcome;
+    try {
+      outcome = await withIdempotency(
+        redis,
+        `refund:${txid}`,
+        async () => {
+          // 3a. Double-refund guard — a reversal row linked to this charge already
+          // exists. Throw a tagged error → 409 ALREADY_REFUNDED. Throwing here
+          // releases the lock, which is safe: no money has moved.
+          const existingRefund = await db
+            .select({ id: invoicePayments.id })
+            .from(invoicePayments)
+            .where(eq(invoicePayments.refundsTransactionId, txid));
+          if (existingRefund.length) {
+            throw Object.assign(new Error("already_refunded"), { alreadyRefunded: true });
+          }
+
+          // 3b. Look up the doctor BEFORE the gateway call so a DB hiccup throws
+          // while it's still safe (no money moved → lock releases → retryable).
+          const refundUser = (await db.select().from(users).where(eq(users.id, originalRows[0].userId)))[0] || null;
+
+          // 3c. WRITE-AHEAD guard: persist a durable double-refund marker BEFORE
+          // touching the gateway. If the process dies between the gateway reversal
+          // and the ledger write, this row still blocks a re-refund on retry (the
+          // idempotency cache wouldn't survive a crash). It's rolled back only if
+          // the gateway call itself fails (no money moved → safe to retry).
+          const guardRowId = createId();
+          await db.insert(invoicePayments).values({
+            id: guardRowId,
+            userId: originalRows[0].userId,
+            seazonaClientId: originalRows[0].seazonaClientId || null,
+            seazonaInvoiceId: originalRows[0].seazonaInvoiceId,
+            invoiceNumber: originalRows[0].invoiceNumber || null,
+            appliedAmount: "0.00",
+            transactionId: `REFUND-PENDING-${txid}`,
+            refundsTransactionId: txid,
+            seazonaPaymentId: null,
+          });
+
+          // 3d. Reverse at the gateway (void if unsettled, refund if settled).
+          // Always FULL — no amount passed.
+          //
+          // On failure, only roll back the write-ahead guard when we have
+          // DEFINITIVE proof no money moved:
+          //   • a pre-gateway validation/not-found error (refundErrorKind), or
+          //   • a gateway response that explicitly REJECTED the reversal
+          //     (authNetResponse present → the credit/void was never created).
+          // For an UNCERTAIN failure — socket reset / timeout / unparseable body
+          // after the request reached Authorize.net — the charge MAY already be
+          // reversed, so we KEEP the guard row to block a retry from issuing a
+          // second reversal, and surface a reconcile-manually error instead.
+          let result;
+          try {
+            result = await voidOrRefund(txid);
+          } catch (gwErr) {
+            const definitivelyNoMoneyMoved = !!gwErr.refundErrorKind || !!gwErr.authNetResponse;
+            if (definitivelyNoMoneyMoved) {
+              await db.delete(invoicePayments).where(eq(invoicePayments.id, guardRowId)).catch(() => {});
+              throw gwErr;
+            }
+            console.error(
+              `[PAYMENT][REFUND_UNCERTAIN] reversal of charge ${txid} failed without a definitive gateway response — the charge MAY already be reversed; guard row ${guardRowId} kept to block a retry, manual reconcile required ` +
+                JSON.stringify({ transactionId: txid, error: String(gwErr?.message || gwErr).slice(0, 300) })
+            );
+            throw Object.assign(gwErr, { refundUncertain: true });
+          }
+
+          // The money is now reversed at Authorize.net. Everything below is
+          // best-effort and MUST NOT throw — otherwise the lock would release and
+          // permit a re-refund.
+          const refundTxnId = result.transactionId || `REFUND-${txid}`;
+          const refundedAmount = round2(Number(result.amount));
+
+          // 4. Reverse the LOCAL ledger — ALWAYS the negative of every original
+          // row (full only), so per-invoice totals can't be corrupted.
+          const reversalRows = originalRows.map((r) => ({
+            id: createId(),
+            userId: r.userId,
+            seazonaClientId: r.seazonaClientId || null,
+            seazonaInvoiceId: r.seazonaInvoiceId,
+            invoiceNumber: r.invoiceNumber || null,
+            appliedAmount: (-Number(r.appliedAmount)).toFixed(2),
+            transactionId: refundTxnId,
+            refundsTransactionId: txid,
+            seazonaPaymentId: null,
+          }));
+
+          let ledgerWriteFailed = false;
+          try {
+            await db.insert(invoicePayments).values(reversalRows);
+          } catch (ledgerErr) {
+            ledgerWriteFailed = true;
+            console.error(
+              `[PAYMENT][REFUND_LEDGER_WRITE_FAILED] refund/void ${refundTxnId} for charge ${txid} succeeded at Authorize.net but the ledger reversal insert failed — manual reconcile required ` +
+                JSON.stringify({
+                  transactionId: txid,
+                  refundTransactionId: refundTxnId,
+                  action: result.action,
+                  amount: refundedAmount,
+                  invoices: reversalRows.map((r) => r.invoiceNumber || r.seazonaInvoiceId),
+                  error: String(ledgerErr?.message || ledgerErr).slice(0, 300),
+                })
+            );
+            // No extra guard needed here — the write-ahead guard row (3c, inserted
+            // BEFORE the gateway call) already blocks a re-refund of this charge.
+          }
+
+          // 5. Seazona credit (best-effort, never throws). Mirrors the
+          // production-only gating of recordPaymentAndAllocations — no sandbox.
+          if (originalRows[0].seazonaClientId && env.AUTHORIZE_NET_ENV === "production") {
+            try {
+              const invNums = [...new Set(reversalRows.map((r) => r.invoiceNumber).filter(Boolean))];
+              const res = await seazonaService.createPayment({
+                clientId: originalRows[0].seazonaClientId,
+                accountNumber: refundUser?.seazonaAccountNumber || null,
+                // Same "Invoices <num>" token the original payment used — Seazona's
+                // report attributes by that, so the negative credit lands on the
+                // right invoices. The refund context lives in notes.
+                referenceNumber: invNums.length ? `Invoices ${invNums.join(", ")}` : `Refund ${txid}`,
+                notes: `[REFUND] txn ${txid}`,
+                amount: -refundedAmount,
+              });
+              const seazonaPaymentId = res?.paymentId ?? res?.id ?? res?.PaymentId ?? res?.paymentID ?? null;
+              if (!seazonaPaymentId) {
+                console.error(
+                  `[Seazona][REFUND_WRITE_FAILED] refund ${refundTxnId} for charge ${txid} reversed at Authorize.net but did NOT record a Seazona credit — manual entry required ` +
+                    JSON.stringify({
+                      transactionId: txid,
+                      clientId: originalRows[0].seazonaClientId,
+                      accountNumber: refundUser?.seazonaAccountNumber || null,
+                      amount: -refundedAmount,
+                      invoices: invNums,
+                    })
+                );
+              }
+            } catch (seazonaErr) {
+              console.error(
+                `[Seazona][REFUND_WRITE_FAILED] refund ${refundTxnId} for charge ${txid} reversed at Authorize.net but the Seazona credit threw — manual entry required ` +
+                  JSON.stringify({
+                    transactionId: txid,
+                    clientId: originalRows[0].seazonaClientId,
+                    amount: -refundedAmount,
+                    error: String(seazonaErr?.message || seazonaErr).slice(0, 300),
+                  })
+              );
+            }
+          }
+
+          // 6. Refund receipt to the doctor — soft-fail.
+          if (refundUser?.email) {
+            try {
+              await sendRefundReceipt({
+                to: refundUser.email,
+                amount: refundedAmount,
+                invoices: reversalRows.map((r) => ({
+                  number: r.invoiceNumber || r.seazonaInvoiceId,
+                  amount: Math.abs(Number(r.appliedAmount)),
+                })),
+                transactionId: txid,
+                date: new Date(),
+              });
+            } catch {
+              /* send() never throws; belt-and-suspenders */
+            }
+          }
+
+          // 7. Audit log (ids/amounts only — no card or patient data).
+          console.log(
+            "[PAYMENT][REFUND] " +
+              JSON.stringify({
+                admin: request.user.id,
+                transactionId: txid,
+                action: result.action,
+                amount: refundedAmount,
+                invoices: reversalRows.map((r) => r.invoiceNumber || r.seazonaInvoiceId),
+              })
+          );
+
+          return {
+            action: result.action,
+            refundTransactionId: refundTxnId,
+            amount: result.amount,
+            ...(ledgerWriteFailed ? { ledgerWriteFailed: true } : {}),
+          };
+        },
+        { log: fastify.log }
+      );
+    } catch (err) {
+      if (err?.alreadyRefunded) {
+        return reply.code(409).send({ error: ERROR_CODES.ALREADY_REFUNDED });
+      }
+      if (err instanceof ChargeInProgressError) {
+        return reply.code(409).send({ error: ERROR_CODES.CHARGE_IN_PROGRESS });
+      }
+      if (err?.refundErrorKind === "not_found") {
+        return reply.code(404).send({ error: { ...ERROR_CODES.NOT_FOUND, message: err.message } });
+      }
+      if (err?.refundErrorKind === "validation") {
+        return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: err.message } });
+      }
+      // Outcome unknown — the reversal may already have gone through. Tell the
+      // admin NOT to retry and to reconcile manually (the guard row stays).
+      if (err?.refundUncertain) {
+        return reply.code(ERROR_CODES.REFUND_UNCERTAIN.status).send({ error: ERROR_CODES.REFUND_UNCERTAIN });
+      }
+      fastify.log.warn({ transactionId: txid, err: String(err?.message || err) }, "refund gateway call failed");
+      // A refund/void gateway error is NOT a card decline — never map it to
+      // CARD_DECLINED. Surface the gateway's own rejection text when present,
+      // otherwise a generic REFUND_FAILED.
+      if (err?.authNetResponse) {
+        const message = extractDeclineMessage(err.authNetResponse) || ERROR_CODES.REFUND_FAILED.message;
+        return reply.code(ERROR_CODES.REFUND_FAILED.status).send({ error: { ...ERROR_CODES.REFUND_FAILED, message } });
+      }
+      return reply.code(ERROR_CODES.REFUND_FAILED.status).send({ error: ERROR_CODES.REFUND_FAILED });
+    }
+
+    return { data: outcome.result };
   });
 
   // ───────────────────────────────────────────────────────────────
