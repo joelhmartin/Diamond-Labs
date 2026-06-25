@@ -16,21 +16,22 @@ export async function log({ userId, accountId, action, targetType, targetId, met
 }
 
 /**
- * Audit write that NEVER throws — audit logging must not break the action it
- * records (e.g. a charge already hit the card). On failure it logs an alertable
- * line and swallows. Prefer this from payment / money paths.
+ * Fire-and-forget audit write that NEVER throws and NEVER blocks the caller.
+ * Audit logging must not break OR delay the action it records (e.g. a charge
+ * already hit the card; a slow/stuck audit insert shouldn't hold the response).
+ * The write is detached — callers may `await logSafe(...)` and resolve
+ * immediately — and failures are swallowed with an alertable log line.
  *
- * We intentionally AWAIT the insert rather than detaching it (fire-and-forget):
- *   • it's a single indexed insert (sub-millisecond, negligible next to the
- *     Authorize.net call it follows), and
- *   • this API runs on Cloud Run, which throttles CPU after the response is
- *     sent — a detached write could be dropped mid-flight, which is unacceptable
- *     for a compliance audit trail. Durability wins over shaving ~1ms.
+ * Durability note: the authoritative records for money events live elsewhere
+ * (the `invoice_payments` ledger + structured `[PAYMENT]…` console lines in
+ * Cloud Logging); this `audit_log` row powers the admin history *view*. So if a
+ * detached write is dropped (e.g. Cloud Run throttling CPU post-response), no
+ * source-of-truth data is lost.
  */
-export async function logSafe(entry) {
-  try {
-    await log(entry);
-  } catch (err) {
-    console.error(`[AUDIT] write failed for action="${entry?.action}":`, String(err?.message || err));
-  }
+export function logSafe(entry) {
+  Promise.resolve()
+    .then(() => log(entry))
+    .catch((err) => {
+      console.error(`[AUDIT] write failed for action="${entry?.action}":`, String(err?.message || err));
+    });
 }
