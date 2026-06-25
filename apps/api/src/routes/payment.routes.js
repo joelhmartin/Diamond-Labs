@@ -3,13 +3,17 @@ import { requireApprovedDoctor, requireAdmin } from "../middleware/require-role.
 import { validate } from "../middleware/validate.js";
 import * as authorizenetService from "../services/authorizenet.service.js";
 import * as seazonaService from "../services/seazona.service.js";
-import { getInvoicePortalPaid } from "../services/invoice-ledger.service.js";
+import {
+  getInvoicePortalPaid,
+  listPaymentsForUser,
+  listAllPayments,
+} from "../services/invoice-ledger.service.js";
 import { sendOrderReceipt, sendPaymentReceipt, sendRefundReceipt } from "../services/email.service.js";
 import { voidOrRefund } from "../lib/void-refund.js";
 import { db } from "../config/database.js";
 import { redis } from "../config/redis.js";
 import { users, invoicePayments, products, orders, orderItems } from "../db/schema/index.js";
-import { eq, and, gt } from "drizzle-orm";
+import { eq, and, gt, inArray } from "drizzle-orm";
 import { createId } from "../lib/id.js";
 import { env } from "../config/env.js";
 import {
@@ -1315,6 +1319,73 @@ export default async function paymentRoutes(fastify) {
     }
 
     return { data: outcome.result };
+  });
+
+  // ───────────────────────────────────────────────────────────────
+  // PAYMENT HISTORY (read-only)
+  // ───────────────────────────────────────────────────────────────
+
+  // Doctor — their OWN transaction-level payment history (charges + reversals
+  // collapsed per charge). Drives the in-portal "Payments" view.
+  fastify.get("/payments/history", {
+    preHandler: [authenticate, requireApprovedDoctor],
+  }, async (request) => {
+    const payments = await listPaymentsForUser(request.user.id);
+    return { data: { payments } };
+  });
+
+  // Admin — payment history across all doctors, enriched with the doctor's
+  // name/email + a `refundable` flag so the UI can launch the refund modal on a
+  // specific transaction. Optional `userId` scope and `q` free-text filter;
+  // capped to `limit` (default 200, max 500) with a `truncated` flag so the UI
+  // never silently hides rows.
+  fastify.get("/admin/payments", {
+    preHandler: [authenticate, requireAdmin],
+  }, async (request) => {
+    const { userId, q, limit } = request.query || {};
+    let payments = await listAllPayments({ userId: userId || undefined });
+
+    const ids = [...new Set(payments.map((p) => p.userId).filter(Boolean))];
+    const userMap = {};
+    if (ids.length) {
+      const rows = await db
+        .select({
+          id: users.id,
+          name: users.name,
+          email: users.email,
+          seazonaAccountNumber: users.seazonaAccountNumber,
+        })
+        .from(users)
+        .where(inArray(users.id, ids));
+      for (const u of rows) userMap[u.id] = u;
+    }
+
+    payments = payments.map((p) => {
+      const u = userMap[p.userId];
+      return {
+        ...p,
+        doctorName: u?.name || null,
+        doctorEmail: u?.email || null,
+        accountNumber: u?.seazonaAccountNumber || null,
+      };
+    });
+
+    if (q) {
+      const needle = String(q).toLowerCase();
+      payments = payments.filter(
+        (p) =>
+          String(p.transactionId).toLowerCase().includes(needle) ||
+          (p.doctorName || "").toLowerCase().includes(needle) ||
+          (p.doctorEmail || "").toLowerCase().includes(needle) ||
+          (p.seazonaClientId || "").toLowerCase().includes(needle) ||
+          p.invoices.some((inv) => String(inv.invoiceNumber || "").toLowerCase().includes(needle))
+      );
+    }
+
+    const total = payments.length;
+    const max = Math.min(Number(limit) > 0 ? Number(limit) : 200, 500);
+    const sliced = payments.slice(0, max);
+    return { data: { payments: sliced, total, truncated: total > sliced.length } };
   });
 
   // ───────────────────────────────────────────────────────────────

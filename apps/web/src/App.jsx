@@ -30,6 +30,7 @@ import { SettingsPage } from "./pages/app/SettingsPage.jsx";
 import { MembersPage } from "./pages/app/MembersPage.jsx";
 import { AdminProductsPage } from "./pages/app/AdminProductsPage.jsx";
 import { AdminInvoicesPage } from "./pages/app/AdminInvoicesPage.jsx";
+import { AdminPaymentsPage } from "./pages/app/AdminPaymentsPage.jsx";
 import { AdminUsersPage } from "./pages/app/AdminUsersPage.jsx";
 import { AdminOrdersPage } from "./pages/app/AdminOrdersPage.jsx";
 import { AdminOrderDetailPage } from "./pages/app/AdminOrderDetailPage.jsx";
@@ -60,6 +61,7 @@ import { CartWidget } from "./components/marketing/CartWidget.jsx";
 
 // Doctor pages
 import { InvoicesPage } from "./pages/doctor/InvoicesPage.jsx";
+import { PaymentsPage } from "./pages/doctor/PaymentsPage.jsx";
 import { SavedCardsPage } from "./pages/doctor/SavedCardsPage.jsx";
 import { NewCasePage } from "./pages/app/NewCasePage.jsx";
 import { RxChooserPage } from "./pages/app/RxChooserPage.jsx";
@@ -209,6 +211,7 @@ function AppRoutes() {
           <Route path="/admin" element={<Navigate to="/admin/invoices" replace />} />
           <Route path="/admin/products" element={<AdminProductsPage />} />
           <Route path="/admin/invoices" element={<AdminInvoicesPage />} />
+          <Route path="/admin/payments" element={<AdminPaymentsPage />} />
           <Route path="/admin/orders" element={<AdminOrdersPage />} />
           <Route path="/admin/orders/:id" element={<AdminOrderDetailPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />
@@ -220,6 +223,7 @@ function AppRoutes() {
       <Route path="/doctor" element={<RequireDoctor />}>
         <Route element={<DoctorShell />}>
           <Route path="invoices" element={<InvoicesPage />} />
+          <Route path="payments" element={<PaymentsPage />} />
           <Route path="saved-cards" element={<SavedCardsPage />} />
         </Route>
       </Route>

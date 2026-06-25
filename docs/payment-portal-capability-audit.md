@@ -46,8 +46,8 @@ gateway support it.
 |---|---|---|
 | Emailed receipt (purchase + invoice payment) | ✅ | shop + doctor payment receipts (Mailgun) |
 | Refund receipt | ❌ | building with refunds |
-| **In-portal payment history** (doctor sees their payments) | ❌ | P1 — list from `invoice_payments` |
-| Admin view of a doctor's payments / a payment's detail | ❌ | P1 — supports refunds + support |
+| **In-portal payment history** (doctor sees their payments) | ✅ | `/doctor/payments` — charges + refunds netted per transaction |
+| Admin view of a doctor's payments / a payment's detail | ✅ | `/admin/payments` — searchable list, refund from a row |
 | Downloadable/printable receipt (PDF) | ❌ | P2 |
 
 ## 5. Reconciliation / reporting / disputes
@@ -81,7 +81,7 @@ gateway support it.
 ## Prioritized roadmap
 - **P0 (now):** Refunds & voids — admin action, void-or-refund, ledger reversal, Seazona credit (best-effort), refund receipt.
 - **P1 (next, "fully functional" core):**
-  1. In-portal **payment history** (doctor) + **admin payment view** (needed to drive refunds from a real UI).
+  1. ✅ _Done._ In-portal **payment history** (doctor, `/doctor/payments`) + **admin payment view** (`/admin/payments`, refund from a row).
   2. **Default card** + verify **multiple cards** end-to-end.
   3. **Partial refunds** (by amount / by invoice).
   4. **Webhooks**: settlement confirmation + dispute/chargeback alerts.
