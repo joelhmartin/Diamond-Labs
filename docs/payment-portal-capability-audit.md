@@ -37,8 +37,8 @@ gateway support it.
 | List saved cards (masked) | ✅ | ✅ | |
 | Update expiry / billing | ✅ | ✅ | |
 | Delete card | ✅ | ✅ | |
-| **Multiple cards** per doctor | ✅ | 🟡 | CIM supports many; UI/flow assumes one — verify |
-| **Default card** selection | ✅ | ❌ | P1 — pick which saved card to charge |
+| **Multiple cards** per doctor | ✅ | ✅ | list/add/edit/delete each; pay modal picks among them |
+| **Default card** selection | ✅ | ✅ | `users.defaultPaymentProfileId`; pre-selected in the pay modal |
 | Card nickname / label | — | ❌ | P2 nicety |
 
 ## 4. Payment history / receipts
@@ -82,7 +82,7 @@ gateway support it.
 - **P0 (now):** Refunds & voids — admin action, void-or-refund, ledger reversal, Seazona credit (best-effort), refund receipt.
 - **P1 (next, "fully functional" core):**
   1. ✅ _Done._ In-portal **payment history** (doctor, `/doctor/payments`) + **admin payment view** (`/admin/payments`, refund from a row).
-  2. **Default card** + verify **multiple cards** end-to-end.
+  2. ✅ _Done._ **Default card** (`users.defaultPaymentProfileId`, pre-selected in the pay modal) + **multiple cards** verified end-to-end (list/add/edit/delete/select).
   3. **Partial refunds** (by amount / by invoice).
   4. **Webhooks**: settlement confirmation + dispute/chargeback alerts.
   5. **Payment-action audit log**.

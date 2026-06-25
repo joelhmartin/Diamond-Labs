@@ -85,6 +85,13 @@
       "when": 1782398561655,
       "tag": "0011_real_killer_shrike",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1782412360545,
+      "tag": "0012_short_betty_ross",
+      "breakpoints": true
     }
   ]
 }

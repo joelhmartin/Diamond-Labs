@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "default_payment_profile_id" varchar(100);

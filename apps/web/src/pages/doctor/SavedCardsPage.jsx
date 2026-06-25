@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { CreditCard, Pencil, Plus, Trash2, X, Loader2 } from "lucide-react";
+import { CreditCard, Pencil, Plus, Trash2, X, Loader2, Star } from "lucide-react";
 import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { Button } from "../../components/ui/Button.jsx";
@@ -13,6 +13,7 @@ export function SavedCardsPage() {
   const [editingCard, setEditingCard] = useState(null);   // paymentProfileId open for edit
   const [editExpiry, setEditExpiry] = useState("");       // MM/YYYY input value
   const [saving, setSaving] = useState(false);            // edit-expiry submit in flight
+  const [settingDefault, setSettingDefault] = useState(null); // profileId being set default
   const { addToast } = useToast();
 
   const fetchCards = useCallback(async () => {
@@ -39,6 +40,22 @@ export function SavedCardsPage() {
       addToast({ message: "Failed to remove card", type: "error" });
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const handleSetDefault = async (paymentProfileId) => {
+    setSettingDefault(paymentProfileId);
+    try {
+      await api.put(`/payments/saved-cards/${paymentProfileId}/default`);
+      // Reflect locally without a round-trip.
+      setCards((prev) =>
+        prev.map((c) => ({ ...c, isDefault: c.paymentProfileId === paymentProfileId }))
+      );
+      addToast({ message: "Default card updated", type: "success" });
+    } catch {
+      addToast({ message: "Failed to set default card", type: "error" });
+    } finally {
+      setSettingDefault(null);
     }
   };
 
@@ -127,8 +144,14 @@ export function SavedCardsPage() {
                   <div className="flex items-center gap-4">
                     <CreditCard className="h-6 w-6 shrink-0 text-gray-400" />
                     <div>
-                      <p className="text-sm font-medium">
+                      <p className="flex items-center gap-2 text-sm font-medium">
                         {card.cardType || "Card"} ending in {card.cardNumber?.slice(-4) || "****"}
+                        {card.isDefault && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-700">
+                            <Star className="h-3 w-3 fill-current" />
+                            Default
+                          </span>
+                        )}
                       </p>
                       {card.expirationDate && (
                         <p className="text-xs text-gray-400">Expires {card.expirationDate}</p>
@@ -136,6 +159,21 @@ export function SavedCardsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
+                    {!card.isDefault && (
+                      <button
+                        onClick={() => handleSetDefault(card.paymentProfileId)}
+                        disabled={settingDefault === card.paymentProfileId}
+                        title="Set as default"
+                        aria-label="Set as default card"
+                        className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-brand-50 hover:text-brand-600 disabled:opacity-50"
+                      >
+                        {settingDefault === card.paymentProfileId ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Star className="h-4 w-4" />
+                        )}
+                      </button>
+                    )}
                     <button
                       onClick={() => openEdit(card)}
                       title="Edit expiration"
