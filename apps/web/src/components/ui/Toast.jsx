@@ -31,6 +31,7 @@ export function ToastProvider({ children }) {
               "rounded-lg px-4 py-3 text-sm font-medium shadow-lg transition-all",
               toast.type === "success" && "bg-green-600 text-white",
               toast.type === "error" && "bg-red-600 text-white",
+              toast.type === "warning" && "bg-amber-500 text-white",
               toast.type === "info" && "bg-gray-800 text-white",
             )}
             onClick={() => removeToast(toast.id)}

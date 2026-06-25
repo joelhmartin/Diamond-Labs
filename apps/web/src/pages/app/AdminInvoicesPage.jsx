@@ -249,10 +249,20 @@ function RefundPaymentModal({ onClose }) {
       // Full refund/void only (partial-by-invoice is a planned follow-up).
       const res = await api.post("/admin/payments/refund", { transactionId: trimmedTxn });
       const d = res.data?.data || {};
-      addToast({
-        message: `${d.action === "void" ? "Voided" : "Refunded"} ${formatUSD(d.amount)} (txn ${trimmedTxn}).`,
-        type: "success",
-      });
+      const verb = d.action === "void" ? "Void" : "Refund";
+      // The gateway reversal can succeed while the local ledger reversal fails —
+      // surface that as a warning (manual reconcile) rather than a clean success.
+      addToast(
+        d.ledgerWriteFailed
+          ? {
+              message: `${verb} of ${formatUSD(d.amount)} succeeded at the gateway, but the portal ledger needs manual reconciliation (txn ${trimmedTxn}).`,
+              type: "warning",
+            }
+          : {
+              message: `${d.action === "void" ? "Voided" : "Refunded"} ${formatUSD(d.amount)} (txn ${trimmedTxn}).`,
+              type: "success",
+            }
+      );
       onClose();
     } catch (e) {
       setErr(

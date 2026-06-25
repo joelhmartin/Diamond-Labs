@@ -47,6 +47,7 @@ export const ERROR_CODES = {
   CHARGE_IN_PROGRESS: { code: "CHARGE_IN_PROGRESS", status: 409, message: "A charge for this request is already being processed. Please wait." },
   ALREADY_REFUNDED: { code: "ALREADY_REFUNDED", status: 409, message: "This transaction has already been refunded or voided." },
   REFUND_FAILED: { code: "REFUND_FAILED", status: 502, message: "The refund could not be completed. Please try again." },
+  REFUND_UNCERTAIN: { code: "REFUND_UNCERTAIN", status: 409, message: "The reversal's outcome could not be confirmed — it may have already gone through. Do NOT retry; verify the transaction in Authorize.net and reconcile manually." },
 
   // General
   VALIDATION_ERROR: { code: "VALIDATION_ERROR", status: 422, message: "Validation failed." },

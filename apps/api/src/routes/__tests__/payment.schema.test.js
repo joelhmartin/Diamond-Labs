@@ -84,21 +84,19 @@ describe("hostedCompleteSchema", () => {
 });
 
 describe("refundSchema", () => {
-  it("accepts a transactionId with no amount (full refund)", () => {
+  it("accepts a transactionId (full reversal — the only supported mode)", () => {
     expect(refundSchema.safeParse({ transactionId: "1234567890" }).success).toBe(true);
   });
-  it("accepts a valid partial amount", () => {
-    expect(refundSchema.safeParse({ transactionId: "t", amount: 12.5 }).success).toBe(true);
-  });
   it("requires a non-empty transactionId", () => {
-    expect(refundSchema.safeParse({ amount: 5 }).success).toBe(false);
+    expect(refundSchema.safeParse({}).success).toBe(false);
     expect(refundSchema.safeParse({ transactionId: "" }).success).toBe(false);
   });
-  it("rejects non-positive, over-cap, or over-precision amounts", () => {
-    expect(refundSchema.safeParse({ transactionId: "t", amount: 0 }).success).toBe(false);
-    expect(refundSchema.safeParse({ transactionId: "t", amount: -1 }).success).toBe(false);
-    expect(refundSchema.safeParse({ transactionId: "t", amount: 100000.01 }).success).toBe(false);
-    expect(refundSchema.safeParse({ transactionId: "t", amount: 10.001 }).success).toBe(false);
+  it("does not honor an amount — full-only contract strips it", () => {
+    // Partial refunds aren't supported yet, so the schema carries no `amount`.
+    // A stray `amount` parses (Zod strips unknown keys) but never reaches the route.
+    const parsed = refundSchema.safeParse({ transactionId: "t", amount: 12.5 });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data).not.toHaveProperty("amount");
   });
 });
 

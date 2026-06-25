@@ -1074,7 +1074,7 @@ export default async function paymentRoutes(fastify) {
   fastify.post("/admin/payments/refund", {
     preHandler: [authenticate, requireAdmin, validate(refundSchema)],
   }, async (request, reply) => {
-    const { transactionId, amount } = request.body;
+    const { transactionId } = request.body;
     const txid = String(transactionId);
 
     // 1. Find the ORIGINAL charge's ledger rows (positive applied only — never
@@ -1089,17 +1089,10 @@ export default async function paymentRoutes(fastify) {
       });
     }
 
-    // 2. P0 is FULL refund/void only — reject any partial amount up front.
-    const fullTotal = round2(originalRows.reduce((s, r) => s + Number(r.appliedAmount), 0));
-    const requestedAmount = amount != null ? round2(Number(amount)) : null;
-    if (requestedAmount != null && Math.abs(requestedAmount - fullTotal) > 0.005) {
-      return reply.code(422).send({
-        error: {
-          ...ERROR_CODES.VALIDATION_ERROR,
-          message: `Partial refunds aren't supported yet — omit the amount to refund the full $${fullTotal.toFixed(2)}.`,
-        },
-      });
-    }
+    // 2. FULL refund/void only — the request schema (refundSchema) carries no
+    // `amount`, so there is nothing to validate here; the reversal below always
+    // mirrors the full set of original ledger rows. Partial refunds are a P1
+    // follow-up that will reintroduce a validated `amount`.
 
     // 3. Critical section under an idempotency lock keyed on the charge txn id.
     // Concurrent refunds serialize here; the double-refund guard lives INSIDE the
@@ -1145,14 +1138,31 @@ export default async function paymentRoutes(fastify) {
           });
 
           // 3d. Reverse at the gateway (void if unsettled, refund if settled).
-          // Always FULL — no amount passed. On gateway failure, roll back the
-          // write-ahead guard so a legitimate retry can proceed.
+          // Always FULL — no amount passed.
+          //
+          // On failure, only roll back the write-ahead guard when we have
+          // DEFINITIVE proof no money moved:
+          //   • a pre-gateway validation/not-found error (refundErrorKind), or
+          //   • a gateway response that explicitly REJECTED the reversal
+          //     (authNetResponse present → the credit/void was never created).
+          // For an UNCERTAIN failure — socket reset / timeout / unparseable body
+          // after the request reached Authorize.net — the charge MAY already be
+          // reversed, so we KEEP the guard row to block a retry from issuing a
+          // second reversal, and surface a reconcile-manually error instead.
           let result;
           try {
             result = await voidOrRefund(txid);
           } catch (gwErr) {
-            await db.delete(invoicePayments).where(eq(invoicePayments.id, guardRowId)).catch(() => {});
-            throw gwErr;
+            const definitivelyNoMoneyMoved = !!gwErr.refundErrorKind || !!gwErr.authNetResponse;
+            if (definitivelyNoMoneyMoved) {
+              await db.delete(invoicePayments).where(eq(invoicePayments.id, guardRowId)).catch(() => {});
+              throw gwErr;
+            }
+            console.error(
+              `[PAYMENT][REFUND_UNCERTAIN] reversal of charge ${txid} failed without a definitive gateway response — the charge MAY already be reversed; guard row ${guardRowId} kept to block a retry, manual reconcile required ` +
+                JSON.stringify({ transactionId: txid, error: String(gwErr?.message || gwErr).slice(0, 300) })
+            );
+            throw Object.assign(gwErr, { refundUncertain: true });
           }
 
           // The money is now reversed at Authorize.net. Everything below is
@@ -1288,8 +1298,20 @@ export default async function paymentRoutes(fastify) {
       if (err?.refundErrorKind === "validation") {
         return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: err.message } });
       }
+      // Outcome unknown — the reversal may already have gone through. Tell the
+      // admin NOT to retry and to reconcile manually (the guard row stays).
+      if (err?.refundUncertain) {
+        return reply.code(ERROR_CODES.REFUND_UNCERTAIN.status).send({ error: ERROR_CODES.REFUND_UNCERTAIN });
+      }
       fastify.log.warn({ transactionId: txid, err: String(err?.message || err) }, "refund gateway call failed");
-      return chargeErrorReply(reply, err);
+      // A refund/void gateway error is NOT a card decline — never map it to
+      // CARD_DECLINED. Surface the gateway's own rejection text when present,
+      // otherwise a generic REFUND_FAILED.
+      if (err?.authNetResponse) {
+        const message = extractDeclineMessage(err.authNetResponse) || ERROR_CODES.REFUND_FAILED.message;
+        return reply.code(ERROR_CODES.REFUND_FAILED.status).send({ error: { ...ERROR_CODES.REFUND_FAILED, message } });
+      }
+      return reply.code(ERROR_CODES.REFUND_FAILED.status).send({ error: ERROR_CODES.REFUND_FAILED });
     }
 
     return { data: outcome.result };

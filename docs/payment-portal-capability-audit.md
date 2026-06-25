@@ -67,7 +67,7 @@ gateway support it.
 | Idempotency / no double-charge | ✅ | |
 | Transaction bound to doctor+session | ✅ | refId binding |
 | 3-D Secure / SCA | n/a-ish | US B2B isn't under PSD2; Auth.net supports CardholderAuth if ever needed |
-| Advanced Fraud Detection (AFDS) filters | ✅ (dashboard) | 🟡 | configure velocity/AVS filters in the Auth.net dashboard |
+| Advanced Fraud Detection (AFDS) filters | 🟡 | available in the Auth.net dashboard — configure velocity/AVS filters |
 | **Audit log of payment actions** (who refunded what) | ❌ | P1 — esp. once refunds exist |
 
 ## 7. Recurring / statements (lab-specific)
