@@ -55,8 +55,8 @@ gateway support it.
 |---|---|---|---|
 | Record payment back to Seazona | — | ✅ | account-level payment + "Invoices N" reference |
 | Reflect Seazona-direct payments | 🟡 | ✅ | admin "offline payment" entry |
-| **Settlement webhooks** (txn settled/failed) | ✅ webhooks | ❌ | P1 — confirm settlement, drive "cleared" state |
-| **Dispute / chargeback alerts** | ✅ webhooks | ❌ | P1 — know when a doctor disputes |
+| **Settlement webhooks** (txn settled/failed) | ✅ webhooks | ⏸️ deferred | low value — portal paid/balance comes from the local ledger; an authorized charge effectively always settles |
+| **Dispute / chargeback alerts** | ✅ webhooks | ⏸️ deferred | B2B repeat doctors → chargebacks rare; Auth.net portal can email dispute alerts with no code. Revisit if disputes become a real concern |
 | Daily settlement / batch report | ✅ (Transaction Details API) | ❌ | P2 — reconciliation export |
 
 ## 6. Security / compliance
@@ -84,7 +84,7 @@ gateway support it.
   1. ✅ _Done._ In-portal **payment history** (doctor, `/doctor/payments`) + **admin payment view** (`/admin/payments`, refund from a row).
   2. ✅ _Done._ **Default card** (`users.defaultPaymentProfileId`, pre-selected in the pay modal) + **multiple cards** verified end-to-end (list/add/edit/delete/select).
   3. ✅ _Done._ **Partial refunds** by invoice slice (settled charges; one reversal per charge — incremental top-ups are a future enhancement).
-  4. **Webhooks**: settlement confirmation + dispute/chargeback alerts.
+  4. ⏸️ _Deferred (2026-06-25)._ **Webhooks**: settlement confirmation + dispute/chargeback alerts. Skipped by decision — B2B repeat doctors make chargebacks rare, portal paid/balance comes from the local ledger, and Auth.net's portal can email dispute alerts with no code. Revisit only if disputes become a real concern (would need an Auth.net webhook subscription + Signature Key).
   5. ✅ _Done._ **Payment-action audit log** — `audit_log` rows for charge/refund/void/offline/card changes; per-transaction history on `/admin/payments`.
 - **P2 (later):** surcharge/convenience fee, autopay statements (ARB), settlement/reconciliation export, printable PDF receipts, card nicknames.
 
