@@ -13,7 +13,7 @@ export async function signAccessToken(payload) {
 }
 
 export async function verifyAccessToken(token) {
-  const { payload } = await jwtVerify(token, secret);
+  const { payload } = await jwtVerify(token, secret, { algorithms: ["HS256"] });
   return payload;
 }
 
@@ -35,13 +35,14 @@ export function generateSecureToken() {
 export async function signMfaToken(userId) {
   return new SignJWT({ sub: userId, type: "mfa" })
     .setProtectedHeader({ alg: "HS256" })
+    .setJti(crypto.randomUUID())
     .setIssuedAt()
     .setExpirationTime("5m")
     .sign(secret);
 }
 
 export async function verifyMfaToken(token) {
-  const { payload } = await jwtVerify(token, secret);
+  const { payload } = await jwtVerify(token, secret, { algorithms: ["HS256"] });
   if (payload.type !== "mfa") throw new Error("Invalid MFA token type");
   return payload;
 }
