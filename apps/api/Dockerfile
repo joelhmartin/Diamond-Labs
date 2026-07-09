@@ -3,6 +3,7 @@
 # Run service. Built from the monorepo root (COPY paths are repo-root-relative).
 
 # --- Stage 1: build the web frontend -> apps/web/dist ---
+# TODO pin by digest (FROM node:20-alpine@sha256:...) for reproducible builds.
 FROM node:20-alpine AS webbuild
 RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 WORKDIR /app
@@ -25,6 +26,7 @@ ENV VITE_AUTHORIZE_NET_CLIENT_KEY=$VITE_AUTHORIZE_NET_CLIENT_KEY
 RUN pnpm --filter @my-app/web build
 
 # --- Stage 2: API runtime (prod deps only) + baked-in frontend ---
+# TODO pin by digest (FROM node:20-alpine@sha256:...) for reproducible builds.
 FROM node:20-alpine AS base
 RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 WORKDIR /app
@@ -44,4 +46,11 @@ COPY project.config.js ./
 COPY --from=webbuild /app/apps/web/dist ./apps/web/dist
 
 EXPOSE 3000
+
+# Drop root: the official node images ship an unprivileged `node` user. All files
+# above were copied as root but are world-readable, and the app listens on 3000
+# (non-privileged), so it runs fine as non-root. Runtime temp writes (multipart
+# uploads) go to /tmp, which is world-writable.
+USER node
+
 CMD ["node", "apps/api/src/index.js"]

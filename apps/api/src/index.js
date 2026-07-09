@@ -27,7 +27,10 @@ const fastify = Fastify({
   logger: {
     level: env.NODE_ENV === "production" ? "info" : "debug",
   },
-  trustProxy: true,
+  // Trust exactly ONE proxy hop — Google Cloud Run's front end (the only proxy
+  // in front of this container). `true` would trust the entire X-Forwarded-For
+  // chain, letting a client spoof its source IP and bypass IP-based rate limits.
+  trustProxy: 1,
 });
 
 // Treat an empty JSON body as {} instead of erroring. Several POSTs carry no
@@ -67,9 +70,21 @@ await fastify.register(multipart, {
   },
 });
 await fastify.register(cookie);
+// Production CORS allow-list. Prefer the env-driven list (comma-separated,
+// set per Cloud Run deploy — e.g. the real Vercel/prod domain); fall back to
+// the project config. Localhost/loopback entries are stripped here since they
+// belong only to the dev branch below — this guarantees `credentials: true`
+// is never paired with a wildcard/reflected or dev origin.
+const productionOrigins = (env.CORS_ORIGINS
+  ? env.CORS_ORIGINS.split(",")
+  : project.api.cors.origins
+)
+  .map((o) => o.trim())
+  .filter((o) => o && !/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(o));
+
 await fastify.register(cors, {
   origin: env.NODE_ENV === "production"
-    ? project.api.cors.origins
+    ? productionOrigins
     // Vite auto-bumps the dev port when taken, so allow any localhost origin in dev.
     // Also allow dev tunnels (cloudflared/ngrok) used to test Authorize.net
     // Accept Hosted, which requires an https FQDN rather than localhost.
@@ -89,7 +104,27 @@ await fastify.register(cors, {
       },
   credentials: true,
 });
-await fastify.register(helmet, { contentSecurityPolicy: false });
+// Conservative CSP. This service serves JSON (/api/v1) AND, in the production
+// image, the built SPA (apps/web/dist) from the same origin — so the policy has
+// to cover the frontend's real dependencies: Authorize.net Accept.js (script),
+// Google Fonts (style + font), Unsplash/data-URI imagery (img), and the
+// Authorize.net JSON API (connect). `frameAncestors: 'none'` clickjacking-proofs
+// every response; `objectSrc/baseUri` locked down to blunt injection.
+await fastify.register(helmet, {
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "https://js.authorize.net", "https://jstest.authorize.net"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "https://api.authorize.net", "https://apitest.authorize.net"],
+      frameAncestors: ["'none'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+    },
+  },
+});
 
 // Rate limit: production caps per the project config; dev gets a much higher
 // ceiling so refreshes + HMR + dashboard fan-out don't lock out the single

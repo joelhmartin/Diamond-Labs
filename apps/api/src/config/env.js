@@ -6,6 +6,9 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
   APP_URL: z.string().url().default("http://localhost:5173"),
   API_URL: z.string().url().default("http://localhost:3000"),
+  // Comma-separated production CORS allow-list (e.g. "https://app.example.com").
+  // When set it overrides project.config.js; localhost entries are ignored in prod.
+  CORS_ORIGINS: z.string().optional(),
 
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
 
