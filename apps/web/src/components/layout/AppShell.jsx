@@ -8,7 +8,9 @@ export function AppShell() {
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Topbar />
-        <main className="flex-1 overflow-auto bg-gray-50 p-6">
+        {/* This box scrolls, not the window, and it outlives child routes.
+            data-scroll-container lets lib/scroll.js reset it on navigation. */}
+        <main data-scroll-container className="flex-1 overflow-auto bg-gray-50 p-6">
           <Outlet />
         </main>
       </div>

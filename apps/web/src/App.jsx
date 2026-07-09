@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -11,6 +11,7 @@ import { RequireAuth } from "./guards/RequireAuth.jsx";
 import { RequireAccount } from "./guards/RequireAccount.jsx";
 import { AppShell } from "./components/layout/AppShell.jsx";
 import { DoctorShell } from "./components/layout/DoctorShell.jsx";
+import { resetScrollPositions } from "./lib/scroll.js";
 
 // Auth pages
 import { LoginPage } from "./pages/auth/LoginPage.jsx";
@@ -74,12 +75,12 @@ import { ThemeEditor } from "./components/theme/ThemeEditor.jsx";
 function ScrollToTop() {
   const { pathname } = useLocation();
   const mounted = useRef(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!mounted.current) {
       mounted.current = true;
       return;
     }
-    window.scrollTo(0, 0);
+    resetScrollPositions();
   }, [pathname]);
   return null;
 }
