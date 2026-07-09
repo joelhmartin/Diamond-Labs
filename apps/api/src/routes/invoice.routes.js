@@ -163,6 +163,15 @@ export default async function invoiceRoutes(fastify) {
     // Aggregate portal payments for this single invoice.
     const portalPaid = await getInvoicePortalPaid(request.user.id, String(request.params.id));
 
+    // Audit PHI access — the invoice payload carries the patient name.
+    auditService.logSafe({
+      userId: request.user.id,
+      action: "invoice.read",
+      targetType: "invoice",
+      targetId: String(request.params.id),
+      ipAddress: request.ip,
+    });
+
     return { data: normalizeInvoice(invoice, portalPaid) };
   });
 

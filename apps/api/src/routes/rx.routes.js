@@ -8,7 +8,9 @@ import { eq, desc, and } from "drizzle-orm";
 import { ERROR_CODES, rxCaseSubmitSchema, rxFormSubmitSchema } from "@my-app/shared";
 import * as seazonaService from "../services/seazona.service.js";
 import { buildSeazonaOrderPayload } from "../services/rx/build-order-payload.js";
-import { uploadCaseFile, deleteStoredFile } from "../services/storage.service.js";
+import { uploadCaseFile, deleteStoredFile, getSignedReadUrl } from "../services/storage.service.js";
+import { encryptRxPhi, decryptRxPhi } from "../services/rx/phi-crypto.js";
+import * as auditService from "../services/audit.service.js";
 
 // ─── Upload guards ────────────────────────────────────────────────────────────
 // 75 MB per file — intraoral STL / 3D-scan files are large.
@@ -194,7 +196,9 @@ export default async function rxRoutes(fastify) {
       }
 
       await db.transaction(async (tx) => {
-        await tx.insert(rxCases).values({
+        // Encrypt PHI columns at rest (patientFirst/Last, dob, contactPhone,
+        // generalComments, and the shipTo/deviceOptions JSON blobs).
+        await tx.insert(rxCases).values(encryptRxPhi({
           id: caseId,
           caseNumber,
           userId,
@@ -219,7 +223,7 @@ export default async function rxRoutes(fastify) {
           signatureUrl: data.signatureUrl || null,
           generalComments: data.generalComments || null,
           // status defaults to 'pending_approval' at the schema level
-        });
+        }));
         if (uploadedFiles.length > 0) {
           await tx.insert(rxCaseFiles).values(uploadedFiles);
         }
@@ -240,6 +244,14 @@ export default async function rxRoutes(fastify) {
       { caseId, caseNumber, userId, fileCount: uploadedFiles.length },
       "rx case submitted"
     );
+    auditService.logSafe({
+      userId: request.user.id,
+      action: "rx.create",
+      targetType: "rx_case",
+      targetId: caseId,
+      metadata: { caseNumber, fileCount: uploadedFiles.length },
+      ipAddress: request.ip,
+    });
     return reply.code(201).send({ data: { id: caseId, caseNumber, status: "pending_approval" } });
   });
 
@@ -426,7 +438,8 @@ export default async function rxRoutes(fastify) {
       }
 
       await db.transaction(async (tx) => {
-        await tx.insert(rxCases).values({
+        // Encrypt PHI columns at rest (patientFirst/Last + the formData blob).
+        await tx.insert(rxCases).values(encryptRxPhi({
           id: caseId,
           caseNumber,
           userId,
@@ -442,7 +455,7 @@ export default async function rxRoutes(fastify) {
           dueDate: data.dueDate || null,
           signatureUrl,
           status: "pending_approval",
-        });
+        }));
         const fileRows = uploadedFiles.filter((f) => !f._signatureOnly);
         if (fileRows.length > 0) {
           await tx.insert(rxCaseFiles).values(fileRows);
@@ -463,6 +476,14 @@ export default async function rxRoutes(fastify) {
       { caseId, caseNumber, userId, formType: data.formType, fileCount: pendingFiles.length },
       "rx form submission saved"
     );
+    auditService.logSafe({
+      userId: request.user.id,
+      action: "rx.create",
+      targetType: "rx_case",
+      targetId: caseId,
+      metadata: { caseNumber, formType: data.formType, fileCount: pendingFiles.length },
+      ipAddress: request.ip,
+    });
     return reply.code(201).send({ data: { id: caseId, caseNumber, status: "pending_approval" } });
   });
 
@@ -472,11 +493,21 @@ export default async function rxRoutes(fastify) {
   fastify.get("/rx/cases", {
     preHandler: [authenticate, requireApprovedDoctor],
   }, async (request) => {
-    const cases = await db
+    const rows = await db
       .select()
       .from(rxCases)
       .where(eq(rxCases.userId, request.user.id))
       .orderBy(desc(rxCases.createdAt));
+    // Decrypt PHI columns before returning to the owning doctor.
+    const cases = rows.map(decryptRxPhi);
+    auditService.logSafe({
+      userId: request.user.id,
+      action: "rx.list",
+      targetType: "rx_case",
+      targetId: null,
+      metadata: { count: cases.length },
+      ipAddress: request.ip,
+    });
     return { data: cases };
   });
 
@@ -505,7 +536,71 @@ export default async function rxRoutes(fastify) {
       .from(rxCaseFiles)
       .where(eq(rxCaseFiles.caseId, caseRow.id));
 
-    return { data: { ...caseRow, files } };
+    auditService.logSafe({
+      userId: request.user.id,
+      action: "rx.read",
+      targetType: "rx_case",
+      targetId: caseRow.id,
+      ipAddress: request.ip,
+    });
+    // Decrypt PHI columns before returning to the owning doctor.
+    return { data: { ...decryptRxPhi(caseRow), files } };
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // GET /rx/cases/:id/files/:fileId — issue a short-lived signed URL for a
+  // stored case file. Same ownership gate as GET /rx/cases/:id (404 for missing
+  // OR another doctor's case). The file must belong to the case. HIPAA: files
+  // are served via time-limited signed URLs, never a public/long-lived link.
+  // ─────────────────────────────────────────────────────────────────────────
+  fastify.get("/rx/cases/:id/files/:fileId", {
+    preHandler: [authenticate, requireApprovedDoctor],
+  }, async (request, reply) => {
+    const [caseRow] = await db
+      .select()
+      .from(rxCases)
+      .where(eq(rxCases.id, request.params.id));
+
+    if (!caseRow) {
+      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    }
+    if (caseRow.userId !== request.user.id) {
+      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    }
+
+    // Load the file row, verifying it belongs to THIS case (prevents fetching
+    // another case's file by guessing a fileId).
+    const [fileRow] = await db
+      .select()
+      .from(rxCaseFiles)
+      .where(and(eq(rxCaseFiles.id, request.params.fileId), eq(rxCaseFiles.caseId, caseRow.id)));
+
+    if (!fileRow) {
+      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    }
+
+    let url;
+    try {
+      url = await getSignedReadUrl(fileRow.gcsUrl);
+    } catch (err) {
+      request.log.error(
+        { caseId: caseRow.id, fileId: fileRow.id, err: err.message },
+        "failed to sign rx case file URL"
+      );
+      return reply.code(500).send({
+        error: { code: "INTERNAL_ERROR", status: 500, message: "Failed to generate file link." },
+      });
+    }
+
+    auditService.logSafe({
+      userId: request.user.id,
+      action: "rx.file_access",
+      targetType: "rx_case",
+      targetId: caseRow.id,
+      metadata: { fileId: fileRow.id, kind: fileRow.kind },
+      ipAddress: request.ip,
+    });
+    return { data: { url } };
   });
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -528,18 +623,21 @@ export default async function rxRoutes(fastify) {
   fastify.post("/rx/cases/:id/approve", {
     preHandler: [authenticate, requireApprovedDoctor],
   }, async (request, reply) => {
-    const [caseRow] = await db
+    const [caseRowRaw] = await db
       .select()
       .from(rxCases)
       .where(eq(rxCases.id, request.params.id));
 
-    if (!caseRow) {
+    if (!caseRowRaw) {
       return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
     }
     // 404 (not 403) for another doctor's case — don't reveal that the id exists.
-    if (caseRow.userId !== request.user.id) {
+    if (caseRowRaw.userId !== request.user.id) {
       return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
     }
+    // Decrypt PHI before building the Seazona payload so build-order-payload
+    // (and its notes/name compilation) sees plaintext.
+    const caseRow = decryptRxPhi(caseRowRaw);
     if (caseRow.status !== "pending_approval") {
       return reply.code(409).send({
         error: {
@@ -627,6 +725,14 @@ export default async function rxRoutes(fastify) {
       { caseId: caseRow.id, seazonaPushStatus, warningCount: warnings.length },
       "rx case approved"
     );
+    auditService.logSafe({
+      userId: request.user.id,
+      action: "rx.approve",
+      targetType: "rx_case",
+      targetId: caseRow.id,
+      metadata: { seazonaPushStatus, warningCount: warnings.length },
+      ipAddress: request.ip,
+    });
     return { data: { payload, warnings, status: "approved", seazonaPushStatus } };
   });
 }

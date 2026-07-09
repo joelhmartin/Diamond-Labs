@@ -102,7 +102,7 @@ export async function findClientByPhone(phone) {
  * Get a specific client by ID.
  */
 export async function getClient(clientId) {
-  return request(`v1/clients/${clientId}`);
+  return request(`v1/clients/${encodeURIComponent(clientId)}`);
 }
 
 /**
@@ -178,7 +178,7 @@ export async function getAllInvoicesResult() {
  * Get a specific invoice by ID.
  */
 export async function getInvoice(id) {
-  return request(`v1/invoices/${id}`);
+  return request(`v1/invoices/${encodeURIComponent(id)}`);
 }
 
 /**
@@ -193,7 +193,7 @@ export async function getOrders(ordered) {
 
 /** Get a single order with products, files, settings. */
 export async function getOrder(id) {
-  return request(`v1/orders/${id}`);
+  return request(`v1/orders/${encodeURIComponent(id)}`);
 }
 
 /**
@@ -221,7 +221,7 @@ export async function createPayment({ clientId, accountNumber, referenceNumber, 
 
 /** Get a single payment by id. Note: there is no bulk list endpoint for payments. */
 export async function getPayment(id) {
-  return request(`v1/payments/${id}`);
+  return request(`v1/payments/${encodeURIComponent(id)}`);
 }
 
 /**
@@ -235,7 +235,7 @@ export async function listProducts() {
 
 /** Get a single product by id. */
 export async function getProduct(id) {
-  return request(`v1/products/${id}`);
+  return request(`v1/products/${encodeURIComponent(id)}`);
 }
 
 /**

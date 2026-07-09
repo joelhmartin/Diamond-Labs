@@ -10,20 +10,26 @@ export const rxCases = pgTable("rx_cases", {
   seazonaClientId: varchar("seazona_client_id", { length: 100 }),
   seazonaAccountNumber: varchar("seazona_account_number", { length: 50 }),
   practiceName: varchar("practice_name", { length: 200 }),
-  patientFirst: varchar("patient_first", { length: 120 }).notNull(),
-  patientLast: varchar("patient_last", { length: 120 }).notNull(),
-  dob: varchar("dob", { length: 20 }),
+  // PHI (HIPAA §164.312(a)(2)(iv)) — encrypted at rest via services/rx/phi-crypto.js.
+  // Ciphertext (`enc:v1:<base64>`) exceeds the old varchar limits, so these are text.
+  patientFirst: text("patient_first").notNull(),
+  patientLast: text("patient_last").notNull(),
+  dob: text("dob"),
   gender: varchar("gender", { length: 20 }),
   firstDevice: varchar("first_device", { length: 40 }),
-  contactPhone: varchar("contact_phone", { length: 30 }),
-  shipTo: jsonb("ship_to"),
+  contactPhone: text("contact_phone"),
+  // PHI JSON blob — stored as an encrypted string (was jsonb).
+  shipTo: text("ship_to"),
   recordsMethod: varchar("records_method", { length: 40 }),
   physicalBite: varchar("physical_bite", { length: 40 }),
   formType: varchar("form_type", { length: 40 }).default("digital").notNull(),
-  formData: jsonb("form_data"),
+  // PHI JSON blob — stored as an encrypted string (was jsonb).
+  formData: text("form_data"),
   deviceKey: varchar("device_key", { length: 60 }),
   deviceCategory: varchar("device_category", { length: 30 }),
-  deviceOptions: jsonb("device_options").notNull().default({}),
+  // PHI JSON blob — stored as an encrypted string (was jsonb notNull default {}).
+  // Now nullable text; code writes an encrypted "{}" when there are no options.
+  deviceOptions: text("device_options"),
   dueDate: varchar("due_date", { length: 30 }),
   rush: boolean("rush").notNull().default(false),
   rushTier: varchar("rush_tier", { length: 40 }),
