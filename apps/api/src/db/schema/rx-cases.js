@@ -1,4 +1,4 @@
-import { pgTable, varchar, text, jsonb, boolean, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, varchar, text, boolean, timestamp, index } from "drizzle-orm/pg-core";
 
 // A submitted Digital Rx case. Local-first authoritative record; status gates the
 // (later) Seazona push. seazonaClientId is captured from the doctor's account at
@@ -39,7 +39,9 @@ export const rxCases = pgTable("rx_cases", {
   seazonaPushStatus: varchar("seazona_push_status", { length: 40 }),
   seazonaOrderId: varchar("seazona_order_id", { length: 128 }),
   seazonaPushError: text("seazona_push_error"),
-  payloadSnapshot: jsonb("payload_snapshot"),
+  // PHI — Seazona order payload captured at approval (embeds patientName).
+  // Encrypted at rest via phi-crypto.js; stored as text (was jsonb).
+  payloadSnapshot: text("payload_snapshot"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [

@@ -19,7 +19,9 @@ import {
 const TEXT_FIELDS = ["patientFirst", "patientLast", "dob", "contactPhone", "generalComments"];
 
 // JSON-blob PHI columns (now stored as encrypted text) → encryptJson / decryptJson.
-const JSON_FIELDS = ["shipTo", "formData", "deviceOptions"];
+// payloadSnapshot is the Seazona order payload captured at approval — it embeds
+// patientName, so it is treated as PHI just like the rest.
+const JSON_FIELDS = ["shipTo", "formData", "deviceOptions", "payloadSnapshot"];
 
 /**
  * Encrypt PHI fields on a values object bound for insert/update. Returns a NEW

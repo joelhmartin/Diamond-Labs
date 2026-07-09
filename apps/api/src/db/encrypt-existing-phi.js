@@ -30,7 +30,8 @@ import {
 } from "../lib/crypto.js";
 
 const TEXT_FIELDS = ["patientFirst", "patientLast", "dob", "contactPhone", "generalComments"];
-const JSON_FIELDS = ["shipTo", "formData", "deviceOptions"];
+// payloadSnapshot (Seazona order payload, embeds patientName) is also PHI.
+const JSON_FIELDS = ["shipTo", "formData", "deviceOptions", "payloadSnapshot"];
 
 /**
  * Legacy jsonb→text columns come back as JSON strings. Parse them back to a

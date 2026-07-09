@@ -10,6 +10,7 @@ import * as seazonaService from "../services/seazona.service.js";
 import { buildSeazonaOrderPayload } from "../services/rx/build-order-payload.js";
 import { uploadCaseFile, deleteStoredFile, getSignedReadUrl } from "../services/storage.service.js";
 import { encryptRxPhi, decryptRxPhi } from "../services/rx/phi-crypto.js";
+import { encryptJson } from "../lib/crypto.js";
 import * as auditService from "../services/audit.service.js";
 
 // ─── Upload guards ────────────────────────────────────────────────────────────
@@ -703,7 +704,7 @@ export default async function rxRoutes(fastify) {
       .update(rxCases)
       .set({
         status: "approved",
-        payloadSnapshot: payload,
+        payloadSnapshot: encryptJson(payload), // PHI (embeds patientName) — encrypt at rest
         seazonaPushStatus,
         seazonaOrderId,
         updatedAt: new Date(),
