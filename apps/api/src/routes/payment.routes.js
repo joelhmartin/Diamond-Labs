@@ -28,6 +28,8 @@ import {
 import {
   withIdempotency,
   ChargeInProgressError,
+  withInvoiceLocks,
+  InvoiceLockedError,
   extractDeclineMessage,
   safeParse,
   idemResultKey,
@@ -284,6 +286,19 @@ async function verifyAllocations(allocations, user, { enforceCap = false } = {})
     }
   }
   return null;
+}
+
+/**
+ * Reply for a per-invoice lock contention (D1). Reuses CHARGE_IN_PROGRESS's 409
+ * shape with an invoice-specific message so the client shows a clean "retry".
+ */
+function sendInvoiceLockedError(reply) {
+  return reply.code(409).send({
+    error: {
+      ...ERROR_CODES.CHARGE_IN_PROGRESS,
+      message: "A payment for this invoice is already in progress — please retry in a moment.",
+    },
+  });
 }
 
 /** Send the appropriate reply for a verifyAllocations result. */
@@ -921,27 +936,39 @@ export default async function paymentRoutes(fastify) {
       outcome = await withIdempotency(
         redis,
         `charge-saved:${request.user.id}:${idempotencyKey}`,
-        async () => {
-          // C1 over-allocation cap runs INSIDE the idempotent block so a retry of
-          // the same Idempotency-Key replays the cached success rather than
-          // re-failing the cap on an invoice the first attempt already paid.
-          const capErr = await verifyAllocations(allocations, request.user, { enforceCap: true });
-          if (capErr) throw Object.assign(new Error("allocation_error"), { allocationError: capErr });
+        async () =>
+          // D1 — per-invoice mutex around the verify-cap → charge → record window.
+          // The idempotency-key lock only serializes retries of the SAME key; two
+          // DIFFERENT keys hitting the same invoice could both read paid=0, both
+          // pass the cap, and both charge. Lock every allocated invoice (sorted,
+          // deadlock-free) for the duration of this critical section.
+          withInvoiceLocks(
+            redis,
+            request.user.id,
+            allocations.map((a) => a.invoiceId),
+            async () => {
+              // C1 over-allocation cap runs INSIDE the idempotent block so a retry of
+              // the same Idempotency-Key replays the cached success rather than
+              // re-failing the cap on an invoice the first attempt already paid.
+              const capErr = await verifyAllocations(allocations, request.user, { enforceCap: true });
+              if (capErr) throw Object.assign(new Error("allocation_error"), { allocationError: capErr });
 
-          const result = await authorizenetService.chargeCustomerProfile({
-            customerProfileId,
-            paymentProfileId,
-            amount,
-            invoiceNumber: allocations[0]?.invoiceNumber || allocations[0]?.invoiceId || undefined,
-          });
-          const { seazonaPaymentId, ledgerWriteFailed } = await recordPaymentAndAllocations({
-            user: request.user,
-            amount,
-            transactionId: result.transactionId,
-            allocations,
-          });
-          return { ...result, seazonaPaymentId, ...(ledgerWriteFailed ? { ledgerWriteFailed: true } : {}) };
-        },
+              const result = await authorizenetService.chargeCustomerProfile({
+                customerProfileId,
+                paymentProfileId,
+                amount,
+                invoiceNumber: allocations[0]?.invoiceNumber || allocations[0]?.invoiceId || undefined,
+              });
+              const { seazonaPaymentId, ledgerWriteFailed } = await recordPaymentAndAllocations({
+                user: request.user,
+                amount,
+                transactionId: result.transactionId,
+                allocations,
+              });
+              return { ...result, seazonaPaymentId, ...(ledgerWriteFailed ? { ledgerWriteFailed: true } : {}) };
+            },
+            { log: fastify.log }
+          ),
         // Migration dual-read: results cached under the pre-user-scoping key
         // (`charge-saved:<key>`, 24h TTL) still replay across this deploy so a
         // retry that spans it can't double-charge.
@@ -949,6 +976,7 @@ export default async function paymentRoutes(fastify) {
       );
     } catch (err) {
       if (err?.allocationError) return sendAllocationError(reply, err.allocationError);
+      if (err instanceof InvoiceLockedError) return sendInvoiceLockedError(reply);
       if (err instanceof ChargeInProgressError) {
         return reply.code(409).send({ error: ERROR_CODES.CHARGE_IN_PROGRESS });
       }
@@ -1107,17 +1135,40 @@ export default async function paymentRoutes(fastify) {
       return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: `Allocation total ($${allocSum.toFixed(2)}) does not match the captured amount ($${details.amount.toFixed(2)}).` } });
     }
 
-    // C2 (e) + (f) — every BOUND allocation invoice belongs to the caller AND the
-    // C1 over-allocation cap (no allocation exceeds the invoice's remaining balance).
-    const v = await verifyAllocations(boundAllocations, request.user, { enforceCap: true });
-    if (v) return sendAllocationError(reply, v);
-
-    const { seazonaPaymentId, ledgerWriteFailed } = await recordPaymentAndAllocations({
-      user: request.user,
-      amount: details.amount,
-      transactionId: String(transId),
-      allocations: boundAllocations,
-    });
+    // D1 — per-invoice mutex around the cap check + ledger record. The hosted
+    // charge is already captured at the gateway; without this, two concurrent
+    // completes for the same invoice could both pass the cap and both record,
+    // over-applying the invoice in the local ledger. Lock every bound invoice
+    // (sorted, deadlock-free) across verify-cap → record, releasing after the
+    // ledger write (recordPaymentAndAllocations is soft-fail and never throws).
+    let recorded;
+    try {
+      recorded = await withInvoiceLocks(
+        redis,
+        request.user.id,
+        boundAllocations.map((a) => a.invoiceId),
+        async () => {
+          // C2 (e) + (f) — every BOUND allocation invoice belongs to the caller AND the
+          // C1 over-allocation cap (no allocation exceeds the invoice's remaining balance).
+          const v = await verifyAllocations(boundAllocations, request.user, { enforceCap: true });
+          if (v) return { allocationError: v };
+          return {
+            result: await recordPaymentAndAllocations({
+              user: request.user,
+              amount: details.amount,
+              transactionId: String(transId),
+              allocations: boundAllocations,
+            }),
+          };
+        },
+        { log: fastify.log }
+      );
+    } catch (err) {
+      if (err instanceof InvoiceLockedError) return sendInvoiceLockedError(reply);
+      throw err;
+    }
+    if (recorded.allocationError) return sendAllocationError(reply, recorded.allocationError);
+    const { seazonaPaymentId, ledgerWriteFailed } = recorded.result;
 
     // One-time use — delete the binding so the same token/refId can't be replayed.
     await redis.del(`rxpay:hosted:${refId}`).catch(() => {});
