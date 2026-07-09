@@ -321,49 +321,6 @@ export async function verifyEmail(token) {
   await redis.del(`email_verify:${token}`);
 }
 
-export async function requestMagicLink(email) {
-  const [user] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, email))
-    .limit(1);
-
-  // Always return success to avoid email enumeration
-  if (!user) return { token: null };
-
-  const token = generateSecureToken();
-  await redis.set(`magic_link:${token}`, user.id, "EX", 15 * 60); // 15 minutes
-  return { token, userId: user.id };
-}
-
-export async function verifyMagicLink({ token, ip, userAgent }) {
-  const userId = await redis.get(`magic_link:${token}`);
-  if (!userId) throw createAppError(ERROR_CODES.TOKEN_INVALID);
-
-  await redis.del(`magic_link:${token}`);
-
-  // Mark email as verified if not already
-  await db
-    .update(users)
-    .set({ emailVerifiedAt: new Date(), lastLoginAt: new Date(), updatedAt: new Date() })
-    .where(and(eq(users.id, userId), eq(users.emailVerifiedAt, null)));
-
-  // Update last login for already-verified users
-  await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, userId));
-
-  const accessToken = await signAccessToken({ sub: userId });
-  const refreshToken = generateRefreshToken();
-  await createSession(userId, refreshToken, ip, userAgent);
-
-  const [user] = await db
-    .select({ id: users.id, email: users.email, name: users.name })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-
-  return { user, accessToken, refreshToken };
-}
-
 export async function setupMfa(userId) {
   const [user] = await db
     .select({ email: users.email })

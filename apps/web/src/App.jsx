@@ -11,7 +11,6 @@ import { RequireAuth } from "./guards/RequireAuth.jsx";
 import { RequireAccount } from "./guards/RequireAccount.jsx";
 import { AppShell } from "./components/layout/AppShell.jsx";
 import { DoctorShell } from "./components/layout/DoctorShell.jsx";
-import { ROUTES } from "./config/routes.js";
 
 // Auth pages
 import { LoginPage } from "./pages/auth/LoginPage.jsx";
@@ -19,7 +18,6 @@ import { RegisterPage } from "./pages/auth/RegisterPage.jsx";
 import { ForgotPasswordPage } from "./pages/auth/ForgotPasswordPage.jsx";
 import { ResetPasswordPage } from "./pages/auth/ResetPasswordPage.jsx";
 import { VerifyEmailPage } from "./pages/auth/VerifyEmailPage.jsx";
-import { MagicLinkPage } from "./pages/auth/MagicLinkPage.jsx";
 import { AcceptInvitePage } from "./pages/auth/AcceptInvitePage.jsx";
 import { DoctorRegisterPage } from "./pages/auth/DoctorRegisterPage.jsx";
 import { DoctorPendingPage } from "./pages/auth/DoctorPendingPage.jsx";
@@ -188,11 +186,7 @@ function AppRoutes() {
       <Route path="/auth/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/auth/reset-password" element={<ResetPasswordPage />} />
       <Route path="/auth/verify-email" element={<VerifyEmailPage />} />
-      <Route path="/auth/magic-link" element={<MagicLinkPage />} />
       <Route path="/auth/accept-invite" element={<AcceptInvitePage />} />
-
-      {/* OAuth callback */}
-      <Route path="/auth/oauth-callback" element={<OAuthCallback />} />
 
       {/* Protected app routes (top-level — no /app prefix) */}
       <Route
@@ -249,26 +243,6 @@ function AppRoutes() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
-}
-
-function OAuthCallback() {
-  const setAccessToken = useAuthStore((s) => s.setAccessToken);
-  const refresh = useAuthStore((s) => s.refresh);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
-    if (token) {
-      setAccessToken(token);
-      // refresh() repopulates user from /auth/me, after which the landing
-      // page can redirect via roleHome(). Simplest: send back to dashboard
-      // and let RequireAuth + the app shell route them forward if admin.
-      refresh();
-    }
-    window.location.href = ROUTES.DASHBOARD;
-  }, []);
-
-  return null;
 }
 
 export default function App() {

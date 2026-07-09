@@ -71,19 +71,6 @@ export async function sendInvitation({ email, inviterName, accountName, acceptUr
   });
 }
 
-export async function sendMagicLink({ email, magicLinkUrl }) {
-  await send({
-    to: email,
-    subject: "Your sign-in link",
-    html: `
-      <h1>Sign in</h1>
-      <p>Click the link below to sign in to your account:</p>
-      <p><a href="${magicLinkUrl}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;">Sign In</a></p>
-      <p>This link expires in 15 minutes.</p>
-    `,
-  });
-}
-
 export async function sendPasswordReset({ email, resetUrl }) {
   await send({
     to: email,

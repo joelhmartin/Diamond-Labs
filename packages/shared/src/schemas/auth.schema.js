@@ -32,14 +32,6 @@ export const verifyEmailSchema = z.object({
   token: z.string().min(1, "Token is required"),
 });
 
-export const magicLinkSchema = z.object({
-  email: z.string().email("Invalid email address").transform((e) => e.toLowerCase().trim()),
-});
-
-export const magicLinkVerifySchema = z.object({
-  token: z.string().min(1, "Token is required"),
-});
-
 export const mfaVerifySchema = z.object({
   code: z.string().length(6, "MFA code must be 6 digits"),
   mfaToken: z.string().min(1, "MFA token is required"),

@@ -7,9 +7,7 @@ export const ROUTES = {
   FORGOT_PASSWORD: "/auth/forgot-password",
   RESET_PASSWORD: "/auth/reset-password",
   VERIFY_EMAIL: "/auth/verify-email",
-  MAGIC_LINK: "/auth/magic-link",
   ACCEPT_INVITE: "/auth/accept-invite",
-  OAUTH_CALLBACK: "/auth/oauth-callback",
 
   // User
   DASHBOARD: "/dashboard",

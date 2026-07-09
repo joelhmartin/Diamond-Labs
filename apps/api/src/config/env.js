@@ -16,10 +16,6 @@ const envSchema = z.object({
   REFRESH_TOKEN_EXPIRY: z.string().default(project.auth.refreshExpiry),
   MFA_ENCRYPTION_KEY: z.string().min(32).optional(),
 
-  GOOGLE_CLIENT_ID: z.string().optional(),
-  GOOGLE_CLIENT_SECRET: z.string().optional(),
-  GOOGLE_CALLBACK_URL: z.string().optional(),
-
   // Email (Mailgun HTTP API). RESEND_API_KEY kept (unused) for back-compat.
   RESEND_API_KEY: z.string().optional(),
   MAILGUN_API_KEY: z.string().optional(),
