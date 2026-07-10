@@ -21,12 +21,25 @@ const ACTIVITY_EVENTS = [
 let idleTimerId = null;
 let idleListenersAttached = false;
 let idleActivityHandler = null;
+let idleVisibilityHandler = null;
 let lastActivityReset = 0;
+// Absolute wall-clock time at which the session is considered idle. Using a
+// fixed deadline (rather than re-scheduling a fresh IDLE_TIMEOUT_MS each time)
+// means restoring a backgrounded tab can't silently re-arm a full window, and
+// hidden-tab timer throttling can't push logout past the real deadline.
+let idleDeadline = 0;
 
 function armIdleTimer(onIdle) {
   if (typeof window === "undefined") return;
   clearTimeout(idleTimerId);
-  idleTimerId = setTimeout(onIdle, IDLE_TIMEOUT_MS);
+  const remaining = Math.max(0, idleDeadline - Date.now());
+  idleTimerId = setTimeout(() => {
+    // If we woke early (e.g. background-tab throttling fired the timer late or a
+    // re-arm shortened it), only log out once the absolute deadline has passed;
+    // otherwise re-arm for the remaining time.
+    if (Date.now() >= idleDeadline) onIdle();
+    else armIdleTimer(onIdle);
+  }, remaining);
 }
 
 export const useAuthStore = create((set, get) => ({
@@ -86,17 +99,18 @@ export const useAuthStore = create((set, get) => ({
   // login page can surface ("You were signed out due to inactivity"). A hard
   // redirect (over React Router navigation) guarantees all in-memory PHI in the
   // SPA is dropped.
-  idleLogout: async () => {
+  idleLogout: () => {
     // Only act if actually authenticated — avoids redirect loops on public pages.
     if (!get().isAuthenticated) return;
+    // Clear the watcher and local auth state FIRST/IMMEDIATELY so a stalled
+    // server call can never keep the SPA authenticated past the idle limit.
     get().stopIdleWatch();
-    try {
-      await api.post("/auth/logout");
-    } catch {
-      // ignore logout errors — we still clear local state below
-    }
     set({ user: null, accessToken: null, isAuthenticated: false });
+    // Best-effort server-side refresh-cookie revoke — fire-and-forget, never
+    // block the redirect on it.
+    api.post("/auth/logout").catch(() => {});
     if (typeof window !== "undefined") {
+      // Hard redirect guarantees all in-memory PHI in the SPA is dropped.
       window.location.assign("/auth/login?reason=idle");
     }
   },
@@ -107,21 +121,35 @@ export const useAuthStore = create((set, get) => ({
     if (typeof window === "undefined" || idleListenersAttached) return;
     idleListenersAttached = true;
 
+    // Real user activity: push the absolute deadline forward, then (re)arm.
     const onActivity = () => {
       const now = Date.now();
       if (now - lastActivityReset < ACTIVITY_DEBOUNCE_MS) return; // debounce
       lastActivityReset = now;
+      idleDeadline = now + IDLE_TIMEOUT_MS;
       armIdleTimer(() => get().idleLogout());
     };
     // Stash the handler at module scope so stopIdleWatch detaches this exact ref.
     idleActivityHandler = onActivity;
 
+    // Tab visibility is NOT activity — it must not extend the deadline. On
+    // return-to-visible, log out if the deadline already passed while hidden
+    // (throttled timers can fire late); otherwise just re-arm for the remainder.
+    const onVisibility = () => {
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() >= idleDeadline) get().idleLogout();
+      else armIdleTimer(() => get().idleLogout());
+    };
+    idleVisibilityHandler = onVisibility;
+
     for (const evt of ACTIVITY_EVENTS) {
       window.addEventListener(evt, onActivity, { passive: true });
     }
-    document.addEventListener("visibilitychange", onActivity);
+    document.addEventListener("visibilitychange", onVisibility);
 
-    armIdleTimer(() => get().idleLogout()); // start the countdown now
+    // Initialize the absolute deadline and start the countdown now.
+    idleDeadline = Date.now() + IDLE_TIMEOUT_MS;
+    armIdleTimer(() => get().idleLogout());
   },
 
   // Stop the watcher and detach all listeners. Idempotent.
@@ -133,9 +161,12 @@ export const useAuthStore = create((set, get) => ({
       for (const evt of ACTIVITY_EVENTS) {
         window.removeEventListener(evt, idleActivityHandler);
       }
-      document.removeEventListener("visibilitychange", idleActivityHandler);
+    }
+    if (idleVisibilityHandler) {
+      document.removeEventListener("visibilitychange", idleVisibilityHandler);
     }
     idleActivityHandler = null;
+    idleVisibilityHandler = null;
     idleListenersAttached = false;
   },
 

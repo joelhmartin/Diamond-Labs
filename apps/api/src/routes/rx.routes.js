@@ -499,8 +499,31 @@ export default async function rxRoutes(fastify) {
       .from(rxCases)
       .where(eq(rxCases.userId, request.user.id))
       .orderBy(desc(rxCases.createdAt));
-    // Decrypt PHI columns before returning to the owning doctor.
-    const cases = rows.map(decryptRxPhi);
+    // Decrypt PHI columns before returning to the owning doctor. Decrypt each
+    // row in isolation: a single corrupt / wrong-key row must NOT 500 the whole
+    // list and lock the doctor out of every case. A failed row is replaced with
+    // a redacted placeholder (PHI nulled, decryptError flag set) so the rest of
+    // the list still returns.
+    const cases = rows.map((row) => {
+      try {
+        return decryptRxPhi(row);
+      } catch (err) {
+        request.log.error({ caseId: row.id, err: err.message }, "rx PHI decrypt failed");
+        return {
+          ...row,
+          patientFirst: null,
+          patientLast: null,
+          dob: null,
+          contactPhone: null,
+          generalComments: null,
+          shipTo: null,
+          formData: null,
+          deviceOptions: null,
+          payloadSnapshot: null,
+          decryptError: true,
+        };
+      }
+    });
     auditService.logSafe({
       userId: request.user.id,
       action: "rx.list",
@@ -544,8 +567,19 @@ export default async function rxRoutes(fastify) {
       targetId: caseRow.id,
       ipAddress: request.ip,
     });
-    // Decrypt PHI columns before returning to the owning doctor.
-    return { data: { ...decryptRxPhi(caseRow), files } };
+    // Decrypt PHI columns before returning to the owning doctor. On a decrypt
+    // failure (corrupt / wrong-key), return a generic 500 — never leak the raw
+    // error or any partial PHI.
+    let decrypted;
+    try {
+      decrypted = decryptRxPhi(caseRow);
+    } catch (err) {
+      request.log.error({ caseId: caseRow.id, err: err.message }, "rx PHI decrypt failed");
+      return reply.code(500).send({
+        error: { code: "INTERNAL_ERROR", status: 500, message: "Failed to load case." },
+      });
+    }
+    return { data: { ...decrypted, files } };
   });
 
   // ─────────────────────────────────────────────────────────────────────────

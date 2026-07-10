@@ -73,7 +73,7 @@ import { ThemeEditor } from "./components/theme/ThemeEditor.jsx";
 // Vite statically resolves this to `false` in production and dead-code-eliminates
 // both the route and the component (it never reaches the prod bundle).
 const PaymentTestPage = import.meta.env.DEV
-  ? lazy(() => import("./pages/dev/PaymentTestPage.jsx"))
+  ? lazy(() => import("./pages/dev/PaymentTestPage.jsx").then((m) => ({ default: m.PaymentTestPage })))
   : null;
 
 /* Scroll to top on route change, but NOT on initial load —

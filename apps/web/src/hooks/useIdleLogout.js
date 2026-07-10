@@ -19,11 +19,13 @@ export { IDLE_TIMEOUT_MS };
 export function useIdleLogout() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const startIdleWatch = useAuthStore((s) => s.startIdleWatch);
-  const stopIdleWatch = useAuthStore((s) => s.stopIdleWatch);
 
   useEffect(() => {
     if (!isAuthenticated) return undefined;
     startIdleWatch();
-    return () => stopIdleWatch();
-  }, [isAuthenticated, startIdleWatch, stopIdleWatch]);
+    // Intentionally NO cleanup: the auth store's own subscription owns
+    // start/stop on auth transitions. Stopping the watch when this hook
+    // unmounts (while still authenticated) would disable HIPAA idle-logoff.
+    return undefined;
+  }, [isAuthenticated, startIdleWatch]);
 }

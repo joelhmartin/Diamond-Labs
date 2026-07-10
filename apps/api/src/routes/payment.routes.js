@@ -944,7 +944,6 @@ export default async function paymentRoutes(fastify) {
           // deadlock-free) for the duration of this critical section.
           withInvoiceLocks(
             redis,
-            request.user.id,
             allocations.map((a) => a.invoiceId),
             async () => {
               // C1 over-allocation cap runs INSIDE the idempotent block so a retry of
@@ -1145,7 +1144,6 @@ export default async function paymentRoutes(fastify) {
     try {
       recorded = await withInvoiceLocks(
         redis,
-        request.user.id,
         boundAllocations.map((a) => a.invoiceId),
         async () => {
           // C2 (e) + (f) — every BOUND allocation invoice belongs to the caller AND the

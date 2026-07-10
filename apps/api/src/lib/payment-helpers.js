@@ -32,8 +32,8 @@ export class InvoiceLockedError extends Error {
   }
 }
 
-/** Redis key for a per-user, per-invoice charge mutex (D1). */
-export const invoiceLockKey = (userId, invoiceId) => `chargeguard:${userId}:${invoiceId}`;
+/** Redis key for an invoice-global charge mutex (D1). */
+export const invoiceLockKey = (invoiceId) => `chargeguard:inv:${invoiceId}`;
 
 /**
  * Serialize the verify-cap → charge → record critical section PER INVOICE (D1).
@@ -52,12 +52,18 @@ export const invoiceLockKey = (userId, invoiceId) => `chargeguard:${userId}:${in
  * the ones already taken are released by the `finally` and an InvoiceLockedError
  * is thrown (caller → 409, retry).
  *
+ * The lock is invoice-global: it is keyed on the invoice id ALONE (no user id),
+ * so it serializes ALL charges to an invoice across every user of the shared
+ * Seazona client. Because multiple portal logins can map to the same
+ * seazonaClientId (one practice), scoping the lock per user would let two
+ * different users charge the SAME invoice concurrently and reopen the
+ * over-allocation race — so the key deliberately excludes the user.
+ *
  * @param {object} redis  ioredis-compatible client (set…NX / del).
- * @param {string} userId  Scopes the lock to one doctor.
  * @param {Array<string|number>} invoiceIds  Invoice ids in the allocation set.
  * @param {() => Promise<any>} fn  The critical section to run under the locks.
  */
-export async function withInvoiceLocks(redis, userId, invoiceIds, fn, opts = {}) {
+export async function withInvoiceLocks(redis, invoiceIds, fn, opts = {}) {
   const ttl = opts.lockTtl ?? INVOICE_LOCK_TTL;
   const log = opts.log;
   // Dedupe + sort → one stable global acquisition order → deadlock-free.
@@ -65,7 +71,7 @@ export async function withInvoiceLocks(redis, userId, invoiceIds, fn, opts = {})
   const acquired = [];
   try {
     for (const id of ids) {
-      const key = invoiceLockKey(userId, id);
+      const key = invoiceLockKey(id);
       const ok = await redis.set(key, "1", "EX", ttl, "NX");
       if (!ok) throw new InvoiceLockedError(id);
       acquired.push(key);

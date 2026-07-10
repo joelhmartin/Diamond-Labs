@@ -119,6 +119,7 @@ await fastify.register(helmet, {
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "https:"],
       connectSrc: ["'self'", "https://api.authorize.net", "https://apitest.authorize.net"],
+      frameSrc: ["'self'", "https://accept.authorize.net", "https://test.authorize.net"],
       frameAncestors: ["'none'"],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],

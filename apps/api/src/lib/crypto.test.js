@@ -1,3 +1,9 @@
+// Guarantee a deterministic key is set BEFORE the module is evaluated, in case
+// crypto.js ever reads the key eagerly at import time (getKey() is lazy today,
+// so tests pass either way — this removes the ordering fragility).
+process.env.PHI_ENCRYPTION_KEY ||=
+  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
 import { describe, it, expect, beforeAll } from "vitest";
 
 // Set a deterministic key before importing the module (env is read at import time).

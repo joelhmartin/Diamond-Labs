@@ -112,7 +112,7 @@ describe("withInvoiceLocks", () => {
   it("acquires a lock per invoice, runs fn, then releases them all", async () => {
     const redis = makeFakeRedis();
     const fn = vi.fn(async () => "charged");
-    const out = await withInvoiceLocks(redis, "u1", ["inv-b", "inv-a"], fn);
+    const out = await withInvoiceLocks(redis, ["inv-b", "inv-a"], fn);
     expect(out).toBe("charged");
     expect(fn).toHaveBeenCalledTimes(1);
     // Every lock released — store empty again.
@@ -127,44 +127,50 @@ describe("withInvoiceLocks", () => {
       setKeys.push(key);
       return origSet(key, ...rest);
     };
-    await withInvoiceLocks(redis, "u1", ["inv-c", "inv-a", "inv-c", "inv-b"], async () => "ok");
+    await withInvoiceLocks(redis, ["inv-c", "inv-a", "inv-c", "inv-b"], async () => "ok");
     expect(setKeys).toEqual([
-      invoiceLockKey("u1", "inv-a"),
-      invoiceLockKey("u1", "inv-b"),
-      invoiceLockKey("u1", "inv-c"),
+      invoiceLockKey("inv-a"),
+      invoiceLockKey("inv-b"),
+      invoiceLockKey("inv-c"),
     ]);
   });
 
   it("rejects with InvoiceLockedError when an invoice is already locked, and does not run fn", async () => {
     const redis = makeFakeRedis();
     // Another charge already holds the lock for inv-a.
-    redis.store.set(invoiceLockKey("u1", "inv-a"), "1");
+    redis.store.set(invoiceLockKey("inv-a"), "1");
     const fn = vi.fn(async () => "should not run");
     await expect(
-      withInvoiceLocks(redis, "u1", ["inv-a", "inv-b"], fn)
+      withInvoiceLocks(redis, ["inv-a", "inv-b"], fn)
     ).rejects.toBeInstanceOf(InvoiceLockedError);
     expect(fn).not.toHaveBeenCalled();
     // The pre-existing lock is untouched; no lock leaked for inv-b.
-    expect(redis.store.has(invoiceLockKey("u1", "inv-a"))).toBe(true);
-    expect(redis.store.has(invoiceLockKey("u1", "inv-b"))).toBe(false);
+    expect(redis.store.has(invoiceLockKey("inv-a"))).toBe(true);
+    expect(redis.store.has(invoiceLockKey("inv-b"))).toBe(false);
   });
 
-  it("is scoped per user — a lock held by another user does not block", async () => {
+  it("is invoice-global — a lock held for the same invoice blocks regardless of user", async () => {
     const redis = makeFakeRedis();
-    redis.store.set(invoiceLockKey("other", "inv-a"), "1");
-    const out = await withInvoiceLocks(redis, "u1", ["inv-a"], async () => "ok");
-    expect(out).toBe("ok");
+    // The lock key no longer carries any user id, so a lock taken by ANY caller
+    // for inv-x collides with a charge from a DIFFERENT user on the same invoice.
+    // This is the cross-user serialization the per-user key failed to provide.
+    redis.store.set(invoiceLockKey("inv-x"), "1");
+    const fn = vi.fn(async () => "should not run");
+    await expect(
+      withInvoiceLocks(redis, ["inv-x"], fn)
+    ).rejects.toBeInstanceOf(InvoiceLockedError);
+    expect(fn).not.toHaveBeenCalled();
   });
 
   it("releases all acquired locks even when fn throws", async () => {
     const redis = makeFakeRedis();
     const boom = new Error("charge declined");
     await expect(
-      withInvoiceLocks(redis, "u1", ["inv-a", "inv-b"], async () => { throw boom; })
+      withInvoiceLocks(redis, ["inv-a", "inv-b"], async () => { throw boom; })
     ).rejects.toBe(boom);
     // No lock leaked — a legitimate retry can re-acquire.
     expect(redis.store.size).toBe(0);
-    const out = await withInvoiceLocks(redis, "u1", ["inv-a", "inv-b"], async () => "recovered");
+    const out = await withInvoiceLocks(redis, ["inv-a", "inv-b"], async () => "recovered");
     expect(out).toBe("recovered");
   });
 
@@ -172,13 +178,13 @@ describe("withInvoiceLocks", () => {
     const redis = makeFakeRedis();
     // inv-b is already locked; inv-a is free. Sorted order acquires inv-a first,
     // then fails on inv-b — inv-a must be released so it isn't orphaned.
-    redis.store.set(invoiceLockKey("u1", "inv-b"), "1");
+    redis.store.set(invoiceLockKey("inv-b"), "1");
     await expect(
-      withInvoiceLocks(redis, "u1", ["inv-a", "inv-b"], async () => "nope")
+      withInvoiceLocks(redis, ["inv-a", "inv-b"], async () => "nope")
     ).rejects.toBeInstanceOf(InvoiceLockedError);
-    expect(redis.store.has(invoiceLockKey("u1", "inv-a"))).toBe(false);
+    expect(redis.store.has(invoiceLockKey("inv-a"))).toBe(false);
     // The other charge's lock is left intact.
-    expect(redis.store.has(invoiceLockKey("u1", "inv-b"))).toBe(true);
+    expect(redis.store.has(invoiceLockKey("inv-b"))).toBe(true);
   });
 
   it("serializes two concurrent charges on the same invoice (one wins, one 409s)", async () => {
@@ -186,13 +192,13 @@ describe("withInvoiceLocks", () => {
     let release;
     const gate = new Promise((r) => { release = r; });
     // First charge holds the lock inside fn until we release the gate.
-    const first = withInvoiceLocks(redis, "u1", ["inv-a"], async () => {
+    const first = withInvoiceLocks(redis, ["inv-a"], async () => {
       await gate;
       return "first";
     });
     // Give the first call a tick to acquire the lock before the second tries.
     await Promise.resolve();
-    const second = withInvoiceLocks(redis, "u1", ["inv-a"], async () => "second");
+    const second = withInvoiceLocks(redis, ["inv-a"], async () => "second");
     await expect(second).rejects.toBeInstanceOf(InvoiceLockedError);
     release();
     expect(await first).toBe("first");
