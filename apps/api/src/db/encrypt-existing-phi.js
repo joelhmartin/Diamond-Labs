@@ -23,7 +23,7 @@
  * TEXT (e.g. '{"q1":"yes"}'). This script parses that text before re-encrypting
  * so the encrypted payload round-trips through decryptJson() as an object.
  */
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db, queryClient } from "../config/database.js";
 import { rxCases } from "./schema/index.js";
 import {
@@ -67,58 +67,53 @@ async function run() {
   let rowsUpdated = 0;
   let fieldsEncrypted = 0;
   let rowsSkipped = 0;
-  let rowsSkippedConcurrent = 0;
 
   for (const row of rows) {
-    const patch = {};
+    // Concurrency-safe per row: open a transaction, SELECT … FOR UPDATE to LOCK
+    // the row, then re-read and encrypt from the locked values. Any in-flight app
+    // write to this row blocks until we commit, so a concurrent update can never
+    // be clobbered — and we never compare timestamps (a timestamptz equality
+    // predicate silently never matches, because Postgres stores microseconds
+    // while a JS Date is truncated to milliseconds).
+    await db.transaction(async (tx) => {
+      const [fresh] = await tx
+        .select()
+        .from(rxCases)
+        .where(eq(rxCases.id, row.id))
+        .for("update");
+      if (!fresh) {
+        rowsSkipped++;
+        return;
+      }
 
-    for (const f of TEXT_FIELDS) {
-      const v = row[f];
-      if (v === null || v === undefined) continue;
-      if (isEncrypted(v)) continue;
-      patch[f] = encryptField(v);
-      fieldsEncrypted++;
-    }
+      const patch = {};
+      for (const f of TEXT_FIELDS) {
+        const v = fresh[f];
+        if (v === null || v === undefined || isEncrypted(v)) continue;
+        patch[f] = encryptField(v);
+        fieldsEncrypted++;
+      }
+      for (const f of JSON_FIELDS) {
+        const v = fresh[f];
+        if (v === null || v === undefined || isEncrypted(v)) continue;
+        patch[f] = encryptJson(normalizeJsonForEncrypt(v));
+        fieldsEncrypted++;
+      }
 
-    for (const f of JSON_FIELDS) {
-      const v = row[f];
-      if (v === null || v === undefined) continue;
-      if (isEncrypted(v)) continue;
-      patch[f] = encryptJson(normalizeJsonForEncrypt(v));
-      fieldsEncrypted++;
-    }
+      if (Object.keys(patch).length === 0) {
+        rowsSkipped++;
+        return;
+      }
 
-    if (Object.keys(patch).length === 0) {
-      rowsSkipped++;
-      continue;
-    }
-
-    // Optimistic concurrency: only update if the row hasn't changed since we
-    // snapshotted it (predicate on the unchanged updated_at). If the app wrote
-    // its own value during the deploy window, no row matches and we skip it —
-    // do NOT set updatedAt in the patch, or this predicate becomes meaningless.
-    const updated = await db
-      .update(rxCases)
-      .set(patch)
-      .where(and(eq(rxCases.id, row.id), eq(rxCases.updatedAt, row.updatedAt)))
-      .returning({ id: rxCases.id });
-
-    if (updated.length === 0) {
-      rowsSkippedConcurrent++;
-      console.warn(
-        `Row ${row.id} changed under the backfill (updated_at moved) — skipped; ` +
-          "the app already wrote its own value."
-      );
-      continue;
-    }
-    rowsUpdated++;
+      await tx.update(rxCases).set(patch).where(eq(rxCases.id, row.id));
+      rowsUpdated++;
+    });
   }
 
   console.log("─────────────────────────────────────────────");
-  console.log(`Rows updated:          ${rowsUpdated}`);
-  console.log(`Rows already OK:       ${rowsSkipped}`);
-  console.log(`Rows skipped (concur): ${rowsSkippedConcurrent}`);
-  console.log(`Fields encrypted:      ${fieldsEncrypted}`);
+  console.log(`Rows updated:      ${rowsUpdated}`);
+  console.log(`Rows already OK:   ${rowsSkipped}`);
+  console.log(`Fields encrypted:  ${fieldsEncrypted}`);
   console.log("Backfill complete.");
 
   await queryClient.end();
