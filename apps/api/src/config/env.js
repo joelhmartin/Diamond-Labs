@@ -6,6 +6,9 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
   APP_URL: z.string().url().default("http://localhost:5173"),
   API_URL: z.string().url().default("http://localhost:3000"),
+  // Comma-separated production CORS allow-list (e.g. "https://app.example.com").
+  // When set it overrides project.config.js; localhost entries are ignored in prod.
+  CORS_ORIGINS: z.string().optional(),
 
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
 
@@ -14,7 +17,10 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
   JWT_EXPIRY: z.string().default(project.auth.jwtExpiry),
   REFRESH_TOKEN_EXPIRY: z.string().default(project.auth.refreshExpiry),
-  MFA_ENCRYPTION_KEY: z.string().min(32).optional(),
+  // Application-level encryption key for PHI at rest (rx_cases PHI columns + mfaSecret).
+  // 32-byte key, preferably 64-char hex. REQUIRED in production; optional in dev/test
+  // so local tooling without PHI can boot. Losing this key = unrecoverable PHI.
+  PHI_ENCRYPTION_KEY: z.string().min(32).optional(),
 
   // Email (Mailgun HTTP API). RESEND_API_KEY kept (unused) for back-compat.
   RESEND_API_KEY: z.string().optional(),
@@ -64,6 +70,13 @@ function parseEnv() {
   if (!result.success) {
     console.error("Invalid environment variables:");
     console.error(result.error.flatten().fieldErrors);
+    process.exit(1);
+  }
+  // PHI_ENCRYPTION_KEY is optional in the schema (so dev/test tooling can boot)
+  // but MANDATORY in production — booting prod without it would silently store
+  // PHI in plaintext.
+  if (result.data.NODE_ENV === "production" && !result.data.PHI_ENCRYPTION_KEY) {
+    console.error("PHI_ENCRYPTION_KEY is required in production (PHI at-rest encryption).");
     process.exit(1);
   }
   return result.data;

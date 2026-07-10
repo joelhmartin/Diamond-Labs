@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -67,8 +67,14 @@ import { RxChooserPage } from "./pages/app/RxChooserPage.jsx";
 import { RxFormPage } from "./pages/app/RxFormPage.jsx";
 import { RequireDoctor } from "./guards/RequireDoctor.jsx";
 import { RequireRxAccess } from "./guards/RequireRxAccess.jsx";
-import { PaymentTestPage } from "./pages/dev/PaymentTestPage.jsx";
 import { ThemeEditor } from "./components/theme/ThemeEditor.jsx";
+
+// Dev-only payment test harness. Lazily imported behind `import.meta.env.DEV` so
+// Vite statically resolves this to `false` in production and dead-code-eliminates
+// both the route and the component (it never reaches the prod bundle).
+const PaymentTestPage = import.meta.env.DEV
+  ? lazy(() => import("./pages/dev/PaymentTestPage.jsx").then((m) => ({ default: m.PaymentTestPage })))
+  : null;
 
 /* Scroll to top on route change, but NOT on initial load —
    that lets the browser restore scroll position on reload. */
@@ -237,8 +243,20 @@ function AppRoutes() {
         <Route path="/app/rx/olmos" element={<RxFormPage slug="olmos" />} />
       </Route>
 
-      {/* Dev-only payment test harness (any authenticated user) */}
-      <Route path="/dev/pay-test" element={<RequireAuth><PaymentTestPage /></RequireAuth>} />
+      {/* Dev-only payment test harness (any authenticated user).
+          Excluded from production builds via the DEV guard above. */}
+      {import.meta.env.DEV && PaymentTestPage && (
+        <Route
+          path="/dev/pay-test"
+          element={
+            <RequireAuth>
+              <Suspense fallback={null}>
+                <PaymentTestPage />
+              </Suspense>
+            </RequireAuth>
+          }
+        />
+      )}
 
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />

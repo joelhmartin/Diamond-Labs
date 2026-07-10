@@ -13,6 +13,7 @@ import {
   verifyMfaToken,
 } from "../lib/tokens.js";
 import { generateMfaSecret, verifyMfaCode } from "../lib/mfa.js";
+import { encryptField, decryptField } from "../lib/crypto.js";
 import { ERROR_CODES, slugify } from "@my-app/shared";
 import { env } from "../config/env.js";
 import * as seazonaService from "./seazona.service.js";
@@ -21,6 +22,16 @@ import * as emailService from "./email.service.js";
 const LOGIN_ATTEMPTS_PREFIX = "login_attempts:";
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION = 15 * 60; // 15 minutes in seconds
+
+const MFA_ATTEMPTS_PREFIX = "mfa_attempts:";
+const MFA_CONSUMED_PREFIX = "mfa_consumed:";
+const MAX_MFA_ATTEMPTS = 5;
+const MFA_TOKEN_TTL = 5 * 60; // matches signMfaToken's 5m expiry
+
+// A real bcrypt hash of a random string, used ONLY to equalize response timing
+// when an account is missing or passwordless — so login can't be used as a
+// user-enumeration / timing oracle. Never matches any real password.
+const DUMMY_PASSWORD_HASH = "$2b$12$buU6piSJmUdceNyxBBK/rOZBKhy19058k99LAW6u.ssTiLXLnrN0m";
 
 function createAppError(errorDef) {
   const err = new Error(errorDef.message);
@@ -154,12 +165,12 @@ export async function login({ email, password, ip, userAgent }) {
     .limit(1);
 
   if (!user || !user.passwordHash) {
+    // Run a dummy compare so a missing/passwordless account takes the same
+    // time as a real one — no timing/enumeration oracle. Fail uniformly.
+    await comparePassword(password, DUMMY_PASSWORD_HASH);
     await recordFailedLogin(email);
     throw createAppError(ERROR_CODES.INVALID_CREDENTIALS);
   }
-
-  if (user.status === "suspended") throw createAppError(ERROR_CODES.USER_SUSPENDED);
-  if (user.status === "deleted") throw createAppError(ERROR_CODES.INVALID_CREDENTIALS);
 
   const valid = await comparePassword(password, user.passwordHash);
   if (!valid) {
@@ -168,6 +179,12 @@ export async function login({ email, password, ip, userAgent }) {
   }
 
   await clearLoginAttempts(email);
+
+  // Status checks run AFTER password verification so an unauthenticated caller
+  // can't distinguish a suspended/deleted account from a wrong password
+  // (enumeration). A deleted account is indistinguishable from bad credentials.
+  if (user.status === "deleted") throw createAppError(ERROR_CODES.INVALID_CREDENTIALS);
+  if (user.status === "suspended") throw createAppError(ERROR_CODES.USER_SUSPENDED);
 
   // Check doctor approval status
   if (user.role === "doctor" && user.approvalStatus === "pending") {
@@ -201,6 +218,23 @@ export async function login({ email, password, ip, userAgent }) {
 export async function verifyMfa({ mfaToken, code, ip, userAgent }) {
   const payload = await verifyMfaToken(mfaToken);
   const userId = payload.sub;
+  const jti = payload.jti;
+
+  // Single-use: reject replay of an already-consumed MFA token.
+  if (jti) {
+    const consumed = await redis.get(`${MFA_CONSUMED_PREFIX}${jti}`);
+    if (consumed) throw createAppError(ERROR_CODES.MFA_INVALID_CODE);
+  }
+
+  // Brute-force cap: lock the MFA step after MAX_MFA_ATTEMPTS bad codes within
+  // the 15-min window (same pattern as login attempts).
+  const attemptsKey = `${MFA_ATTEMPTS_PREFIX}${userId}`;
+  const attempts = await redis.get(attemptsKey);
+  if (attempts && parseInt(attempts, 10) >= MAX_MFA_ATTEMPTS) {
+    // Invalidate the token so the locked-out session can't keep probing.
+    if (jti) await redis.set(`${MFA_CONSUMED_PREFIX}${jti}`, "1", "EX", MFA_TOKEN_TTL);
+    throw createAppError(ERROR_CODES.ACCOUNT_LOCKED);
+  }
 
   const [user] = await db
     .select()
@@ -210,8 +244,17 @@ export async function verifyMfa({ mfaToken, code, ip, userAgent }) {
 
   if (!user || !user.mfaSecret) throw createAppError(ERROR_CODES.MFA_INVALID_CODE);
 
-  const valid = verifyMfaCode(user.mfaSecret, code);
-  if (!valid) throw createAppError(ERROR_CODES.MFA_INVALID_CODE);
+  // Secret is encrypted at rest (decryptField passes through legacy plaintext).
+  const valid = verifyMfaCode(decryptField(user.mfaSecret), code);
+  if (!valid) {
+    const current = await redis.incr(attemptsKey);
+    if (current === 1) await redis.expire(attemptsKey, LOCKOUT_DURATION);
+    throw createAppError(ERROR_CODES.MFA_INVALID_CODE);
+  }
+
+  // Success: consume the token (single-use) and clear the attempt counter.
+  if (jti) await redis.set(`${MFA_CONSUMED_PREFIX}${jti}`, "1", "EX", MFA_TOKEN_TTL);
+  await redis.del(attemptsKey);
 
   const accessToken = await signAccessToken({ sub: user.id });
   const refreshToken = generateRefreshToken();
@@ -339,15 +382,18 @@ export async function setupMfa(userId) {
 }
 
 export async function enableMfa(userId, code) {
-  const secret = await redis.get(`mfa_setup:${userId}`);
-  if (!secret) throw createAppError({ ...ERROR_CODES.TOKEN_EXPIRED, message: "MFA setup expired. Please start again." });
+  const staged = await redis.get(`mfa_setup:${userId}`);
+  if (!staged) throw createAppError({ ...ERROR_CODES.TOKEN_EXPIRED, message: "MFA setup expired. Please start again." });
 
+  // Staged secret is plaintext today; decryptField passes it through unchanged.
+  const secret = decryptField(staged);
   const valid = verifyMfaCode(secret, code);
   if (!valid) throw createAppError(ERROR_CODES.MFA_INVALID_CODE);
 
+  // Encrypt the TOTP secret before persisting (PHI/credential at rest).
   await db
     .update(users)
-    .set({ mfaSecret: secret, mfaEnabled: true, updatedAt: new Date() })
+    .set({ mfaSecret: encryptField(secret), mfaEnabled: true, updatedAt: new Date() })
     .where(eq(users.id, userId));
 
   await redis.del(`mfa_setup:${userId}`);
@@ -477,6 +523,35 @@ export async function registerDoctor(data) {
   });
 
   return { message: "Registration submitted. Awaiting admin approval." };
+}
+
+/**
+ * Read-only lookup for the approval CONFIRMATION page. Validates the token
+ * exists, is unused, and hasn't expired, and returns the doctor's name — WITHOUT
+ * consuming the token or mutating any state. The consuming write happens only in
+ * processApproval (invoked by the POST). This is what makes the GET safe against
+ * mail-scanner / prefetch auto-approval.
+ */
+export async function getApprovalPreview(token) {
+  const [record] = await db
+    .select()
+    .from(approvalTokens)
+    .where(eq(approvalTokens.token, token))
+    .limit(1);
+
+  if (!record) throw createAppError(ERROR_CODES.APPROVAL_TOKEN_INVALID);
+  if (record.usedAt) throw createAppError(ERROR_CODES.APPROVAL_TOKEN_INVALID);
+  if (new Date(record.expiresAt) <= new Date()) throw createAppError(ERROR_CODES.APPROVAL_TOKEN_EXPIRED);
+
+  const [user] = await db
+    .select({ name: users.name })
+    .from(users)
+    .where(eq(users.id, record.userId))
+    .limit(1);
+
+  if (!user) throw createAppError(ERROR_CODES.USER_NOT_FOUND);
+
+  return { doctorName: user.name };
 }
 
 export async function processApproval(token, action) {

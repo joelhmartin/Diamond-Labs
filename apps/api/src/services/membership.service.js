@@ -56,6 +56,12 @@ export async function updateMemberRole(membershipId, newRole, accountId) {
     throw createAppError(ERROR_CODES.CANNOT_CHANGE_OWNER_ROLE);
   }
 
+  // Defense-in-depth: even if a request bypasses the schema, never let a member
+  // be promoted TO owner via a role update (privilege escalation).
+  if (newRole === "owner") {
+    throw createAppError(ERROR_CODES.CANNOT_CHANGE_OWNER_ROLE);
+  }
+
   await db
     .update(memberships)
     .set({ role: newRole, updatedAt: new Date() })

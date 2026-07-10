@@ -113,6 +113,10 @@ const project = {
       maxLimit: 100,
     },
     cors: {
+      // PLACEHOLDER fallback only. In production the operator MUST set the
+      // CORS_ORIGINS env var to the real deployed frontend origin(s); it takes
+      // precedence over this list. Localhost is handled by the dev branch in
+      // apps/api/src/index.js and is stripped from the production allow-list.
       origins: ["https://myapp.com", "http://localhost:5173"],
     },
   },

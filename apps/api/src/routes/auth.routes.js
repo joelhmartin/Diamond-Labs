@@ -23,6 +23,41 @@ const COOKIE_OPTIONS = {
   maxAge: 7 * 24 * 60 * 60, // 7 days in seconds
 };
 
+// Escape a string for safe interpolation into HTML text/attribute contexts.
+// Prevents stored XSS from attacker-controlled values (e.g. the doctor's `name`,
+// which comes from the public registration form) reaching the approval pages.
+export function escapeHtml(str) {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// Strict CSP for the approval HTML pages: no scripts, no external anything; only
+// the inline styles these pages actually use.
+const APPROVAL_CSP = "default-src 'none'; style-src 'unsafe-inline'";
+
+function renderApprovalError(reply, message, statusCode = 400) {
+  reply
+    .type("text/html")
+    .header("Content-Security-Policy", APPROVAL_CSP)
+    .code(statusCode)
+    .send(`
+      <!DOCTYPE html>
+      <html>
+      <head><title>Error</title><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+      <body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;">
+        <div style="text-align:center;padding:40px;background:white;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:400px;">
+          <h1 style="margin:0 0 8px;font-size:20px;color:#dc2626;">Error</h1>
+          <p style="color:#64748b;margin:0;">${escapeHtml(message || "This link is invalid or has expired.")}</p>
+        </div>
+      </body>
+      </html>
+    `);
+}
+
 export default async function authRoutes(fastify) {
   // Register
   fastify.post("/register", { preHandler: [validate(registerSchema)] }, async (request, reply) => {
@@ -141,8 +176,52 @@ export default async function authRoutes(fastify) {
     return { data: result };
   });
 
-  // Admin approval (one-click from email — returns HTML)
+  // Admin approval — GET renders a CONFIRMATION page (side-effect-free). It must
+  // NOT consume the token: mail scanners and link prefetchers hit GET links, and
+  // a state-mutating GET would auto-approve an unvetted doctor. The actual
+  // approve/reject happens on the POST below (triggered by a human clicking a
+  // button), which is what consumes the token.
   fastify.get("/approve/:token", async (request, reply) => {
+    const { token } = request.params;
+
+    try {
+      const preview = await authService.getApprovalPreview(token);
+      const safeName = escapeHtml(preview.doctorName);
+      const safeToken = encodeURIComponent(token);
+      const approveUrl = `/api/v1/auth/approve/${safeToken}?action=approve`;
+      const rejectUrl = `/api/v1/auth/approve/${safeToken}?action=reject`;
+
+      reply
+        .type("text/html")
+        .header("Content-Security-Policy", APPROVAL_CSP)
+        .send(`
+          <!DOCTYPE html>
+          <html>
+          <head><title>Review doctor</title><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+          <body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;">
+            <div style="text-align:center;padding:40px;background:white;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:400px;">
+              <h1 style="margin:0 0 8px;font-size:20px;">Review registration</h1>
+              <p style="color:#64748b;margin:0 0 24px;">Approve or reject Dr. ${safeName}'s account?</p>
+              <div style="display:flex;gap:12px;justify-content:center;">
+                <form method="POST" action="${approveUrl}" style="margin:0;">
+                  <button type="submit" style="cursor:pointer;border:none;border-radius:10px;padding:12px 24px;font-size:15px;color:white;background:#16a34a;">Approve</button>
+                </form>
+                <form method="POST" action="${rejectUrl}" style="margin:0;">
+                  <button type="submit" style="cursor:pointer;border:none;border-radius:10px;padding:12px 24px;font-size:15px;color:white;background:#dc2626;">Reject</button>
+                </form>
+              </div>
+            </div>
+          </body>
+          </html>
+        `);
+    } catch (err) {
+      renderApprovalError(reply, err.message, err.statusCode || 400);
+    }
+  });
+
+  // Admin approval — POST performs the actual approve/reject and consumes the
+  // token. Action is carried in the query string of the form's action URL.
+  fastify.post("/approve/:token", async (request, reply) => {
     const { token } = request.params;
     const action = request.query.action;
 
@@ -150,35 +229,28 @@ export default async function authRoutes(fastify) {
       const result = await authService.processApproval(token, action);
       const status = result.approved ? "approved" : "rejected";
       const color = result.approved ? "#16a34a" : "#dc2626";
+      const safeName = escapeHtml(result.doctorName);
 
-      reply.type("text/html").send(`
-        <!DOCTYPE html>
-        <html>
-        <head><title>Doctor ${status}</title><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-        <body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;">
-          <div style="text-align:center;padding:40px;background:white;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:400px;">
-            <div style="width:48px;height:48px;border-radius:50%;background:${color};margin:0 auto 16px;display:flex;align-items:center;justify-content:center;">
-              <span style="color:white;font-size:24px;">${result.approved ? "✓" : "✕"}</span>
+      reply
+        .type("text/html")
+        .header("Content-Security-Policy", APPROVAL_CSP)
+        .send(`
+          <!DOCTYPE html>
+          <html>
+          <head><title>Doctor ${status}</title><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+          <body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;">
+            <div style="text-align:center;padding:40px;background:white;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:400px;">
+              <div style="width:48px;height:48px;border-radius:50%;background:${color};margin:0 auto 16px;display:flex;align-items:center;justify-content:center;">
+                <span style="color:white;font-size:24px;">${result.approved ? "✓" : "✕"}</span>
+              </div>
+              <h1 style="margin:0 0 8px;font-size:20px;">Doctor ${status}</h1>
+              <p style="color:#64748b;margin:0;">Dr. ${safeName}'s account has been ${status}.</p>
             </div>
-            <h1 style="margin:0 0 8px;font-size:20px;">Doctor ${status}</h1>
-            <p style="color:#64748b;margin:0;">Dr. ${result.doctorName}'s account has been ${status}.</p>
-          </div>
-        </body>
-        </html>
-      `);
+          </body>
+          </html>
+        `);
     } catch (err) {
-      reply.type("text/html").code(err.statusCode || 400).send(`
-        <!DOCTYPE html>
-        <html>
-        <head><title>Error</title><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-        <body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;">
-          <div style="text-align:center;padding:40px;background:white;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:400px;">
-            <h1 style="margin:0 0 8px;font-size:20px;color:#dc2626;">Error</h1>
-            <p style="color:#64748b;margin:0;">${err.message || "This link is invalid or has expired."}</p>
-          </div>
-        </body>
-        </html>
-      `);
+      renderApprovalError(reply, err.message, err.statusCode || 400);
     }
   });
 }
