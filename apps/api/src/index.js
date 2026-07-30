@@ -71,7 +71,7 @@ await fastify.register(multipart, {
 });
 await fastify.register(cookie);
 // Production CORS allow-list. Prefer the env-driven list (comma-separated,
-// set per Cloud Run deploy — e.g. the real Vercel/prod domain); fall back to
+// set per Cloud Run deploy — e.g. the real prod domain); fall back to
 // the project config. Localhost/loopback entries are stripped here since they
 // belong only to the dev branch below — this guarantees `credentials: true`
 // is never paired with a wildcard/reflected or dev origin.

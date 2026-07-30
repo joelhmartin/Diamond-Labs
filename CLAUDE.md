@@ -90,8 +90,14 @@ Full cinematic landing experience:
 
 ### Monorepo Structure
 - **pnpm workspaces + Turborepo** — `apps/web`, `apps/api`, `packages/shared`
-- **Frontend:** React + Vite at `apps/web/`, deployed to Vercel
-- **Backend:** Fastify v5 + Drizzle ORM at `apps/api/`, targeting Cloud Run
+- **Frontend:** React + Vite at `apps/web/`
+- **Backend:** Fastify v5 + Drizzle ORM at `apps/api/`, on Cloud Run
+- **Deploy:** ONE Cloud Run service for both. `apps/api/Dockerfile` builds
+  `apps/web` and bakes `apps/web/dist` into the API image; Fastify serves the SPA
+  and `/api/v1` from the same origin. Push to `main` fires the `deploy-api-on-main`
+  Cloud Build trigger (`cloudbuild.yaml`: build → push → migrate → deploy).
+  There is no separate frontend host and no second deploy pipeline — if you are
+  looking for one, it does not exist.
 - **Shared:** Zod schemas, roles/permissions, error codes at `packages/shared/`
 
 ### Backend Stack
