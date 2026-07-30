@@ -57,7 +57,9 @@ export default function LottiePlayer({
       ([entry], obs) => {
         if (entry.isIntersecting) {
           obs.disconnect();
-          load();
+          // Decorative: if the chunk or JSON fails to fetch, leave the
+          // container empty rather than raise an unhandled rejection.
+          void load().catch(() => {});
         }
       },
       { rootMargin: "200px" }
