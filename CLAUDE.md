@@ -96,7 +96,8 @@ Full cinematic landing experience:
   `apps/web` and bakes `apps/web/dist` into the API image; Fastify serves the SPA
   and `/api/v1` from the same origin. Push to `main` fires the `deploy-api-on-main`
   Cloud Build trigger (`cloudbuild.yaml`: build → push → migrate → deploy).
-  Not Vercel, not Netlify — there is no separate frontend host.
+  There is no separate frontend host and no second deploy pipeline — if you are
+  looking for one, it does not exist.
 - **Shared:** Zod schemas, roles/permissions, error codes at `packages/shared/`
 
 ### Backend Stack
