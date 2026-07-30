@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { playOnView } from "../../lib/playOnView";
+import LottiePlayer from "../../components/ui/LottiePlayer";
 import {
   ArrowRight,
   Scan,
@@ -664,13 +665,9 @@ function Philosophy() {
 
       {/* Lottie animation — right side */}
       <div className="absolute right-0 top-1/2 -translate-y-1/2 opacity-50 pointer-events-none hidden md:block">
-        <iframe
-          src="https://cdn.lottielab.com/l/Bqd8dkXRTJHiWh.html"
-          width="750"
-          height="750"
-          style={{ border: "none" }}
-          loading="lazy"
-          title="Decorative animation"
+        <LottiePlayer
+          src="/animations/hero-lottie.json"
+          style={{ width: 750, height: 680 }}
         />
       </div>
 
