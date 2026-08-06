@@ -648,7 +648,7 @@ test("a row with no base material where one is required is flagged, never guesse
     standardGuards: { "Nightguard - Full Occlusion": { "UPPER ARCH": true } },
   });
   assert.equal(items.length, 0);
-  assert.ok(unmapped.some((u) => u.includes("Nightguard - Full Occlusion")));
+  assert.ok(unmapped.some((u) => u.includes("nightguard-full-occlusion")));
 });
 
 test("Slider Type is ambiguous and never guesses between NTI and FLATPLANE", () => {
@@ -656,7 +656,14 @@ test("Slider Type is ambiguous and never guesses between NTI and FLATPLANE", () 
     standardGuards: { "Occlusal Guard - Slider Type": { "UPPER ARCH": true, "Base Material": "Nylon (Printed)" } },
   });
   assert.equal(items.length, 0);
-  assert.ok(unmapped.some((u) => u.includes("Slider Type")));
+  assert.ok(unmapped.some((u) => u.includes("slider-type")));
+});
+
+test("unmapped entries are bare mapKeys the override layer can key on", () => {
+  const { unmapped } = resolveGuard({
+    standardGuards: { "Occlusal Guard - Slider Type": { "UPPER ARCH": true, "Base Material": "Nylon (Printed)" } },
+  });
+  assert.deepEqual(unmapped, ["guard:occlusal-guard-slider-type"]);
 });
 ```
 
