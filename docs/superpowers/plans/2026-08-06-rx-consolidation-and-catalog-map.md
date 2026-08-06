@@ -565,8 +565,11 @@ export const ATTRIBUTE_ROWS = [
   { mapKey: "attr:design:lingual-free", match: ["Lingual-Free"],         code: "2314", name: "Lingual-Free Design", status: "confirmed" },
   { mapKey: "attr:design:buccal-free",  match: ["Buccal-Free"],          code: "2308", name: "Buccal-Free Design",  status: "confirmed" },
 
-  // "Standard" means no special design; it correctly emits nothing.
-  { mapKey: "attr:design:standard",      match: ["Standard"],      code: null, name: "Standard (no line item)", status: "open" },
+  // "Standard" means no special design. status "none" — emits nothing AND
+  // flags nothing. It must NOT be "open": "Standard" is likely the most common
+  // selection, so flagging it would put an unmapped warning on nearly every
+  // order and train staff to ignore the signal the never-guess rule depends on.
+  { mapKey: "attr:design:standard",      match: ["Standard"],      code: null, name: "Standard (no line item)", status: "none" },
   // Ambiguous against attr:occlusal:full (2292) — lab must disambiguate.
   { mapKey: "attr:design:full-coverage", match: ["Full Coverage"], code: null, name: "Full Coverage",           status: "open" },
 ];
@@ -883,6 +886,9 @@ function emit(row, { items, unmapped }, overrides, arch = null) {
     items.push({ ...override, mapKey: row.mapKey, arch, status: "confirmed", overridden: true });
     return;
   }
+  // "none" = deliberately no line item (e.g. design preference "Standard").
+  // Distinct from "open", which means unresolved and needs a lab decision.
+  if (row.status === "none") return;
   if (row.status === "open" || !row.code) {
     unmapped.push(row.mapKey);
     return;
