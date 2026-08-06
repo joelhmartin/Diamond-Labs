@@ -180,14 +180,18 @@ function DrOlmos() {
           {/* Photo */}
           <div data-olmos className="flex justify-center lg:justify-center">
             <div className="relative">
-              <div className="w-64 h-64 md:w-full md:h-full rounded-full overflow-hidden border-4 border-white/10">
+              <div className="w-64 h-64 md:w-full md:h-full rounded-full overflow-hidden border-4 border-brand-500">
                 <img
                   src="/images/dr-olmos.jpg"
                   alt="Dr. Steven Olmos"
                   className="w-full h-full object-cover"
+                  width="900"
+                  height="900"
                 />
               </div>
-              <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-brand-500 text-white text-xs font-semibold whitespace-nowrap">
+              {/* Sits ON the portrait, not below it — the circle's lower edge
+                  curves away, so an overlapping tag reads as one object. */}
+              <div className="absolute bottom-6 md:bottom-10 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-brand-500 text-white text-xs font-semibold whitespace-nowrap shadow-lg shadow-navy/30">
                 Olmos Series Creator
               </div>
             </div>

@@ -79,6 +79,19 @@ function parseEnv() {
     console.error("PHI_ENCRYPTION_KEY is required in production (PHI at-rest encryption).");
     process.exit(1);
   }
+  // APP_URL defaults to localhost for dev convenience. In production that
+  // default is worse than missing: every emailed link (password reset, email
+  // verification, invitations) would point at the RECIPIENT'S OWN machine and
+  // silently fail for them. Refuse to boot rather than mail dead links.
+  if (
+    result.data.NODE_ENV === "production" &&
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(result.data.APP_URL)
+  ) {
+    console.error(
+      `APP_URL must be the real public origin in production (got "${result.data.APP_URL}") — emailed links depend on it.`
+    );
+    process.exit(1);
+  }
   return result.data;
 }
 

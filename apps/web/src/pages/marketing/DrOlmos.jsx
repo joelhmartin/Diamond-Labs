@@ -76,7 +76,7 @@ function Hero() {
       <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/80 to-navy/60" />
       <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/40 to-transparent" />
 
-      <div className="relative z-10 pb-16 md:pb-24 w-full max-w-6xl mx-auto">
+      <div className="relative z-10 pb-16 md:pb-24 w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-10 lg:gap-16 items-end">
         <div className="max-w-4xl">
         <span
           data-olmos-hero
@@ -100,6 +100,23 @@ function Hero() {
           in private practice. 30+ years devoted to research and treatment of
           craniofacial pain, TMD, and sleep-disordered breathing.
         </p>
+        </div>
+
+        {/* Portrait — right of the headline from lg up, hidden below it: the
+            hero is 85dvh and the display type already fills a phone screen, so
+            adding a portrait there crowds the name rather than supporting it.
+            Same asset as the About page. */}
+        <div
+          data-olmos-hero
+          className="hidden lg:block shrink-0 w-56 xl:w-72 rounded-full overflow-hidden border-4 border-brand-500"
+        >
+          <img
+            src="/images/dr-olmos.jpg"
+            alt="Dr. Steven Olmos"
+            className="w-full h-full object-cover"
+            width="900"
+            height="900"
+          />
         </div>
       </div>
     </section>
@@ -203,6 +220,25 @@ function Biography() {
             </span>
             .
           </h2>
+
+          {/* Fills the column that sat empty beside the biography copy.
+              width/height are the intrinsic dimensions so the browser reserves
+              the right box and the text below never jumps on load. */}
+          <figure data-bio className="mt-8 md:mt-10">
+            <div className="rounded-3xl overflow-hidden border border-navy/10 shadow-sm">
+              <img
+                src="/images/dr-olmos-working.jpg"
+                alt="Dr. Steven Olmos demonstrating a palpation examination during a training course"
+                className="w-full h-auto object-cover"
+                width="1080"
+                height="565"
+                loading="lazy"
+              />
+            </div>
+            <figcaption className="mt-3 font-mono text-[10px] text-navy/35 uppercase tracking-widest">
+              Teaching the protocol · TMJ &amp; Sleep Therapy Centres
+            </figcaption>
+          </figure>
         </div>
         <div className="lg:col-span-3 space-y-5 text-navy/60 leading-relaxed">
           <p data-bio>

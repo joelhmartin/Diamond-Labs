@@ -12,7 +12,13 @@ import {
 import { validate } from "../middleware/validate.js";
 import { authenticate } from "../middleware/authenticate.js";
 import * as authService from "../services/auth.service.js";
+import * as emailService from "../services/email.service.js";
 import { env } from "../config/env.js";
+
+// Floor for POST /forgot-password so a hit and a miss are indistinguishable by
+// latency (see the handler). Comfortably above a Mailgun round-trip.
+const FORGOT_PASSWORD_MIN_MS = 1200;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const REFRESH_COOKIE = "refresh_token";
 const COOKIE_OPTIONS = {
@@ -121,9 +127,38 @@ export default async function authRoutes(fastify) {
     return { data: { accessToken: result.accessToken } };
   });
 
-  // Forgot password
+  // Forgot password. forgotPassword() only MINTS the token — sending is the
+  // route's job (mirrors POST /admin/users/:id/send-password-reset). Without
+  // this send the whole flow is a silent no-op: a token is stored, nothing is
+  // mailed, and the anti-enumeration response below reports success anyway.
   fastify.post("/forgot-password", { preHandler: [validate(forgotPasswordSchema)] }, async (request) => {
-    await authService.forgotPassword(request.body.email);
+    const startedAt = Date.now();
+    const { token } = await authService.forgotPassword(request.body.email);
+    // `token` is null for an unknown email — nothing to send, same reply either way.
+    if (token) {
+      const resetUrl = `${env.APP_URL}/auth/reset-password?token=${token}`;
+      // send() is soft-fail (returns false, never throws); guard anyway so a mail
+      // outage can't turn into a 500 that leaks which addresses exist.
+      try {
+        await emailService.sendPasswordReset({ email: request.body.email, resetUrl });
+      } catch (err) {
+        request.log.error({ err: String(err?.message || err) }, "password reset email failed to send");
+      }
+    }
+    // The send is AWAITED deliberately. Cloud Run throttles this container's CPU
+    // the moment the response is written (no cpu-throttling:false annotation), so
+    // a fire-and-forget send would frequently be suspended and never delivered —
+    // reintroducing the exact silent-drop bug this route is fixing.
+    //
+    // Awaiting only for registered addresses would leak account existence through
+    // response latency, so hold BOTH branches to the same floor. Enumeration by
+    // timing needs a measurable delta; there isn't one if every reply takes the
+    // same minimum. The cost is invisible on a reset form, and the floor doubles
+    // as a brake on bulk probing.
+    const elapsed = Date.now() - startedAt;
+    if (elapsed < FORGOT_PASSWORD_MIN_MS) {
+      await sleep(FORGOT_PASSWORD_MIN_MS - elapsed);
+    }
     // Always return success to prevent email enumeration
     return { data: { message: "If an account exists, a reset email has been sent." } };
   });
