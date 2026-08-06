@@ -30,6 +30,23 @@ export function shouldShow(field, answers) {
   return true;
 }
 
+/**
+ * Section-level conditional visibility. Superset of shouldShow's semantics,
+ * adding { key, includes }: matches when answers[key] is an array containing
+ * the value, or equals it outright.
+ */
+export function sectionVisible(section, answers) {
+  const cond = section && section.showIf;
+  if (!cond) return true;
+  const other = (answers || {})[cond.key];
+  if (cond.includes != null)
+    return Array.isArray(other) ? other.includes(cond.includes) : other === cond.includes;
+  if (cond.equals != null) return other === cond.equals;
+  if (cond.prefix != null)
+    return typeof other === "string" && other.startsWith(cond.prefix);
+  return true;
+}
+
 /** Flatten every field across all sections, preserving declaration order. */
 export function allFields(form) {
   const out = [];
@@ -41,9 +58,15 @@ export function allFields(form) {
   return out;
 }
 
-/** allFields filtered to those currently visible given the answers. */
+/** allFields filtered to those in a visible section AND individually visible. */
 export function visibleFields(form, answers) {
-  return allFields(form).filter((field) => shouldShow(field, answers));
+  const out = [];
+  for (const section of (form && form.sections) || []) {
+    if (!sectionVisible(section, answers)) continue;
+    for (const field of (section && section.fields) || [])
+      if (shouldShow(field, answers)) out.push(field);
+  }
+  return out;
 }
 
 // Field types that are presentational only and can never be "required".
@@ -92,10 +115,9 @@ function isEmpty(field, value) {
  */
 export function validateForm(form, answers) {
   const errors = {};
-  for (const field of allFields(form)) {
+  for (const field of visibleFields(form, answers)) {
     if (!field.required) continue;
     if (STATIC_TYPES.has(field.type)) continue;
-    if (!shouldShow(field, answers)) continue;
     const value = (answers || {})[field.key];
     if (isEmpty(field, value)) {
       errors[field.key] = `${field.label || field.key} is required`;

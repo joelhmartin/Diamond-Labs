@@ -7,6 +7,7 @@ import {
   validateForm,
   shouldShow,
   buildSubmitFormData,
+  sectionVisible,
 } from "./form-logic.js";
 
 function makeForm() {
@@ -123,4 +124,32 @@ test("buildSubmitFormData: text answers land in formData JSON; fileUpload append
   // the File must be appended under `file`
   const appended = fd.getAll("file");
   assert.equal(appended.length, 1);
+});
+
+const gatedForm = {
+  sections: [
+    { id: "always", fields: [{ type: "text", key: "a" }] },
+    {
+      id: "gated",
+      showIf: { key: "devices", includes: "ddso" },
+      fields: [{ type: "text", key: "b", required: true, label: "B" }],
+    },
+  ],
+};
+
+test("sectionVisible handles includes against an array answer", () => {
+  assert.equal(sectionVisible(gatedForm.sections[1], { devices: ["ddso"] }), true);
+  assert.equal(sectionVisible(gatedForm.sections[1], { devices: ["guard"] }), false);
+  assert.equal(sectionVisible(gatedForm.sections[1], {}), false);
+});
+
+test("visibleFields excludes fields in hidden sections", () => {
+  const keys = visibleFields(gatedForm, { devices: ["guard"] }).map((f) => f.key);
+  assert.deepEqual(keys, ["a"]);
+});
+
+test("validateForm does not require fields the doctor cannot see", () => {
+  const { ok, errors } = validateForm(gatedForm, { devices: ["guard"] });
+  assert.equal(ok, true);
+  assert.equal(errors.b, undefined);
 });

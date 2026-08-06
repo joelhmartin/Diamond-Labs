@@ -13,6 +13,7 @@ import {
   visibleFields,
   validateForm,
   shouldShow,
+  sectionVisible,
   buildSubmitFormData,
 } from "../../data/forms/form-logic.js";
 
@@ -165,24 +166,6 @@ function isRedundantHeader(field, section, stepTitle) {
     return normText(field.html || field.label) === normText(section.note);
   }
   return false;
-}
-
-/* Whether a section is currently visible. Mirrors form-logic's shouldShow
-   semantics ({ key, equals } | { key, prefix }) and adds { key, includes }:
-   `includes` matches when answers[key] is an array containing the value, or a
-   string equal to it. */
-export function sectionVisible(section, answers) {
-  const cond = section && section.showIf;
-  if (!cond) return true;
-  const other = (answers || {})[cond.key];
-  if (cond.equals != null) return other === cond.equals;
-  if (cond.prefix != null)
-    return typeof other === "string" && other.startsWith(cond.prefix);
-  if (cond.includes != null)
-    return Array.isArray(other)
-      ? other.includes(cond.includes)
-      : other === cond.includes;
-  return true;
 }
 
 /* True when a section has at least one currently-visible INPUT field, i.e. it
