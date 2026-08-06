@@ -89,3 +89,29 @@ test("buildSeazonaOrderPayload applies overrides", () => {
   assert.ok(payload.items.some((i) => i.id === "id-9999"));
   assert.ok(!warnings.some((w) => w.includes("__nope__")));
 });
+
+test("a device whose primary line cannot resolve marks the payload not-ok", () => {
+  const { ok, warnings } = buildSeazonaOrderPayload(
+    { deviceKey: "olmos-night", deviceOptions: { variant: "DEPROGRAMMER (ON-D) - Anterior Occlusion" }, seazonaClientId: "c1" },
+    { codeToId: {}, userId: "u1" }
+  );
+  assert.equal(ok, false);
+  assert.ok(warnings.some((w) => /unmapped/.test(w)));
+});
+
+test("a fully resolvable device is ok", () => {
+  const { ok } = buildSeazonaOrderPayload(
+    { deviceKey: "ddso", deviceOptions: { baseMaterial: "NYLON" } },
+    { codeToId: { 2608: "id-2608" }, userId: "u1" }
+  );
+  assert.equal(ok, true);
+});
+
+test("a guard-only order is ok when its code resolves", () => {
+  const { ok, warnings } = buildSeazonaOrderPayload(
+    { deviceKey: "guard", deviceOptions: { standardGuards: { "Essix Tray": { "UPPER ARCH": true } } }, seazonaClientId: "c1" },
+    { codeToId: { 2161: "id-2161" }, userId: "u1" }
+  );
+  assert.equal(ok, true);
+  assert.deepEqual(warnings, []);
+});

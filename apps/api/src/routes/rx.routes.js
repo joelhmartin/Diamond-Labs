@@ -699,11 +699,18 @@ export default async function rxRoutes(fastify) {
     }
 
     // ── Build payload ─────────────────────────────────────────────────────────
-    const { payload, warnings: buildWarnings } = buildSeazonaOrderPayload(caseRow, {
+    const { payload, warnings: buildWarnings, ok } = buildSeazonaOrderPayload(caseRow, {
       codeToId,
       userId: env.SEAZONA_ORDER_USER_ID,
     });
     const warnings = [...extraWarnings, ...buildWarnings];
+
+    if (!ok) {
+      request.log.error({ warnings: buildWarnings }, "[Seazona][RX_PAYLOAD_INCOMPLETE] refusing to push an order with unresolved lines");
+      return reply.code(422).send({
+        error: { code: "RX_PAYLOAD_INCOMPLETE", status: 422, message: "This prescription has selections that are not yet mapped to lab products. It has been saved but not sent.", details: buildWarnings },
+      });
+    }
 
     // ── DRY-RUN gate ──────────────────────────────────────────────────────────
     let seazonaPushStatus;

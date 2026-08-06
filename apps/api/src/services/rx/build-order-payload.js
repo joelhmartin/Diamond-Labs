@@ -17,14 +17,25 @@ export function buildSeazonaOrderPayload(rxCase, { codeToId = {}, userId, overri
   // Seed warnings from unmapped device/option selections that resolveLineItems already flagged.
   const warnings = unmapped.map((u) => `unmapped ${u}`);
 
+  // A "device line" is any emitted line that is not a modification or a design
+  // attribute. Detect it by EXCLUSION, not by a "primary:" prefix — resolver
+  // devices emit their own prefixes (guard rows are `guard:<row>:<material>`),
+  // so a prefix check would reject every valid nightguard order.
+  const isDeviceLine = (mapKey) =>
+    typeof mapKey === "string" && !mapKey.startsWith("mod:") && !mapKey.startsWith("attr:");
+
+  let deviceLineEmitted = false;
   for (const li of lineItems) {
     const id = codeToId[li.code];
     if (!id) {
       warnings.push(`no catalog id for code ${li.code} (${li.name})`);
       continue;
     }
+    if (isDeviceLine(li.mapKey)) deviceLineEmitted = true;
     items.push({ id, arch: normalizeArch(li.arch) });
   }
+
+  const ok = deviceLineEmitted && unmapped.length === 0;
 
   return {
     payload: {
@@ -37,6 +48,7 @@ export function buildSeazonaOrderPayload(rxCase, { codeToId = {}, userId, overri
     },
     warnings,
     unmapped,
+    ok,
   };
 }
 
@@ -134,6 +146,10 @@ export function buildSeazonaOrderPayloadMulti(
   devices = [],
   { codeToId = {}, userId, overrides = {} } = {}
 ) {
+  // See isDeviceLine in buildSeazonaOrderPayload for why this is exclusion-based.
+  const isDeviceLine = (mapKey) =>
+    typeof mapKey === "string" && !mapKey.startsWith("mod:") && !mapKey.startsWith("attr:");
+
   const items = [];
   const warnings = [];
   const unmapped = [];
@@ -151,18 +167,23 @@ export function buildSeazonaOrderPayloadMulti(
     }
 
     let lineCount = 0;
+    let deviceLineEmitted = false;
     for (const li of lineItems) {
       const id = codeToId[li.code];
       if (!id) {
         warnings.push(`no catalog id for code ${li.code} (${li.name})`);
         continue;
       }
+      if (isDeviceLine(li.mapKey)) deviceLineEmitted = true;
       items.push({ id, arch: normalizeArch(li.arch) });
       lineCount++;
     }
 
-    perDevice.push({ label: d.label || d.deviceKey, deviceKey: d.deviceKey, lineCount });
+    const deviceOk = deviceLineEmitted && devUnmapped.length === 0;
+    perDevice.push({ label: d.label || d.deviceKey, deviceKey: d.deviceKey, lineCount, ok: deviceOk });
   }
+
+  const ok = perDevice.every((d) => d.ok);
 
   return {
     payload: {
@@ -176,5 +197,6 @@ export function buildSeazonaOrderPayloadMulti(
     warnings,
     unmapped,
     perDevice,
+    ok,
   };
 }
