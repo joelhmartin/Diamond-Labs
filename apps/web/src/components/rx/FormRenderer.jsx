@@ -79,7 +79,7 @@ function StepHeader({ current, total, labels }) {
       </div>
       <div className="flex items-center justify-between">
         <div>
-          <span className="font-mono text-[10px] text-navy/30 uppercase tracking-wider">
+          <span className="font-mono text-[10px] text-muted uppercase tracking-wider">
             Step {current + 1} of {total}
           </span>
           <h2 className="font-heading font-bold text-lg text-navy tracking-tight mt-0.5">
@@ -87,7 +87,7 @@ function StepHeader({ current, total, labels }) {
           </h2>
         </div>
         {current < total - 1 && (
-          <span className="hidden sm:block font-mono text-[10px] text-navy/20 uppercase tracking-wider">
+          <span className="hidden sm:block font-mono text-[10px] text-muted uppercase tracking-wider">
             Next: {labels[current + 1]}
           </span>
         )}
@@ -140,10 +140,10 @@ function formatReviewValue(field, value) {
 function ReviewRow({ label, value }) {
   return (
     <div className="flex items-start gap-3 py-1">
-      <span className="text-[10px] font-semibold text-navy/25 uppercase tracking-wider w-40 flex-shrink-0 pt-0.5">
+      <span className="text-[10px] font-semibold text-muted uppercase tracking-wider w-40 flex-shrink-0 pt-0.5">
         {label}
       </span>
-      <span className="text-sm text-navy/70 flex-1 break-words">{value}</span>
+      <span className="text-sm text-secondary flex-1 break-words">{value}</span>
     </div>
   );
 }
@@ -315,7 +315,7 @@ export function FormRenderer({ form, prefill = {}, onSubmit, onComplete, submitt
         {!onReview && currentSection && (
           <div className="p-6 md:p-8 space-y-6">
             {currentSection.note && (
-              <p className="text-sm text-navy/45 leading-relaxed">
+              <p className="text-sm text-secondary leading-relaxed">
                 {currentSection.note}
               </p>
             )}
@@ -348,7 +348,7 @@ export function FormRenderer({ form, prefill = {}, onSubmit, onComplete, submitt
         {/* ─── REVIEW STEP ─── */}
         {onReview && (
           <div className="p-6 md:p-8 space-y-4">
-            <p className="text-sm text-navy/45">
+            <p className="text-sm text-secondary">
               Review your answers below. Use Back to make changes, then submit.
             </p>
             {visibleSections.map((section, idx) => {
@@ -401,7 +401,7 @@ export function FormRenderer({ form, prefill = {}, onSubmit, onComplete, submitt
           <button
             type="button"
             onClick={back}
-            className="flex items-center gap-1.5 px-5 py-2.5 rounded-full text-sm font-medium text-navy/50 hover:text-navy hover:bg-surface-100 transition-all"
+            className="flex items-center gap-1.5 px-5 py-2.5 rounded-full text-sm font-medium text-secondary hover:text-navy hover:bg-surface-100 transition-all"
           >
             <ChevronLeft size={16} /> Back
           </button>
