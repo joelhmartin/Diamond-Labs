@@ -40,3 +40,8 @@ test("open rows carry no code", () => {
   for (const r of [...MODIFICATION_ROWS, ...ATTRIBUTE_ROWS])
     if (r.status === "open") assert.equal(r.code, null);
 });
+
+test("none rows (deliberate no-op, not a gap) also carry no code", () => {
+  for (const r of [...MODIFICATION_ROWS, ...ATTRIBUTE_ROWS])
+    if (r.status === "none") assert.equal(r.code, null);
+});

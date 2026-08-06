@@ -43,3 +43,22 @@ test("an unknown modification is flagged, never guessed", () => {
   const { unmapped } = resolveLineItems({ deviceKey: "ddso", deviceOptions: { baseMaterial: "NYLON", modifications: ["__nope__"] } });
   assert.ok(unmapped.some((u) => u.includes("__nope__")));
 });
+
+test("an override cannot collapse a two-arch guard order into one line", () => {
+  const overrides = { "guard:occlusal-guard-slider-type": { code: "9999", name: "Custom" } };
+  const { items, unmapped } = resolveLineItems(
+    { deviceKey: "guard", deviceOptions: { standardGuards: { "Occlusal Guard - Slider Type": { "UPPER ARCH": true, "LOWER ARCH": true, "Base Material": "Nylon (Printed)" } } } },
+    { overrides }
+  );
+  assert.equal(items.length, 0);
+  assert.deepEqual(unmapped, ["guard:occlusal-guard-slider-type"]);
+});
+
+test("a 'none' attribute emits no line item and no unmapped flag", () => {
+  const { items, unmapped } = resolveLineItems({
+    deviceKey: "ddso",
+    deviceOptions: { baseMaterial: "NYLON", designPreference: "Standard" },
+  });
+  assert.deepEqual(items.map((i) => i.code), ["2608"]);
+  assert.equal(unmapped.length, 0);
+});

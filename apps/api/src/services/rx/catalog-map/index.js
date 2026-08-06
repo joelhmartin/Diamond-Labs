@@ -40,6 +40,7 @@ function emit(row, { items, unmapped }, overrides, arch = null) {
     items.push({ ...override, mapKey: row.mapKey, arch, status: "confirmed", overridden: true });
     return;
   }
+  if (row.status === "none") return; // deliberately no line item — not a gap, don't flag it
   if (row.status === "open" || !row.code) {
     unmapped.push(row.mapKey);
     return;
@@ -73,7 +74,14 @@ export function resolveLineItems({ deviceKey, deviceOptions = {} } = {}, { overr
       const override = overrides[it.mapKey];
       acc.items.push(override ? { ...override, mapKey: it.mapKey, arch: it.arch, status: "confirmed", overridden: true } : { ...it, overridden: false });
     }
-    for (const mapKey of unmapped) emitOverrideOrUnmapped(mapKey, acc, overrides);
+    // Plain passthrough — NOT emitOverrideOrUnmapped. A resolver's unmapped
+    // mapKey (e.g. a guard slider-type slot) can correspond to MULTIPLE
+    // physical line items when several arches were ordered on that row, but
+    // the resolver only reports the mapKey once (arch isn't attached to it).
+    // Recovering it into a single override item would silently collapse a
+    // two-arch order into one line. Leave these in `unmapped`; the admin
+    // resolves the ambiguity at the resolver/table level, not per-order.
+    acc.unmapped.push(...unmapped);
   } else {
     // Primary line: keyed by baseMaterial, variant, or the literal "default".
     const literal = deviceOptions.baseMaterial || deviceOptions.variant || "default";

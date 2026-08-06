@@ -156,7 +156,6 @@ export default async function adminRxMappingRoutes(fastify) {
           code: item.code,
           name: item.name,
           arch: item.arch,
-          source: item.source,
           // True when this line's code came from a saved DB override — drives the
           // admin UI "Clear override" affordance.
           overridden: Boolean(item.overridden),
@@ -164,10 +163,16 @@ export default async function adminRxMappingRoutes(fastify) {
             byCode.get(String(item.code))?.id ||
             overrides[item.mapKey]?.seazonaProductId ||
             null,
-          status:
-            overrides[item.mapKey] || byCode.has(String(item.code))
-              ? "confirmed"
-              : "placeholder",
+          // A `proposed` row can carry a real catalog code (best-guess, not lab
+          // sign-off) — it must render as "placeholder" so the admin still sees
+          // the assign-code control, even though byCode.has() would be true.
+          status: overrides[item.mapKey]
+            ? "confirmed"
+            : item.status === "proposed"
+              ? "placeholder"
+              : byCode.has(String(item.code))
+                ? "confirmed"
+                : "placeholder",
         })),
         ...unmapped.map((mapKey) => ({
           device: label,

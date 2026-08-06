@@ -11,8 +11,11 @@ export const ATTRIBUTE_ROWS = [
   { mapKey: "attr:design:lingual-free", match: ["Lingual-Free"],         code: "2314", name: "Lingual-Free Design", status: "confirmed" },
   { mapKey: "attr:design:buccal-free",  match: ["Buccal-Free"],          code: "2308", name: "Buccal-Free Design",  status: "confirmed" },
 
-  // "Standard" means no special design; it correctly emits nothing.
-  { mapKey: "attr:design:standard",      match: ["Standard"],      code: null, name: "Standard (no line item)", status: "open" },
+  // "Standard" means no special design; it correctly emits nothing. status
+  // "none" (not "open") — this is a deliberate no-op, not an unresolved gap,
+  // so it must never surface as an `unmapped` flag (it's the most common
+  // design-preference selection; flagging it would be permanent noise).
+  { mapKey: "attr:design:standard",      match: ["Standard"],      code: null, name: "Standard (no line item)", status: "none" },
   // Ambiguous against attr:occlusal:full (2292) — lab must disambiguate.
   { mapKey: "attr:design:full-coverage", match: ["Full Coverage"], code: null, name: "Full Coverage",           status: "open" },
 ];
