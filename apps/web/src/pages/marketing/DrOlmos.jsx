@@ -102,8 +102,10 @@ function Hero() {
         </p>
         </div>
 
-        {/* Portrait — right of the headline on desktop, stacked above it on
-            mobile so the name still leads. Same asset as the About page. */}
+        {/* Portrait — right of the headline from lg up, hidden below it: the
+            hero is 85dvh and the display type already fills a phone screen, so
+            adding a portrait there crowds the name rather than supporting it.
+            Same asset as the About page. */}
         <div
           data-olmos-hero
           className="hidden lg:block shrink-0 w-56 xl:w-72 rounded-full overflow-hidden border-4 border-brand-500"
