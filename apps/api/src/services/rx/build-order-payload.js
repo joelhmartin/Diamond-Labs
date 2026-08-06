@@ -1,14 +1,26 @@
 import { resolveLineItems } from "./catalog-map/index.js";
 
 /**
- * Pure function: rxCase + { codeToId, userId } → { payload, warnings, unmapped }.
+ * A "device line" is any emitted line that is not a modification or a design
+ * attribute. Detect it by EXCLUSION, not by a "primary:" prefix — resolver
+ * devices emit their own prefixes (guard rows are `guard:<row>:<material>`),
+ * so a prefix check would reject every valid nightguard order. Shared by
+ * both builders below so the `mod:`/`attr:` exclusion set can't drift.
+ */
+const isDeviceLine = (mapKey) =>
+  typeof mapKey === "string" && !mapKey.startsWith("mod:") && !mapKey.startsWith("attr:");
+
+/**
+ * Pure function: rxCase + { codeToId, userId } → { payload, warnings, unmapped, ok }.
  *
  * @param {object} rxCase        — stored Rx case record
  * @param {object} opts
  * @param {Record<string,string>} opts.codeToId — Seazona product code → catalog id
  *                                               (built from listProducts() by the caller)
  * @param {string}  opts.userId  — lab-staff Seazona user id to attach to the order
- * @returns {{ payload: object, warnings: string[], unmapped: string[] }}
+ * @returns {{ payload: object, warnings: string[], unmapped: string[], ok: boolean }}
+ *   ok is false when no device line resolved (isDeviceLine) or any selection
+ *   was unmapped — callers MUST refuse to push the order in that case.
  */
 export function buildSeazonaOrderPayload(rxCase, { codeToId = {}, userId, overrides = {} } = {}) {
   const { items: lineItems, unmapped } = resolveLineItems(rxCase, { overrides });
@@ -16,13 +28,6 @@ export function buildSeazonaOrderPayload(rxCase, { codeToId = {}, userId, overri
   const items = [];
   // Seed warnings from unmapped device/option selections that resolveLineItems already flagged.
   const warnings = unmapped.map((u) => `unmapped ${u}`);
-
-  // A "device line" is any emitted line that is not a modification or a design
-  // attribute. Detect it by EXCLUSION, not by a "primary:" prefix — resolver
-  // devices emit their own prefixes (guard rows are `guard:<row>:<material>`),
-  // so a prefix check would reject every valid nightguard order.
-  const isDeviceLine = (mapKey) =>
-    typeof mapKey === "string" && !mapKey.startsWith("mod:") && !mapKey.startsWith("attr:");
 
   let deviceLineEmitted = false;
   for (const li of lineItems) {
@@ -139,17 +144,16 @@ export function compileNotesMulti(shared = {}, devices = []) {
  * @param {Record<string,string>} opts.codeToId — Seazona product code → catalog id
  * @param {string} opts.userId
  * @param {object} opts.overrides
- * @returns {{ payload, warnings: string[], unmapped: string[], perDevice: Array<{label,deviceKey,lineCount}> }}
+ * @returns {{ payload, warnings: string[], unmapped: string[], perDevice: Array<{label,deviceKey,lineCount,ok:boolean}>, ok: boolean }}
+ *   Each perDevice entry's ok mirrors buildSeazonaOrderPayload's ok for that
+ *   device; the overall ok is false unless every device is ok AND at least
+ *   one device was provided (an empty devices[] must never read as "ok").
  */
 export function buildSeazonaOrderPayloadMulti(
   shared = {},
   devices = [],
   { codeToId = {}, userId, overrides = {} } = {}
 ) {
-  // See isDeviceLine in buildSeazonaOrderPayload for why this is exclusion-based.
-  const isDeviceLine = (mapKey) =>
-    typeof mapKey === "string" && !mapKey.startsWith("mod:") && !mapKey.startsWith("attr:");
-
   const items = [];
   const warnings = [];
   const unmapped = [];
@@ -183,7 +187,9 @@ export function buildSeazonaOrderPayloadMulti(
     perDevice.push({ label: d.label || d.deviceKey, deviceKey: d.deviceKey, lineCount, ok: deviceOk });
   }
 
-  const ok = perDevice.every((d) => d.ok);
+  // perDevice.every(...) is vacuously true for an empty array — require at
+  // least one device so an empty devices[] can never read as "ok".
+  const ok = devices.length > 0 && perDevice.every((d) => d.ok);
 
   return {
     payload: {

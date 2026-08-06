@@ -25,6 +25,25 @@ const MAX_TOTAL_BYTES = MAX_FILES * MAX_FILE_SIZE_BYTES;
 // The five allowed file field names, each mapping directly to the rx_case_files.kind column.
 const FILE_FIELD_KINDS = new Set(["scan", "photo", "prescription", "sleep_study", "artboard"]);
 
+/**
+ * Build the 422 response body for an approve attempt whose payload lost a
+ * device line (buildSeazonaOrderPayload's ok === false). Pure + exported so
+ * the invariant that bit us in review — the MERGED warnings list (including
+ * any Seazona-outage warning from earlier in the handler, not just the
+ * build-order-payload warnings) must reach `details` — is unit-testable
+ * without booting the full route (auth, db, Seazona client).
+ */
+export function buildIncompleteApprovalResponse(warnings) {
+  return {
+    error: {
+      code: "RX_PAYLOAD_INCOMPLETE",
+      status: 422,
+      message: "This prescription has selections that are not yet mapped to lab products. It has been saved but not sent.",
+      details: warnings,
+    },
+  };
+}
+
 export default async function rxRoutes(fastify) {
   // ─────────────────────────────────────────────────────────────────────────
   // POST /rx/cases — submit a new Digital Rx case (multipart/form-data).
@@ -706,10 +725,8 @@ export default async function rxRoutes(fastify) {
     const warnings = [...extraWarnings, ...buildWarnings];
 
     if (!ok) {
-      request.log.error({ warnings: buildWarnings }, "[Seazona][RX_PAYLOAD_INCOMPLETE] refusing to push an order with unresolved lines");
-      return reply.code(422).send({
-        error: { code: "RX_PAYLOAD_INCOMPLETE", status: 422, message: "This prescription has selections that are not yet mapped to lab products. It has been saved but not sent.", details: buildWarnings },
-      });
+      request.log.error({ warnings }, "[Seazona][RX_PAYLOAD_INCOMPLETE] refusing to push an order with unresolved lines");
+      return reply.code(422).send(buildIncompleteApprovalResponse(warnings));
     }
 
     // ── DRY-RUN gate ──────────────────────────────────────────────────────────

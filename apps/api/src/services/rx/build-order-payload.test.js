@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { buildSeazonaOrderPayload } from "./build-order-payload.js";
+import { buildSeazonaOrderPayload, buildSeazonaOrderPayloadMulti } from "./build-order-payload.js";
 import { DEVICE_ROWS } from "./catalog-map/devices.table.js";
 
 const baseCase = {
@@ -114,4 +114,14 @@ test("a guard-only order is ok when its code resolves", () => {
   );
   assert.equal(ok, true);
   assert.deepEqual(warnings, []);
+});
+
+test("buildSeazonaOrderPayloadMulti with zero devices is never ok (no vacuous true)", () => {
+  const { ok, perDevice } = buildSeazonaOrderPayloadMulti(
+    { seazonaClientId: "c1" },
+    [],
+    { codeToId: {}, userId: "u1" }
+  );
+  assert.equal(ok, false);
+  assert.deepEqual(perDevice, []);
 });
