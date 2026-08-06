@@ -73,7 +73,7 @@ function makeDevice(deviceKey, deviceOptions) {
 }
 
 /**
- * Ortho / standalone-Olmos forms → a single Orthodontic Appliance.
+ * Ortho form → a single Orthodontic Appliance.
  * comments  ← every answered textarea whose key matches /comment/i, joined.
  * modifications ← every answered expansion-checkbox array, flattened.
  */
@@ -242,7 +242,7 @@ export function formAnswersToCaseInput(slug, form, answers = {}) {
   const dueDate = dueField ? answers[dueField.key] : undefined;
 
   const devices =
-    slug === "ortho" || slug === "olmos"
+    slug === "ortho"
       ? buildOrthoDevices(fields, answers)
       : buildDigitalDevices(answers);
 

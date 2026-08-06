@@ -240,7 +240,6 @@ function AppRoutes() {
         <Route path="/app/rx" element={<RxChooserPage />} />
         <Route path="/app/rx/digital" element={<RxFormPage slug="digital" />} />
         <Route path="/app/rx/ortho" element={<RxFormPage slug="ortho" />} />
-        <Route path="/app/rx/olmos" element={<RxFormPage slug="olmos" />} />
       </Route>
 
       {/* Dev-only payment test harness (any authenticated user).

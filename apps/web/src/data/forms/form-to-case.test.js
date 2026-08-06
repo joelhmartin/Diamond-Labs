@@ -2,7 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 
 import { formAnswersToCaseInput } from "./form-to-case.js";
-import { getForm } from "./index.js";
+import { FORM_LIST, getForm } from "./index.js";
 
 const digital = getForm("digital");
 const ortho = getForm("ortho");
@@ -70,4 +70,10 @@ test("ortho slug → single ortho-expander device + shared caseFields (no whole-
   assert.equal(caseFields.firstDevice, "Yes");
   // caseFields no longer dumps the whole form into generalComments
   assert.equal(caseFields.generalComments, undefined);
+});
+
+test("olmos form is retired", () => {
+  assert.equal(FORM_LIST.length, 2);
+  assert.deepEqual(FORM_LIST.map((f) => f.slug), ["digital", "ortho"]);
+  assert.equal(getForm("olmos"), null);
 });

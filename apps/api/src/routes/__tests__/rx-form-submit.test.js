@@ -47,7 +47,7 @@ test('formType "bogus" → error', () => {
 
 test("omitted formData defaults to {}", () => {
   const result = rxFormSubmitSchema.safeParse({
-    formType: "olmos",
+    formType: "ortho",
     patientFirst: "Jane",
     patientLast: "Doe",
   });
