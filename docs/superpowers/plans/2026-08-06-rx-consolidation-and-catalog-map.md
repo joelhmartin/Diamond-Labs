@@ -1041,18 +1041,25 @@ Expected: FAIL — `ok` is undefined.
 In `buildSeazonaOrderPayload`, track whether a primary line survived and return it:
 
 ```js
-  let primaryEmitted = false;
+  // A "device line" is any emitted line that is not a modification or a design
+  // attribute. Detect it by EXCLUSION, not by a "primary:" prefix — resolver
+  // devices emit their own prefixes (guard rows are `guard:<row>:<material>`),
+  // so a prefix check would reject every valid nightguard order.
+  const isDeviceLine = (mapKey) =>
+    typeof mapKey === "string" && !mapKey.startsWith("mod:") && !mapKey.startsWith("attr:");
+
+  let deviceLineEmitted = false;
   for (const li of lineItems) {
     const id = codeToId[li.code];
     if (!id) {
       warnings.push(`no catalog id for code ${li.code} (${li.name})`);
       continue;
     }
-    if (li.mapKey && li.mapKey.startsWith("primary:")) primaryEmitted = true;
+    if (isDeviceLine(li.mapKey)) deviceLineEmitted = true;
     items.push({ id, arch: normalizeArch(li.arch) });
   }
 
-  const ok = primaryEmitted && unmapped.length === 0;
+  const ok = deviceLineEmitted && unmapped.length === 0;
 ```
 
 Add `ok` to the returned object.
