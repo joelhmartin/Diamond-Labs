@@ -6,7 +6,8 @@ import { createId } from "../lib/id.js";
 import { eq } from "drizzle-orm";
 import { ERROR_CODES } from "@my-app/shared";
 import * as seazonaService from "../services/seazona.service.js";
-import { DEVICE_MAP, DEVICE_LABELS, resolveLineItems } from "../services/rx/device-seazona-map.js";
+import { DEVICE_LABELS, resolveLineItems } from "../services/rx/catalog-map/index.js";
+import { DEVICE_ROWS } from "../services/rx/catalog-map/devices.table.js";
 import { compileNotesMulti, buildSeazonaOrderPayloadMulti } from "../services/rx/build-order-payload.js";
 
 // ─── Test-order target (Matt Rago, internal Diamond account) ──────────────────
@@ -75,13 +76,26 @@ export default async function adminRxMappingRoutes(fastify) {
       getCatalog(),
     ]);
 
-    const result = Object.entries(DEVICE_MAP).map(([deviceKey, dev]) => {
-      const primaryEntries = Object.entries(dev.primary);
-      const total = primaryEntries.length;
-      const mapped = primaryEntries.filter(([mat, item]) => {
-        const mapKey = `primary:${deviceKey}:${mat}`;
-        return !!(overrides[mapKey] || byCode.has(String(item.code)));
-      }).length;
+    // Enumerate from DEVICE_LABELS (the full device list), not DEVICE_ROWS —
+    // guard and ortho-expander are resolver-driven and have no table rows, so
+    // deriving the list from rows would silently drop them from the UI.
+    const result = Object.keys(DEVICE_LABELS).map((deviceKey) => {
+      const rows = DEVICE_ROWS.filter((r) => r.device === deviceKey);
+
+      if (rows.length === 0) {
+        // No table rows to count — resolver-driven device (guard, ortho-expander).
+        return {
+          deviceKey,
+          name: DEVICE_LABELS[deviceKey] || deviceKey,
+          coverage: null,
+          resolver: true,
+        };
+      }
+
+      const total = rows.length;
+      const mapped = rows.filter(
+        (row) => !!(overrides[row.mapKey] || (row.code != null && byCode.has(String(row.code))))
+      ).length;
 
       return {
         deviceKey,

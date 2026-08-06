@@ -13,7 +13,7 @@ const phi = await import("./phi-crypto.js");
 const { encryptRxPhi, decryptRxPhi } = phi;
 const { isEncrypted } = await import("../../lib/crypto.js");
 const { buildSeazonaOrderPayload } = await import("./build-order-payload.js");
-const { DEVICE_MAP } = await import("./device-seazona-map.js");
+const { DEVICE_ROWS } = await import("./catalog-map/devices.table.js");
 
 const plaintextRow = {
   id: "case-1",
@@ -78,11 +78,9 @@ describe("rx phi-crypto helpers", () => {
   });
 
   it("build-order-payload receives PLAINTEXT after decrypting an encrypted row", () => {
-    // Build a valid codeToId from the real device map so the pipeline resolves.
+    // Build a valid codeToId from the real device table so the pipeline resolves.
     const codeToId = {};
-    for (const dev of Object.values(DEVICE_MAP)) {
-      for (const p of Object.values(dev.primary || {})) if (p.code) codeToId[p.code] = `id-${p.code}`;
-    }
+    for (const row of DEVICE_ROWS) if (row.code) codeToId[row.code] = `id-${row.code}`;
 
     const encrypted = encryptRxPhi(plaintextRow);
     // Simulate the route boundary: decrypt what came out of the DB, THEN build.

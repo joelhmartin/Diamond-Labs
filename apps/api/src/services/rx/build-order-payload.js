@@ -1,4 +1,4 @@
-import { resolveLineItems } from "./device-seazona-map.js";
+import { resolveLineItems } from "./catalog-map/index.js";
 
 /**
  * Pure function: rxCase + { codeToId, userId } → { payload, warnings, unmapped }.
@@ -61,7 +61,7 @@ function normalizeArch(arch) {
  *
  * Matches how the lab actually builds orders in Seazona (verified against live
  * orders, e.g. inv 10601): device + material/variant and each modification are
- * PRODUCT LINE ITEMS (resolved by device-seazona-map), NOT notes. So material,
+ * PRODUCT LINE ITEMS (resolved by catalog-map/index.js), NOT notes. So material,
  * variant, and modifications are deliberately excluded here. Notes carry only
  * free-text clinical detail that has no product code — occlusal contact, design
  * preference, VDO/titration, and device-specific instructions.

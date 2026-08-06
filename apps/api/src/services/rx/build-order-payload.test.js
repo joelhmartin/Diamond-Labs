@@ -1,7 +1,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { buildSeazonaOrderPayload } from "./build-order-payload.js";
-import { DEVICE_MAP } from "./device-seazona-map.js";
+import { DEVICE_ROWS } from "./catalog-map/devices.table.js";
 
 const baseCase = {
   seazonaClientId: "client-1",
@@ -18,13 +18,10 @@ const baseCase = {
   rush: false,
 };
 
-// Build codeToId from the actual map so tests track real seeded codes.
+// Build codeToId from the actual table so tests track real seeded codes.
 function makeCodeToId() {
   const m = {};
-  const add = (c) => { if (c) m[c] = `id-${c}`; };
-  for (const dev of Object.values(DEVICE_MAP)) {
-    for (const p of Object.values(dev.primary || {})) add(p.code);
-  }
+  for (const row of DEVICE_ROWS) if (row.code) m[row.code] = `id-${row.code}`;
   return m;
 }
 
@@ -71,11 +68,13 @@ test("unmapped lines surface as warnings and never enter items", () => {
 });
 
 test("arch strings normalize to Seazona 1/2/null", () => {
-  // "Dual-Laminate Nightguard" is the exact key in the guard primary map; arch from deviceOptions
+  // Guard is resolver-driven now (its arches come from the standardGuards
+  // matrix — see catalog-map/resolvers/guard.test.js) and no longer reads
+  // deviceOptions.arch, so exercise normalizeArch via a row-based device.
   const c = {
     ...baseCase,
-    deviceKey: "guard",
-    deviceOptions: { baseMaterial: "Dual-Laminate Nightguard", arch: "Upper" },
+    deviceKey: "ddso",
+    deviceOptions: { baseMaterial: "Nylon", arch: "Upper" },
   };
   const { payload } = buildSeazonaOrderPayload(c, { codeToId: makeCodeToId(), userId: "x" });
   assert.ok(payload.items.some((i) => i.arch === 1));
