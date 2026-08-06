@@ -218,6 +218,25 @@ function Biography() {
             </span>
             .
           </h2>
+
+          {/* Fills the column that sat empty beside the biography copy.
+              width/height are the intrinsic dimensions so the browser reserves
+              the right box and the text below never jumps on load. */}
+          <figure data-bio className="mt-8 md:mt-10">
+            <div className="rounded-3xl overflow-hidden border border-navy/10 shadow-sm">
+              <img
+                src="/images/dr-olmos-working.jpg"
+                alt="Dr. Steven Olmos demonstrating a palpation examination during a training course"
+                className="w-full h-auto object-cover"
+                width="1080"
+                height="565"
+                loading="lazy"
+              />
+            </div>
+            <figcaption className="mt-3 font-mono text-[10px] text-navy/35 uppercase tracking-widest">
+              Teaching the protocol · TMJ &amp; Sleep Therapy Centres
+            </figcaption>
+          </figure>
         </div>
         <div className="lg:col-span-3 space-y-5 text-navy/60 leading-relaxed">
           <p data-bio>
