@@ -51,13 +51,13 @@ export function resolveGuard(deviceOptions = {}) {
 
     const options = GUARD_MATRIX[rowLabel];
     if (!options || Object.keys(options).length === 0) {
-      unmapped.push(`${rowLabel} (guard:${slug(rowLabel)})`);
+      unmapped.push(`guard:${slug(rowLabel)}`);
       continue;
     }
 
     const chosen = options["*"] || options[cells["Base Material"]];
     if (!chosen) {
-      unmapped.push(`${rowLabel} (guard:${slug(rowLabel)}:${slug(cells["Base Material"] || "no-material")})`);
+      unmapped.push(`guard:${slug(rowLabel)}:${slug(cells["Base Material"] || "no-material")}`);
       continue;
     }
 
