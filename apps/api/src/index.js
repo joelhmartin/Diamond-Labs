@@ -1,9 +1,11 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { constants as zlibConstants } from "node:zlib";
 import Fastify from "fastify";
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
+import compress from "@fastify/compress";
 import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import multipart from "@fastify/multipart";
@@ -68,6 +70,33 @@ await fastify.register(multipart, {
     files: 20,
     parts: 50,
   },
+});
+// Response compression. Nothing was compressed before this — the SPA bundle and
+// especially the 3D models (plain-ASCII .obj) were served raw, which is why the
+// model viewer took so long to populate.
+//
+// `customTypes` is the load-bearing part: @fastify/compress only compresses
+// mime types flagged compressible in mime-db, and .obj/.stl resolve to
+// model/* or application/octet-stream — none of which qualify. Without this
+// they'd silently keep shipping uncompressed. .obj is ASCII and compresses
+// ~4x (DDSO: 14.9 MB -> 4.1 MB).
+await fastify.register(compress, {
+  global: true,
+  encodings: ["br", "gzip", "deflate"],
+  threshold: 1024,
+  customTypes: /^model\/|^application\/octet-stream$|\.obj$|\.stl$/,
+  // Pinned to quality 4 — @fastify/compress already defaults streams to 4, but
+  // the value is load-bearing enough to state outright. Measured on the 15 MB
+  // DDSO model: q4 = 4.5 MB in ~1.9s, q11 = 2.9 MB in ~236s. q11 is 35% smaller
+  // and completely unusable per-request; the extra bytes are the right trade.
+  //
+  // Compression here is per-request. If model traffic ever justifies it, the
+  // real fix is pre-compressing these files at build time and serving them via
+  // @fastify/static's `preCompressed` — that buys q11's ratio for zero runtime cost.
+  brotliOptions: {
+    params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 },
+  },
+  zlibOptions: { level: 6 },
 });
 await fastify.register(cookie);
 // Production CORS allow-list. Prefer the env-driven list (comma-separated,

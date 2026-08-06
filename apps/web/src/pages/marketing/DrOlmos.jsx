@@ -76,7 +76,7 @@ function Hero() {
       <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/80 to-navy/60" />
       <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/40 to-transparent" />
 
-      <div className="relative z-10 pb-16 md:pb-24 w-full max-w-6xl mx-auto">
+      <div className="relative z-10 pb-16 md:pb-24 w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-10 lg:gap-16 items-end">
         <div className="max-w-4xl">
         <span
           data-olmos-hero
@@ -100,6 +100,21 @@ function Hero() {
           in private practice. 30+ years devoted to research and treatment of
           craniofacial pain, TMD, and sleep-disordered breathing.
         </p>
+        </div>
+
+        {/* Portrait — right of the headline on desktop, stacked above it on
+            mobile so the name still leads. Same asset as the About page. */}
+        <div
+          data-olmos-hero
+          className="hidden lg:block shrink-0 w-56 xl:w-72 rounded-full overflow-hidden border-4 border-brand-500"
+        >
+          <img
+            src="/images/dr-olmos.jpg"
+            alt="Dr. Steven Olmos"
+            className="w-full h-full object-cover"
+            width="900"
+            height="900"
+          />
         </div>
       </div>
     </section>

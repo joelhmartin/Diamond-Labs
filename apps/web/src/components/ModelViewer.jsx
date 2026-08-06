@@ -169,7 +169,7 @@ export function ModelViewer({ objPath, mtlPath, className = "", interactive = tr
   return (
     <div ref={mountRef} className={`w-full h-full relative ${className}`}>
       {loading && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-surface-100 z-10 pointer-events-none">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10 pointer-events-none">
           <div className="w-8 h-8 rounded-full border-2 border-surface-300 border-t-brand-500 animate-spin" />
           <span className="font-mono text-[10px] text-navy/30 uppercase tracking-widest">Loading 3D model</span>
         </div>
