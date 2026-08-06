@@ -42,7 +42,7 @@ test("ports a sensible number of fields", () => {
   );
 });
 
-test("has the devicesToOrder multi-select gate with all 8 device values", () => {
+test("has the devicesToOrder multi-select gate with all 9 device values", () => {
   const fields = allFields(digitalRxForm);
   const gate = fields.find((f) => f.key === "devicesToOrder");
   assert.ok(gate, "devicesToOrder field is missing");
@@ -58,6 +58,7 @@ test("has the devicesToOrder multi-select gate with all 8 device values", () => 
     "nightguards",
     "sportguards",
     "snorehook",
+    "ortho",
   ];
   for (const v of expected) {
     assert.ok(values.includes(v), `missing device value: ${v}`);
@@ -260,4 +261,38 @@ test("has a device-selection field", () => {
     ),
     "no radio/checkbox field whose label matches /device/i"
   );
+});
+
+const ORTHO_KEYS = [
+  "selectDevice", "upperArchRetention", "upperExpansionType", "lowerArchRetention",
+  "mxSelections", "lowerExpansionType", "requiredSelection", "tandemBowSetting",
+  "addToMaxillary", "addToMandibular", "occlusalOptionsTandem", "dualArchComments",
+  "dualArchDesignDraw", "dualArchArtboard", "upperExpansionSelection", "maxillaryAdd",
+  "maxillaryDesignDraw", "maxillaryArtboard", "maxillaryComments", "lowerExpansionSelection",
+  "removableMandibularExpansion", "fixedMandibularExpansion", "mandibularAdd",
+  "mandibularDesignDraw", "mandibularArtboard", "orthoDesignComments",
+];
+
+test("ortho is a selectable device", () => {
+  const gate = digitalRxForm.sections.find((s) => s.id === "select-device").fields[0];
+  assert.equal(gate.options.length, 9);
+  assert.ok(gate.options.some((o) => o.value === "ortho"));
+});
+
+test("every ortho field survived the merge", () => {
+  const keys = new Set(digitalRxForm.sections.flatMap((s) => (s.fields || []).map((f) => f.key)));
+  for (const k of ORTHO_KEYS) assert.ok(keys.has(k), `lost ortho field: ${k}`);
+});
+
+test("ortho sections are gated on the ortho device", () => {
+  for (const id of ["functionalDualArch", "maxillaryUpper", "mandibularLower"]) {
+    const s = digitalRxForm.sections.find((x) => x.id === id);
+    assert.ok(s, `missing section ${id}`);
+    assert.deepEqual(s.showIf, { key: "devicesToOrder", includes: "ortho" });
+  }
+});
+
+test("ortho's duplicate wrapper fields are gone", () => {
+  const keys = new Set(digitalRxForm.sections.flatMap((s) => (s.fields || []).map((f) => f.key)));
+  for (const dup of ["recordsType", "sendingPhysicalBite", "uploadFiles"]) assert.ok(!keys.has(dup), `duplicate wrapper field survived: ${dup}`);
 });

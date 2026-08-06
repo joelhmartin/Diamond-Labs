@@ -72,8 +72,9 @@ test("ortho slug → single ortho-expander device + shared caseFields (no whole-
   assert.equal(caseFields.generalComments, undefined);
 });
 
-test("olmos form is retired", () => {
-  assert.equal(FORM_LIST.length, 2);
-  assert.deepEqual(FORM_LIST.map((f) => f.slug), ["digital", "ortho"]);
+test("olmos and ortho forms are retired (ortho folds into digital as a gated device)", () => {
+  assert.equal(FORM_LIST.length, 1);
+  assert.deepEqual(FORM_LIST.map((f) => f.slug), ["digital"]);
   assert.equal(getForm("olmos"), null);
+  assert.equal(getForm("ortho"), null);
 });

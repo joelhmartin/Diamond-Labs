@@ -234,12 +234,12 @@ function AppRoutes() {
         <Route path="/app/cases/new" element={<NewCasePage />} />
       </Route>
 
-      {/* Faithful 1:1 Rx forms — chooser + three forms.
+      {/* Faithful 1:1 Rx form — chooser + the digital form (ortho folds in as
+          a gated device rather than a separate form).
           Accessible to approved doctors AND admins (for testing/oversight). */}
       <Route element={<RequireRxAccess />}>
         <Route path="/app/rx" element={<RxChooserPage />} />
         <Route path="/app/rx/digital" element={<RxFormPage slug="digital" />} />
-        <Route path="/app/rx/ortho" element={<RxFormPage slug="ortho" />} />
       </Route>
 
       {/* Dev-only payment test harness (any authenticated user).
