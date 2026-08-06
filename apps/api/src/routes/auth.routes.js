@@ -12,6 +12,7 @@ import {
 import { validate } from "../middleware/validate.js";
 import { authenticate } from "../middleware/authenticate.js";
 import * as authService from "../services/auth.service.js";
+import * as emailService from "../services/email.service.js";
 import { env } from "../config/env.js";
 
 const REFRESH_COOKIE = "refresh_token";
@@ -121,9 +122,23 @@ export default async function authRoutes(fastify) {
     return { data: { accessToken: result.accessToken } };
   });
 
-  // Forgot password
+  // Forgot password. forgotPassword() only MINTS the token — sending is the
+  // route's job (mirrors POST /admin/users/:id/send-password-reset). Without
+  // this send the whole flow is a silent no-op: a token is stored, nothing is
+  // mailed, and the anti-enumeration response below reports success anyway.
   fastify.post("/forgot-password", { preHandler: [validate(forgotPasswordSchema)] }, async (request) => {
-    await authService.forgotPassword(request.body.email);
+    const { token } = await authService.forgotPassword(request.body.email);
+    // `token` is null for an unknown email — nothing to send, same reply either way.
+    if (token) {
+      const resetUrl = `${env.APP_URL}/auth/reset-password?token=${token}`;
+      // send() is soft-fail (returns false, never throws); guard anyway so a mail
+      // outage can't turn into a 500 that leaks which addresses exist.
+      try {
+        await emailService.sendPasswordReset({ email: request.body.email, resetUrl });
+      } catch (err) {
+        request.log.error({ err: String(err?.message || err) }, "password reset email failed to send");
+      }
+    }
     // Always return success to prevent email enumeration
     return { data: { message: "If an account exists, a reset email has been sent." } };
   });
