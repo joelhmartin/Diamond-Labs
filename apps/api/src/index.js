@@ -119,7 +119,14 @@ await fastify.register(helmet, {
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "https:"],
       connectSrc: ["'self'", "https://api.authorize.net", "https://apitest.authorize.net"],
-      frameSrc: ["'self'", "https://accept.authorize.net", "https://test.authorize.net"],
+      // player.vimeo.com — the instructional-videos page embeds Vimeo players.
+      // Without it every one of those iframes is blocked outright by this policy.
+      frameSrc: [
+        "'self'",
+        "https://accept.authorize.net",
+        "https://test.authorize.net",
+        "https://player.vimeo.com",
+      ],
       frameAncestors: ["'none'"],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
