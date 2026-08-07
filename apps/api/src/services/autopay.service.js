@@ -68,7 +68,9 @@ export async function upsertEnrollment({
 
   const existing = await getEnrollment(user.id);
   const override = minAmountOverride !== undefined ? minAmountOverride : existing?.minAmountOverride ?? null;
-  const floor = override != null ? Number(override) : Number(env.AUTOPAY_MIN_AMOUNT);
+  // Reuse effectiveFloor rather than reimplementing the override/default logic
+  // here — this is money arithmetic and must not have two places to diverge.
+  const floor = effectiveFloor({ minAmountOverride: override });
 
   const amt = Number(amount);
   if (!(amt > 0)) throw new AutopayValidationError("Amount must be greater than zero.", "amount");
@@ -119,9 +121,15 @@ export async function upsertEnrollment({
   };
   if (enabled !== undefined) values.enabled = Boolean(enabled);
 
+  // Re-read rather than construct the return value. A locally-merged object
+  // (`{ ...existing, ...values }` on update, or a hand-built row on insert)
+  // drifts from what's actually persisted — DB-defaulted columns like
+  // createdAt never make it into a value we never read back. Task 9 serializes
+  // this straight into an HTTP response, so both branches must return the
+  // identical, authoritative, freshly-persisted row.
   if (existing) {
     await db.update(autopayEnrollments).set(values).where(eq(autopayEnrollments.userId, String(user.id)));
-    return { ...existing, ...values };
+    return getEnrollment(user.id);
   }
 
   const row = {
@@ -135,7 +143,7 @@ export async function upsertEnrollment({
     ...values,
   };
   await db.insert(autopayEnrollments).values(row);
-  return row;
+  return getEnrollment(user.id);
 }
 
 export async function deleteEnrollment(userId) {
