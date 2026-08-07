@@ -48,6 +48,21 @@ const envSchema = z.object({
   AUTHORIZE_NET_SANDBOX_API_LOGIN: z.string().optional(),
   AUTHORIZE_NET_SANDBOX_TRANSACTION_KEY: z.string().optional(),
 
+  // ── AutoPay ──
+  // LIVE-CHARGE GATE. When false (the default) the sweep resolves balances,
+  // computes allocations, and records what it WOULD charge — without touching a
+  // card. Same gated-dark pattern as RX_LIVE_PUSH. Flip only after reading a
+  // dry run's `would_charge` attempts.
+  AUTOPAY_LIVE_RUN: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  // Enrollment floor in dollars. An admin may override it per doctor.
+  AUTOPAY_MIN_AMOUNT: z.coerce.number().positive().default(200),
+  // What "the 15th" means. The lab is in San Antonio.
+  AUTOPAY_TIMEZONE: z.string().default("America/Chicago"),
+  // Consecutive declines before an enrollment is paused.
+  AUTOPAY_MAX_FAILURES: z.coerce.number().int().positive().default(3),
+  // Shared secret for the HTTP job trigger. Required in production only.
+  JOBS_TRIGGER_SECRET: z.string().optional(),
+
   // Google Cloud Storage
   RX_GCS_BUCKET: z.string().optional(),
   // Digital Rx live Seazona push gate.
