@@ -17,5 +17,5 @@ export const ATTRIBUTE_ROWS = [
   // design-preference selection; flagging it would be permanent noise).
   { mapKey: "attr:design:standard",      match: ["Standard"],      code: null, name: "Standard (no line item)", status: "none" },
   // Ambiguous against attr:occlusal:full (2292) — lab must disambiguate.
-  { mapKey: "attr:design:full-coverage", match: ["Full Coverage"], code: null, name: "Full Coverage",           status: "open" },
+  { mapKey: "attr:design:full-coverage", match: ["Full Coverage"], code: null, name: "Full Coverage",           status: "open", reason: "Ambiguous against 2292 Full Contact — are these the same thing?" },
 ];

@@ -23,9 +23,9 @@ export const DEVICE_ROWS = [
   // ONT exists only in Nylon, so it alone resolves. OND/ONP/ONR need the
   // base-material question restored (JotForm qid 270) — see Task 12.
   { mapKey: "primary:olmos-night:ont-nylon", device: "olmos-night", match: ["TITRATION (ON-T) - NYLON Only"],           code: "2144", name: "ONT Nylon", status: "confirmed" },
-  { mapKey: "primary:olmos-night:ond",       device: "olmos-night", match: ["DEPROGRAMMER (ON-D) - Anterior Occlusion"], code: null,   name: "OND (material not captured)", status: "open" },
-  { mapKey: "primary:olmos-night:onp",       device: "olmos-night", match: ["POSITIONER (ON-P) - Anterior Occlusion"],   code: null,   name: "ONP (material not captured)", status: "open" },
-  { mapKey: "primary:olmos-night:onr",       device: "olmos-night", match: ["RAMP (ON-R) - Anterior Occlusion"],         code: null,   name: "ONR (material not captured)", status: "open" },
+  { mapKey: "primary:olmos-night:ond",       device: "olmos-night", match: ["DEPROGRAMMER (ON-D) - Anterior Occlusion"], code: null,   name: "OND (material not captured)", status: "open", reason: "The form does not ask which base material. Each of these exists in 6–7 materials, so we cannot pick a code." },
+  { mapKey: "primary:olmos-night:onp",       device: "olmos-night", match: ["POSITIONER (ON-P) - Anterior Occlusion"],   code: null,   name: "ONP (material not captured)", status: "open", reason: "The form does not ask which base material. Each of these exists in 6–7 materials, so we cannot pick a code." },
+  { mapKey: "primary:olmos-night:onr",       device: "olmos-night", match: ["RAMP (ON-R) - Anterior Occlusion"],         code: null,   name: "ONR (material not captured)", status: "open", reason: "The form does not ask which base material. Each of these exists in 6–7 materials, so we cannot pick a code." },
 
   // ── DDSO — ddsoMaterial. Catalog also has BioFlex (2532); form omits it.
   { mapKey: "primary:ddso:nylon",  device: "ddso", match: ["NYLON", "Nylon"],   code: "2608", name: "DDSO Nylon",  status: "confirmed" },

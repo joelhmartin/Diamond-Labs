@@ -11,9 +11,9 @@ export const MODIFICATION_ROWS = [
 
   // No catalog product corresponds to these. They are design instructions and
   // must reach the lab as notes, never as a guessed line item.
-  { mapKey: "mod:wrap-distal",          match: ["Wrap distal of last molars", "Wrap Distal"],           code: null, name: "Wrap distal of last molars",  status: "open" },
-  { mapKey: "mod:molars-uncovered",     match: ["Keep last molars uncovered", "Do not cover last molars"], code: null, name: "Keep last molars uncovered", status: "open" },
-  { mapKey: "mod:holes-for-cusps",      match: ["Create holes for cusps (minimum vertical)"],           code: null, name: "Create holes for cusps",      status: "open" },
-  { mapKey: "mod:anterior-pad",         match: ["Anterior Pad"],                                        code: null, name: "Anterior Pad",                status: "open" },
-  { mapKey: "mod:no-anterior-buildup",  match: ["No anterior buildup on trutaine/essix"],               code: null, name: "No anterior buildup",         status: "open" },
+  { mapKey: "mod:wrap-distal",          match: ["Wrap distal of last molars", "Wrap Distal"],           code: null, name: "Wrap distal of last molars",  status: "open", reason: "No catalog product matches this. Should it be a priced add-on, or a build instruction only?" },
+  { mapKey: "mod:molars-uncovered",     match: ["Keep last molars uncovered", "Do not cover last molars"], code: null, name: "Keep last molars uncovered", status: "open", reason: "No catalog product matches this. Should it be a priced add-on, or a build instruction only?" },
+  { mapKey: "mod:holes-for-cusps",      match: ["Create holes for cusps (minimum vertical)"],           code: null, name: "Create holes for cusps",      status: "open", reason: "No catalog product matches this. Should it be a priced add-on, or a build instruction only?" },
+  { mapKey: "mod:anterior-pad",         match: ["Anterior Pad"],                                        code: null, name: "Anterior Pad",                status: "open", reason: "No catalog product matches this. Should it be a priced add-on, or a build instruction only?" },
+  { mapKey: "mod:no-anterior-buildup",  match: ["No anterior buildup on trutaine/essix"],               code: null, name: "No anterior buildup",         status: "open", reason: "No catalog product matches this. Should it be a priced add-on, or a build instruction only?" },
 ];

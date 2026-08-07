@@ -37,6 +37,29 @@ const GUARD_MATRIX = {
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
+/** GUARD_MATRIX flattened to table-shaped rows, for the mapping report. */
+export const GUARD_ROWS = Object.entries(GUARD_MATRIX).flatMap(([rowLabel, options]) => {
+  const entries = Object.entries(options);
+  if (entries.length === 0)
+    return [{
+      mapKey: `guard:${slug(rowLabel)}`,
+      device: "guard",
+      match: [rowLabel],
+      code: null,
+      name: rowLabel,
+      status: "open",
+      reason: "Ambiguous — the catalog has more than one product for this appliance and the form does not say which.",
+    }];
+  return entries.map(([material, v]) => ({
+    mapKey: `guard:${slug(rowLabel)}:${material === "*" ? "any" : slug(material)}`,
+    device: "guard",
+    match: [material === "*" ? rowLabel : `${rowLabel} — ${material}`],
+    code: v.code,
+    name: v.name,
+    status: v.status,
+  }));
+});
+
 export function resolveGuard(deviceOptions = {}) {
   const items = [];
   const unmapped = [];
