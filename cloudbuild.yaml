@@ -1,9 +1,16 @@
 # CI/CD for the Diamond Labs API (Cloud Run).
 #
 # Triggered automatically on push to `main` (trigger: deploy-api-on-main).
-# Pipeline: build image -> push -> run DB migrations -> deploy service.
+# Pipeline: build image -> push -> run DB migrations -> point jobs Job at the
+# new image -> deploy service.
 # The migrate step runs BEFORE deploy and is a hard gate: if migrations fail,
 # the new revision is never rolled out.
+#
+# The `update-jobs` step (diamond-labs-jobs, the AutoPay sweep + future
+# scheduled jobs) only points the Job at the new image — it never executes
+# it. Cloud Scheduler triggers runs on its own cadence, independent of
+# deploys. See docs/autopay-operations.md for the one-time Job + Scheduler
+# setup and the go-live checklist that gates turning charging on.
 #
 # Manual run:
 #   gcloud builds submit --config cloudbuild.yaml --project diamond-labs-prod
@@ -12,6 +19,7 @@ substitutions:
   _REPO: us-central1-docker.pkg.dev/diamond-labs-prod/diamond-labs/api
   _SERVICE: diamond-labs-api
   _MIGRATE_JOB: diamond-labs-migrate
+  _JOBS_JOB: diamond-labs-jobs
 
 steps:
   # 1. Build the API image from the monorepo root (Dockerfile COPY paths are
@@ -49,6 +57,22 @@ steps:
       - --region=${_REGION}
       - --execute-now
       - --wait
+
+  # 3b. Point the jobs Cloud Run Job at the freshly built image. NOT executed
+  #     here — Cloud Scheduler invokes it on its own cadence. Deploying must
+  #     never trigger a payment sweep, so this step MUST NEVER gain
+  #     --execute-now: unlike the migrate step above, an accidental run here
+  #     would charge every enrolled doctor's card.
+  - id: update-jobs
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - update
+      - ${_JOBS_JOB}
+      - --image=${_REPO}:${SHORT_SHA}
+      - --region=${_REGION}
 
   # 4. Deploy the new revision of the service.
   - id: deploy
