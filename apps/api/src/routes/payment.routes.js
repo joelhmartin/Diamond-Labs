@@ -3,6 +3,7 @@ import { requireApprovedDoctor, requireAdmin } from "../middleware/require-role.
 import { validate } from "../middleware/validate.js";
 import * as authorizenetService from "../services/authorizenet.service.js";
 import * as seazonaService from "../services/seazona.service.js";
+import { ensureCustomerProfile } from "../services/card.service.js";
 import {
   getInvoicePortalPaidStrict,
   listPaymentsForUser,
@@ -309,28 +310,6 @@ function sendAllocationError(reply, v) {
     return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: v.message } });
   }
   return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: v.message } });
-}
-
-/**
- * Lazily create an Authorize.net CIM customer profile for `user` if they don't
- * have one yet. Persists the new ID to the DB row and reflects it on the
- * in-flight user object so subsequent reads within the same request don't need
- * an extra DB round-trip. Returns the customerProfileId (existing or new).
- */
-async function ensureCustomerProfile(user) {
-  let customerProfileId = user.authorizeNetCustomerProfileId;
-  if (!customerProfileId) {
-    customerProfileId = await authorizenetService.createCustomerProfile({
-      email: user.email,
-      description: `Doctor: ${user.name}`,
-    });
-    await db
-      .update(users)
-      .set({ authorizeNetCustomerProfileId: customerProfileId, updatedAt: new Date() })
-      .where(eq(users.id, user.id));
-    user.authorizeNetCustomerProfileId = customerProfileId;
-  }
-  return customerProfileId;
 }
 
 /**
