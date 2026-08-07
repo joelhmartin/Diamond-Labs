@@ -22,14 +22,14 @@ import { createId } from "../lib/id.js";
 
 // Curated, high-confidence (device, material) → live Seazona SKU.
 const MAPPINGS = [
-  { mapKey: "primary:olmos-day:OD BIOFLEX",          seazonaCode: "2527", seazonaName: "OD Bio Flex" },
-  { mapKey: "primary:olmos-day:Printed Nylon",        seazonaCode: "2108", seazonaName: "OD Nylon" },
-  { mapKey: "primary:olmos-day:Acrylic w/clasps",     seazonaCode: "2103", seazonaName: "OD Acrylic W/Clasps" },
-  { mapKey: "primary:olmos-day:Dual-Laminate",        seazonaCode: "2105", seazonaName: "OD Dual Laminate" },
-  { mapKey: "primary:olmos-day:Milled",               seazonaCode: "2106", seazonaName: "OD MILLED" },
-  { mapKey: "primary:ara:default",                    seazonaCode: "2592", seazonaName: "ARA- Nylon" },
-  { mapKey: "primary:snorehook:SnoreHook",            seazonaCode: "2154", seazonaName: "Snorehook" },
-  { mapKey: "primary:guard:Essix retainer (tray)",    seazonaCode: "2161", seazonaName: "Essix Tray Non Printed (per arch)" },
+  { mapKey: "primary:olmos-day:bioflex",        seazonaCode: "2527", seazonaName: "OD Bio Flex" },
+  { mapKey: "primary:olmos-day:nylon",          seazonaCode: "2108", seazonaName: "OD Nylon" },
+  { mapKey: "primary:olmos-day:acrylic-clasps", seazonaCode: "2103", seazonaName: "OD Acrylic W/Clasps" },
+  { mapKey: "primary:olmos-day:dual-laminate",  seazonaCode: "2105", seazonaName: "OD Dual Laminate" },
+  { mapKey: "primary:olmos-day:milled",         seazonaCode: "2106", seazonaName: "OD MILLED" },
+  { mapKey: "primary:ara:default",              seazonaCode: "2592", seazonaName: "ARA- Nylon" },
+  { mapKey: "primary:snorehook:default",        seazonaCode: "2154", seazonaName: "Snorehook" },
+  { mapKey: "guard:essix:any",                  seazonaCode: "2161", seazonaName: "Essix Tray Non Printed (per arch)" },
 ];
 
 const DRY_RUN = process.env.DRY_RUN === "1";
