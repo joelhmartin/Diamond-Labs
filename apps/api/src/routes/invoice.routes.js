@@ -10,6 +10,7 @@ import {
   getPortalPaidMap,
   getInvoicePortalPaid,
   getInvoicePortalPaidStrict,
+  getGlobalPortalPaidMap,
 } from "../services/invoice-ledger.service.js";
 import * as auditService from "../services/audit.service.js";
 import { redis } from "../config/redis.js";
@@ -76,16 +77,16 @@ export default async function invoiceRoutes(fastify) {
   fastify.get("/admin/invoices", {
     preHandler: [authenticate, requireAdmin],
   }, async (request) => {
-    const [invResult, clientList] = await Promise.all([
+    const [invResult, clientList, paidMap] = await Promise.all([
       request.query.lastModified
         ? seazonaService.getInvoicesResult(request.query.lastModified)
         : seazonaService.getAllInvoicesResult(),
       seazonaService.listClients(),
+      getGlobalPortalPaidMap(),
     ]);
     const seazonaUnavailable = !invResult.reachable;
 
-    // Portal-payment fields default to 0 — admin bulk list has no per-user ledger context.
-    const invoices = invResult.invoices.map(normalizeInvoice);
+    const invoices = invResult.invoices.map((inv) => normalizeInvoice(inv, paidMap[String(inv.id)] || 0));
 
     // Index clients by id for lookup
     const clients = {};

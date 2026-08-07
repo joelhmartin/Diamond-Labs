@@ -43,6 +43,29 @@ export async function getPortalPaidMap(userId) {
 }
 
 /**
+ * Applied totals for EVERY invoice across all users, keyed by seazonaInvoiceId.
+ * The admin invoice list needs balances for many doctors at once; calling
+ * getPortalPaidMap per user would be N queries. Soft-fails to {} — this is a
+ * display path, never a guard.
+ * @returns {Promise<Record<string, number>>} { [seazonaInvoiceId]: sumAppliedAmount }
+ */
+export async function getGlobalPortalPaidMap() {
+  try {
+    const rows = await db
+      .select({
+        seazonaInvoiceId: invoicePayments.seazonaInvoiceId,
+        totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
+      })
+      .from(invoicePayments)
+      .groupBy(invoicePayments.seazonaInvoiceId);
+    return Object.fromEntries(rows.map((r) => [String(r.seazonaInvoiceId), parseFloat(r.totalPaid || 0)]));
+  } catch (err) {
+    console.error("[invoiceLedger] getGlobalPortalPaidMap failed — degrading to empty:", err);
+    return {};
+  }
+}
+
+/**
  * Transaction-level payment history for one user (the doctor's own payments).
  * Fails SOFT to an empty list on a DB error, consistent with the other reads.
  * @param {string} userId
