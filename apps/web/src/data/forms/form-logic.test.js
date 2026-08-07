@@ -78,6 +78,13 @@ test("shouldShow honors equals and prefix", () => {
   assert.equal(shouldShow({}, {}), true);
 });
 
+test("shouldShow handles includes against an array answer", () => {
+  const field = { type: "text", key: "x", showIf: { key: "devices", includes: "ortho" } };
+  assert.equal(shouldShow(field, { devices: ["ortho", "ddso"] }), true);
+  assert.equal(shouldShow(field, { devices: ["ddso"] }), false);
+  assert.equal(shouldShow(field, {}), false);
+});
+
 test("visibleFields filters hidden fields", () => {
   const form = makeForm();
   const keys = visibleFields(form, { trigger: "no" }).map((f) => f.key);

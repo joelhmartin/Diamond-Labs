@@ -7,7 +7,7 @@
  * Field contract:
  *   field = { type, key, label, required?, options?, placeholder?, unit?, rows?,
  *             columns?, palette?, accept?, maxFiles?, note?, src?, alt?, html?,
- *             showIf?: ({ key, equals } | { key, prefix }) }
+ *             showIf?: ({ key, includes } | { key, equals } | { key, prefix }) }
  *
  * Form definition:
  *   { slug, jotformId, title, route, sections: [{ id, heading?, note?, fields: [field] }] }
@@ -15,8 +15,12 @@
 
 /**
  * Conditional-visibility predicate. Mirrors the semantics used by the device
- * wizard's DeviceOptionsPanel / field-logic.js (kept self-contained here):
+ * wizard's DeviceOptionsPanel / field-logic.js (kept self-contained here), and
+ * matches sectionVisible's superset below so a field-level and section-level
+ * showIf never silently disagree:
  *   - no `showIf`           → always visible
+ *   - `showIf.includes` set → visible when answers[showIf.key] is an array
+ *                             containing the value, or equals it outright
  *   - `showIf.equals` set   → visible when answers[showIf.key] === equals
  *   - `showIf.prefix` set   → visible when answers[showIf.key] is a string that
  *                             startsWith prefix
@@ -24,6 +28,8 @@
 export function shouldShow(field, answers) {
   if (!field || !field.showIf) return true;
   const other = (answers || {})[field.showIf.key];
+  if (field.showIf.includes != null)
+    return Array.isArray(other) ? other.includes(field.showIf.includes) : other === field.showIf.includes;
   if (field.showIf.equals != null) return other === field.showIf.equals;
   if (field.showIf.prefix != null)
     return typeof other === "string" && other.startsWith(field.showIf.prefix);

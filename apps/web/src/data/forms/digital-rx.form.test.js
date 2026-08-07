@@ -2,7 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 
 import { digitalRxForm } from "./digital-rx.form.js";
-import { allFields } from "./form-logic.js";
+import { allFields, visibleFields } from "./form-logic.js";
 
 // The complete set of field types this porting layer is allowed to emit.
 const SUPPORTED_TYPES = new Set([
@@ -295,4 +295,13 @@ test("ortho sections are gated on the ortho device", () => {
 test("ortho's duplicate wrapper fields are gone", () => {
   const keys = new Set(digitalRxForm.sections.flatMap((s) => (s.fields || []).map((f) => f.key)));
   for (const dup of ["recordsType", "sendingPhysicalBite", "uploadFiles"]) assert.ok(!keys.has(dup), `duplicate wrapper field survived: ${dup}`);
+});
+
+test("ortho-only case-submission extras are hidden unless ortho is selected", () => {
+  const hidden = visibleFields(digitalRxForm, { devicesToOrder: ["ddso"] }).map((f) => f.key);
+  for (const k of ["nuveloDigitalSetup", "digitalStudyModels", "digitalSetupEmail"])
+    assert.ok(!hidden.includes(k), `${k} should be hidden without ortho`);
+  const shown = visibleFields(digitalRxForm, { devicesToOrder: ["ortho"] }).map((f) => f.key);
+  for (const k of ["nuveloDigitalSetup", "digitalStudyModels", "digitalSetupEmail"])
+    assert.ok(shown.includes(k), `${k} should be visible with ortho`);
 });
