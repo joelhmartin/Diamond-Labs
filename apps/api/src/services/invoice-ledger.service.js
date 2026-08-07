@@ -35,27 +35,46 @@ export function invoicePaidWhere({ seazonaClientId, seazonaInvoiceId }) {
 
 /**
  * Sum of applied portal payments per Seazona invoice for one Seazona client
- * (every portal login of that practice). DISPLAY ONLY — fails soft.
+ * (every portal login of that practice).
+ *
+ * THROWS on a database error (and on a missing client id) — this is the
+ * money-path read: the AutoPay sweep resolves the balance it will charge from
+ * it, and must fail closed rather than silently reopen every invoice's full
+ * total. Display callers use `getClientPaidMap`, which wraps this one query.
  * @param {string} seazonaClientId
  * @returns {Promise<Record<string, number>>} { [seazonaInvoiceId]: sumAppliedAmount }
+ */
+export async function getClientPaidMapStrict(seazonaClientId) {
+  if (!seazonaClientId) {
+    throw new Error("invoice ledger: seazonaClientId is required");
+  }
+  const rows = await db
+    .select({
+      seazonaInvoiceId: invoicePayments.seazonaInvoiceId,
+      totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
+    })
+    .from(invoicePayments)
+    .where(eq(invoicePayments.seazonaClientId, String(seazonaClientId)))
+    .groupBy(invoicePayments.seazonaInvoiceId);
+
+  const map = {};
+  for (const row of rows) {
+    map[row.seazonaInvoiceId] = parseFloat(row.totalPaid || 0);
+  }
+  return map;
+}
+
+/**
+ * Soft-fail variant of `getClientPaidMapStrict` for DISPLAY ONLY: on a DB error
+ * (or no client id) it degrades to an empty map, i.e. every invoice reads as
+ * unpaid. Never use it on a money path.
+ * @param {string} seazonaClientId
+ * @returns {Promise<Record<string, number>>}
  */
 export async function getClientPaidMap(seazonaClientId) {
   try {
     if (!seazonaClientId) return {};
-    const rows = await db
-      .select({
-        seazonaInvoiceId: invoicePayments.seazonaInvoiceId,
-        totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
-      })
-      .from(invoicePayments)
-      .where(eq(invoicePayments.seazonaClientId, String(seazonaClientId)))
-      .groupBy(invoicePayments.seazonaInvoiceId);
-
-    const map = {};
-    for (const row of rows) {
-      map[row.seazonaInvoiceId] = parseFloat(row.totalPaid || 0);
-    }
-    return map;
+    return await getClientPaidMapStrict(seazonaClientId);
   } catch (err) {
     console.error("[invoiceLedger] getClientPaidMap DB error — degrading to empty map:", err);
     return {};
