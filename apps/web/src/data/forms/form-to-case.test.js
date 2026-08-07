@@ -101,3 +101,14 @@ test("guard carries the standardGuards matrix through to the resolver", () => {
   const guard = devices.find((d) => d.deviceKey === "guard");
   assert.deepEqual(guard.deviceOptions.standardGuards, matrix);
 });
+
+test("a mandible-only ortho order keeps its appliance selection", () => {
+  const { devices } = formAnswersToCaseInput("digital", getForm("digital"), {
+    devicesToOrder: ["ortho"],
+    removableMandibularExpansion: ["Mandibular Schwarz"],
+    mandibularAdd: ["Occlusal Rest(s)"],
+  });
+  const ortho = devices.find((d) => d.deviceKey === "ortho-expander");
+  assert.deepEqual(ortho.deviceOptions.removableMandibularExpansion, ["Mandibular Schwarz"]);
+  assert.deepEqual(ortho.deviceOptions.modifications, ["Occlusal Rest(s)"]);
+});

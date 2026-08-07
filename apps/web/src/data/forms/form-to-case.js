@@ -177,6 +177,11 @@ function buildDigitalDevices(answers) {
             lowerExpansionType: answers.lowerExpansionType,
             upperExpansionSelection: answers.upperExpansionSelection,
             lowerExpansionSelection: answers.lowerExpansionSelection,
+            removableMandibularExpansion: answers.removableMandibularExpansion,
+            fixedMandibularExpansion: answers.fixedMandibularExpansion,
+            mxSelections: answers.mxSelections,
+            requiredSelection: answers.requiredSelection,
+            occlusalOptionsTandem: answers.occlusalOptionsTandem,
             tandemBowSetting: answers.tandemBowSetting,
             modifications: [
               ...(answers.addToMaxillary || []),
@@ -184,7 +189,11 @@ function buildDigitalDevices(answers) {
               ...(answers.maxillaryAdd || []),
               ...(answers.mandibularAdd || []),
             ],
-            comments: [answers.dualArchComments, answers.maxillaryComments, answers.orthoDesignComments].filter(Boolean).join(" | "),
+            comments: [
+              answers.dualArchComments,
+              answers.maxillaryComments,
+              answers.orthoDesignComments,
+            ].filter(Boolean).join(" | "),
           })
         );
         break;
