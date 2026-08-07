@@ -36,8 +36,10 @@ import {
   matrix,
 } from "./form-fields.js";
 
-// JotForm upload host all snapshot widget images live under.
-const IMG = "https://www.jotform.com/uploads/Diamondlab/form_files";
+// Local archive of the 43 option images formerly served from JotForm's CDN
+// (see scripts/copy-rx-option-images.mjs — copies from
+// docs/rx-forms/jotform-images/options/ into apps/web/public/images/rx/options/).
+const IMG = "/images/rx/options";
 
 // Image-bearing option: keeps `value` canonical (downstream mapping depends on
 // it) and pairs the JotForm snapshot image card. `label` defaults to `value`.
@@ -62,91 +64,88 @@ const ADDITIONAL_OPTIONS = [
 
 // qid 86 "Records Selection" widget — option↔logo/photo pairing from the snapshot.
 const RECORDS_OPTIONS = [
-  { value: "Physical Bite Registration", label: "Physical Bite Registration", image: `${IMG}/bite_150.6036753edaecb2.18416798.png` },
-  { value: "PVS Impressions", label: "PVS Impressions", image: `${IMG}/PVS_150.603674f9e5d079.99098994.png` },
-  { value: "Stone/Resin Models", label: "Stone/Resin Models", image: `${IMG}/model_150.603674dc4347d4.50993365.png` },
-  { value: "3SHAPE", label: "3SHAPE", image: `${IMG}/3shape_.603677d2e93303.20086588.png` },
-  { value: "CARESTREAM", label: "CARESTREAM", image: `${IMG}/carestream_.603677dee1f5a9.76960426.png` },
-  { value: "CEREC", label: "CEREC", image: `${IMG}/cerec_.6036781230e490.29102641.png` },
-  { value: "ITERO", label: "ITERO", image: `${IMG}/itero_.6036781e5dbe09.92263476.png` },
-  { value: "MEDIT", label: "MEDIT", image: `${IMG}/medit_.60367827341479.40523658.png` },
-  { value: "MIDMARK", label: "MIDMARK", image: `${IMG}/midmark_.603678309a3864.60022150.png` },
-  { value: "SHINING 3D", label: "SHINING 3D", image: `${IMG}/shining.6724f26c6adb53.52202926.png` },
-  { value: "PLANMECA", label: "PLANMECA", image: `${IMG}/planmeca.6724f3fef1aef2.85030051.png` },
-  { value: "ALL OTHER SCANNERS", label: "ALL OTHER SCANNERS", image: `${IMG}/all.603679f333eaa7.69711684.png` },
+  { value: "Physical Bite Registration", label: "Physical Bite Registration", image: `${IMG}/bite_150.png` },
+  { value: "PVS Impressions", label: "PVS Impressions", image: `${IMG}/PVS_150.png` },
+  { value: "Stone/Resin Models", label: "Stone/Resin Models", image: `${IMG}/model_150.png` },
+  { value: "3SHAPE", label: "3SHAPE", image: `${IMG}/3shape.png` },
+  { value: "CARESTREAM", label: "CARESTREAM", image: `${IMG}/carestream.png` },
+  { value: "CEREC", label: "CEREC", image: `${IMG}/cerec.png` },
+  { value: "ITERO", label: "ITERO", image: `${IMG}/itero.png` },
+  { value: "MEDIT", label: "MEDIT", image: `${IMG}/medit.png` },
+  { value: "MIDMARK", label: "MIDMARK", image: `${IMG}/midmark.png` },
+  { value: "SHINING 3D", label: "SHINING 3D", image: `${IMG}/shining.png` },
+  { value: "PLANMECA", label: "PLANMECA", image: `${IMG}/planmeca.png` },
+  { value: "ALL OTHER SCANNERS", label: "ALL OTHER SCANNERS", image: `${IMG}/all.png` },
 ];
 
 // qid 390 "OD Material" widget — OD base-material device photos.
 const OD_MATERIAL_OPTIONS = [
-  { value: "OD (PMT)", label: "OD (PMT)", image: `${IMG}/od-pmt-sm.64a83f37076650.71764248.png` },
-  { value: "OD BIOFLEX", label: "OD BIOFLEX", image: `${IMG}/OD_BIoflex.68b72022743c65.45257842.png` },
-  { value: "Printed NYLON", label: "Printed NYLON", image: `${IMG}/od-nylon-sm.64a83f8a85a185.93407771.png` },
-  { value: "Acrylic w/clasps", label: "Acrylic w/clasps", image: `${IMG}/od-acrylic-sm.64a83f93d498c3.19148432.png` },
-  { value: "Dual-Laminate", label: "Dual-Laminate", image: `${IMG}/od-dual-laminate-sm.64a83f9c1b9b33.68871109.png` },
-  { value: "Milled (↑ wear)", label: "Milled (↑ wear)", image: `${IMG}/od-dual-laminate-sm.64a83f9c1b9b33.68871109.6526b2437b1164.26558223.png` },
+  { value: "OD (PMT)", label: "OD (PMT)", image: `${IMG}/od_pmt.png` },
+  { value: "OD BIOFLEX", label: "OD BIOFLEX", image: `${IMG}/od_bioflex.png` },
+  { value: "Printed NYLON", label: "Printed NYLON", image: `${IMG}/od_nylon.png` },
+  { value: "Acrylic w/clasps", label: "Acrylic w/clasps", image: `${IMG}/od_acrylic.png` },
+  { value: "Dual-Laminate", label: "Dual-Laminate", image: `${IMG}/od_dual_laminate.png` },
+  { value: "Milled (↑ wear)", label: "Milled (↑ wear)", image: `${IMG}/od_milled.png` },
 ];
 
 // qid 197 "ON Occlusal Contact" widget — ON design render images.
 const ON_DESIGN_OPTIONS = [
-  { value: "DEPROGRAMMER (ON-D) - Anterior Occlusion", label: "DEPROGRAMMER (ON-D) - Anterior Occlusion", image: `${IMG}/OND%20rx%20image.6054f260382023.15548588.png` },
-  { value: "POSITIONER (ON-P) - Anterior Occlusion", label: "POSITIONER (ON-P) - Anterior Occlusion", image: `${IMG}/ONP-rx.6049363231e0f7.44336162.png` },
-  { value: "TITRATION (ON-T) - NYLON Only", label: "TITRATION (ON-T) - NYLON Only", image: `${IMG}/ont22.628cfea1a700d5.07116116.png` },
-  { value: "RAMP (ON-R) - Anterior Occlusion", label: "RAMP (ON-R) - Anterior Occlusion", image: `${IMG}/ON-Rrx.604935f090fbb0.76081828.png` },
+  { value: "DEPROGRAMMER (ON-D) - Anterior Occlusion", label: "DEPROGRAMMER (ON-D) - Anterior Occlusion", image: `${IMG}/on_deprogrammer.png` },
+  { value: "POSITIONER (ON-P) - Anterior Occlusion", label: "POSITIONER (ON-P) - Anterior Occlusion", image: `${IMG}/on_positioner.png` },
+  { value: "TITRATION (ON-T) - NYLON Only", label: "TITRATION (ON-T) - NYLON Only", image: `${IMG}/on_titration.png` },
+  { value: "RAMP (ON-R) - Anterior Occlusion", label: "RAMP (ON-R) - Anterior Occlusion", image: `${IMG}/on_ramp.png` },
 ];
 
 // qid 131 / 466 / 485 "Occlusal Contact:" widget — shared DDSO-render images.
 const OCCLUSAL_CONTACT_OPTIONS = [
-  imgOpt("Posterior Contact", `${IMG}/ddso_post.60674ed33f12b5.40981505.png`),
-  imgOpt("Anterior Contact", `${IMG}/ddso_anterior.6042f5957d1585.44124558.png`),
-  imgOpt("FULL Occlusal Contact", `${IMG}/ddso_full.6042f5e4e85d86.45327584.png`),
-  imgOpt("TRIPOD Occlusion", `${IMG}/ddso_tripod.6042f5bd9ae5c7.96139461.png`),
+  imgOpt("Posterior Contact", `${IMG}/ddso_post.png`),
+  imgOpt("Anterior Contact", `${IMG}/ddso_anterior.png`),
+  imgOpt("FULL Occlusal Contact", `${IMG}/ddso_full.png`),
+  imgOpt("TRIPOD Occlusion", `${IMG}/ddso_tripod.png`),
 ];
 
 // qid 182 / 467 / 486 "Digital Device Occlusal Contact:" widget — design renders.
 const DESIGN_PREFERENCE_OPTIONS = [
-  imgOpt("Standard", `${IMG}/std.6049324e089ea3.94410401.png`),
-  imgOpt("Lingual-Free", `${IMG}/Standard.60493212d9f5d4.89345443.png`),
-  imgOpt("Buccal-Free", `${IMG}/buccalfree.60481f33a0f2c3.51060970.png`),
-  imgOpt("Full Coverage", `${IMG}/Full%20Coverage.60481f49bfbae0.35132618.png`),
+  imgOpt("Standard", `${IMG}/design_std.png`),
+  imgOpt("Lingual-Free", `${IMG}/design_standard.png`),
+  imgOpt("Buccal-Free", `${IMG}/design_buccalfree.png`),
+  imgOpt("Full Coverage", `${IMG}/design_full.png`),
 ];
 
 // qid 224 / 468 "Digital Device Modifications" widget — modification renders.
 const MODIFICATIONS_A_OPTIONS = [
-  imgOpt(
-    "Tongue Positioners",
-    `${IMG}/Screenshot%202021-03-11%20194056.604aef23bb1f99.50382932.png`
-  ),
-  imgOpt("Hooks for Elastics", `${IMG}/hookss.604af0a6be90a0.56492546.png`),
-  imgOpt("Vertical Shims", `${IMG}/shims11.604af033763068.12170132.png`),
+  imgOpt("Tongue Positioners", `${IMG}/mod_tongue_positioners.png`),
+  imgOpt("Hooks for Elastics", `${IMG}/mod_hooks.png`),
+  imgOpt("Vertical Shims", `${IMG}/mod_vertical_shims.png`),
 ];
 
 // qid 419 / 469 "Digital Device Modifications" widget (loop/ramp set).
 const MODIFICATIONS_B_OPTIONS = [
-  imgOpt("ON Loop", `${IMG}/ONP1.604aeebceb38b3.38867720.png`),
-  imgOpt("BAB Loop", `${IMG}/BAB.604aef02613a98.80574389.png`),
-  imgOpt("ON Ramp", `${IMG}/ONr1.604aeee7e6f210.61790851.png`),
+  imgOpt("ON Loop", `${IMG}/mod_on_loop.png`),
+  imgOpt("BAB Loop", `${IMG}/mod_bab_loop.png`),
+  imgOpt("ON Ramp", `${IMG}/mod_on_ramp.png`),
 ];
 
 // qid 453 "Diamond 3D Night-Guards" widget — device renders.
 const NIGHTGUARD_DEVICE_OPTIONS = [
-  imgOpt("Dual Arch - SLIDER", `${IMG}/slider-rx.621ef83f62b5c8.86340637.png`),
-  imgOpt("Dual Arch - FLATPLANE", `${IMG}/FLAT-RX.621ef9244b65e5.15214550.png`),
-  imgOpt("Single Arch - NIGHTGUARD", `${IMG}/nightguard.628d074869bc52.47872506.png`),
+  imgOpt("Dual Arch - SLIDER", `${IMG}/nightguard_slider.png`),
+  imgOpt("Dual Arch - FLATPLANE", `${IMG}/nightguard_flatplane.png`),
+  imgOpt("Single Arch - NIGHTGUARD", `${IMG}/nightguard_single.png`),
 ];
 
 // qid 235 "DIAMOND ORTHOTIC GUARDS" widget — sport-guard renders.
 const SPORT_GUARD_DEVICE_OPTIONS = [
   imgOpt(
     "Trainer - Non-Contact [Md. Arch Only]",
-    `${IMG}/Picture2.604b28ab3c5bd1.97443638.png`
+    `${IMG}/sportguard_trainer.png`
   ),
   imgOpt(
     "PRO - Light to Heavy Contact [Mx. or Md. Arch]",
-    `${IMG}/DEP%20ProF.60524106c72700.00271306.png`
+    `${IMG}/sportguard_pro.png`
   ),
   imgOpt(
     "CAD/CAM - Light to Heavy Contact [Mx or Md Arch]",
-    `${IMG}/cad-cam_sportsguard.6751fa5d087d96.34164760.png`
+    `${IMG}/sportguard_cadcam.png`
   ),
 ];
 
@@ -233,10 +232,20 @@ export const digitalRxForm = {
             ".stl,.pdf,.jpg,.jpeg,.png,.gif,.zip,.doc,.docx,.xls,.xlsx,.csv,.txt",
         }),
         // ── ORTHO records / device intro (head qid 119, ex-ortho) ──
+        // qid 503 in the archived snapshot (orthodontic + olmos + rx-2025
+        // JSON — all three agree) is a JotForm "Dynamic" matrix
+        // (inputType: "Dynamic", mrows: "") — the respondent adds their own
+        // rows client-side; there is no fixed row set to restore. Our
+        // MatrixField has no add-row affordance, so `rows: []` rendered zero
+        // inputs and made this field (and digitalSetupEmail, gated on it
+        // being answered) permanently unreachable. GUESS pending lab
+        // confirmation: added one generic row so the field is at least
+        // fillable — the label "Setup Instructions" is a placeholder, not a
+        // clinical option pulled from any source.
         matrix(
           "nuveloDigitalSetup",
           "NUVELO Digital Setup ONLY",
-          [],
+          ["Setup Instructions"],
           [
             "Orient to HIP",
             "Add occlusal overlay to bite",
@@ -399,14 +408,14 @@ export const digitalRxForm = {
         checkbox("mora", "MORA - Mandibular Orthopedic Repositioning Appliance", [
           imgOpt(
             "MORA - Mandibular Orthopedic Repositioning Appliance",
-            `${IMG}/od-dual-laminate-sm.64a83f9c1b9b33.68871109.6526b2437b1164.26558223.png`
+            `${IMG}/od_milled.png`
           ),
         ]),
         // qid 514: widget "OD Material" single-item picker → checkbox (order this)
         checkbox("ara", "ARA - Anterior Repositioning Appliance", [
           imgOpt(
             "ARA - Anterior Repositioning Appliance",
-            `${IMG}/ARA.6a2980497bcb64.01709811.png`
+            `${IMG}/mistry_ara.png`
           ),
         ]),
       ],
