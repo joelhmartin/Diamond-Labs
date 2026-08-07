@@ -37,6 +37,12 @@ export const mfaVerifySchema = z.object({
   mfaToken: z.string().min(1, "MFA token is required"),
 });
 
+// Starting MFA setup re-keys the second factor, so it takes a password proof —
+// the same bar as mfaDisableSchema.
+export const mfaSetupSchema = z.object({
+  password: z.string().min(1, "Password is required"),
+});
+
 export const mfaEnableSchema = z.object({
   code: z.string().length(6, "MFA code must be 6 digits"),
 });

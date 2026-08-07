@@ -6,8 +6,14 @@ import { db } from "../config/database.js";
 import { invoicePayments, users } from "../db/schema/index.js";
 import { eq } from "drizzle-orm";
 import { createId } from "../lib/id.js";
-import { getPortalPaidMap, getInvoicePortalPaid } from "../services/invoice-ledger.service.js";
+import {
+  getPortalPaidMap,
+  getInvoicePortalPaid,
+  getInvoicePortalPaidStrict,
+} from "../services/invoice-ledger.service.js";
 import * as auditService from "../services/audit.service.js";
+import { redis } from "../config/redis.js";
+import { withInvoiceLocks, InvoiceLockedError } from "../lib/payment-helpers.js";
 
 /** Round to cents consistently (avoids FP drift). */
 function round2(n) {
@@ -218,8 +224,28 @@ export default async function invoiceRoutes(fastify) {
 
     // Resolve the doctor user for the ledger row: explicit userId wins, else the
     // user linked to this Seazona client.
-    let ledgerUserId = bodyUserId || null;
-    if (!ledgerUserId) {
+    //
+    // An explicit userId MUST be verified to belong to this Seazona client. The
+    // remaining-balance cap below is computed per (userId, invoiceId), so an
+    // unchecked userId would compute "already paid = 0" against a user with no
+    // ledger history and re-open the invoice's full balance for re-recording.
+    let ledgerUserId = null;
+    if (bodyUserId) {
+      const [named] = await db
+        .select({ id: users.id, seazonaClientId: users.seazonaClientId })
+        .from(users)
+        .where(eq(users.id, String(bodyUserId)))
+        .limit(1);
+      if (!named || String(named.seazonaClientId) !== String(seazonaClientId)) {
+        return reply.code(422).send({
+          error: {
+            ...ERROR_CODES.VALIDATION_ERROR,
+            message: "The given userId is not linked to this seazonaClientId.",
+          },
+        });
+      }
+      ledgerUserId = named.id;
+    } else {
       const [doctor] = await db
         .select({ id: users.id })
         .from(users)
@@ -232,30 +258,57 @@ export default async function invoiceRoutes(fastify) {
       });
     }
 
-    // Cap at the invoice's remaining balance (C1 helper). Already-paid portion
-    // is whatever the local ledger has recorded for THIS doctor + invoice.
-    const alreadyPaid = await getInvoicePortalPaid(ledgerUserId, invoiceId);
-    const remaining = round2(Number(invoice.total || 0) - alreadyPaid);
-    if (amt > remaining + 0.005) {
-      return reply.code(422).send({
-        error: {
-          ...ERROR_CODES.VALIDATION_ERROR,
-          message: `Offline payment $${amt.toFixed(2)} exceeds the invoice's remaining balance of $${remaining.toFixed(2)}.`,
-        },
-      });
-    }
+    // Cap-then-insert must be atomic against other writers on this invoice.
+    // Without the lock, two submits (or one racing a doctor's card charge, which
+    // holds this same invoice mutex) both read `alreadyPaid`, both pass the cap,
+    // and both insert — over-crediting the invoice so the portal shows paid when
+    // it isn't. This is the same guard every card path already takes.
+    let rowId;
+    try {
+      rowId = await withInvoiceLocks(redis, [invoiceId], async () => {
+        // Cap at the invoice's remaining balance (C1 helper). Already-paid portion
+        // is whatever the local ledger has recorded for THIS doctor + invoice.
+        // STRICT read: this is a guard, so a DB error must abort rather than report
+        // "paid so far = 0" and re-open the full balance.
+        const alreadyPaid = await getInvoicePortalPaidStrict(ledgerUserId, invoiceId);
+        const remaining = round2(Number(invoice.total || 0) - alreadyPaid);
+        if (amt > remaining + 0.005) {
+          const err = new Error(
+            `Offline payment $${amt.toFixed(2)} exceeds the invoice's remaining balance of $${remaining.toFixed(2)}.`
+          );
+          err.capExceeded = true;
+          throw err;
+        }
 
-    const rowId = createId();
-    await db.insert(invoicePayments).values({
-      id: rowId,
-      userId: ledgerUserId,
-      seazonaClientId: String(seazonaClientId),
-      seazonaInvoiceId: invoiceId,
-      invoiceNumber: invoiceNumber ? String(invoiceNumber) : (invoice.invoiceNumber != null ? String(invoice.invoiceNumber) : null),
-      appliedAmount: amt.toFixed(2),
-      transactionId: `OFFLINE-${rowId}`,
-      seazonaPaymentId: null,
-    });
+        const id = createId();
+        await db.insert(invoicePayments).values({
+          id,
+          userId: ledgerUserId,
+          seazonaClientId: String(seazonaClientId),
+          seazonaInvoiceId: invoiceId,
+          invoiceNumber: invoiceNumber ? String(invoiceNumber) : (invoice.invoiceNumber != null ? String(invoice.invoiceNumber) : null),
+          appliedAmount: amt.toFixed(2),
+          transactionId: `OFFLINE-${id}`,
+          seazonaPaymentId: null,
+        });
+        return id;
+      });
+    } catch (err) {
+      if (err?.capExceeded) {
+        return reply.code(422).send({
+          error: { ...ERROR_CODES.VALIDATION_ERROR, message: err.message },
+        });
+      }
+      if (err instanceof InvoiceLockedError) {
+        return reply.code(409).send({
+          error: {
+            ...ERROR_CODES.VALIDATION_ERROR,
+            message: "This invoice is being paid right now. Try again in a moment.",
+          },
+        });
+      }
+      throw err;
+    }
 
     request.log.info(
       { invoiceId, seazonaClientId, ledgerUserId, amount: amt },
