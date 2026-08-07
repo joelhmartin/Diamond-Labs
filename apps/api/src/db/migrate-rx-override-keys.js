@@ -23,8 +23,9 @@ const REMAP = {
   "primary:snorehook:SnoreHook":        "primary:snorehook:default",
   "primary:shirazi-hybrid:default":     "primary:shirazi-hybrid:nylon",
   "primary:cadcam-d-pro:default":       "primary:cadcam-d-pro:nylon",
-  "primary:guard:Essix retainer (tray)": "guard:essix:any",
-  "primary:guard:Whitening tray":        "guard:bleaching:any",
+  // Slugified from the full matrix row label, matching what resolveGuard emits.
+  "primary:guard:Essix retainer (tray)": "guard:essix-tray:any",
+  "primary:guard:Whitening tray":        "guard:bleaching-trays:any",
   "mod:Labial bow":                      "mod:labial-bow",
 };
 
