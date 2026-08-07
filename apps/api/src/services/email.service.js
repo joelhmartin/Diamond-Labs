@@ -8,7 +8,7 @@ import { env } from "../config/env.js";
  * callers are unaffected and the receipt flow can report honestly whether an
  * email actually went out.
  */
-async function send({ to, subject, html, text }) {
+async function send({ to, cc, subject, html, text }) {
   if (!mailgun) {
     console.log(`[EMAIL] To: ${to} | Subject: ${subject}`);
     if (env.NODE_ENV === "development") {
@@ -20,6 +20,7 @@ async function send({ to, subject, html, text }) {
   const form = new URLSearchParams();
   form.set("from", env.EMAIL_FROM);
   form.set("to", to);
+  if (cc) form.set("cc", cc);
   form.set("subject", subject);
   if (html) form.set("html", html);
   if (text) form.set("text", text);
@@ -169,6 +170,32 @@ export async function sendDoctorRejected({ email, name }) {
       <h1>Account Update</h1>
       <p>Dear ${name},</p>
       <p>Unfortunately, your Diamond Labs registration request was not approved at this time. If you believe this is an error, please contact our support team.</p>
+    `,
+  });
+}
+
+/**
+ * AutoPay charge failed. Sent to the doctor; the lab is copied via
+ * ADMIN_NOTIFICATION_EMAIL so a paused enrollment does not go unnoticed.
+ */
+export async function sendAutopayFailure({ email, name, amount, reason, paused }) {
+  return send({
+    to: email,
+    cc: env.ADMIN_NOTIFICATION_EMAIL,
+    subject: paused ? "AutoPay paused — payment failed" : "AutoPay payment failed",
+    html: `
+      <h1>We couldn't process your AutoPay payment</h1>
+      <p>Hello${name ? `, ${esc(name)}` : ""} — your scheduled AutoPay payment of
+         <strong>$${Number(amount).toFixed(2)}</strong> did not go through.</p>
+      <p style="color:#5a6b7b;">Reason: ${esc(reason)}</p>
+      ${paused
+        ? `<p style="padding:12px;border-left:4px solid #f59e0b;background:#fffbeb;">
+             We've <strong>paused</strong> your AutoPay after repeated failures. Update your
+             card and contact the lab to resume — no further attempts will be made until then.
+           </p>`
+        : `<p>We'll try again in a couple of days. You can also update your card or pay
+             manually from your portal at any time.</p>`}
+      <p><a href="${env.APP_URL}/doctor/saved-cards" style="display:inline-block;padding:12px 24px;background:#13AEEF;color:#fff;text-decoration:none;border-radius:999px;font-weight:600;">Update your card</a></p>
     `,
   });
 }
