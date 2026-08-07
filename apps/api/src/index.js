@@ -24,6 +24,7 @@ import adminRoutes from "./routes/admin.routes.js";
 import rxRoutes from "./routes/rx.routes.js";
 import rxMappingRoutes from "./routes/admin-rx-mapping.routes.js";
 import themeRoutes from "./routes/theme.routes.js";
+import autopayRoutes from "./routes/autopay.routes.js";
 import { registerAllJobs } from "./jobs/definitions/index.js";
 import { registerJobTriggerRoutes } from "./jobs/triggers/http.js";
 
@@ -192,6 +193,7 @@ await fastify.register(adminRoutes,   { prefix: "/api/v1" });
 await fastify.register(rxRoutes,      { prefix: "/api/v1" });
 await fastify.register(rxMappingRoutes, { prefix: "/api/v1" });
 await fastify.register(themeRoutes,     { prefix: "/api/v1" });
+await fastify.register(autopayRoutes,   { prefix: "/api/v1" });
 
 registerAllJobs();
 registerJobTriggerRoutes(fastify);
