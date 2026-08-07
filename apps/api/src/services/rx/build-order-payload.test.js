@@ -117,11 +117,68 @@ test("a guard-only order is ok when its code resolves", () => {
 });
 
 test("buildSeazonaOrderPayloadMulti with zero devices is never ok (no vacuous true)", () => {
-  const { ok, perDevice } = buildSeazonaOrderPayloadMulti(
+  const { ok, perDevice, warnings } = buildSeazonaOrderPayloadMulti(
     { seazonaClientId: "c1" },
     [],
     { codeToId: {}, userId: "u1" }
   );
   assert.equal(ok, false);
   assert.deepEqual(perDevice, []);
+  assert.ok(warnings.length > 0, "a not-ok result must always say why");
+});
+
+/* ── ok === false must always name something ───────────────────────────────
+   The 422 that refuses an order puts `warnings` straight into `details`. A
+   resolver that returns nothing at all (no items AND no unmapped keys) used to
+   leave that list empty: staff read "selections are not yet mapped" naming
+   nothing at all. */
+
+test("a device that resolves to nothing at all still names itself in warnings", () => {
+  const { ok, warnings, unmapped } = buildSeazonaOrderPayload(
+    { deviceKey: "guard", deviceOptions: {}, seazonaClientId: "c1" },
+    { codeToId: {}, userId: "u1" }
+  );
+  assert.equal(ok, false);
+  assert.deepEqual(unmapped, [], "this case is precisely the one with nothing flagged");
+  assert.ok(warnings.some((w) => w.includes("guard")), `warnings did not name the device: ${JSON.stringify(warnings)}`);
+});
+
+test("per device, multi names the device whose appliance line is missing", () => {
+  const { ok, warnings, perDevice } = buildSeazonaOrderPayloadMulti(
+    { seazonaClientId: "c1" },
+    [{ deviceKey: "guard", label: "Nightguard", deviceOptions: {} }],
+    { codeToId: {}, userId: "u1" }
+  );
+  assert.equal(ok, false);
+  assert.equal(perDevice[0].ok, false);
+  assert.ok(warnings.some((w) => w.includes("Nightguard")), JSON.stringify(warnings));
+});
+
+test("an attribute-only device (a $0 line, no appliance) is refused AND explained", () => {
+  // attr:occlusal:posterior → 2293 resolves, so items.length === 1 while the
+  // appliance line is gone. Gating on items.length would push this to the lab.
+  const { ok, payload, warnings } = buildSeazonaOrderPayloadMulti(
+    { seazonaClientId: "c1" },
+    [{ deviceKey: "guard", label: "Nightguard", deviceOptions: { occlusalContact: "Posterior Contact" } }],
+    { codeToId: { 2293: "id-2293" }, userId: "u1" }
+  );
+  assert.equal(payload.items.length, 1, "the $0 attribute line alone");
+  assert.equal(ok, false);
+  assert.ok(warnings.length > 0);
+});
+
+test("whenever ok is false, warnings is non-empty — for every device in the tables", () => {
+  const cases = [
+    { deviceKey: "guard", deviceOptions: {} },
+    { deviceKey: "ortho-expander", deviceOptions: {} },
+    { deviceKey: "ddso", deviceOptions: {} },
+    { deviceKey: "ddso", deviceOptions: { baseMaterial: "Nylon" } }, // no codeToId entry
+    { deviceKey: undefined, deviceOptions: {} },
+    { deviceKey: "olmos-night", deviceOptions: { variant: "RAMP (ON-R) - Anterior Occlusion" } },
+  ];
+  for (const c of cases) {
+    const { ok, warnings } = buildSeazonaOrderPayload({ ...c, seazonaClientId: "c1" }, { codeToId: {}, userId: "u1" });
+    if (ok) continue;
+    assert.ok(warnings.length > 0, `ok=false with empty warnings for ${JSON.stringify(c)}`);
+  }
 });

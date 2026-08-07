@@ -11,6 +11,16 @@ const isDeviceLine = (mapKey) =>
   typeof mapKey === "string" && !mapKey.startsWith("mod:") && !mapKey.startsWith("attr:");
 
 /**
+ * A resolver can return NOTHING — no items and no unmapped keys (an empty
+ * deviceOptions, a device whose only selections were `status: "none"`). Without
+ * this the 422 that refuses the order carries `details: []`: staff are told
+ * "selections are not yet mapped" with nothing named. Always name the device
+ * whose appliance line is missing, so `ok === false` can never be silent.
+ */
+const noDeviceLineWarning = (deviceKey) =>
+  `no device line resolved for ${deviceKey || "(no device selected)"}`;
+
+/**
  * Pure function: rxCase + { codeToId, userId } → { payload, warnings, unmapped, ok }.
  *
  * @param {object} rxCase        — stored Rx case record
@@ -21,6 +31,8 @@ const isDeviceLine = (mapKey) =>
  * @returns {{ payload: object, warnings: string[], unmapped: string[], ok: boolean }}
  *   ok is false when no device line resolved (isDeviceLine) or any selection
  *   was unmapped — callers MUST refuse to push the order in that case.
+ *   INVARIANT: whenever ok is false, warnings is non-empty, so the 422 that
+ *   refuses the order always names something a human can act on.
  */
 export function buildSeazonaOrderPayload(rxCase, { codeToId = {}, userId, overrides = {} } = {}) {
   const { items: lineItems, unmapped } = resolveLineItems(rxCase, { overrides });
@@ -39,6 +51,8 @@ export function buildSeazonaOrderPayload(rxCase, { codeToId = {}, userId, overri
     if (isDeviceLine(li.mapKey)) deviceLineEmitted = true;
     items.push({ id, arch: normalizeArch(li.arch) });
   }
+
+  if (!deviceLineEmitted) warnings.push(noDeviceLineWarning(rxCase.deviceKey));
 
   const ok = deviceLineEmitted && unmapped.length === 0;
 
@@ -183,12 +197,17 @@ export function buildSeazonaOrderPayloadMulti(
       lineCount++;
     }
 
+    if (!deviceLineEmitted) warnings.push(noDeviceLineWarning(d.label || d.deviceKey));
+
     const deviceOk = deviceLineEmitted && devUnmapped.length === 0;
     perDevice.push({ label: d.label || d.deviceKey, deviceKey: d.deviceKey, lineCount, ok: deviceOk });
   }
 
   // perDevice.every(...) is vacuously true for an empty array — require at
-  // least one device so an empty devices[] can never read as "ok".
+  // least one device so an empty devices[] can never read as "ok". Say so in
+  // warnings too, or that refusal reaches staff with an empty `details`.
+  if (devices.length === 0) warnings.push("no devices on this order");
+
   const ok = devices.length > 0 && perDevice.every((d) => d.ok);
 
   return {
