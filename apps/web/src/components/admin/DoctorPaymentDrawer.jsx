@@ -63,7 +63,7 @@ function SectionCard({ title, icon: Icon, children }) {
  * useInvoiceAllocation.js. The parent only mounts this once the doctor's
  * invoice list has finished loading, matching that contract.
  */
-function ChargePanel({ invoices, cards, doctorUserId, onSuccess }) {
+function ChargePanel({ invoices, cards, cardsUnavailable, doctorUserId, onSuccess }) {
   const { addToast } = useToast();
   const [selectedCard, setSelectedCard] = useState(
     () => (cards.find((c) => c.isDefault) || cards[0])?.paymentProfileId || ""
@@ -153,7 +153,9 @@ function ChargePanel({ invoices, cards, doctorUserId, onSuccess }) {
         disabled={processing || cards.length === 0}
         className={INPUT}
       >
-        {cards.length === 0 && <option value="">No cards on file</option>}
+        {cards.length === 0 && (
+          <option value="">{cardsUnavailable ? "Couldn't check — try again" : "No cards on file"}</option>
+        )}
         {cards.map((c) => (
           <option key={c.paymentProfileId} value={c.paymentProfileId}>
             {c.cardType || "Card"} ****{c.cardNumber?.slice(-4)} — exp {c.expirationDate}
@@ -552,6 +554,7 @@ export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount }) {
                     key={`${doctor.userId}:${invoiceGen}`}
                     invoices={payableInvoices}
                     cards={cards}
+                    cardsUnavailable={cardsUnavailable}
                     doctorUserId={doctor.userId}
                     onSuccess={() => {
                       notifyChanged();
@@ -567,7 +570,16 @@ export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount }) {
                   For a payment staff already entered directly in Seazona — reflects the portal balance
                   only, no charge is made.
                 </p>
-                {payableInvoices.length === 0 ? (
+                {invoicesLoading ? (
+                  <div className="flex items-center gap-2 py-4 text-xs text-navy/40">
+                    <Loader2 size={14} className="animate-spin" /> Loading invoices…
+                  </div>
+                ) : invoicesUnavailable ? (
+                  <p className="text-xs text-amber-700">
+                    Seazona is unreachable — can't tell whether this doctor has open invoices. This is
+                    not the same as owing nothing; try again shortly.
+                  </p>
+                ) : payableInvoices.length === 0 ? (
                   <p className="text-xs text-navy/40">No open invoices to record against.</p>
                 ) : (
                   <div className="flex gap-2">
@@ -671,7 +683,9 @@ export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount }) {
                   <div>
                     <label className="mb-1 block text-[10px] font-mono uppercase tracking-widest text-navy/40">Card</label>
                     <select className={INPUT} disabled={cards.length === 0} {...register("paymentProfileId")}>
-                      {cards.length === 0 && <option value="">No cards on file</option>}
+                      {cards.length === 0 && (
+                        <option value="">{cardsUnavailable ? "Couldn't check — try again" : "No cards on file"}</option>
+                      )}
                       {cards.map((c) => (
                         <option key={c.paymentProfileId} value={c.paymentProfileId}>
                           {c.cardType || "Card"} ****{c.cardNumber?.slice(-4)} — exp {c.expirationDate}

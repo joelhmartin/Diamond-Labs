@@ -43,6 +43,7 @@ export default function AutoPayPage() {
     register,
     handleSubmit,
     reset,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm({ resolver: zodResolver(autopayEnrollSchema) });
 
@@ -97,6 +98,15 @@ export default function AutoPayPage() {
           type: "error",
         });
         return;
+      }
+      // A 422 (e.g. below-floor amount) names the offending field and states
+      // the minimum right in the message — land it on that field instead of
+      // only a toast, so the doctor sees it next to what they typed.
+      if (err.response?.status === 422 && err.response?.data?.error?.field) {
+        setError(err.response.data.error.field, {
+          type: "server",
+          message: err.response.data.error.message || "Invalid value.",
+        });
       }
       addToast({ message: err.response?.data?.error?.message || "Could not save AutoPay.", type: "error" });
     }
