@@ -11,6 +11,7 @@ import {
   FlaskConical,
   ClipboardPlus,
   CreditCard,
+  Repeat,
   ArrowLeft,
 } from "lucide-react";
 import { brand } from "../../config/brand.js";
@@ -28,6 +29,7 @@ const mainItems = [
 const adminItems = [
   { label: "Invoices",   to: ROUTES.ADMIN_INVOICES,    icon: FileText },
   { label: "Payments",   to: ROUTES.ADMIN_PAYMENTS,    icon: CreditCard },
+  { label: "AutoPay",    to: ROUTES.ADMIN_AUTOPAY,     icon: Repeat },
   { label: "Orders",     to: ROUTES.ADMIN_ORDERS,      icon: ClipboardList },
   { label: "Users",      to: ROUTES.ADMIN_USERS,       icon: UserCog },
   { label: "Products",   to: ROUTES.ADMIN_PRODUCTS,    icon: Package },
