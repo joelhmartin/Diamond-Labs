@@ -162,6 +162,13 @@
       "when": 1791255440206,
       "tag": "0022_chief_shriek",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791255928071,
+      "tag": "0023_moaning_rictor",
+      "breakpoints": true
     }
   ]
 }
