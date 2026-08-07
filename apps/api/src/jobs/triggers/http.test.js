@@ -97,8 +97,42 @@ describe("registerJobTriggerRoutes", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("lists jobs on GET /internal/jobs", async () => {
+  // Same length as "test-secret" (11 chars) but wrong content. This is the
+  // case that would slip past a timingSafeEqual implementation whose
+  // length-mismatch guard is the only thing preventing a throw — if the
+  // guard were accidentally short-circuiting equality itself instead of
+  // just length, this would wrongly pass.
+  it("rejects a same-length-but-wrong secret on POST", async () => {
+    const wrongSameLength = "aaaaaaaaaaa";
+    expect(wrongSameLength.length).toBe("test-secret".length);
+    const res = await fastify.inject({
+      method: "POST",
+      url: "/internal/jobs/autopay/run",
+      headers: { "x-jobs-trigger-secret": wrongSameLength },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("rejects GET /internal/jobs with no secret header", async () => {
     const res = await fastify.inject({ method: "GET", url: "/internal/jobs" });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("rejects GET /internal/jobs with the wrong secret", async () => {
+    const res = await fastify.inject({
+      method: "GET",
+      url: "/internal/jobs",
+      headers: { "x-jobs-trigger-secret": "wrong" },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("lists jobs on GET /internal/jobs with the correct secret", async () => {
+    const res = await fastify.inject({
+      method: "GET",
+      url: "/internal/jobs",
+      headers: { "x-jobs-trigger-secret": "test-secret" },
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().data.jobs).toEqual([{ name: "autopay", description: "d" }]);
   });
