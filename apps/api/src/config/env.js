@@ -62,6 +62,9 @@ const envSchema = z.object({
   AUTOPAY_MAX_FAILURES: z.coerce.number().int().positive().default(3),
   // Shared secret for the HTTP job trigger. Required in production only.
   JOBS_TRIGGER_SECRET: z.string().optional(),
+  // Opt-in dev-only in-process interval trigger (see jobs/triggers/interval.js).
+  // Never runs in production regardless of this flag.
+  JOBS_DEV_INTERVAL: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
 
   // Google Cloud Storage
   RX_GCS_BUCKET: z.string().optional(),
