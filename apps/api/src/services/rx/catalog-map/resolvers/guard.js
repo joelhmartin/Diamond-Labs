@@ -55,15 +55,17 @@ export function resolveGuard(deviceOptions = {}) {
       continue;
     }
 
+    const starRow = Boolean(options["*"]);
     const chosen = options["*"] || options[cells["Base Material"]];
     if (!chosen) {
       unmapped.push(`guard:${slug(rowLabel)}:${slug(cells["Base Material"] || "no-material")}`);
       continue;
     }
 
+    const materialKey = starRow ? "any" : slug(cells["Base Material"]);
     for (const arch of arches)
       items.push({
-        mapKey: `guard:${slug(rowLabel)}:${slug(cells["Base Material"] || "any")}`,
+        mapKey: `guard:${slug(rowLabel)}:${materialKey}`,
         code: chosen.code,
         name: chosen.name,
         arch,
