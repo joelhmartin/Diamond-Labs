@@ -27,6 +27,7 @@ export const ROUTES = {
   DOCTOR_INVOICES: "/doctor/invoices",
   DOCTOR_PAYMENTS: "/doctor/payments",
   DOCTOR_SAVED_CARDS: "/doctor/saved-cards",
+  DOCTOR_AUTOPAY: "/doctor/autopay",
   DOCTOR_NEW_CASE: "/app/cases/new",
 
   // Rx forms (faithful 1:1 JotForm ports)

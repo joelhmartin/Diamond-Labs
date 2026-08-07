@@ -62,6 +62,7 @@ import { CartWidget } from "./components/marketing/CartWidget.jsx";
 import { InvoicesPage } from "./pages/doctor/InvoicesPage.jsx";
 import { PaymentsPage } from "./pages/doctor/PaymentsPage.jsx";
 import { SavedCardsPage } from "./pages/doctor/SavedCardsPage.jsx";
+import AutoPayPage from "./pages/doctor/AutoPayPage.jsx";
 import { NewCasePage } from "./pages/app/NewCasePage.jsx";
 import { RxChooserPage } from "./pages/app/RxChooserPage.jsx";
 import { RxFormPage } from "./pages/app/RxFormPage.jsx";
@@ -226,6 +227,7 @@ function AppRoutes() {
           <Route path="invoices" element={<InvoicesPage />} />
           <Route path="payments" element={<PaymentsPage />} />
           <Route path="saved-cards" element={<SavedCardsPage />} />
+          <Route path="autopay" element={<AutoPayPage />} />
         </Route>
       </Route>
 
