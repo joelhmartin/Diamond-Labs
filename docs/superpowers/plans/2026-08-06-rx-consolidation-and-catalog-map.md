@@ -1350,7 +1350,10 @@ const MAPPINGS = [
   { mapKey: "primary:olmos-day:milled",         seazonaCode: "2106", seazonaName: "OD MILLED" },
   { mapKey: "primary:ara:default",              seazonaCode: "2592", seazonaName: "ARA- Nylon" },
   { mapKey: "primary:snorehook:default",        seazonaCode: "2154", seazonaName: "Snorehook" },
-  { mapKey: "guard:essix:any",                  seazonaCode: "2161", seazonaName: "Essix Tray Non Printed (per arch)" },
+  // Guard mapKeys are slugified from the FULL matrix row label — the resolver
+  // emits `guard:essix-tray:any`, not `guard:essix:any`. A shortened key here
+  // would seed a row nothing ever looks up.
+  { mapKey: "guard:essix-tray:any",             seazonaCode: "2161", seazonaName: "Essix Tray Non Printed (per arch)" },
 ];
 ```
 
@@ -1384,8 +1387,9 @@ const REMAP = {
   "primary:snorehook:SnoreHook":        "primary:snorehook:default",
   "primary:shirazi-hybrid:default":     "primary:shirazi-hybrid:nylon",
   "primary:cadcam-d-pro:default":       "primary:cadcam-d-pro:nylon",
-  "primary:guard:Essix retainer (tray)": "guard:essix:any",
-  "primary:guard:Whitening tray":        "guard:bleaching:any",
+  // Slugified from the full matrix row label, matching what resolveGuard emits.
+  "primary:guard:Essix retainer (tray)": "guard:essix-tray:any",
+  "primary:guard:Whitening tray":        "guard:bleaching-trays:any",
   "mod:Labial bow":                      "mod:labial-bow",
 };
 
