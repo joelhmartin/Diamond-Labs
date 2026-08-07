@@ -5,7 +5,6 @@ import { formAnswersToCaseInput } from "./form-to-case.js";
 import { FORM_LIST, getForm } from "./index.js";
 
 const digital = getForm("digital");
-const ortho = getForm("ortho");
 
 test("digital: mistry(ARA only) + sportguards + dpro → 3 devices (ARA, sport-guard, D-Pro; no MORA)", () => {
   const answers = {
@@ -60,9 +59,10 @@ test("digital: olmos with NO OD/ON fields → single olmos-day with empty option
   assert.deepEqual(devices[0].deviceOptions, {});
 });
 
-test("ortho slug → single ortho-expander device + shared caseFields (no whole-form dump)", () => {
-  const { devices, caseFields } = formAnswersToCaseInput("ortho", ortho, {
-    additionalComments: "please rush",
+test("ortho gated device → single ortho-expander device + shared caseFields (no whole-form dump)", () => {
+  const { devices, caseFields } = formAnswersToCaseInput("digital", digital, {
+    devicesToOrder: ["ortho"],
+    orthoDesignComments: "please rush",
   });
   assert.equal(devices.length, 1);
   assert.equal(devices[0].deviceKey, "ortho-expander");
@@ -77,4 +77,27 @@ test("olmos and ortho forms are retired (ortho folds into digital as a gated dev
   assert.deepEqual(FORM_LIST.map((f) => f.slug), ["digital"]);
   assert.equal(getForm("olmos"), null);
   assert.equal(getForm("ortho"), null);
+});
+
+test("ortho selections are carried through, not discarded", () => {
+  const { devices } = formAnswersToCaseInput("digital", getForm("digital"), {
+    devicesToOrder: ["ortho"],
+    upperArchRetention: "Fixed (Banded)",
+    upperExpansionType: "Standard Hyrax RPE",
+    orthoDesignComments: "note",
+  });
+  const ortho = devices.find((d) => d.deviceKey === "ortho-expander");
+  assert.ok(ortho, "no ortho device emitted");
+  assert.equal(ortho.deviceOptions.upperArchRetention, "Fixed (Banded)");
+  assert.equal(ortho.deviceOptions.upperExpansionType, "Standard Hyrax RPE");
+});
+
+test("guard carries the standardGuards matrix through to the resolver", () => {
+  const matrix = { "Essix Tray": { "UPPER ARCH": true } };
+  const { devices } = formAnswersToCaseInput("digital", getForm("digital"), {
+    devicesToOrder: ["nightguards"],
+    standardGuards: matrix,
+  });
+  const guard = devices.find((d) => d.deviceKey === "guard");
+  assert.deepEqual(guard.deviceOptions.standardGuards, matrix);
 });
