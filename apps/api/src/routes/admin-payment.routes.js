@@ -41,6 +41,17 @@ const ADMIN_CHARGE_RATE_LIMIT = { config: { rateLimit: { max: 8, timeWindow: "1 
  * Load the doctor an admin is acting on behalf of. Returns the same shape
  * `authenticate` puts on request.user, so every downstream helper
  * (ensureCustomerProfile, listCardsForUser, verifyAllocations) works unchanged.
+ *
+ * I8 — every route in this file trusts this to have already confirmed the
+ * target IS a doctor. Before this, `loadDoctor` validated only that a row
+ * with this id existed — `POST /admin/users/:userId/payments/charge-saved`
+ * was the only charge path with no approved-doctor predicate on the payer,
+ * and the enroll route would have happily enrolled another admin (or a
+ * plain `user`) in recurring charges, relying entirely on the frontend
+ * gating its user picker to `role === "doctor"`. Reject any non-doctor
+ * target with the SAME `DoctorNotFoundError` a missing id produces — a 404,
+ * not a 403 — so the response never leaks which ids exist versus which ids
+ * exist but aren't doctors.
  */
 async function loadDoctor(userId) {
   const [row] = await db
@@ -58,7 +69,7 @@ async function loadDoctor(userId) {
     .from(users)
     .where(eq(users.id, String(userId)))
     .limit(1);
-  if (!row) throw new DoctorNotFoundError();
+  if (!row || row.role !== "doctor") throw new DoctorNotFoundError();
   return row;
 }
 
@@ -142,6 +153,11 @@ export default async function adminPaymentRoutes(fastify) {
   }, async (request, reply) => {
     try {
       const doctor = await loadDoctor(request.params.userId);
+      // I8 — enrolling a doctor whose registration was never approved (or was
+      // rejected) in recurring charges makes no sense; treat it the same as a
+      // missing/non-doctor target rather than a distinct error that would
+      // confirm the id belongs to a real, pending account.
+      if (doctor.approvalStatus !== "approved") return notFound(reply);
       const enrollment = await autopayService.upsertEnrollment({
         user: doctor,
         ...request.body,
@@ -200,9 +216,18 @@ export default async function adminPaymentRoutes(fastify) {
     fastify.post(`/admin/users/:userId/autopay/${suffix}`, { preHandler: guard }, async (request, reply) => {
       try {
         const doctor = await loadDoctor(request.params.userId);
+        // M7 — pausedReason is a varchar(255) column; an unbounded body field
+        // would either truncate silently at the DB or (depending on the
+        // driver) error out. Reject up front with a clear message instead.
+        const reason = request.body?.reason;
+        if (reason != null && String(reason).length > 255) {
+          return reply.code(422).send({
+            error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Reason must be 255 characters or fewer.", field: "reason" },
+          });
+        }
         const enrollment = await autopayService.setPaused(doctor.id, {
           paused,
-          reason: request.body?.reason,
+          reason,
           actorUserId: request.user.id,
         });
         await auditService.logSafe({
@@ -370,6 +395,10 @@ export default async function adminPaymentRoutes(fastify) {
   }, async (request, reply) => {
     try {
       const doctor = await loadDoctor(request.params.userId);
+      // I8 — never charge a doctor whose registration isn't approved. Same
+      // 404 treatment as a missing/non-doctor target — don't confirm the id
+      // belongs to a real, pending account via a different error shape.
+      if (doctor.approvalStatus !== "approved") return notFound(reply);
       const { paymentProfileId, amount, allocations } = request.body;
       const customerProfileId = doctor.authorizeNetCustomerProfileId;
 
@@ -457,7 +486,11 @@ export default async function adminPaymentRoutes(fastify) {
   }));
 
   fastify.get("/admin/jobs/runs", { preHandler: guard }, async (request) => {
-    const limit = Math.min(Number(request.query?.limit) || 50, 200);
+    // M7 — clamp BOTH ends: a non-numeric/absent limit still defaults to 50,
+    // but a negative or zero value (e.g. `?limit=-5`) must not reach Postgres
+    // as a negative LIMIT.
+    const requested = Number(request.query?.limit);
+    const limit = Math.min(Math.max(Number.isFinite(requested) && requested > 0 ? requested : 50, 1), 200);
     const rows = await db.select().from(jobRuns).orderBy(desc(jobRuns.startedAt)).limit(limit);
     return { data: { runs: rows } };
   });
@@ -486,7 +519,17 @@ export default async function adminPaymentRoutes(fastify) {
       if (err instanceof JobLockedError) {
         return reply.code(409).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: err.message } });
       }
-      return reply.code(404).send({ error: { ...ERROR_CODES.NOT_FOUND, message: err.message } });
+      // M2 — mirror jobs/triggers/http.js: 404 ONLY for an unknown job name.
+      // Anything else used to be flattened into the same 404 with the raw
+      // err.message echoed back — a genuine unexpected failure (runJob only
+      // throws for these two cases, but a future change could add more)
+      // deserves a logged 500, not a misleading "not found" with internals
+      // in the body.
+      if (err.message?.startsWith("Unknown job")) {
+        return reply.code(404).send({ error: { ...ERROR_CODES.NOT_FOUND, message: err.message } });
+      }
+      request.log.error({ err, job: request.params.name }, "unexpected error running job trigger");
+      return reply.code(500).send({ error: ERROR_CODES.INTERNAL_ERROR });
     }
   });
 }

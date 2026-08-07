@@ -19,10 +19,15 @@ const rows = await db
   .where(isNull(invoicePayments.source));
 
 function classify(row) {
+  // M3 — every row that carries a refundsTransactionId is a reversal row,
+  // full stop: that includes both a landed refund/void AND the write-ahead
+  // guard row payment.routes.js inserts (transactionId
+  // `REFUND-PENDING-<txid>`) BEFORE calling the gateway, and that guard row
+  // already sets refundsTransactionId — so a separate `startsWith("REFUND-
+  // PENDING-")` branch below this check could never fire; it was dead code.
   if (row.refunds) return "refund";
   const tx = String(row.transactionId || "");
   if (tx.startsWith("OFFLINE-")) return "admin_offline";
-  if (tx.startsWith("REFUND-PENDING-")) return "refund";
   // Everything else predates AutoPay and admin charging, so it came from a
   // doctor-initiated charge. We cannot distinguish saved-card from hosted
   // retroactively; doctor_card is the honest umbrella.

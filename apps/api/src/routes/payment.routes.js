@@ -1169,6 +1169,13 @@ export default async function paymentRoutes(fastify) {
           // above to not exceed what each invoice was charged). Either way the
           // rows sum to exactly what was reversed at the gateway, so per-invoice
           // totals stay consistent.
+          // M3 — tag every reversal row `source: "refund"`. Before this, no
+          // runtime path ever wrote it (only the one-off backfill script
+          // guessed it retroactively from the transactionId prefix), so a
+          // refund recorded through the live admin flow showed no source at
+          // all in both payment history views — the one origin they could
+          // have derived with certainty (this IS the refund code path) was
+          // the one left blank.
           const reversalRows = partialPlan
             ? partialPlan.rows.map((r) => ({
                 id: createId(),
@@ -1180,6 +1187,7 @@ export default async function paymentRoutes(fastify) {
                 transactionId: refundTxnId,
                 refundsTransactionId: txid,
                 seazonaPaymentId: null,
+                source: "refund",
               }))
             : originalRows.map((r) => ({
                 id: createId(),
@@ -1191,6 +1199,7 @@ export default async function paymentRoutes(fastify) {
                 transactionId: refundTxnId,
                 refundsTransactionId: txid,
                 seazonaPaymentId: null,
+                source: "refund",
               }));
 
           let ledgerWriteFailed = false;

@@ -36,6 +36,7 @@ const SOURCE_LABEL = {
   doctor_hosted: "Card",
   admin_card: "By lab",
   admin_offline: "Recorded by lab",
+  refund: "Refund",
 };
 
 export function PaymentsPage() {

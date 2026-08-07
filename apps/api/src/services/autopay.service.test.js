@@ -112,6 +112,49 @@ describe("enrollment validation", () => {
     expect(created.status).toBe("active");
   });
 
+  // I5 — turning AutoPay OFF must never be blocked by validation that exists
+  // to gate turning it ON. Both admin surfaces implement "disable" as a full
+  // PUT carrying the existing amount/day/card.
+  it("allows disabling even when the amount is below the floor", async () => {
+    const e = await upsertEnrollment({
+      user, amount: 50, dayOfMonth: 15, paymentProfileId: "pp1", enabled: false, actorUserId: "admin1",
+    });
+    expect(e.enabled).toBe(false);
+  });
+
+  it("allows disabling even when the card gateway is down", async () => {
+    gatewayError = new Error("Authorize.net timed out");
+    const e = await upsertEnrollment({
+      user, amount: 300, dayOfMonth: 15, paymentProfileId: "pp1", enabled: false, actorUserId: "admin1",
+    });
+    expect(e.enabled).toBe(false);
+  });
+
+  it("allows disabling even when no card is on file at all", async () => {
+    cards = [];
+    const e = await upsertEnrollment({
+      user, amount: 300, dayOfMonth: 15, paymentProfileId: "pp1", enabled: false, actorUserId: "admin1",
+    });
+    expect(e.enabled).toBe(false);
+  });
+
+  it("still enforces the floor and card check when enabling", async () => {
+    await expect(
+      upsertEnrollment({
+        user, amount: 50, dayOfMonth: 15, paymentProfileId: "pp1", enabled: true, actorUserId: "admin1",
+      })
+    ).rejects.toThrow(AutopayValidationError);
+  });
+
+  it("still enforces both checks when `enabled` is omitted and the enrollment is already enabled", async () => {
+    await upsertEnrollment({ user, amount: 300, dayOfMonth: 15, paymentProfileId: "pp1", enabled: true, actorUserId: "u1" });
+    // Now update amount/day WITHOUT touching `enabled` — the resulting state
+    // is still enabled, so the floor must still apply.
+    await expect(
+      upsertEnrollment({ user, amount: 50, dayOfMonth: 20, paymentProfileId: "pp1", actorUserId: "u1" })
+    ).rejects.toThrow(AutopayValidationError);
+  });
+
   it("does not report a transient gateway error as a missing card", async () => {
     gatewayError = new Error("Authorize.net getCustomerProfile failed: resultCode Error");
     await expect(

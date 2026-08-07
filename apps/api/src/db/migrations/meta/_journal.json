@@ -169,6 +169,13 @@
       "when": 1791255928071,
       "tag": "0023_moaning_rictor",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791256071252,
+      "tag": "0024_loving_rockslide",
+      "breakpoints": true
     }
   ]
 }

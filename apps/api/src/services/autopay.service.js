@@ -74,41 +74,57 @@ export async function upsertEnrollment({
 
   const amt = Number(amount);
   if (!(amt > 0)) throw new AutopayValidationError("Amount must be greater than zero.", "amount");
-  if (amt < floor) {
-    throw new AutopayValidationError(
-      `AutoPay amount must be at least $${floor.toFixed(2)}.`,
-      "amount"
-    );
-  }
 
-  // A card on file is a hard requirement — verified at the gateway, not just in
-  // the UI. An enrollment pointing at a card that does not exist would fail
-  // silently every cycle.
-  //
-  // The gateway check can fail two very different ways, and they must not be
-  // conflated:
-  //   1. CardNotFoundError — the gateway answered and the card genuinely isn't
-  //      there. This is a real user error: reject with AutopayValidationError
-  //      so the route can 422 and point the doctor at "add a card".
-  //   2. Anything else (network error, stale customerProfileId, a non-"Ok"
-  //      resultCode from Authorize.net) — the gateway itself is unwell.
-  //      card.service.js's assertCardExists does not catch these; they
-  //      propagate straight out of authorizenet.service.js's apiRequest. If we
-  //      let a CardNotFoundError-style 422 result from this, a doctor with a
-  //      perfectly good card on file would be told to go add one during a
-  //      transient outage — which is worse than just failing the request.
-  //      Wrap it distinctly (AutopayGatewayError) so the route layer can
-  //      return a 502/503 instead.
-  try {
-    await assertCardExists(user, paymentProfileId);
-  } catch (err) {
-    if (err instanceof CardNotFoundError) {
+  // I5 — the floor check and the card-on-file gateway check exist to gate
+  // turning AutoPay ON. Turning it OFF must never be blocked by them: both
+  // admin surfaces implement "disable" as a full PUT carrying the existing
+  // amount/day/card, so a raised AUTOPAY_MIN_AMOUNT or an Authorize.net
+  // outage would otherwise 422/502 a disable request and leave the
+  // enrollment stuck ENABLED — exactly when an admin most needs to stop it.
+  // Skip ONLY on an EXPLICIT `enabled: false` — both real callers (the
+  // doctor page, the admin drawer) always send `enabled` explicitly, so this
+  // exactly targets a genuine disable action. Omitting the field (or passing
+  // `true`) keeps validating, same as before this fix — a caller who doesn't
+  // say "turn this off" gets no special treatment.
+  const resultingEnabled = enabled !== false;
+
+  if (resultingEnabled) {
+    if (amt < floor) {
       throw new AutopayValidationError(
-        "That card is not on file. Add a card before enrolling in AutoPay.",
-        "paymentProfileId"
+        `AutoPay amount must be at least $${floor.toFixed(2)}.`,
+        "amount"
       );
     }
-    throw new AutopayGatewayError(err);
+
+    // A card on file is a hard requirement — verified at the gateway, not just in
+    // the UI. An enrollment pointing at a card that does not exist would fail
+    // silently every cycle.
+    //
+    // The gateway check can fail two very different ways, and they must not be
+    // conflated:
+    //   1. CardNotFoundError — the gateway answered and the card genuinely isn't
+    //      there. This is a real user error: reject with AutopayValidationError
+    //      so the route can 422 and point the doctor at "add a card".
+    //   2. Anything else (network error, stale customerProfileId, a non-"Ok"
+    //      resultCode from Authorize.net) — the gateway itself is unwell.
+    //      card.service.js's assertCardExists does not catch these; they
+    //      propagate straight out of authorizenet.service.js's apiRequest. If we
+    //      let a CardNotFoundError-style 422 result from this, a doctor with a
+    //      perfectly good card on file would be told to go add one during a
+    //      transient outage — which is worse than just failing the request.
+    //      Wrap it distinctly (AutopayGatewayError) so the route layer can
+    //      return a 502/503 instead.
+    try {
+      await assertCardExists(user, paymentProfileId);
+    } catch (err) {
+      if (err instanceof CardNotFoundError) {
+        throw new AutopayValidationError(
+          "That card is not on file. Add a card before enrolling in AutoPay.",
+          "paymentProfileId"
+        );
+      }
+      throw new AutopayGatewayError(err);
+    }
   }
 
   const values = {
