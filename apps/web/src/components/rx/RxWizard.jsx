@@ -19,6 +19,11 @@ import { RECORDS_METHODS, PHYSICAL_BITE, FIRST_DEVICE, RUSH_TIERS } from "../../
 import { DeviceOptionsPanel } from "./DeviceOptionsPanel";
 import { Signature } from "./Signature";
 import { DueDatePicker } from "./DueDatePicker";
+// One visibility predicate for the whole Rx surface. This file used to carry a
+// third hand-copied "keep in sync" copy that knew only equals/prefix, so a
+// device option gated on `showIf.includes` was collected into the payload even
+// when it was never shown.
+import { shouldShow } from "./field-logic.js";
 
 /* ════════════════════════════════════════════════════════════════
    CONSTANTS
@@ -70,16 +75,6 @@ const INITIAL_FORM = {
 
 const INPUT =
   "w-full px-4 py-3 rounded-xl bg-surface-50 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-navy/25";
-
-/* Mirrors the shouldShow predicate in DeviceOptionsPanel.jsx — keep in sync. */
-function shouldShow(field, values) {
-  if (!field.showIf) return true;
-  const other = values[field.showIf.key];
-  if (field.showIf.equals != null) return other === field.showIf.equals;
-  if (field.showIf.prefix != null)
-    return typeof other === "string" && other.startsWith(field.showIf.prefix);
-  return true;
-}
 
 /* ════════════════════════════════════════════════════════════════
    SHARED SUB-COMPONENTS

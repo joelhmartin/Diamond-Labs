@@ -1,18 +1,19 @@
 /**
- * Pure conditional-visibility predicate for form fields.
+ * Conditional-visibility predicate for form fields, for the React side.
  *
- * Kept in a JSX-free module so `node --test` can import it directly
- * (`fields.jsx` re-exports it for the React side).
+ * There is exactly ONE implementation, in ../../data/forms/form-logic.js, and
+ * this module re-exports it. It used to be a second hand-written copy that knew
+ * only `equals`/`prefix` and fell through to `true` for anything else — so a
+ * field gated on `showIf.includes` was visible to FormField even when
+ * FormRenderer had already filtered it out. That split (the renderer filtering
+ * with one predicate while the field re-checks with another) is what caused a
+ * Critical in Task 9; the only durable fix is for there to be nothing to keep
+ * in sync.
  *
- * showIf shapes:
- *   { key, equals }  -> show when answers[key] === equals
- *   { key, prefix }  -> show when answers[key] is a string starting with prefix
+ * Supported showIf shapes — see form-logic.js for the authoritative contract:
+ *   { key, includes } | { key, equals } | { key, prefix }
+ *
+ * Kept as its own JSX-free module so importers (fields.jsx re-exports it) and
+ * plain-node tests do not change.
  */
-export function shouldShow(field, answers) {
-  if (!field.showIf) return true;
-  const other = (answers || {})[field.showIf.key];
-  if (field.showIf.equals != null) return other === field.showIf.equals;
-  if (field.showIf.prefix != null)
-    return typeof other === "string" && other.startsWith(field.showIf.prefix);
-  return true;
-}
+export { shouldShow } from "../../data/forms/form-logic.js";
