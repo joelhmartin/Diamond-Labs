@@ -37,7 +37,7 @@ export function DueDatePicker({ value, onChange, rush, onRushChange }) {
 
   return (
     <div>
-      <label className="block text-xs font-semibold text-navy/40 uppercase tracking-wider mb-2">
+      <label className="block text-xs font-semibold text-secondary uppercase tracking-wider mb-2">
         Due date requested
       </label>
 
@@ -45,7 +45,7 @@ export function DueDatePicker({ value, onChange, rush, onRushChange }) {
         <div className="relative flex-1">
           <Calendar
             size={16}
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-navy/30 pointer-events-none"
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-icon pointer-events-none"
           />
           <input
             type="date"
@@ -99,7 +99,7 @@ export function DueDatePicker({ value, onChange, rush, onRushChange }) {
             <Zap size={13} className="text-accent-500" />
             Rush this case
           </div>
-          <div className="text-xs text-navy/40 mt-0.5">
+          <div className="text-xs text-muted mt-0.5">
             Expedited 3–5 business day turnaround (+$75).
           </div>
         </div>

@@ -74,7 +74,7 @@ const INITIAL_FORM = {
 };
 
 const INPUT =
-  "w-full px-4 py-3 rounded-xl bg-surface-50 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-navy/25";
+  "w-full px-4 py-3 rounded-xl bg-surface-50 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-muted";
 
 /* ════════════════════════════════════════════════════════════════
    SHARED SUB-COMPONENTS
@@ -83,7 +83,7 @@ const INPUT =
 function Field({ label, required, children }) {
   return (
     <div>
-      <label className="block text-xs font-semibold text-navy/40 uppercase tracking-wider mb-2">
+      <label className="block text-xs font-semibold text-secondary uppercase tracking-wider mb-2">
         {label} {required && <span className="text-red-400">*</span>}
       </label>
       {children}
@@ -102,7 +102,7 @@ function StepHeader({ current, total, labels }) {
       </div>
       <div className="flex items-center justify-between">
         <div>
-          <span className="font-mono text-[10px] text-navy/30 uppercase tracking-wider">
+          <span className="font-mono text-[10px] text-muted uppercase tracking-wider">
             Step {current + 1} of {total}
           </span>
           <h2 className="font-heading font-bold text-lg text-navy tracking-tight mt-0.5">
@@ -110,7 +110,7 @@ function StepHeader({ current, total, labels }) {
           </h2>
         </div>
         {current < total - 1 && (
-          <span className="hidden sm:block font-mono text-[10px] text-navy/20 uppercase tracking-wider">
+          <span className="hidden sm:block font-mono text-[10px] text-muted uppercase tracking-wider">
             Next: {labels[current + 1]}
           </span>
         )}
@@ -125,7 +125,7 @@ function FileUploadZone({ label, hint, accept, files, onAdd, onRemove }) {
 
   return (
     <div>
-      <label className="block text-xs font-semibold text-navy/40 uppercase tracking-wider mb-2">
+      <label className="block text-xs font-semibold text-secondary uppercase tracking-wider mb-2">
         {label}
       </label>
       <div
@@ -149,14 +149,14 @@ function FileUploadZone({ label, hint, accept, files, onAdd, onRemove }) {
         <Upload
           size={24}
           className={`mx-auto mb-2 transition-colors ${
-            drag ? "text-brand-500" : "text-navy/20"
+            drag ? "text-brand-500" : "text-icon"
           }`}
         />
-        <p className="text-sm text-navy/50">
+        <p className="text-sm text-secondary">
           Drag & drop files here, or{" "}
           <span className="text-brand-500 font-medium">browse</span>
         </p>
-        {hint && <p className="mt-1 text-[11px] text-navy/25">{hint}</p>}
+        {hint && <p className="mt-1 text-[11px] text-muted">{hint}</p>}
         <input
           ref={inputRef}
           type="file"
@@ -185,14 +185,14 @@ function FileUploadZone({ label, hint, accept, files, onAdd, onRemove }) {
                 />
               ) : (
                 <div className="w-8 h-8 rounded-lg bg-surface-200/60 flex items-center justify-center">
-                  <FileText size={14} className="text-navy/30" />
+                  <FileText size={14} className="text-icon" />
                 </div>
               )}
               <div className="min-w-0">
                 <p className="text-xs font-medium text-navy/70 truncate max-w-[110px]">
                   {f.name}
                 </p>
-                <p className="text-[10px] text-navy/25">
+                <p className="text-[10px] text-muted">
                   {(f.size / 1024 / 1024).toFixed(1)} MB
                 </p>
               </div>
@@ -202,7 +202,7 @@ function FileUploadZone({ label, hint, accept, files, onAdd, onRemove }) {
                   e.stopPropagation();
                   onRemove(f.id);
                 }}
-                className="w-6 h-6 rounded-full flex items-center justify-center text-navy/20 hover:text-red-400 hover:bg-red-50 transition-all"
+                className="w-6 h-6 rounded-full flex items-center justify-center text-icon hover:text-red-400 hover:bg-red-50 transition-all"
               >
                 <X size={12} />
               </button>
@@ -217,7 +217,7 @@ function FileUploadZone({ label, hint, accept, files, onAdd, onRemove }) {
 function RecordsMethodPicker({ value, onChange }) {
   return (
     <div>
-      <label className="block text-xs font-semibold text-navy/40 uppercase tracking-wider mb-3">
+      <label className="block text-xs font-semibold text-secondary uppercase tracking-wider mb-3">
         Records Method
       </label>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -263,7 +263,7 @@ function RecordsMethodPicker({ value, onChange }) {
 function PhysicalBitePicker({ value, onChange }) {
   return (
     <div>
-      <label className="block text-xs font-semibold text-navy/40 uppercase tracking-wider mb-3">
+      <label className="block text-xs font-semibold text-secondary uppercase tracking-wider mb-3">
         Physical Bite
       </label>
       <div className="space-y-2">
@@ -334,7 +334,7 @@ function DevicePicker({ selected, onSelect, query, setQuery, activeCat, setActiv
         <div className="relative flex-1">
           <Search
             size={14}
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-navy/30"
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-icon"
           />
           <input
             type="text"
@@ -367,7 +367,7 @@ function DevicePicker({ selected, onSelect, query, setQuery, activeCat, setActiv
 
       {/* Grid */}
       {filtered.length === 0 ? (
-        <div className="py-12 text-center text-sm text-navy/40">
+        <div className="py-12 text-center text-sm text-muted">
           No devices match that search.
         </div>
       ) : (
@@ -402,7 +402,7 @@ function DevicePicker({ selected, onSelect, query, setQuery, activeCat, setActiv
                       }}
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-navy/20">
+                    <div className="w-full h-full flex items-center justify-center text-icon">
                       <Package size={32} />
                     </div>
                   )}
@@ -417,7 +417,7 @@ function DevicePicker({ selected, onSelect, query, setQuery, activeCat, setActiv
                     {catMeta.label}
                   </span>
                 </div>
-                <p className="text-[11px] text-navy/40 leading-relaxed">{d.tagline}</p>
+                <p className="text-[11px] text-muted leading-relaxed">{d.tagline}</p>
               </button>
             );
           })}
@@ -446,7 +446,7 @@ function DeviceThumb({ device, onEdit }) {
             }}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-navy/20">
+          <div className="w-full h-full flex items-center justify-center text-icon">
             <Package size={20} />
           </div>
         )}
@@ -462,11 +462,11 @@ function DeviceThumb({ device, onEdit }) {
             {catMeta.label}
           </span>
         </div>
-        <p className="text-xs text-navy/40 truncate">{device.fullName}</p>
+        <p className="text-xs text-muted truncate">{device.fullName}</p>
       </div>
       <Pencil
         size={14}
-        className="text-navy/20 group-hover:text-brand-500 transition-colors flex-shrink-0"
+        className="text-icon group-hover:text-brand-500 transition-colors flex-shrink-0"
       />
     </button>
   );
@@ -501,7 +501,7 @@ function ReviewField({ label, value }) {
   const display = Array.isArray(value) ? value.join(", ") : String(value);
   return (
     <div className="flex items-start gap-3 py-0.5">
-      <span className="text-[10px] font-semibold text-navy/25 uppercase tracking-wider w-28 flex-shrink-0 pt-0.5">
+      <span className="text-[10px] font-semibold text-secondary uppercase tracking-wider w-28 flex-shrink-0 pt-0.5">
         {label}
       </span>
       <span className="text-sm text-navy/70 flex-1">{display}</span>
@@ -717,7 +717,7 @@ export function RxWizard({ prefill = {}, onSubmit, submitting = false }) {
                       disabled
                       placeholder="Dr. Jane Smith"
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-mono text-navy/25 uppercase tracking-wider pointer-events-none">
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-mono text-muted uppercase tracking-wider pointer-events-none">
                       pre-filled
                     </span>
                   </div>
@@ -739,7 +739,7 @@ export function RxWizard({ prefill = {}, onSubmit, submitting = false }) {
                       disabled
                       placeholder="doctor@practice.com"
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-mono text-navy/25 uppercase tracking-wider pointer-events-none">
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-mono text-muted uppercase tracking-wider pointer-events-none">
                       pre-filled
                     </span>
                   </div>
@@ -753,7 +753,7 @@ export function RxWizard({ prefill = {}, onSubmit, submitting = false }) {
                       disabled
                       placeholder="(555) 123-4567"
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-mono text-navy/25 uppercase tracking-wider pointer-events-none">
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-mono text-muted uppercase tracking-wider pointer-events-none">
                       pre-filled
                     </span>
                   </div>
@@ -851,7 +851,7 @@ export function RxWizard({ prefill = {}, onSubmit, submitting = false }) {
               />
               {form.rush && (
                 <div className="mt-3 space-y-2">
-                  <label className="block text-xs font-semibold text-navy/40 uppercase tracking-wider">
+                  <label className="block text-xs font-semibold text-secondary uppercase tracking-wider">
                     Rush Tier
                   </label>
                   {Object.entries(RUSH_TIERS).map(([key, tier]) => (
@@ -947,7 +947,7 @@ export function RxWizard({ prefill = {}, onSubmit, submitting = false }) {
           <div className="p-6 md:p-8">
             {form.device && (
               <div className="mb-6">
-                <p className="text-xs font-mono text-navy/40 uppercase tracking-wider mb-2">
+                <p className="text-xs font-mono text-secondary uppercase tracking-wider mb-2">
                   Currently selected
                 </p>
                 <DeviceThumb
@@ -991,7 +991,7 @@ export function RxWizard({ prefill = {}, onSubmit, submitting = false }) {
                 />
               </>
             ) : (
-              <div className="text-center py-12 text-sm text-navy/40">
+              <div className="text-center py-12 text-sm text-muted">
                 Go back and select a device first.
               </div>
             )}
@@ -1116,7 +1116,7 @@ export function RxWizard({ prefill = {}, onSubmit, submitting = false }) {
               {form.device ? (
                 <DeviceThumb device={form.device} onEdit={() => setStep(1)} />
               ) : (
-                <span className="text-xs text-navy/25 italic">
+                <span className="text-xs text-muted italic">
                   No device selected
                 </span>
               )}
@@ -1149,7 +1149,7 @@ export function RxWizard({ prefill = {}, onSubmit, submitting = false }) {
                   })}
                 </div>
               ) : (
-                <span className="text-xs text-navy/25 italic">
+                <span className="text-xs text-muted italic">
                   No options set
                 </span>
               )}
@@ -1170,7 +1170,7 @@ export function RxWizard({ prefill = {}, onSubmit, submitting = false }) {
                           className="w-5 h-5 rounded object-cover"
                         />
                       ) : (
-                        <FileText size={12} className="text-navy/30" />
+                        <FileText size={12} className="text-icon" />
                       )}
                       <span className="text-navy/60 truncate max-w-[100px]">
                         {f.name}
@@ -1179,7 +1179,7 @@ export function RxWizard({ prefill = {}, onSubmit, submitting = false }) {
                   ))}
                 </div>
               ) : (
-                <span className="text-xs text-navy/25 italic">
+                <span className="text-xs text-muted italic">
                   No files uploaded
                 </span>
               )}
@@ -1213,7 +1213,7 @@ export function RxWizard({ prefill = {}, onSubmit, submitting = false }) {
           <button
             type="button"
             onClick={prev}
-            className="flex items-center gap-1.5 px-5 py-2.5 rounded-full text-sm font-medium text-navy/50 hover:text-navy hover:bg-surface-100 transition-all"
+            className="flex items-center gap-1.5 px-5 py-2.5 rounded-full text-sm font-medium text-secondary hover:text-navy hover:bg-surface-100 transition-all"
           >
             <ChevronLeft size={16} /> Back
           </button>

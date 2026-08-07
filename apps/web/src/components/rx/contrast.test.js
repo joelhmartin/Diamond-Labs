@@ -20,11 +20,18 @@ test("no rx form component renders text below the muted floor", () => {
   // fileURLToPath, not URL.pathname — this repo's path contains a space and
   // pathname would hand back a percent-encoded string that fs cannot read.
   const dir = path.dirname(fileURLToPath(import.meta.url));
+  // EVERY .jsx in this directory, not a hand-listed pair. The list used to be
+  // ["fields.jsx", "FormRenderer.jsx"], which could not see the failing
+  // contrast on the required Doctor Signature label (Signature.jsx, 2.54:1) or
+  // the Artboard hint — both of which render inside the consolidated form.
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith(".jsx")).sort();
+  assert.ok(files.length >= 5, `expected to scan the whole rx component dir, found ${files.length} files`);
+
   // `text-icon` is the decorative-icon token (3.36:1, clears the 3:1 bar for
   // UI components) and is deliberately not matched here.
   const banned = /text-navy\/(20|25|30|40|45|50)\b/g;
   const offenders = [];
-  for (const file of ["fields.jsx", "FormRenderer.jsx"]) {
+  for (const file of files) {
     const src = fs.readFileSync(path.join(dir, file), "utf8");
     for (const m of src.matchAll(banned)) offenders.push(`${file}: ${m[0]}`);
   }
