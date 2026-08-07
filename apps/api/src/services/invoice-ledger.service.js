@@ -11,31 +11,49 @@ import { summarizePayments } from "../lib/payment-summary.js";
  * routes (display) and the payment routes (the C1 over-allocation cap) read the
  * SAME aggregation, with no behavior drift.
  *
- * Both helpers fail SOFT (degrade to 0 / empty map) on a DB error — consistent
+ * Most callers fail SOFT (degrade to 0 / empty map) on a DB error — consistent
  * with the original invoice.routes.js behavior — rather than propagating a 500.
+ * Money-path callers (over-allocation caps, AutoPay balance resolution) must
+ * use the STRICT variant instead: "paid so far = 0" makes an invoice look
+ * fully unpaid again, which fails a guard OPEN rather than closed.
  */
 
 /**
  * Sum of applied portal payments per Seazona invoice for one user.
+ * THROWS on a database error — callers that use this map to resolve a
+ * balance to charge must fail closed, not silently reopen every invoice's
+ * full total (see getInvoicePortalPaidStrict for the single-invoice sibling).
  * @param {string} userId
  * @returns {Promise<Record<string, number>>} { [seazonaInvoiceId]: sumAppliedAmount }
  */
+export async function getPortalPaidMapStrict(userId) {
+  const rows = await db
+    .select({
+      seazonaInvoiceId: invoicePayments.seazonaInvoiceId,
+      totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
+    })
+    .from(invoicePayments)
+    .where(eq(invoicePayments.userId, userId))
+    .groupBy(invoicePayments.seazonaInvoiceId);
+
+  const map = {};
+  for (const row of rows) {
+    map[row.seazonaInvoiceId] = parseFloat(row.totalPaid || 0);
+  }
+  return map;
+}
+
+/**
+ * Soft-fail variant for DISPLAY ONLY: on a database error it degrades to an
+ * empty map (every invoice reads as fully unpaid). Never use this on a money
+ * path — see the module doc comment. Wraps getPortalPaidMapStrict so there is
+ * one query, not two copies that can drift.
+ * @param {string} userId
+ * @returns {Promise<Record<string, number>>}
+ */
 export async function getPortalPaidMap(userId) {
   try {
-    const rows = await db
-      .select({
-        seazonaInvoiceId: invoicePayments.seazonaInvoiceId,
-        totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
-      })
-      .from(invoicePayments)
-      .where(eq(invoicePayments.userId, userId))
-      .groupBy(invoicePayments.seazonaInvoiceId);
-
-    const map = {};
-    for (const row of rows) {
-      map[row.seazonaInvoiceId] = parseFloat(row.totalPaid || 0);
-    }
-    return map;
+    return await getPortalPaidMapStrict(userId);
   } catch (err) {
     console.error("[invoiceLedger] getPortalPaidMap DB error — degrading to empty map:", err);
     return {};

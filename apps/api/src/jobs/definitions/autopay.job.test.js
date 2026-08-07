@@ -22,11 +22,27 @@ vi.mock("../../services/payment-recording.service.js", () => ({
 
 const attempts = [];
 const enrollmentUpdates = [];
+// runAutopaySweep's enrollment query — controlled per-test via `dueRows`.
+let dueRows = [];
 vi.mock("../../config/database.js", () => ({
   db: {
     insert: () => ({ values: async (v) => { attempts.push(v); } }),
     update: () => ({ set: (v) => ({ where: async () => { enrollmentUpdates.push(v); } }) }),
+    select: () => ({ from: () => ({ innerJoin: () => ({ where: async () => dueRows }) }) }),
   },
+}));
+
+// Reachability-aware Seazona read + the STRICT ledger read — controlled per
+// test so the two Critical-bug regression tests (ledger blip, Seazona outage)
+// can force each failure mode independently of the gateway/db mocks above.
+const seazonaGetInvoicesResult = vi.fn(async () => ({ reachable: true, invoices: [] }));
+vi.mock("../../services/seazona.service.js", () => ({
+  getInvoicesResult: seazonaGetInvoicesResult,
+}));
+
+const ledgerGetPortalPaidMapStrict = vi.fn(async () => ({}));
+vi.mock("../../services/invoice-ledger.service.js", () => ({
+  getPortalPaidMapStrict: ledgerGetPortalPaidMapStrict,
 }));
 
 // Same db/redis mocking pattern as jobs/runner.test.js — withIdempotency and
@@ -54,7 +70,7 @@ vi.mock("../../config/redis.js", () => ({
   },
 }));
 
-const { processEnrollment } = await import("../../services/autopay-runner.service.js");
+const { processEnrollment, runAutopaySweep } = await import("../../services/autopay-runner.service.js");
 
 const doctor = {
   id: "u1", email: "d@x.com", name: "Doc",
@@ -67,17 +83,33 @@ const invoices = [
   { id: "i2", invoiceNumber: "1002", balance: 400, dueDate: "2026-02-01" },
 ];
 
+// Raw Seazona-shaped invoices for the runAutopaySweep-level tests — same
+// dollar amounts as `invoices` above (balance = total - portal-paid), so a
+// sweep run through resolveOpenInvoices() produces the identical allocation
+// plan as the direct processEnrollment tests.
+const rawSeazonaInvoices = [
+  { id: "i1", invoiceNumber: "1001", clientId: "c1", total: 300, due: "2026-01-01" },
+  { id: "i2", invoiceNumber: "1002", clientId: "c1", total: 400, due: "2026-02-01" },
+];
+
+// Aug 15 09:00 America/Chicago (the default AUTOPAY_TIMEZONE) — day 15,
+// matching `enrollment.dayOfMonth`, so isDueOn() picks this enrollment up.
+const now = new Date("2026-08-15T14:00:00Z");
+
 beforeEach(() => {
   charged.length = 0;
   recorded.length = 0;
   attempts.length = 0;
   enrollmentUpdates.length = 0;
   lockStore.clear();
+  dueRows = [];
+  seazonaGetInvoicesResult.mockClear();
+  seazonaGetInvoicesResult.mockImplementation(async () => ({ reachable: true, invoices: rawSeazonaInvoices }));
+  ledgerGetPortalPaidMapStrict.mockClear();
+  ledgerGetPortalPaidMapStrict.mockImplementation(async () => ({}));
 });
 
 describe("processEnrollment", () => {
-  const now = new Date("2026-08-15T14:00:00Z");
-
   it("charges the enrolled amount and allocates oldest-first", async () => {
     const attempt = await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r1" });
     expect(charged[0]).toMatchObject({ customerProfileId: "cp1", paymentProfileId: "pp1", amount: 500 });
@@ -122,5 +154,96 @@ describe("processEnrollment", () => {
     const attempt = await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r1" });
     expect(attempt.status).toBe("failed");
     expect(attempt.failureReason).toMatch(/declined/i);
+  });
+
+  // Critical 2(b) — `completed` must be recoverable: a doctor who paid off in
+  // full and later receives new invoices has to resume automatically, not
+  // stay silently disabled forever.
+  it("reactivates a completed enrollment that owes money again and still charges it", async () => {
+    const completedEnrollment = { ...enrollment, status: "completed" };
+    const attempt = await processEnrollment({
+      enrollment: completedEnrollment, doctor, invoices, dryRun: false, now, runId: "r1",
+    });
+    expect(enrollmentUpdates.some((u) => u.status === "active")).toBe(true);
+    expect(charged).toHaveLength(1);
+    expect(attempt.status).toBe("succeeded");
+  });
+});
+
+describe("runAutopaySweep", () => {
+  // Critical 1 — a ledger-read blip must never be read as "paid so far = 0"
+  // (which would reopen the full invoice total and overcharge).
+  it("records a failed attempt and charges nothing when the local ledger read fails", async () => {
+    dueRows = [{ enrollment, doctor }];
+    ledgerGetPortalPaidMapStrict.mockRejectedValueOnce(new Error("connection reset"));
+
+    const summary = await runAutopaySweep({ dryRun: false, now, runId: "r1" });
+
+    expect(charged).toHaveLength(0);
+    expect(summary.failed).toBe(1);
+    expect(summary.charged).toBe(0);
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0].status).toBe("failed");
+    expect(attempts[0].failureReason).toMatch(/ledger read failed/i);
+  });
+
+  // Critical 2(a) — a Seazona outage must never be read as "zero invoices".
+  it("records a skipped attempt, leaves status untouched, and charges nothing when Seazona is unreachable", async () => {
+    dueRows = [{ enrollment, doctor }];
+    seazonaGetInvoicesResult.mockResolvedValueOnce({ reachable: false, invoices: [] });
+
+    const summary = await runAutopaySweep({ dryRun: false, now, runId: "r1" });
+
+    expect(charged).toHaveLength(0);
+    expect(summary.skipped).toBe(1);
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0].status).toBe("skipped");
+    expect(attempts[0].failureReason).toMatch(/seazona unreachable/i);
+    // No enrollment update at all — status must be left exactly as it was,
+    // not inferred as paid-off from an outage.
+    expect(enrollmentUpdates).toHaveLength(0);
+  });
+
+  it("charges a due enrollment end-to-end when Seazona and the ledger are healthy", async () => {
+    dueRows = [{ enrollment, doctor }];
+
+    const summary = await runAutopaySweep({ dryRun: false, now, runId: "r1" });
+
+    expect(charged).toHaveLength(1);
+    expect(charged[0].amount).toBe(500);
+    expect(summary.charged).toBe(1);
+    expect(summary.totalAmount).toBe(500);
+  });
+});
+
+describe("autopay job — two-switch dry-run gate", () => {
+  // Minor — the safety valve itself: a live run request must still resolve to
+  // a dry run when AUTOPAY_LIVE_RUN is false. Spies on runAutopaySweep rather
+  // than going fully end-to-end so this doesn't depend on the real wall-clock
+  // date lining up with `enrollment.dayOfMonth` (the job handler — correctly
+  // — does not accept an injectable `now`; that's a scheduler concern, not a
+  // gate concern) — it isolates exactly the one thing this test is for: what
+  // `dryRun` value autopay.job.js's handler passes down.
+  it("stays dry when a live run is requested but AUTOPAY_LIVE_RUN is false", async () => {
+    const { env } = await import("../../config/env.js");
+    const original = env.AUTOPAY_LIVE_RUN;
+    env.AUTOPAY_LIVE_RUN = false;
+
+    const runnerModule = await import("../../services/autopay-runner.service.js");
+    const spy = vi.spyOn(runnerModule, "runAutopaySweep").mockResolvedValue({
+      considered: 0, charged: 0, skipped: 0, failed: 0, wouldCharge: 0, totalAmount: 0,
+    });
+
+    try {
+      await import("./autopay.job.js");
+      const { getJob } = await import("../registry.js");
+      await getJob("autopay").handler({ dryRun: false, log: undefined, runId: "r1" });
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy.mock.calls[0][0]).toMatchObject({ dryRun: true });
+    } finally {
+      env.AUTOPAY_LIVE_RUN = original;
+      spy.mockRestore();
+    }
   });
 });
