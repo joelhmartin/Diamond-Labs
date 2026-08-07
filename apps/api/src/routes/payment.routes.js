@@ -68,7 +68,7 @@ function round2(n) {
  * is a system failure → 502 PAYMENT_GATEWAY_ERROR with a generic message. We
  * never leak internals or stack traces to the client.
  */
-function chargeErrorReply(reply, err) {
+export function chargeErrorReply(reply, err) {
   if (err?.authNetResponse) {
     const message = extractDeclineMessage(err.authNetResponse) || ERROR_CODES.CARD_DECLINED.message;
     return reply.code(402).send({ error: { ...ERROR_CODES.CARD_DECLINED, message } });
@@ -139,7 +139,7 @@ function buildInvoiceReference(allocations) {
  * (alertable) and reported back as a warning rather than surfaced as a 500
  * (which would invite a re-charge on retry).
  */
-async function recordPaymentAndAllocations({ user, amount, transactionId, allocations }) {
+export async function recordPaymentAndAllocations({ user, amount, transactionId, allocations }) {
   let seazonaPaymentId = null;
 
   // Seazona has no sandbox — createPayment writes to the live system. Only do it
@@ -264,7 +264,7 @@ async function recordPaymentAndAllocations({ user, amount, transactionId, alloca
  * or "validation" (cap exceeded, → 422). Uses the SAME live invoice it already
  * fetched for ownership to compute the remaining balance — no extra fetch.
  */
-async function verifyAllocations(allocations, user, { enforceCap = false } = {}) {
+export async function verifyAllocations(allocations, user, { enforceCap = false } = {}) {
   for (const a of allocations) {
     const inv = await seazonaService.getInvoice(a.invoiceId);
     if (!inv) return { kind: "forbidden", message: `Invoice ${a.invoiceNumber || a.invoiceId} not found.` };
@@ -295,7 +295,7 @@ async function verifyAllocations(allocations, user, { enforceCap = false } = {})
  * Reply for a per-invoice lock contention (D1). Reuses CHARGE_IN_PROGRESS's 409
  * shape with an invoice-specific message so the client shows a clean "retry".
  */
-function sendInvoiceLockedError(reply) {
+export function sendInvoiceLockedError(reply) {
   return reply.code(409).send({
     error: {
       ...ERROR_CODES.CHARGE_IN_PROGRESS,
@@ -305,7 +305,7 @@ function sendInvoiceLockedError(reply) {
 }
 
 /** Send the appropriate reply for a verifyAllocations result. */
-function sendAllocationError(reply, v) {
+export function sendAllocationError(reply, v) {
   if (v.kind === "validation") {
     return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: v.message } });
   }
