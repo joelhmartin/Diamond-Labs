@@ -2,7 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 
 import { digitalRxForm } from "./digital-rx.form.js";
-import { allFields } from "./form-logic.js";
+import { allFields, visibleFields } from "./form-logic.js";
 
 // The complete set of field types this porting layer is allowed to emit.
 const SUPPORTED_TYPES = new Set([
@@ -42,7 +42,7 @@ test("ports a sensible number of fields", () => {
   );
 });
 
-test("has the devicesToOrder multi-select gate with all 8 device values", () => {
+test("has the devicesToOrder multi-select gate with all 9 device values", () => {
   const fields = allFields(digitalRxForm);
   const gate = fields.find((f) => f.key === "devicesToOrder");
   assert.ok(gate, "devicesToOrder field is missing");
@@ -58,6 +58,7 @@ test("has the devicesToOrder multi-select gate with all 8 device values", () => 
     "nightguards",
     "sportguards",
     "snorehook",
+    "ortho",
   ];
   for (const v of expected) {
     assert.ok(values.includes(v), `missing device value: ${v}`);
@@ -260,4 +261,79 @@ test("has a device-selection field", () => {
     ),
     "no radio/checkbox field whose label matches /device/i"
   );
+});
+
+const ORTHO_KEYS = [
+  "selectDevice", "upperArchRetention", "upperExpansionType", "lowerArchRetention",
+  "mxSelections", "lowerExpansionType", "requiredSelection", "tandemBowSetting",
+  "addToMaxillary", "addToMandibular", "occlusalOptionsTandem", "dualArchComments",
+  "dualArchDesignDraw", "dualArchArtboard", "upperExpansionSelection", "maxillaryAdd",
+  "maxillaryDesignDraw", "maxillaryArtboard", "maxillaryComments", "lowerExpansionSelection",
+  "removableMandibularExpansion", "fixedMandibularExpansion", "mandibularAdd",
+  "mandibularDesignDraw", "mandibularArtboard", "orthoDesignComments",
+];
+
+test("ortho is a selectable device", () => {
+  const gate = digitalRxForm.sections.find((s) => s.id === "select-device").fields[0];
+  assert.equal(gate.options.length, 9);
+  assert.ok(gate.options.some((o) => o.value === "ortho"));
+});
+
+test("every ortho field survived the merge", () => {
+  const keys = new Set(digitalRxForm.sections.flatMap((s) => (s.fields || []).map((f) => f.key)));
+  for (const k of ORTHO_KEYS) assert.ok(keys.has(k), `lost ortho field: ${k}`);
+});
+
+test("ortho sections are gated on the ortho device", () => {
+  for (const id of ["functionalDualArch", "maxillaryUpper", "mandibularLower"]) {
+    const s = digitalRxForm.sections.find((x) => x.id === id);
+    assert.ok(s, `missing section ${id}`);
+    assert.deepEqual(s.showIf, { key: "devicesToOrder", includes: "ortho" });
+  }
+});
+
+test("ortho's duplicate wrapper fields are gone", () => {
+  const keys = new Set(digitalRxForm.sections.flatMap((s) => (s.fields || []).map((f) => f.key)));
+  for (const dup of ["recordsType", "sendingPhysicalBite", "uploadFiles"]) assert.ok(!keys.has(dup), `duplicate wrapper field survived: ${dup}`);
+});
+
+test("ortho-only case-submission extras are hidden unless ortho is selected", () => {
+  const hidden = visibleFields(digitalRxForm, { devicesToOrder: ["ddso"] }).map((f) => f.key);
+  for (const k of ["nuveloDigitalSetup", "digitalStudyModels", "digitalSetupEmail"])
+    assert.ok(!hidden.includes(k), `${k} should be hidden without ortho`);
+  const shown = visibleFields(digitalRxForm, { devicesToOrder: ["ortho"] }).map((f) => f.key);
+  for (const k of ["nuveloDigitalSetup", "digitalStudyModels", "digitalSetupEmail"])
+    assert.ok(shown.includes(k), `${k} should be visible with ortho`);
+});
+
+test("a DDSO-only doctor sees exactly one rush control", () => {
+  const shown = visibleFields(digitalRxForm, { devicesToOrder: ["ddso"] }).map((f) => f.key);
+  assert.ok(shown.includes("rushCase"), "the shared rush checkbox must always show");
+  for (const k of ["rushChargeBiomed", "rushChargeNylon"])
+    assert.ok(!shown.includes(k), `${k} is an ex-ortho extra and must be gated on ortho`);
+
+  const withOrtho = visibleFields(digitalRxForm, { devicesToOrder: ["ortho"] }).map((f) => f.key);
+  for (const k of ["rushCase", "rushChargeBiomed", "rushChargeNylon"])
+    assert.ok(withOrtho.includes(k), `${k} should be visible with ortho`);
+});
+
+test("no two fields in the same section carry the same label", () => {
+  // The two ex-ortho rush sliders were both labelled "RUSH case request:" and
+  // sat side by side in `submit-form` — indistinguishable to a doctor. The same
+  // label under a different section heading (Maxillary vs Mandibular "Add:") is
+  // disambiguated by that heading, so duplicates are only checked per section.
+  const SKIP = new Set(["heading", "note", "static", "image", "divider"]);
+  for (const devices of [["ddso"], ["ortho"], ["ddso", "ortho", "nightguards"]]) {
+    const answers = { devicesToOrder: devices };
+    const visible = new Set(visibleFields(digitalRxForm, answers).map((f) => f.key));
+    for (const section of digitalRxForm.sections) {
+      const seen = new Map();
+      for (const f of section.fields || []) {
+        if (!f.label || SKIP.has(f.type) || !visible.has(f.key)) continue;
+        const prev = seen.get(f.label);
+        assert.ok(!prev, `section ${section.id}: "${f.label}" is on both ${prev} and ${f.key}`);
+        seen.set(f.label, f.key);
+      }
+    }
+  }
 });

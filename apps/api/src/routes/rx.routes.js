@@ -25,6 +25,25 @@ const MAX_TOTAL_BYTES = MAX_FILES * MAX_FILE_SIZE_BYTES;
 // The five allowed file field names, each mapping directly to the rx_case_files.kind column.
 const FILE_FIELD_KINDS = new Set(["scan", "photo", "prescription", "sleep_study", "artboard"]);
 
+/**
+ * Build the 422 response body for an approve attempt whose payload lost a
+ * device line (buildSeazonaOrderPayload's ok === false). Pure + exported so
+ * the invariant that bit us in review — the MERGED warnings list (including
+ * any Seazona-outage warning from earlier in the handler, not just the
+ * build-order-payload warnings) must reach `details` — is unit-testable
+ * without booting the full route (auth, db, Seazona client).
+ */
+export function buildIncompleteApprovalResponse(warnings) {
+  return {
+    error: {
+      code: "RX_PAYLOAD_INCOMPLETE",
+      status: 422,
+      message: "This prescription has selections that are not yet mapped to lab products. It has been saved but not sent.",
+      details: warnings,
+    },
+  };
+}
+
 export default async function rxRoutes(fastify) {
   // ─────────────────────────────────────────────────────────────────────────
   // POST /rx/cases — submit a new Digital Rx case (multipart/form-data).
@@ -257,13 +276,15 @@ export default async function rxRoutes(fastify) {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // POST /rx/form-submissions — generic intake for the faithful 1:1 forms
-  // (digital | ortho | olmos). Multipart/form-data, mirroring /rx/cases for
-  // auth, file limits, upload, and atomic insert.
+  // POST /rx/form-submissions — generic intake for the faithful 1:1 form.
+  // There is ONE form now: ortho folded into the digital Rx as a gated device
+  // rather than a separate formType, so the schema is z.enum(["digital"]).
+  // Multipart/form-data, mirroring /rx/cases for auth, file limits, upload,
+  // and atomic insert.
   //
   // Frontend (buildSubmitFormData in apps/web/src/data/forms/form-logic.js)
   // emits these parts:
-  //   text   formType         — one of digital | ortho | olmos
+  //   text   formType         — "digital" (the only accepted value)
   //   text   patientFirst     — extracted from the patient fullname field
   //   text   patientLast
   //   text   formData         — JSON string of ALL non-file answers
@@ -699,11 +720,16 @@ export default async function rxRoutes(fastify) {
     }
 
     // ── Build payload ─────────────────────────────────────────────────────────
-    const { payload, warnings: buildWarnings } = buildSeazonaOrderPayload(caseRow, {
+    const { payload, warnings: buildWarnings, ok } = buildSeazonaOrderPayload(caseRow, {
       codeToId,
       userId: env.SEAZONA_ORDER_USER_ID,
     });
     const warnings = [...extraWarnings, ...buildWarnings];
+
+    if (!ok) {
+      request.log.error({ warnings }, "[Seazona][RX_PAYLOAD_INCOMPLETE] refusing to push an order with unresolved lines");
+      return reply.code(422).send(buildIncompleteApprovalResponse(warnings));
+    }
 
     // ── DRY-RUN gate ──────────────────────────────────────────────────────────
     let seazonaPushStatus;

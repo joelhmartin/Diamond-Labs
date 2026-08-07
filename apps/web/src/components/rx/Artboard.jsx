@@ -158,7 +158,7 @@ export function Artboard({ value, onChange }) {
             type="button"
             onClick={() => setSize(s)}
             className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${
-              size === s ? "bg-brand-500 text-white" : "bg-surface-50 text-navy/50 border border-surface-300/50"
+              size === s ? "bg-brand-500 text-white" : "bg-surface-50 text-icon border border-surface-300/50"
             }`}
             aria-label={`Pen size ${s}`}
           >
@@ -202,7 +202,7 @@ export function Artboard({ value, onChange }) {
         />
         {!hasInk && (
           <div className="pointer-events-none absolute inset-0 flex items-end justify-center pb-3">
-            <div className="flex items-center gap-2 text-navy/25 text-xs">
+            <div className="flex items-center gap-2 text-muted text-xs">
               <Pencil size={12} />
               <span>Draw your appliance design over the arches</span>
             </div>

@@ -15,11 +15,11 @@ import { shouldShow } from "./field-logic.js";
 export { shouldShow };
 
 const INPUT =
-  "w-full px-4 py-3 rounded-xl bg-surface-50 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-navy/25";
+  "w-full px-4 py-3 rounded-xl bg-surface-50 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-muted";
 
 export function Label({ children, required }) {
   return (
-    <label className="block text-xs font-semibold text-navy/40 uppercase tracking-wider mb-2">
+    <label className="block text-[13px] font-semibold text-secondary mb-2">
       {children} {required && <span className="text-red-400">*</span>}
     </label>
   );
@@ -124,7 +124,7 @@ function ImageOptionCard({ option, active, onClick }) {
             className="object-contain w-full h-24"
           />
         )}
-        <span className="flex items-center justify-center gap-1.5 text-xs font-medium text-navy/70">
+        <span className="flex items-center justify-center gap-1.5 text-xs font-medium text-secondary">
           {active && <Check size={12} className="text-brand-500 flex-shrink-0" />}
           {option.label}
         </span>
@@ -185,7 +185,7 @@ export function RadioField({ field, value, onChange }) {
         </div>
       )}
       {field.note && (
-        <p className="mt-2 flex items-start gap-1.5 text-[11px] text-navy/45">
+        <p className="mt-2 flex items-start gap-1.5 text-xs text-secondary">
           <AlertCircle size={11} className="mt-0.5 text-accent-500 flex-shrink-0" />
           {field.note}
         </p>
@@ -278,7 +278,7 @@ export function TextField({ field, value, onChange }) {
           onChange={(e) => onChange(e.target.value)}
         />
         {field.unit && (
-          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-mono text-navy/40">
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-mono text-secondary">
             {field.unit}
           </span>
         )}
@@ -314,13 +314,13 @@ export function MatrixField({ field, value, onChange }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-surface-100">
-              <th className="text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-widest text-navy/40 font-normal">
+              <th className="text-left px-4 py-2.5 text-xs font-mono uppercase tracking-widest text-secondary font-normal">
                 —
               </th>
               {field.columns.map((c) => (
                 <th
                   key={c}
-                  className="text-left px-4 py-2.5 text-[10px] font-mono uppercase tracking-widest text-navy/40 font-normal border-l border-surface-300/40"
+                  className="text-left px-4 py-2.5 text-xs font-mono uppercase tracking-widest text-secondary font-normal border-l border-surface-300/40"
                 >
                   {c}
                 </th>
@@ -398,7 +398,7 @@ export function ColorPaletteField({ field, value, onChange }) {
                 </div>
               )}
               <span
-                className={`absolute -bottom-5 left-0 right-0 text-[9px] font-mono text-navy/50 text-center transition-opacity ${
+                className={`absolute -bottom-5 left-0 right-0 text-[9px] font-mono text-secondary text-center transition-opacity ${
                   active ? "opacity-100" : "opacity-0 group-hover:opacity-100"
                 }`}
               >
@@ -409,7 +409,7 @@ export function ColorPaletteField({ field, value, onChange }) {
         })}
       </div>
       {value && (
-        <div className="mt-8 text-xs text-navy/50">
+        <div className="mt-8 text-xs text-secondary">
           Selected: <span className="font-semibold text-navy">{value}</span>
         </div>
       )}
@@ -472,16 +472,16 @@ export function FileUploadField({ field, value, onChange }) {
         <Upload
           size={20}
           className={`mx-auto mb-2 transition-colors ${
-            drag ? "text-brand-500" : "text-navy/20"
+            drag ? "text-brand-500" : "text-icon"
           }`}
         />
-        <p className="text-xs text-navy/50">
+        <p className="text-xs text-secondary">
           Drop files here or{" "}
           <span className="text-brand-500 font-medium">browse</span>
           {field.maxFiles && ` · up to ${max}`}
         </p>
         {field.accept && (
-          <p className="mt-1 text-[10px] text-navy/30">
+          <p className="mt-1 text-xs text-muted">
             Accepted: {field.accept}
           </p>
         )}
@@ -512,14 +512,14 @@ export function FileUploadField({ field, value, onChange }) {
                 />
               ) : (
                 <div className="w-8 h-8 rounded-lg bg-surface-200/60 flex items-center justify-center">
-                  <ImageIcon size={14} className="text-navy/30" />
+                  <ImageIcon size={14} className="text-icon" />
                 </div>
               )}
               <div className="min-w-0">
-                <p className="text-xs font-medium text-navy/70 truncate max-w-[110px]">
+                <p className="text-xs font-medium text-secondary truncate max-w-[110px]">
                   {f.name}
                 </p>
-                <p className="text-[10px] text-navy/25">
+                <p className="text-xs text-muted">
                   {(f.size / 1024 / 1024).toFixed(1)} MB
                 </p>
               </div>
@@ -529,7 +529,7 @@ export function FileUploadField({ field, value, onChange }) {
                   e.stopPropagation();
                   remove(f.id);
                 }}
-                className="w-6 h-6 rounded-full flex items-center justify-center text-navy/20 hover:text-red-400 hover:bg-red-50 transition-all"
+                className="w-6 h-6 rounded-full flex items-center justify-center text-icon hover:text-red-400 hover:bg-red-50 transition-all"
               >
                 <X size={12} />
               </button>
@@ -720,7 +720,7 @@ export function ImageField({ field }) {
       />
       <ZoomButton label={field.alt} onClick={() => open(field.src, field.alt)} />
       {field.alt && (
-        <figcaption className="px-4 py-2 text-[11px] text-navy/40">
+        <figcaption className="px-4 py-2 text-xs text-secondary">
           {field.alt}
         </figcaption>
       )}
@@ -788,7 +788,7 @@ export function FormField({ field, value, onChange, answers }) {
     <div>
       <Renderer field={field} value={value} onChange={onChange} />
       {field.note && field.type !== "radio" && (
-        <p className="mt-2 flex items-start gap-1.5 text-[11px] text-navy/45">
+        <p className="mt-2 flex items-start gap-1.5 text-xs text-secondary">
           <AlertCircle size={11} className="mt-0.5 text-accent-500 flex-shrink-0" />
           {field.note}
         </p>

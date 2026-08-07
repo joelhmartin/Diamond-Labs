@@ -20,7 +20,7 @@ test("valid payload parses", () => {
 
 test("missing patientFirst → parse error", () => {
   const result = rxFormSubmitSchema.safeParse({
-    formType: "ortho",
+    formType: "digital",
     patientLast: "Doe",
     formData: {},
   });
@@ -47,7 +47,7 @@ test('formType "bogus" → error', () => {
 
 test("omitted formData defaults to {}", () => {
   const result = rxFormSubmitSchema.safeParse({
-    formType: "olmos",
+    formType: "digital",
     patientFirst: "Jane",
     patientLast: "Doe",
   });

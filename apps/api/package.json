@@ -16,7 +16,9 @@
     "test": "vitest run",
     "lint": "echo 'lint placeholder'",
     "db:seed-rx-overrides": "node --env-file=.env src/db/seed-rx-overrides.js",
-    "db:set-test-credentials": "node --env-file=.env src/db/set-test-credentials.js"
+    "db:migrate-rx-override-keys": "node --env-file=.env src/db/migrate-rx-override-keys.js",
+    "db:set-test-credentials": "node --env-file=.env src/db/set-test-credentials.js",
+    "rx:mapping-report": "node src/db/report-rx-mapping-gaps.js"
   },
   "dependencies": {
     "@fastify/compress": "^9.1.1",

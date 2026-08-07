@@ -7,7 +7,7 @@
  * Field contract:
  *   field = { type, key, label, required?, options?, placeholder?, unit?, rows?,
  *             columns?, palette?, accept?, maxFiles?, note?, src?, alt?, html?,
- *             showIf?: ({ key, equals } | { key, prefix }) }
+ *             showIf?: ({ key, includes } | { key, equals } | { key, prefix }) }
  *
  * Form definition:
  *   { slug, jotformId, title, route, sections: [{ id, heading?, note?, fields: [field] }] }
@@ -15,8 +15,12 @@
 
 /**
  * Conditional-visibility predicate. Mirrors the semantics used by the device
- * wizard's DeviceOptionsPanel / field-logic.js (kept self-contained here):
+ * wizard's DeviceOptionsPanel / field-logic.js (kept self-contained here), and
+ * matches sectionVisible's superset below so a field-level and section-level
+ * showIf never silently disagree:
  *   - no `showIf`           → always visible
+ *   - `showIf.includes` set → visible when answers[showIf.key] is an array
+ *                             containing the value, or equals it outright
  *   - `showIf.equals` set   → visible when answers[showIf.key] === equals
  *   - `showIf.prefix` set   → visible when answers[showIf.key] is a string that
  *                             startsWith prefix
@@ -24,9 +28,28 @@
 export function shouldShow(field, answers) {
   if (!field || !field.showIf) return true;
   const other = (answers || {})[field.showIf.key];
+  if (field.showIf.includes != null)
+    return Array.isArray(other) ? other.includes(field.showIf.includes) : other === field.showIf.includes;
   if (field.showIf.equals != null) return other === field.showIf.equals;
   if (field.showIf.prefix != null)
     return typeof other === "string" && other.startsWith(field.showIf.prefix);
+  return true;
+}
+
+/**
+ * Section-level conditional visibility. Superset of shouldShow's semantics,
+ * adding { key, includes }: matches when answers[key] is an array containing
+ * the value, or equals it outright.
+ */
+export function sectionVisible(section, answers) {
+  const cond = section && section.showIf;
+  if (!cond) return true;
+  const other = (answers || {})[cond.key];
+  if (cond.includes != null)
+    return Array.isArray(other) ? other.includes(cond.includes) : other === cond.includes;
+  if (cond.equals != null) return other === cond.equals;
+  if (cond.prefix != null)
+    return typeof other === "string" && other.startsWith(cond.prefix);
   return true;
 }
 
@@ -41,9 +64,15 @@ export function allFields(form) {
   return out;
 }
 
-/** allFields filtered to those currently visible given the answers. */
+/** allFields filtered to those in a visible section AND individually visible. */
 export function visibleFields(form, answers) {
-  return allFields(form).filter((field) => shouldShow(field, answers));
+  const out = [];
+  for (const section of (form && form.sections) || []) {
+    if (!sectionVisible(section, answers)) continue;
+    for (const field of (section && section.fields) || [])
+      if (shouldShow(field, answers)) out.push(field);
+  }
+  return out;
 }
 
 // Field types that are presentational only and can never be "required".
@@ -92,10 +121,9 @@ function isEmpty(field, value) {
  */
 export function validateForm(form, answers) {
   const errors = {};
-  for (const field of allFields(form)) {
+  for (const field of visibleFields(form, answers)) {
     if (!field.required) continue;
     if (STATIC_TYPES.has(field.type)) continue;
-    if (!shouldShow(field, answers)) continue;
     const value = (answers || {})[field.key];
     if (isEmpty(field, value)) {
       errors[field.key] = `${field.label || field.key} is required`;

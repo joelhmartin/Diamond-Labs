@@ -7,10 +7,6 @@ import { ROUTES } from "../../config/routes.js";
 const DESCRIPTIONS = {
   digital:
     "The full digital prescription for Diamond-fabricated orthotic and dental devices. Pick a device, configure it, and upload scans.",
-  ortho:
-    "Orthodontic prescription with upper/lower expansion, arch additions, occlusal options, and digital study models.",
-  olmos:
-    "Dr. Olmos orthodontic prescription — MX/MD expansion, dual-arch functional options, and fixed maxillary expansion.",
 };
 
 export function RxChooserPage() {

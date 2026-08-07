@@ -1,14 +1,38 @@
-import { resolveLineItems } from "./device-seazona-map.js";
+import { resolveLineItems } from "./catalog-map/index.js";
 
 /**
- * Pure function: rxCase + { codeToId, userId } → { payload, warnings, unmapped }.
+ * A "device line" is any emitted line that is not a modification or a design
+ * attribute. Detect it by EXCLUSION, not by a "primary:" prefix — resolver
+ * devices emit their own prefixes (guard rows are `guard:<row>:<material>`),
+ * so a prefix check would reject every valid nightguard order. Shared by
+ * both builders below so the `mod:`/`attr:` exclusion set can't drift.
+ */
+const isDeviceLine = (mapKey) =>
+  typeof mapKey === "string" && !mapKey.startsWith("mod:") && !mapKey.startsWith("attr:");
+
+/**
+ * A resolver can return NOTHING — no items and no unmapped keys (an empty
+ * deviceOptions, a device whose only selections were `status: "none"`). Without
+ * this the 422 that refuses the order carries `details: []`: staff are told
+ * "selections are not yet mapped" with nothing named. Always name the device
+ * whose appliance line is missing, so `ok === false` can never be silent.
+ */
+const noDeviceLineWarning = (deviceKey) =>
+  `no device line resolved for ${deviceKey || "(no device selected)"}`;
+
+/**
+ * Pure function: rxCase + { codeToId, userId } → { payload, warnings, unmapped, ok }.
  *
  * @param {object} rxCase        — stored Rx case record
  * @param {object} opts
  * @param {Record<string,string>} opts.codeToId — Seazona product code → catalog id
  *                                               (built from listProducts() by the caller)
  * @param {string}  opts.userId  — lab-staff Seazona user id to attach to the order
- * @returns {{ payload: object, warnings: string[], unmapped: string[] }}
+ * @returns {{ payload: object, warnings: string[], unmapped: string[], ok: boolean }}
+ *   ok is false when no device line resolved (isDeviceLine) or any selection
+ *   was unmapped — callers MUST refuse to push the order in that case.
+ *   INVARIANT: whenever ok is false, warnings is non-empty, so the 422 that
+ *   refuses the order always names something a human can act on.
  */
 export function buildSeazonaOrderPayload(rxCase, { codeToId = {}, userId, overrides = {} } = {}) {
   const { items: lineItems, unmapped } = resolveLineItems(rxCase, { overrides });
@@ -17,14 +41,20 @@ export function buildSeazonaOrderPayload(rxCase, { codeToId = {}, userId, overri
   // Seed warnings from unmapped device/option selections that resolveLineItems already flagged.
   const warnings = unmapped.map((u) => `unmapped ${u}`);
 
+  let deviceLineEmitted = false;
   for (const li of lineItems) {
     const id = codeToId[li.code];
     if (!id) {
       warnings.push(`no catalog id for code ${li.code} (${li.name})`);
       continue;
     }
+    if (isDeviceLine(li.mapKey)) deviceLineEmitted = true;
     items.push({ id, arch: normalizeArch(li.arch) });
   }
+
+  if (!deviceLineEmitted) warnings.push(noDeviceLineWarning(rxCase.deviceKey));
+
+  const ok = deviceLineEmitted && unmapped.length === 0;
 
   return {
     payload: {
@@ -37,6 +67,7 @@ export function buildSeazonaOrderPayload(rxCase, { codeToId = {}, userId, overri
     },
     warnings,
     unmapped,
+    ok,
   };
 }
 
@@ -61,7 +92,7 @@ function normalizeArch(arch) {
  *
  * Matches how the lab actually builds orders in Seazona (verified against live
  * orders, e.g. inv 10601): device + material/variant and each modification are
- * PRODUCT LINE ITEMS (resolved by device-seazona-map), NOT notes. So material,
+ * PRODUCT LINE ITEMS (resolved by catalog-map/index.js), NOT notes. So material,
  * variant, and modifications are deliberately excluded here. Notes carry only
  * free-text clinical detail that has no product code — occlusal contact, design
  * preference, VDO/titration, and device-specific instructions.
@@ -127,7 +158,10 @@ export function compileNotesMulti(shared = {}, devices = []) {
  * @param {Record<string,string>} opts.codeToId — Seazona product code → catalog id
  * @param {string} opts.userId
  * @param {object} opts.overrides
- * @returns {{ payload, warnings: string[], unmapped: string[], perDevice: Array<{label,deviceKey,lineCount}> }}
+ * @returns {{ payload, warnings: string[], unmapped: string[], perDevice: Array<{label,deviceKey,lineCount,ok:boolean}>, ok: boolean }}
+ *   Each perDevice entry's ok mirrors buildSeazonaOrderPayload's ok for that
+ *   device; the overall ok is false unless every device is ok AND at least
+ *   one device was provided (an empty devices[] must never read as "ok").
  */
 export function buildSeazonaOrderPayloadMulti(
   shared = {},
@@ -151,18 +185,30 @@ export function buildSeazonaOrderPayloadMulti(
     }
 
     let lineCount = 0;
+    let deviceLineEmitted = false;
     for (const li of lineItems) {
       const id = codeToId[li.code];
       if (!id) {
         warnings.push(`no catalog id for code ${li.code} (${li.name})`);
         continue;
       }
+      if (isDeviceLine(li.mapKey)) deviceLineEmitted = true;
       items.push({ id, arch: normalizeArch(li.arch) });
       lineCount++;
     }
 
-    perDevice.push({ label: d.label || d.deviceKey, deviceKey: d.deviceKey, lineCount });
+    if (!deviceLineEmitted) warnings.push(noDeviceLineWarning(d.label || d.deviceKey));
+
+    const deviceOk = deviceLineEmitted && devUnmapped.length === 0;
+    perDevice.push({ label: d.label || d.deviceKey, deviceKey: d.deviceKey, lineCount, ok: deviceOk });
   }
+
+  // perDevice.every(...) is vacuously true for an empty array — require at
+  // least one device so an empty devices[] can never read as "ok". Say so in
+  // warnings too, or that refusal reaches staff with an empty `details`.
+  if (devices.length === 0) warnings.push("no devices on this order");
+
+  const ok = devices.length > 0 && perDevice.every((d) => d.ok);
 
   return {
     payload: {
@@ -176,5 +222,6 @@ export function buildSeazonaOrderPayloadMulti(
     warnings,
     unmapped,
     perDevice,
+    ok,
   };
 }

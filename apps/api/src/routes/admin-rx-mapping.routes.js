@@ -6,7 +6,8 @@ import { createId } from "../lib/id.js";
 import { eq } from "drizzle-orm";
 import { ERROR_CODES } from "@my-app/shared";
 import * as seazonaService from "../services/seazona.service.js";
-import { DEVICE_MAP, DEVICE_LABELS, resolveLineItems } from "../services/rx/device-seazona-map.js";
+import { DEVICE_LABELS, resolveLineItems } from "../services/rx/catalog-map/index.js";
+import { DEVICE_ROWS } from "../services/rx/catalog-map/devices.table.js";
 import { compileNotesMulti, buildSeazonaOrderPayloadMulti } from "../services/rx/build-order-payload.js";
 
 // ─── Test-order target (Matt Rago, internal Diamond account) ──────────────────
@@ -14,6 +15,37 @@ import { compileNotesMulti, buildSeazonaOrderPayloadMulti } from "../services/rx
 // test can NEVER create an order under a real doctor. Confirmed live 2026-06-17.
 const TEST_ORDER_CLIENT_ID = "876bad9a-0257-49eb-bfd6-bce0a999b88a"; // Matt Rago (acct 1324)
 const TEST_ORDER_USER_ID = "9cae86a4-809e-4879-8ffb-b76d39b95978";   // Matt Rago (lab user)
+
+/**
+ * Build the 422 body for a test order the builder refused (`ok === false`).
+ *
+ * This route is the ONLY live Seazona write in the feature — it creates a REAL
+ * order on the lab's real account. It used to gate on `payload.items.length`
+ * alone, which a device that lost its appliance line can still satisfy: a $0
+ * design attribute (attr:occlusal:posterior → 2293) resolves on its own, giving
+ * items.length === 1 and pushing an order with no appliance to the lab. Gate on
+ * `ok`, exactly as the doctor path does.
+ *
+ * Pure + exported so the gate is testable without booting auth, the DB, and a
+ * live Seazona client.
+ *
+ * @returns {object|null} the 422 body, or null when the order may be sent.
+ */
+export function buildIncompleteTestOrderResponse({ ok, warnings = [], unmapped = [], perDevice = [] }) {
+  if (ok) return null;
+  const failed = perDevice.filter((d) => !d.ok).map((d) => d.label || d.deviceKey);
+  return {
+    error: {
+      ...ERROR_CODES.VALIDATION_ERROR,
+      status: 422,
+      message: failed.length
+        ? `Not sent — no appliance line resolved for: ${failed.join(", ")}. Confirm the codes for these selections first.`
+        : "Not sent — this form has selections that are not yet mapped to lab products.",
+      details: warnings,
+    },
+    meta: { warnings, unmapped, perDevice },
+  };
+}
 
 // ─── In-process catalog cache (5-minute TTL) ──────────────────────────────────
 let _catalog = null;
@@ -75,13 +107,26 @@ export default async function adminRxMappingRoutes(fastify) {
       getCatalog(),
     ]);
 
-    const result = Object.entries(DEVICE_MAP).map(([deviceKey, dev]) => {
-      const primaryEntries = Object.entries(dev.primary);
-      const total = primaryEntries.length;
-      const mapped = primaryEntries.filter(([mat, item]) => {
-        const mapKey = `primary:${deviceKey}:${mat}`;
-        return !!(overrides[mapKey] || byCode.has(String(item.code)));
-      }).length;
+    // Enumerate from DEVICE_LABELS (the full device list), not DEVICE_ROWS —
+    // guard and ortho-expander are resolver-driven and have no table rows, so
+    // deriving the list from rows would silently drop them from the UI.
+    const result = Object.keys(DEVICE_LABELS).map((deviceKey) => {
+      const rows = DEVICE_ROWS.filter((r) => r.device === deviceKey);
+
+      if (rows.length === 0) {
+        // No table rows to count — resolver-driven device (guard, ortho-expander).
+        return {
+          deviceKey,
+          name: DEVICE_LABELS[deviceKey] || deviceKey,
+          coverage: null,
+          resolver: true,
+        };
+      }
+
+      const total = rows.length;
+      const mapped = rows.filter(
+        (row) => !!(overrides[row.mapKey] || (row.code != null && byCode.has(String(row.code))))
+      ).length;
 
       return {
         deviceKey,
@@ -142,7 +187,6 @@ export default async function adminRxMappingRoutes(fastify) {
           code: item.code,
           name: item.name,
           arch: item.arch,
-          source: item.source,
           // True when this line's code came from a saved DB override — drives the
           // admin UI "Clear override" affordance.
           overridden: Boolean(item.overridden),
@@ -150,10 +194,16 @@ export default async function adminRxMappingRoutes(fastify) {
             byCode.get(String(item.code))?.id ||
             overrides[item.mapKey]?.seazonaProductId ||
             null,
-          status:
-            overrides[item.mapKey] || byCode.has(String(item.code))
-              ? "confirmed"
-              : "placeholder",
+          // A `proposed` row can carry a real catalog code (best-guess, not lab
+          // sign-off) — it must render as "placeholder" so the admin still sees
+          // the assign-code control, even though byCode.has() would be true.
+          status: overrides[item.mapKey]
+            ? "confirmed"
+            : item.status === "proposed"
+              ? "placeholder"
+              : byCode.has(String(item.code))
+                ? "confirmed"
+                : "placeholder",
         })),
         ...unmapped.map((mapKey) => ({
           device: label,
@@ -349,20 +399,22 @@ export default async function adminRxMappingRoutes(fastify) {
     for (const [code, v] of byCode.entries()) codeToId[code] = v.id;
 
     // Build the payload, but FORCE the client to the Matt Rago test account.
-    const { payload, warnings, unmapped } = buildSeazonaOrderPayloadMulti(
+    const { payload, warnings, unmapped, perDevice, ok } = buildSeazonaOrderPayloadMulti(
       { ...body, seazonaClientId: TEST_ORDER_CLIENT_ID },
       devices,
       { codeToId, userId: TEST_ORDER_USER_ID, overrides }
     );
 
-    if (!payload.items.length) {
-      return reply.code(422).send({
-        error: {
-          ...ERROR_CODES.VALIDATION_ERROR,
-          message: "No line items resolved to a real Seazona code — confirm codes for this device before sending a test order.",
-        },
-        meta: { warnings, unmapped },
-      });
+    // Gate on `ok`, NOT on items.length — see buildIncompleteTestOrderResponse.
+    // This is a real order on the lab's real account; an order that lost its
+    // device line must not be sent, from any route.
+    const refusal = buildIncompleteTestOrderResponse({ ok, warnings, unmapped, perDevice });
+    if (refusal) {
+      request.log.warn(
+        { warnings, unmapped, perDevice },
+        "[Seazona][RX_MAPPING_TEST_INCOMPLETE] refusing to send a test order that lost a device line"
+      );
+      return reply.code(422).send(refusal);
     }
 
     // Mark the order unmistakably as a mapping test.

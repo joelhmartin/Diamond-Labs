@@ -73,35 +73,6 @@ function makeDevice(deviceKey, deviceOptions) {
 }
 
 /**
- * Ortho / standalone-Olmos forms → a single Orthodontic Appliance.
- * comments  ← every answered textarea whose key matches /comment/i, joined.
- * modifications ← every answered expansion-checkbox array, flattened.
- */
-function buildOrthoDevices(fields, answers) {
-  const commentParts = [];
-  const modifications = [];
-  for (const field of fields) {
-    const value = answers[field.key];
-    if (!answered(value)) continue;
-    if (field.type === "textarea" && /comment/i.test(field.key || "")) {
-      commentParts.push(typeof value === "string" ? value.trim() : String(value));
-    } else if (
-      field.type === "checkbox" &&
-      /expansion/i.test(field.key || "") &&
-      Array.isArray(value)
-    ) {
-      modifications.push(...value);
-    }
-  }
-  return [
-    makeDevice("ortho-expander", {
-      comments: commentParts.filter(Boolean).join(" | "),
-      modifications,
-    }),
-  ];
-}
-
-/**
  * Digital form → one or more devices, one per selected `devicesToOrder` value.
  * Only emits devices for explicitly-selected values — never invents a device.
  */
@@ -189,9 +160,43 @@ function buildDigitalDevices(answers) {
       case "nightguards":
         devices.push(
           makeDevice("guard", {
-            variant: answers.nightguardDevice?.[0],
+            // The device picker is a CHECKBOX — pass every checked render, not
+            // just the first. resolveGuard accepts a string or an array and
+            // flags anything it cannot map, so nothing selected is dropped.
+            variant: answers.nightguardDevice,
+            standardGuards: answers.standardGuards,
             modifications: answers.attachmentsModifications,
             comments: answers.nightguardComments,
+          })
+        );
+        break;
+      case "ortho":
+        devices.push(
+          makeDevice("ortho-expander", {
+            applianceType: answers.selectDevice,
+            upperArchRetention: answers.upperArchRetention,
+            upperExpansionType: answers.upperExpansionType,
+            lowerArchRetention: answers.lowerArchRetention,
+            lowerExpansionType: answers.lowerExpansionType,
+            upperExpansionSelection: answers.upperExpansionSelection,
+            lowerExpansionSelection: answers.lowerExpansionSelection,
+            removableMandibularExpansion: answers.removableMandibularExpansion,
+            fixedMandibularExpansion: answers.fixedMandibularExpansion,
+            mxSelections: answers.mxSelections,
+            requiredSelection: answers.requiredSelection,
+            occlusalOptionsTandem: answers.occlusalOptionsTandem,
+            tandemBowSetting: answers.tandemBowSetting,
+            modifications: [
+              ...(answers.addToMaxillary || []),
+              ...(answers.addToMandibular || []),
+              ...(answers.maxillaryAdd || []),
+              ...(answers.mandibularAdd || []),
+            ],
+            comments: [
+              answers.dualArchComments,
+              answers.maxillaryComments,
+              answers.orthoDesignComments,
+            ].filter(Boolean).join(" | "),
           })
         );
         break;
@@ -241,10 +246,7 @@ export function formAnswersToCaseInput(slug, form, answers = {}) {
   );
   const dueDate = dueField ? answers[dueField.key] : undefined;
 
-  const devices =
-    slug === "ortho" || slug === "olmos"
-      ? buildOrthoDevices(fields, answers)
-      : buildDigitalDevices(answers);
+  const devices = buildDigitalDevices(answers);
 
   const caseFields = {
     patientFirst,

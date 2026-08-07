@@ -30,6 +30,7 @@ import {
   textarea,
   date,
   fullname,
+  email,
   fileUpload,
   signature,
   matrix,
@@ -149,6 +150,26 @@ const SPORT_GUARD_DEVICE_OPTIONS = [
   ),
 ];
 
+// ---- Ortho fold-in: local builders + constants -----------------------------
+// Ortho (formerly a standalone JotForm port) is folded in here as a ninth
+// `devicesToOrder` device. These two field types have no form-fields.js
+// helper (matching orthodontic-rx.form.js's own local builders); unlike that
+// file's `image()`, this one takes an explicit `key` so every field in this
+// form carries a stable key.
+const image = (key, src, alt = "") => ({ type: "image", key, src, alt });
+const artboard = (key, label, opts = {}) => ({
+  type: "artboard",
+  key,
+  label,
+  ...opts,
+});
+
+const ORTHO_ARTBOARD_BG = "https://i.ibb.co/yqsycC6/ortho-img.png";
+const ORTHO_ARTBOARD_LABEL =
+  "Please use the artboard below to illustrate the design of your appliance.";
+const ORTHO_DESIGN_DRAW_LABEL =
+  "Check this box if you would like to design (draw) your appliance; this option is preferred";
+
 export const digitalRxForm = {
   slug: "digital",
   jotformId: "220598308432154",
@@ -165,6 +186,8 @@ export const digitalRxForm = {
           { key: "noteDoctorAuto" }
         ),
         heading("Case Identification", { key: "hdrCaseId" }),
+        // qid 56: widget (auto-populated Today's Date calendar) — ex-ortho
+        date("caseDate", "Date"),
         // qid 19
         fullname("patientName", "PATIENT:", { required: true }),
         // qid 309: widget "Checkbox in Dropdown" — single choice; modelled as radio
@@ -209,6 +232,33 @@ export const digitalRxForm = {
           accept:
             ".stl,.pdf,.jpg,.jpeg,.png,.gif,.zip,.doc,.docx,.xls,.xlsx,.csv,.txt",
         }),
+        // ── ORTHO records / device intro (head qid 119, ex-ortho) ──
+        matrix(
+          "nuveloDigitalSetup",
+          "NUVELO Digital Setup ONLY",
+          [],
+          [
+            "Orient to HIP",
+            "Add occlusal overlay to bite",
+            "Occlusal coverage on teeth #'s:",
+            "Other",
+          ],
+          { showIf: { key: "devicesToOrder", includes: "ortho" } }
+        ),
+        radio(
+          "digitalStudyModels",
+          "Digital 'Study' Models",
+          [
+            "Digital Models ONLY - Horse-shoe base",
+            "Digital Models ONLY - ABO - Full Base",
+          ],
+          { showIf: { key: "devicesToOrder", includes: "ortho" } }
+        ),
+        email(
+          "digitalSetupEmail",
+          "Email to submit digital setup once completed:",
+          { showIf: { key: "devicesToOrder", includes: "ortho" } }
+        ),
       ],
     },
 
@@ -229,6 +279,7 @@ export const digitalRxForm = {
             { value: "nightguards", label: "Nightguards / Mouthguards / Essix Trays" },
             { value: "sportguards", label: "Diamond Orthotic Sport-Guards" },
             { value: "snorehook", label: "SnoreHook" },
+            { value: "ortho", label: "Orthodontic Appliance — Expanders / Tandem / Twin Block" },
           ],
           { required: true }
         ),
@@ -580,6 +631,252 @@ export const digitalRxForm = {
       ],
     },
 
+    // ---- Functional Orthodontics - Dual Arch (collapse qid 499, ex-ortho) --
+    {
+      id: "functionalDualArch",
+      heading: "Functional Orthodontics - Dual Arch",
+      showIf: { key: "devicesToOrder", includes: "ortho" },
+      fields: [
+        radio("selectDevice", "Select Device", ["Modified Tandem", "Twin Block"]),
+        image(
+          "imgModifiedTandem",
+          "https://www.jotform.com/uploads/Diamondlab/form_files/tandem.64c15648dcbe62.63375354.6526b51a539c04.55985396.png",
+          "MODIFIED TANDEM"
+        ),
+        radio("upperArchRetention", "UPPER arch retention and base material:", [
+          "Fixed (Banded)",
+          "Fixed [3D Printed] Bands",
+          "Acrylic w/ clasp retention",
+          "Printed NYLON w/ composite retention",
+        ]),
+        radio("upperExpansionType", "UPPER Expansion type:", [
+          "No Expansion",
+          "Slim-Line Screw",
+          "Standard Transverse Screw",
+          'Slim-line "Variety-Click" (Fixed ONLY)',
+          "Memory Screw (Fixed ONLY)",
+          "Standard Hyrax RPE (Fixed ONLY)",
+          "NiTi - Nickel Titanium (Fixed ONLY)",
+        ]),
+        radio("lowerArchRetention", "Lower arch retention and base material:", [
+          "Fixed (Banded)",
+          "Fixed [3D Printed] Bands",
+          "Acrylic w/ clasp retention",
+          "Printed NYLON w/ composite retention",
+        ]),
+        radio("mxSelections", "Mx. Selections", [
+          "Fixed (Banded)",
+          "Removable (Clasp-Retention)",
+        ]),
+        radio("lowerExpansionType", "Lower Expansion type:", [
+          "No Expansion",
+          "Slim-Line Screw",
+          "Standard Transverse Screw",
+          'Slim-line "Variety-Click"',
+          "Memory Screw (Removable Only)",
+        ]),
+        matrix(
+          "requiredSelection",
+          "Required Selection",
+          ["Maxillary", "Mandibular"],
+          [
+            "Acrylic coverage on:",
+            "Occlusal rest on:",
+            "Composite build up on:",
+            "Place bands on:",
+          ]
+        ),
+        // qid 252: inline (short text + radio composed template)
+        text(
+          "tandemBowSetting",
+          "Set tandem bow ___ mm from incisal edge of lower anterior teeth. (Lipskis Bow)"
+        ),
+        image(
+          "imgTandemLength",
+          "https://www.jotform.com/uploads/Diamondlab/form_files/tandem_length.6050f23672bf51.92273108.png",
+          "Tandem length reference"
+        ),
+        checkbox("addToMaxillary", "Add to Maxillary:", [
+          "Buccal tubes to bands",
+          "Palatal pads",
+          "Anterior lap springs",
+          "Buccal hooks for tandem elastics",
+          "Lingual guide arm to canines",
+          "Lingual guide arm (distal)",
+          "Labial bow",
+          "Transfer tray for composite buttons",
+          "Occlusal Rest(s)",
+        ]),
+        checkbox("addToMandibular", "Add to Mandibular:", [
+          "Buccal tubes to bands",
+          "Headgear tubes for tandem to bands",
+          "Occlusal Rest(s)",
+          "Anterior lap springs",
+          "Lingual guide arm (distal)",
+          "Labial bow",
+          "Transfer tray for composite buttons",
+          "Sheaths for Tandem Bow (Removable)",
+        ]),
+        matrix(
+          "occlusalOptionsTandem",
+          "Occlusal Options for tandem bow",
+          ["Maxillary", "Mandibular", "Other"],
+          [
+            "Occlusal coverage on:",
+            "Occlusal rest on:",
+            "Composite build up on:",
+            "Other",
+          ]
+        ),
+        textarea("dualArchComments", "Additional Comments/Instructions"),
+        checkbox("dualArchDesignDraw", ORTHO_DESIGN_DRAW_LABEL, ["Diamond ORTHO Artboard"]),
+        // qid 513: widget (drawOnImage artboard)
+        artboard("dualArchArtboard", ORTHO_ARTBOARD_LABEL, { src: ORTHO_ARTBOARD_BG }),
+      ],
+    },
+
+    // ---- MAXILLARY (UPPER) Only SELECTION (collapse qid 154, ex-ortho) -----
+    {
+      id: "maxillaryUpper",
+      heading: "MAXILLARY (UPPER) Only SELECTION",
+      showIf: { key: "devicesToOrder", includes: "ortho" },
+      fields: [
+        matrix(
+          "upperExpansionSelection",
+          "UPPER- Expansion Option Selection:",
+          [
+            "Transverse Schwarz",
+            "Sagittal Schwarz",
+            "Quad Helix",
+            "NiTi",
+            "A.L.F.",
+            "3-Way Screw",
+            "Hyrax RPE",
+            "HAAS RPE",
+            '"W" Expansion',
+            "TPA",
+            "Other",
+          ],
+          [
+            "FIXED",
+            "REMOVABLE",
+            "Lingual Guide Wire",
+            "Clasp Selection",
+            "Expansion Screw",
+            "Occlusal coverage on:",
+            "Occlusal rest on:",
+            "Composite build up on [TURBOS]:",
+            "Base Material",
+            "Other",
+          ]
+        ),
+        image(
+          "imgMaxillaryReference",
+          "https://www.jotform.com/uploads/Diamondlab/form_files/Untitled-1.604c0641ecde48.53101509.png",
+          "Maxillary reference"
+        ),
+        checkbox("maxillaryAdd", "Add:", [
+          "Buccal tubes to bands",
+          "Palatal pads",
+          "Anterior lap springs",
+          "Buccal hooks for tandem elastics",
+          "Labial bow",
+          "Lingual guide arm (to canine)",
+          "Acrylic labial bow",
+          "Lingual guide arm (distal)",
+          "Transfer tray for composite buttons",
+        ]),
+        checkbox("maxillaryDesignDraw", ORTHO_DESIGN_DRAW_LABEL, ["Diamond ORTHO Artboard"]),
+        // qid 472: widget (drawOnImage artboard)
+        artboard("maxillaryArtboard", ORTHO_ARTBOARD_LABEL, { src: ORTHO_ARTBOARD_BG }),
+        textarea("maxillaryComments", "Additional Comments/Instructions"),
+      ],
+    },
+
+    // ---- MANDIBULAR (LOWER) Only SELECTION (collapse qid 120, ex-ortho) ----
+    {
+      id: "mandibularLower",
+      heading: "MANDIBULAR (LOWER) Only SELECTION",
+      showIf: { key: "devicesToOrder", includes: "ortho" },
+      fields: [
+        matrix(
+          "lowerExpansionSelection",
+          "LOWER- Expansion Option Selection",
+          [
+            "Transverse Schwarz",
+            "Sagittal Schwarz",
+            "E-Arch",
+            "Williams Expander",
+            "A.L.F.",
+            "3-Way Screw",
+            "TPA",
+            "Other",
+          ],
+          [
+            "FIXED",
+            "REMOVABLE",
+            "Lingual Guide Wire",
+            "Clasp Selection",
+            "Expansion Screw",
+            "Acrylic Overlay on:",
+            "Occlusal rest on:",
+            "Composite build up on [TURBOS]:",
+            "Select Base Material",
+            "Other",
+          ]
+        ),
+        // qid 496: widget (image checkbox, single select)
+        checkbox("removableMandibularExpansion", "Removable Mandibular Expansion (Only)", [
+          imgOpt(
+            "Mandibular Schwarz",
+            "https://diamondorthoticlab.com/wp-content/uploads/2023/05/mandibular-schwartz.jpg"
+          ),
+          imgOpt(
+            "Mandibular Memory Screw",
+            "https://diamondorthoticlab.com/wp-content/uploads/2023/05/mandibular-memory.jpg"
+          ),
+          imgOpt(
+            "Mandibular Slim-line",
+            "https://diamondorthoticlab.com/wp-content/uploads/2023/05/lower-fixed-expander.jpg"
+          ),
+        ]),
+        // qid 487: widget (image checkbox, single select)
+        checkbox("fixedMandibularExpansion", "Fixed Mandibular Expansion (Only)", [
+          imgOpt(
+            "Mandibular Williams",
+            "https://diamondorthoticlab.com/wp-content/uploads/2023/05/j.i-williams-expander.jpg"
+          ),
+          imgOpt(
+            "Mandibular Slim-line 'Variety Click' Expander",
+            "https://diamondorthoticlab.com/wp-content/uploads/2023/05/lower-fixed-expander.jpg"
+          ),
+          imgOpt(
+            "Mandibular E-Arch",
+            "https://diamondorthoticlab.com/wp-content/uploads/2023/05/e-arch-lower.jpg"
+          ),
+        ]),
+        image(
+          "imgMandibularReference",
+          "https://www.jotform.com/uploads/Diamondlab/form_files/Untitled-1.604c0641ecde48.53101509.png",
+          "Mandibular reference"
+        ),
+        checkbox("mandibularAdd", "Add:", [
+          "Buccal tubes to bands",
+          "Anterior lap springs",
+          "Labial bow",
+          "Acrylic labial bow",
+          "Lingual guide arm (distal)",
+          "Add buccal sheath for tandem bow",
+          "Transfer tray for composite buttons",
+          "Finger Springs (please specify tooth location)",
+        ]),
+        checkbox("mandibularDesignDraw", ORTHO_DESIGN_DRAW_LABEL, ["Diamond ORTHO Artboard"]),
+        // qid 42: widget (drawOnImage artboard)
+        artboard("mandibularArtboard", ORTHO_ARTBOARD_LABEL, { src: ORTHO_ARTBOARD_BG }),
+        textarea("orthoDesignComments", "Additional Comments for ORTHO Design"),
+      ],
+    },
+
     // ---- SUBMIT FORM (pagebreak q35) ---------------------------------------
     {
       id: "submit-form",
@@ -594,6 +891,28 @@ export const digitalRxForm = {
         signature("doctorSignature", "Doctor Signature", { required: true }),
         // qid 391
         checkbox("rushCase", "Would you like to rush this case?", ["Yes"]),
+        // qid 337 / 335: the two ex-ortho rush-charge sliders. Both are
+        // labelled "RUSH case request:", so ungated they showed a DDSO-only
+        // doctor three rush controls, two of them indistinguishable. Gated on
+        // ortho like every other ex-ortho extra; `rushCase` above stays
+        // ungated as the one rush control every doctor sees.
+        radio(
+          "rushChargeBiomed",
+          "RUSH case request: (BIOMED / PMT / ACRYLIC devices)",
+          ["No Rush", "Standard", "Expedited"],
+          { showIf: { key: "devicesToOrder", includes: "ortho" } }
+        ),
+        radio(
+          "rushChargeNylon",
+          "RUSH case request: (NYLON devices)",
+          ["No Rush", "Standard", "Expedited", "Max Rush"],
+          { showIf: { key: "devicesToOrder", includes: "ortho" } }
+        ),
+        // qid 141: widget (textarea autosize) — ex-ortho
+        textarea(
+          "additionalComments",
+          "Additional Comments **Note** Writing device selection in this area will delay your case! This area is not for device selection."
+        ),
       ],
     },
   ],
