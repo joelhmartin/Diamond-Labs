@@ -15,7 +15,7 @@ export function ComingSoonPage() {
   return (
     <div>
       {/* Hero */}
-      <section className="relative hero-gradient pt-32 pb-28">
+      <section className="relative hero-gradient pt-36 pb-60 -mb-32">
         <div className="section-pad text-center max-w-2xl mx-auto">
           <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center mx-auto mb-6">
             <Clock size={24} className="text-white/50" />

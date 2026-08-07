@@ -5,8 +5,8 @@
   --brand-200: 194 230 244;
   --brand-300: 157 216 241;
   --brand-400: 101 199 241;
-  --brand-500: 19 174 239;
-  --brand-600: 19 147 201;
+  --brand-500: 31 184 249;
+  --brand-600: 46 156 204;
   --brand-700: 19 115 155;
   --brand-800: 17 86 115;
   --brand-900: 13 56 74;
@@ -22,9 +22,9 @@
   --surface-300: 226 224 219;
   --surface-400: 209 207 200;
 
-  --navy: 11 26 46;
+  --navy: 17 55 106;
   --navy-light: 19 40 68;
-  --navy-dark: 6 13 23;
+  --navy-dark: 0 96 230;
 
   --alert: 230 59 46;   /* was #E63B2E — error/alert accent used in Home SVGs */
 
@@ -129,10 +129,16 @@
      light page surface, top → bottom. Used by every page header that wants
      this look (CaseSubmission, Downloads, ComingSoon, InstructionalVideos).
      Edit the stops here once to restyle them all. */
+  /* Starts on Navy (dark bg) and HOLDS it through the top 55%, where all the
+     hero text sits, then fades across the bottom 45%. The long tail is what
+     the overlapping content card below is meant to sit into.
+     Previously this started on brand-600 ("Primary (dark)"), which is a light
+     colour in most palettes — white hero text over it was unreadable. */
   .hero-gradient {
     background-image: linear-gradient(
       to bottom,
-      rgb(var(--brand-600)) 0%,
+      rgb(var(--navy)) 0%,
+      rgb(var(--navy)) 55%,
       rgb(var(--surface-100)) 100%
     );
   }

@@ -73,11 +73,11 @@ export function InstructionalVideosPage() {
   return (
     <div ref={sectionRef}>
       {/* Hero */}
-      <section className="relative hero-gradient pt-32 pb-28">
+      <section className="relative hero-gradient pt-36 pb-60 -mb-32">
         <div className="section-pad text-center max-w-3xl mx-auto">
           <span
             data-vid-hero
-            className="font-mono text-xs text-on-dark/30 uppercase tracking-widest"
+            className="font-mono text-xs text-on-dark/60 uppercase tracking-widest"
           >
             Resources
           </span>
@@ -89,7 +89,7 @@ export function InstructionalVideosPage() {
           </h1>
           <p
             data-vid-hero
-            className="mt-4 text-on-dark/40 text-sm md:text-base max-w-lg mx-auto leading-relaxed"
+            className="mt-4 text-on-dark/60 text-sm md:text-base max-w-lg mx-auto leading-relaxed"
           >
             Training and technique videos to help you get the best results with
             Diamond Orthotic Laboratory products.
