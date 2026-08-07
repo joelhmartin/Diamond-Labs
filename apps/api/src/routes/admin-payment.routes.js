@@ -16,6 +16,8 @@ import { runJob, JobLockedError } from "../jobs/runner.js";
 import {
   verifyAllocations,
   recordPaymentAndAllocations,
+} from "../services/payment-recording.service.js";
+import {
   sendAllocationError,
   sendInvoiceLockedError,
   chargeErrorReply,
@@ -413,6 +415,7 @@ export default async function adminPaymentRoutes(fastify) {
                 amount,
                 transactionId: result.transactionId,
                 allocations,
+                source: "admin_card",
               });
               return { ...result, seazonaPaymentId, ...(ledgerWriteFailed ? { ledgerWriteFailed: true } : {}) };
             },

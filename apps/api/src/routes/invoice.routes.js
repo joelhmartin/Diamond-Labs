@@ -291,6 +291,7 @@ export default async function invoiceRoutes(fastify) {
           appliedAmount: amt.toFixed(2),
           transactionId: `OFFLINE-${id}`,
           seazonaPaymentId: null,
+          source: "admin_offline",
         });
         return id;
       });
