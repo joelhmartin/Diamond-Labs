@@ -26,6 +26,15 @@ describe("resolveChargeAmount", () => {
   it("rounds to cents", () => {
     expect(resolveChargeAmount({ enrolledAmount: 500, totalBalance: 180.005 })).toBe(180.01);
   });
+
+  it("returns 0 for a negative enrolledAmount", () => {
+    expect(resolveChargeAmount({ enrolledAmount: -50, totalBalance: 100 })).toBe(0);
+  });
+
+  it("returns 0 for a NaN or undefined enrolledAmount", () => {
+    expect(resolveChargeAmount({ enrolledAmount: NaN, totalBalance: 100 })).toBe(0);
+    expect(resolveChargeAmount({ enrolledAmount: undefined, totalBalance: 100 })).toBe(0);
+  });
 });
 
 describe("allocateOldestFirst", () => {
@@ -89,5 +98,21 @@ describe("allocateOldestFirst", () => {
       100
     );
     expect(allocations[0].invoiceNumber).toBe("IN-1");
+  });
+
+  it("sorts an invoice with no dueDate ahead of one that has a date", () => {
+    const { allocations } = allocateOldestFirst(
+      [inv("a", 100, "2026-02-01"), inv("b", 100, undefined)],
+      100
+    );
+    // Missing dueDate sorts to front as "most overdue".
+    expect(allocations[0].invoiceId).toBe("b");
+  });
+
+  it("returns an empty allocation for a NaN chargeAmount", () => {
+    expect(allocateOldestFirst([inv("a", 100, "2026-01-01")], NaN)).toEqual({
+      allocations: [],
+      totalAllocated: 0,
+    });
   });
 });

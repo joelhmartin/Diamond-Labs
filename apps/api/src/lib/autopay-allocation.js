@@ -10,11 +10,17 @@ function round2(n) {
  * what the final payment may be. If the outstanding balance is less than the
  * enrolled amount — even less than the floor — we charge the balance and close
  * the account out rather than stranding money that can never be collected.
+ *
+ * A money function clamps its own inputs rather than trusting callers to validate:
+ * negative or non-finite enrolledAmount is treated as 0 to prevent logic errors
+ * upstream from producing invalid charges.
  */
 export function resolveChargeAmount({ enrolledAmount, totalBalance }) {
   const balance = round2(totalBalance);
   if (!(balance > 0)) return 0;
-  return round2(Math.min(round2(enrolledAmount), balance));
+  const enrolled = round2(enrolledAmount);
+  if (!(enrolled > 0)) return 0;
+  return round2(Math.min(enrolled, balance));
 }
 
 /**
@@ -33,11 +39,16 @@ export function allocateOldestFirst(invoices, chargeAmount) {
   const ordered = [...(invoices || [])]
     .filter((i) => round2(i.balance) > 0)
     .sort((a, b) => {
+      // Missing dueDate sorts to front as "most overdue" — this handles cases where
+      // Seazona's due field is null, and ensures oldest invoices are paid first.
       const da = a.dueDate ? String(a.dueDate) : "";
       const db = b.dueDate ? String(b.dueDate) : "";
       if (da !== db) return da < db ? -1 : 1;
       // Deterministic tiebreak so a run is reproducible.
-      return String(a.invoiceNumber ?? a.id) < String(b.invoiceNumber ?? b.id) ? -1 : 1;
+      const na = String(a.invoiceNumber ?? a.id);
+      const nb = String(b.invoiceNumber ?? b.id);
+      if (na !== nb) return na < nb ? -1 : 1;
+      return 0; // Genuine full tie — preserve stable sort.
     });
 
   const allocations = [];
