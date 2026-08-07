@@ -42,13 +42,18 @@ export function isDueOn(dayOfMonth, date, timeZone) {
   return day === resolveChargeDay(year, month, dayOfMonth);
 }
 
+/** Format a 1-based (year, month) as the "YYYY-MM" cycle key string. */
+function formatCycleKey(year, month) {
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
 /**
  * The billing cycle an instant belongs to, e.g. "2026-08". One successful
  * charge per enrollment per cycle — this is the idempotency anchor.
  */
 export function cycleKeyFor(date, timeZone) {
   const { year, month } = zonedParts(date, timeZone);
-  return `${year}-${String(month).padStart(2, "0")}`;
+  return formatCycleKey(year, month);
 }
 
 /**
@@ -67,8 +72,17 @@ const RETRY_OFFSETS_DAYS = [2, 5];
 /**
  * Is `date` (in `timeZone`) a scheduled decline-RETRY day for this
  * `dayOfMonth` preference — day+2 or day+5 after the (month-length-clamped)
- * charge day, correctly rolling into the following month? Returns the
- * matched offset (2 or 5) or `null`.
+ * charge day, correctly rolling into the following month? Returns
+ * `{ offset, cycleKey }` on a match, `null` otherwise.
+ *
+ * `cycleKey` is the BASE cycle — the billing cycle of the charge day this
+ * retry is retrying, NOT the calendar month `date` happens to land in. A
+ * retry rolling into next month (dayOfMonth 30: charged Apr 30, retries May
+ * 2/5) still belongs to April's cycle: the failure it's retrying was logged
+ * against April, and a retry that goes on to SUCCEED must be stamped with
+ * April too, or it would wrongly satisfy (and later block) May's own charge.
+ * Callers must thread this value through instead of re-deriving the cycle
+ * from `date` via `cycleKeyFor`.
  *
  * The offset is walked from the CHARGE day actually used that month
  * (`resolveChargeDay`), not the raw preference — a doctor who picked the
@@ -87,7 +101,7 @@ export function isRetryDay(dayOfMonth, date, timeZone) {
     for (const offset of RETRY_OFFSETS_DAYS) {
       const target = addDays(base.year, base.month, chargeDay, offset);
       if (target.year === year && target.month === month && target.day === day) {
-        return offset;
+        return { offset, cycleKey: formatCycleKey(base.year, base.month) };
       }
     }
   }

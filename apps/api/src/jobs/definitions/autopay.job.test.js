@@ -34,6 +34,41 @@ let dueRows = [];
 // filtered differently in application code — see attemptsThisCycle() in
 // autopay-runner.service.js.
 let cycleAttemptRows = [];
+// Rollover-regression support: when set, the attempts-table `.where()` below
+// stops returning `cycleAttemptRows` unconditionally and instead filters by
+// the ACTUAL cycle_key param the query was built with — necessary to prove
+// the retry-day gate and the durable per-cycle guard each query the correct
+// (base, not calendar) cycle. Keyed by cycle_key string, e.g. "2026-04".
+let attemptRowsByCycle = null;
+
+/**
+ * Pull `{ column_name: value }` out of a drizzle `and(eq(col, val), ...)`
+ * condition tree by walking its SQL query-chunk structure. Test-only
+ * introspection — real drizzle never needs this since Postgres does the
+ * filtering; here the "database" is an in-memory mock that must decide what
+ * to return based on which cycle was actually queried.
+ */
+function extractEqParams(sql) {
+  const result = {};
+  let pendingColumn = null;
+  function walk(chunk) {
+    if (chunk == null) return;
+    const ctor = chunk.constructor?.name;
+    if (ctor === "SQL" && Array.isArray(chunk.queryChunks)) {
+      for (const c of chunk.queryChunks) walk(c);
+    } else if (ctor === "Param") {
+      if (pendingColumn) {
+        result[pendingColumn] = chunk.value;
+        pendingColumn = null;
+      }
+    } else if (chunk && typeof chunk === "object" && "name" in chunk && "table" in chunk) {
+      pendingColumn = chunk.name;
+    }
+  }
+  walk(sql);
+  return result;
+}
+
 vi.mock("../../config/database.js", () => ({
   db: {
     insert: () => ({ values: async (v) => { attempts.push(v); } }),
@@ -41,7 +76,15 @@ vi.mock("../../config/database.js", () => ({
     select: () => ({
       from: (table) => {
         if (table === autopayAttemptsTable) {
-          return { where: async () => cycleAttemptRows };
+          return {
+            where: async (cond) => {
+              if (attemptRowsByCycle) {
+                const { cycle_key: cycleKey } = extractEqParams(cond);
+                return attemptRowsByCycle[cycleKey] || [];
+              }
+              return cycleAttemptRows;
+            },
+          };
         }
         return { innerJoin: () => ({ where: async () => dueRows }) };
       },
@@ -129,6 +172,7 @@ beforeEach(() => {
   lockStore.clear();
   dueRows = [];
   cycleAttemptRows = [];
+  attemptRowsByCycle = null;
   seazonaGetAllInvoicesResult.mockClear();
   seazonaGetAllInvoicesResult.mockImplementation(async () => ({ reachable: true, invoices: rawSeazonaInvoices }));
   ledgerGetPortalPaidMapStrict.mockClear();
@@ -245,6 +289,24 @@ describe("processEnrollment", () => {
       // Not a card decline — must not bump consecutiveFailures or pause.
       expect(enrollmentUpdates.some((u) => u.consecutiveFailures !== undefined)).toBe(false);
     });
+
+    // A "forbidden" kind also fires when getInvoice returns null, which is
+    // what a Seazona outage looks like (the wrapper swallows failures to
+    // null) — not just a genuinely missing/foreign invoice. The recorded
+    // reason must not read as a definitive "not found" data problem.
+    it("labels a 'forbidden' cap-check result as an unreachable/unavailable blip, not a flat 'not found'", async () => {
+      paymentRecordingVerifyAllocations.mockResolvedValueOnce({
+        kind: "forbidden",
+        message: "Invoice 1001 not found.",
+      });
+      const attempt = await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r1" });
+      expect(charged).toHaveLength(0);
+      expect(recorded).toHaveLength(0);
+      expect(attempt.status).toBe("failed");
+      expect(attempt.failureReason).toMatch(/unreachable|unavailable/i);
+      // Still not a card decline — no consecutiveFailures bump/pause.
+      expect(enrollmentUpdates.some((u) => u.consecutiveFailures !== undefined)).toBe(false);
+    });
   });
 });
 
@@ -263,6 +325,20 @@ describe("runAutopaySweep", () => {
     expect(attempts).toHaveLength(1);
     expect(attempts[0].status).toBe("failed");
     expect(attempts[0].failureReason).toMatch(/ledger read failed/i);
+  });
+
+  // Nothing due — the full paginating archive walk must be skipped entirely,
+  // not just its results ignored. This is the guard against paying that cost
+  // (and its rate-limit risk) on every daily run regardless of whether
+  // anything is actually due.
+  it("skips the Seazona archive fetch entirely when nothing is due", async () => {
+    dueRows = [];
+
+    const summary = await runAutopaySweep({ dryRun: false, now, runId: "r1" });
+
+    expect(summary.considered).toBe(0);
+    expect(seazonaGetAllInvoicesResult).not.toHaveBeenCalled();
+    expect(attempts).toHaveLength(0);
   });
 
   // Critical 2(a) — a Seazona outage must never be read as "zero invoices".
@@ -353,6 +429,63 @@ describe("runAutopaySweep", () => {
 
       expect(summary.considered).toBe(0);
       expect(charged).toHaveLength(0);
+    });
+
+    // Regression: a retry that rolls into next month must be gated and
+    // stamped against the BASE cycle (the charge it's retrying), not the
+    // calendar month it happens to land in. Before the fix, the gate queried
+    // `cycleKeyFor(now)` — "2026-05" for a May 2 retry — and found nothing,
+    // so the retry silently never fired.
+    describe("rollover regression — retry crossing into next month", () => {
+      const enrollment30 = { ...enrollment, id: "e30", dayOfMonth: 30 };
+
+      it("picks up a retry on May 2 for an April 30 failure (base cycle 2026-04), and charges", async () => {
+        dueRows = [{ enrollment: enrollment30, doctor }];
+        // Only April's cycle has a failure on file — May's cycle has nothing.
+        // The old `cycleKeyFor(now)` gate would query "2026-05" and find
+        // nothing here, so this is exactly the regression case.
+        attemptRowsByCycle = { "2026-04": [{ status: "failed", dryRun: false }] };
+        const retryDate = new Date("2026-05-02T14:00:00Z"); // May 2, America/Chicago.
+
+        const summary = await runAutopaySweep({ dryRun: false, now: retryDate, runId: "r1" });
+
+        expect(summary.considered).toBe(1);
+        expect(charged).toHaveLength(1);
+        expect(summary.charged).toBe(1);
+        // The succeeded attempt row must be stamped with April's cycle, not May's.
+        expect(attempts).toHaveLength(1);
+        expect(attempts[0].status).toBe("succeeded");
+        expect(attempts[0].cycleKey).toBe("2026-04");
+      });
+
+      it("a May 2 retry success does not block the doctor's own May 30 charge", async () => {
+        dueRows = [{ enrollment: enrollment30, doctor }];
+        attemptRowsByCycle = { "2026-04": [{ status: "failed", dryRun: false }] };
+        const retryDate = new Date("2026-05-02T14:00:00Z");
+
+        const retrySummary = await runAutopaySweep({ dryRun: false, now: retryDate, runId: "r1" });
+        expect(retrySummary.charged).toBe(1);
+        expect(attempts[0].cycleKey).toBe("2026-04");
+
+        // Simulate the next run: reset per-call trackers (a fresh sweep), but
+        // the attempt store persists — May's own cycle ("2026-05") has no
+        // succeeded row on file, since the May 2 retry was correctly stamped
+        // "2026-04" above. The durable per-cycle guard (C2) must therefore
+        // NOT block May 30's charge.
+        charged.length = 0;
+        attempts.length = 0;
+        lockStore.clear();
+        attemptRowsByCycle["2026-05"] = [];
+
+        const chargeDate = new Date("2026-05-30T14:00:00Z"); // May 30 — enrollment30's own charge day.
+        const chargeSummary = await runAutopaySweep({ dryRun: false, now: chargeDate, runId: "r2" });
+
+        expect(chargeSummary.considered).toBe(1);
+        expect(chargeSummary.charged).toBe(1);
+        expect(attempts).toHaveLength(1);
+        expect(attempts[0].status).toBe("succeeded");
+        expect(attempts[0].cycleKey).toBe("2026-05");
+      });
     });
   });
 });
