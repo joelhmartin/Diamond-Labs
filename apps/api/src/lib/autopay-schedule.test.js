@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveChargeDay, isDueOn, cycleKeyFor, zonedParts } from "./autopay-schedule.js";
+import { resolveChargeDay, isDueOn, cycleKeyFor, zonedParts, isRetryDay } from "./autopay-schedule.js";
 
 const TZ = "America/Chicago";
 
@@ -68,5 +68,60 @@ describe("cycleKeyFor", () => {
 describe("zonedParts", () => {
   it("extracts lab-local calendar parts", () => {
     expect(zonedParts(new Date("2026-08-15T02:00:00Z"), TZ)).toEqual({ year: 2026, month: 8, day: 14 });
+  });
+});
+
+describe("isRetryDay", () => {
+  it("matches day+2 for an ordinary mid-month charge day", () => {
+    expect(isRetryDay(15, new Date("2026-08-17T15:00:00Z"), TZ)).toBe(2);
+  });
+
+  it("matches day+5 for an ordinary mid-month charge day", () => {
+    expect(isRetryDay(15, new Date("2026-08-20T15:00:00Z"), TZ)).toBe(5);
+  });
+
+  it("is null on the charge day itself", () => {
+    expect(isRetryDay(15, new Date("2026-08-15T15:00:00Z"), TZ)).toBeNull();
+  });
+
+  it("is null on a day that is neither the charge day nor a retry day", () => {
+    expect(isRetryDay(15, new Date("2026-08-18T15:00:00Z"), TZ)).toBeNull();
+    expect(isRetryDay(15, new Date("2026-08-21T15:00:00Z"), TZ)).toBeNull();
+  });
+
+  it("rolls day+2/+5 into the next month for a day-30 preference (April has 30 days)", () => {
+    // April has 30 days: charge day is Apr 30, so +2 lands on May 2 and +5 on
+    // May 5 — NOT a nonexistent "April 32/35".
+    expect(isRetryDay(30, new Date("2026-05-02T15:00:00Z"), TZ)).toBe(2);
+    expect(isRetryDay(30, new Date("2026-05-05T15:00:00Z"), TZ)).toBe(5);
+    // And May 2/5 must not ALSO match some other spurious offset from May's
+    // own charge day (30) — only the carry-over from April's charge day
+    // should fire here.
+    expect(isRetryDay(30, new Date("2026-06-02T15:00:00Z"), TZ)).toBeNull();
+    expect(isRetryDay(30, new Date("2026-06-05T15:00:00Z"), TZ)).toBeNull();
+  });
+
+  it("rolls a clamped Feb-28 charge day (dayOfMonth=31) into March", () => {
+    // 2026 is not a leap year: Feb clamps day 31 -> Feb 28, so +2 -> Mar 2,
+    // +5 -> Mar 5.
+    expect(isRetryDay(31, new Date("2026-03-02T15:00:00Z"), TZ)).toBe(2);
+    expect(isRetryDay(31, new Date("2026-03-05T15:00:00Z"), TZ)).toBe(5);
+  });
+
+  it("does not double-fire March's own day-31 charge day as a retry of itself", () => {
+    // March has 31 days, so dayOfMonth=31 charges ON Mar 31 (not a retry) —
+    // the retry days for THAT cycle are Apr 2 / Apr 5, not Mar-something.
+    expect(isRetryDay(31, new Date("2026-03-31T15:00:00Z"), TZ)).toBeNull();
+    expect(isRetryDay(31, new Date("2026-04-02T15:00:00Z"), TZ)).toBe(2);
+    expect(isRetryDay(31, new Date("2026-04-05T15:00:00Z"), TZ)).toBe(5);
+  });
+
+  it("uses lab time, not UTC, at the day boundary", () => {
+    // 2026-08-17T02:00Z is still 2026-08-16 21:00 in Chicago. Against a
+    // charge day of 15 the day+2 target is the 17th, which this instant has
+    // NOT reached in lab time yet; against a charge day of 14 the target is
+    // the 16th, which it has.
+    expect(isRetryDay(15, new Date("2026-08-17T02:00:00Z"), TZ)).toBeNull();
+    expect(isRetryDay(14, new Date("2026-08-17T02:00:00Z"), TZ)).toBe(2);
   });
 });

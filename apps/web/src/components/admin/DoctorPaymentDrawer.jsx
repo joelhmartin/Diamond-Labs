@@ -364,12 +364,18 @@ export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount }) {
         addToast({ message: errMsg(err, "Could not reach the card processor. Please try again shortly."), type: "error" });
         return;
       }
-      // 422 names the offending field (amount, dayOfMonth, or
-      // paymentProfileId) and — for a floor violation — states the minimum
-      // right in the message. Surface it on that field, not a generic toast.
-      if (err.response?.status === 422) {
-        const field = err.response.data?.error?.field || "amount";
-        setError(field, { type: "server", message: err.response.data?.error?.message || "Invalid value." });
+      // M4 — a 422 from the hand-rolled service-layer validation (a floor
+      // violation, a missing card) names the offending field; a 422 from
+      // validate()'s Zod schema check does NOT — it emits `details`, not
+      // `field` (see apps/api/src/middleware/validate.js). Defaulting to
+      // "amount" whenever `field` was absent put a schema error (e.g. a bad
+      // dayOfMonth) on the wrong input. Only land it on a field when the
+      // server actually named one — same pattern as AutoPayPage.jsx.
+      if (err.response?.status === 422 && err.response?.data?.error?.field) {
+        setError(err.response.data.error.field, {
+          type: "server",
+          message: err.response.data.error.message || "Invalid value.",
+        });
         return;
       }
       addToast({ message: errMsg(err, "Could not save AutoPay."), type: "error" });

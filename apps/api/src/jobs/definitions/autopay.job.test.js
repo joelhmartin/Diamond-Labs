@@ -12,33 +12,58 @@ vi.mock("../../services/authorizenet.service.js", () => ({
 }));
 
 const recorded = [];
+// I3 — controllable per test so the in-lock cap re-check can be forced to
+// fail independently of everything else; defaults to "no cap problem".
+const paymentRecordingVerifyAllocations = vi.fn(async () => null);
 vi.mock("../../services/payment-recording.service.js", () => ({
   recordPaymentAndAllocations: vi.fn(async (args) => {
     recorded.push(args);
     return { seazonaPaymentId: "sp1" };
   }),
-  verifyAllocations: async () => null,
+  verifyAllocations: (...args) => paymentRecordingVerifyAllocations(...args),
 }));
 
 const attempts = [];
 const enrollmentUpdates = [];
 // runAutopaySweep's enrollment query — controlled per-test via `dueRows`.
 let dueRows = [];
+// C2/I4 — every autopay_attempts row already on file for "this user, this
+// cycle", used by BOTH the retry-day gate (looks for a `failed` row) and the
+// durable per-cycle charge guard (looks for a `succeeded` row). One knob
+// covers both because in the real query they're the exact same rows, just
+// filtered differently in application code — see attemptsThisCycle() in
+// autopay-runner.service.js.
+let cycleAttemptRows = [];
 vi.mock("../../config/database.js", () => ({
   db: {
     insert: () => ({ values: async (v) => { attempts.push(v); } }),
     update: () => ({ set: (v) => ({ where: async () => { enrollmentUpdates.push(v); } }) }),
-    select: () => ({ from: () => ({ innerJoin: () => ({ where: async () => dueRows }) }) }),
+    select: () => ({
+      from: (table) => {
+        if (table === autopayAttemptsTable) {
+          return { where: async () => cycleAttemptRows };
+        }
+        return { innerJoin: () => ({ where: async () => dueRows }) };
+      },
+    }),
   },
 }));
 
 // Reachability-aware Seazona read + the STRICT ledger read — controlled per
 // test so the two Critical-bug regression tests (ledger blip, Seazona outage)
 // can force each failure mode independently of the gateway/db mocks above.
-const seazonaGetInvoicesResult = vi.fn(async () => ({ reachable: true, invoices: [] }));
+// CRITICAL 1 — must be the PAGINATING getAllInvoicesResult(), not the
+// single-page getInvoicesResult(): the runner now calls the former exactly
+// once per sweep (I6) rather than once per enrollment.
+const seazonaGetAllInvoicesResult = vi.fn(async () => ({ reachable: true, invoices: [] }));
 vi.mock("../../services/seazona.service.js", () => ({
-  getInvoicesResult: seazonaGetInvoicesResult,
+  getAllInvoicesResult: seazonaGetAllInvoicesResult,
 }));
+
+// Real (unmocked) schema import — pure pgTable definitions, no DB/env side
+// effects — used only so the db mock above can tell the enrollments query
+// apart from the attempts query by table identity.
+const { autopayAttempts: autopayAttemptsTable } = await import("../../db/schema/index.js");
 
 const ledgerGetPortalPaidMapStrict = vi.fn(async () => ({}));
 vi.mock("../../services/invoice-ledger.service.js", () => ({
@@ -103,10 +128,13 @@ beforeEach(() => {
   enrollmentUpdates.length = 0;
   lockStore.clear();
   dueRows = [];
-  seazonaGetInvoicesResult.mockClear();
-  seazonaGetInvoicesResult.mockImplementation(async () => ({ reachable: true, invoices: rawSeazonaInvoices }));
+  cycleAttemptRows = [];
+  seazonaGetAllInvoicesResult.mockClear();
+  seazonaGetAllInvoicesResult.mockImplementation(async () => ({ reachable: true, invoices: rawSeazonaInvoices }));
   ledgerGetPortalPaidMapStrict.mockClear();
   ledgerGetPortalPaidMapStrict.mockImplementation(async () => ({}));
+  paymentRecordingVerifyAllocations.mockClear();
+  paymentRecordingVerifyAllocations.mockImplementation(async () => null);
 });
 
 describe("processEnrollment", () => {
@@ -168,6 +196,56 @@ describe("processEnrollment", () => {
     expect(charged).toHaveLength(1);
     expect(attempt.status).toBe("succeeded");
   });
+
+  // C2 — the durable per-cycle guard, exercised directly against
+  // processEnrollment (the sweep-level test below exercises it via the
+  // retry-day path instead).
+  describe("C2 — durable per-cycle charge guard", () => {
+    it("records skipped and does not charge when a succeeded, real attempt already exists this cycle", async () => {
+      cycleAttemptRows = [{ status: "succeeded", dryRun: false }];
+      const attempt = await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r1" });
+      expect(charged).toHaveLength(0);
+      expect(recorded).toHaveLength(0);
+      expect(attempt.status).toBe("skipped");
+      expect(attempt.failureReason).toMatch(/already charged/i);
+      // Must NOT be treated like a card decline — no consecutiveFailures
+      // bump, no pause, no enrollment update of any kind.
+      expect(enrollmentUpdates).toHaveLength(0);
+    });
+
+    it("ignores a succeeded DRY-RUN attempt — a dry run must never block a real charge", async () => {
+      cycleAttemptRows = [{ status: "succeeded", dryRun: true }];
+      const attempt = await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r1" });
+      expect(charged).toHaveLength(1);
+      expect(attempt.status).toBe("succeeded");
+    });
+
+    it("ignores an earlier FAILED attempt this cycle — only a SUCCEEDED one blocks a charge", async () => {
+      cycleAttemptRows = [{ status: "failed", dryRun: false }];
+      const attempt = await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r1" });
+      expect(charged).toHaveLength(1);
+      expect(attempt.status).toBe("succeeded");
+    });
+  });
+
+  // I3 — the sweep is the only charge path that computes its allocation plan
+  // well before entering the invoice lock; the cap must be re-verified
+  // INSIDE the lock, same as every human charge path already does.
+  describe("I3 — in-lock allocation cap re-check", () => {
+    it("records failed (not a decline) and does not charge when the in-lock cap re-check fails", async () => {
+      paymentRecordingVerifyAllocations.mockResolvedValueOnce({
+        kind: "validation",
+        message: "Allocation exceeds remaining balance.",
+      });
+      const attempt = await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r1" });
+      expect(charged).toHaveLength(0);
+      expect(recorded).toHaveLength(0);
+      expect(attempt.status).toBe("failed");
+      expect(attempt.failureReason).toMatch(/exceeds remaining balance/i);
+      // Not a card decline — must not bump consecutiveFailures or pause.
+      expect(enrollmentUpdates.some((u) => u.consecutiveFailures !== undefined)).toBe(false);
+    });
+  });
 });
 
 describe("runAutopaySweep", () => {
@@ -190,7 +268,7 @@ describe("runAutopaySweep", () => {
   // Critical 2(a) — a Seazona outage must never be read as "zero invoices".
   it("records a skipped attempt, leaves status untouched, and charges nothing when Seazona is unreachable", async () => {
     dueRows = [{ enrollment, doctor }];
-    seazonaGetInvoicesResult.mockResolvedValueOnce({ reachable: false, invoices: [] });
+    seazonaGetAllInvoicesResult.mockResolvedValueOnce({ reachable: false, invoices: [] });
 
     const summary = await runAutopaySweep({ dryRun: false, now, runId: "r1" });
 
@@ -213,6 +291,69 @@ describe("runAutopaySweep", () => {
     expect(charged[0].amount).toBe(500);
     expect(summary.charged).toBe(1);
     expect(summary.totalAmount).toBe(500);
+  });
+
+  // I6 — the archive must be fetched once for the whole sweep, not once per
+  // enrollment (the thing that tripped a host-level 403 from ~950 requests).
+  it("fetches the Seazona invoice archive only once even with multiple due enrollments", async () => {
+    const doctor2 = { ...doctor, id: "u2", seazonaClientId: "c2" };
+    const enrollment2 = { ...enrollment, id: "e2", userId: "u2" };
+    dueRows = [{ enrollment, doctor }, { enrollment: enrollment2, doctor: doctor2 }];
+
+    await runAutopaySweep({ dryRun: false, now, runId: "r1" });
+
+    expect(seazonaGetAllInvoicesResult).toHaveBeenCalledTimes(1);
+  });
+
+  // I4 — decline retries fire on day+2/day+5, but ONLY when this cycle
+  // already logged a real (non-dry-run) failed attempt.
+  describe("I4 — decline retry days", () => {
+    // Aug 17 in Chicago — enrollment.dayOfMonth is 15, so this is day+2, not
+    // the enrollment's own due day.
+    const retryNow = new Date("2026-08-17T14:00:00Z");
+
+    it("fires on a retry day when this cycle already has a failed attempt, and charges", async () => {
+      dueRows = [{ enrollment, doctor }];
+      cycleAttemptRows = [{ status: "failed", dryRun: false }];
+
+      const summary = await runAutopaySweep({ dryRun: false, now: retryNow, runId: "r1" });
+
+      expect(summary.considered).toBe(1);
+      expect(charged).toHaveLength(1);
+      expect(summary.charged).toBe(1);
+    });
+
+    it("does not fire on a retry day when this cycle has no failed attempt yet", async () => {
+      dueRows = [{ enrollment, doctor }];
+      cycleAttemptRows = [];
+
+      const summary = await runAutopaySweep({ dryRun: false, now: retryNow, runId: "r1" });
+
+      expect(summary.considered).toBe(0);
+      expect(charged).toHaveLength(0);
+    });
+
+    it("does not fire on a retry day when the only prior attempt was a dry run", async () => {
+      dueRows = [{ enrollment, doctor }];
+      cycleAttemptRows = [{ status: "failed", dryRun: true }];
+
+      const summary = await runAutopaySweep({ dryRun: false, now: retryNow, runId: "r1" });
+
+      expect(summary.considered).toBe(0);
+      expect(charged).toHaveLength(0);
+    });
+
+    it("does not fire on a day that is neither the charge day nor a retry day", async () => {
+      dueRows = [{ enrollment, doctor }];
+      cycleAttemptRows = [{ status: "failed", dryRun: false }];
+      // Aug 18 — one day past the day+2 retry, not day+5 either.
+      const offDay = new Date("2026-08-18T14:00:00Z");
+
+      const summary = await runAutopaySweep({ dryRun: false, now: offDay, runId: "r1" });
+
+      expect(summary.considered).toBe(0);
+      expect(charged).toHaveLength(0);
+    });
   });
 });
 

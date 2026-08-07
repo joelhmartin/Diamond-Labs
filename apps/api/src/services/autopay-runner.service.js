@@ -7,11 +7,56 @@ import { env } from "../config/env.js";
 import * as seazonaService from "./seazona.service.js";
 import * as authorizenetService from "./authorizenet.service.js";
 import { getPortalPaidMapStrict } from "./invoice-ledger.service.js";
-import { recordPaymentAndAllocations } from "./payment-recording.service.js";
+import { verifyAllocations, recordPaymentAndAllocations } from "./payment-recording.service.js";
 import { allocateOldestFirst, resolveChargeAmount } from "../lib/autopay-allocation.js";
-import { isDueOn, cycleKeyFor } from "../lib/autopay-schedule.js";
+import { isDueOn, isRetryDay, cycleKeyFor } from "../lib/autopay-schedule.js";
 import { withInvoiceLocks, withIdempotency } from "../lib/payment-helpers.js";
 import * as emailService from "./email.service.js";
+
+/**
+ * Thrown (inside the per-invoice lock, before the gateway call) when a
+ * SUCCESSFUL, real charge already exists for this user+cycle. C2 — the
+ * per-enrollment idempotency key (`autopay:<enrollmentId>:<cycle>`) is only a
+ * 24h cache and is scoped to the enrollment id, which does NOT survive a
+ * mid-cycle charge-day change or a delete-and-re-enroll. This is the durable
+ * layer: a fresh DB read, right before charging, keyed on the doctor
+ * (user_id) rather than the enrollment. Caught distinctly from a gateway
+ * decline so it is recorded as `skipped`, never counted against
+ * consecutiveFailures/pause.
+ */
+class AlreadyChargedThisCycleError extends Error {
+  constructor() {
+    super("A successful AutoPay charge already exists for this user this cycle.");
+    this.name = "AlreadyChargedThisCycleError";
+  }
+}
+
+/**
+ * Thrown (inside the per-invoice lock, before the gateway call) when the I3
+ * over-allocation re-check fails. The sweep computes balances well before
+ * entering the lock (and, per I6, off a single up-front invoice fetch for the
+ * whole sweep), so time — and possibly another charge against the same
+ * invoice — can pass before this charge actually lands. Every human charge
+ * path re-verifies the cap INSIDE its lock; this makes the sweep no
+ * exception. Recorded as `failed` (not a gateway decline) and never counted
+ * against consecutiveFailures — this is an internal invariant catching a
+ * race, not the doctor's card being bad.
+ */
+class AllocationCapExceededError extends Error {}
+
+/**
+ * All attempt rows recorded for this user in this cycle, unfiltered by
+ * status. Read once per call site and filtered in JS (a cycle has at most a
+ * handful of rows) rather than issuing two narrower queries — this keeps both
+ * the retry-day gate (looks for a `failed` row) and the durable charge guard
+ * (looks for a `succeeded` row) working off one simple query shape.
+ */
+async function attemptsThisCycle(userId, cycleKey) {
+  return db
+    .select({ status: autopayAttempts.status, dryRun: autopayAttempts.dryRun })
+    .from(autopayAttempts)
+    .where(and(eq(autopayAttempts.userId, userId), eq(autopayAttempts.cycleKey, cycleKey)));
+}
 
 /** Seazona rate-limits hard: concurrency 8 failed 448/476. Serial + spaced. */
 const SEAZONA_SPACING_MS = 110;
@@ -63,28 +108,27 @@ async function updateEnrollment(id, patch, log) {
 }
 
 /**
- * Resolve a doctor's open invoices with balances from the LOCAL ledger.
+ * Resolve a doctor's open invoices with balances from the LOCAL ledger,
+ * filtering them out of a RAW invoice archive the caller already fetched.
  *
- * Returns a discriminated result rather than a bare array so the sweep can
- * tell "genuinely nothing owed" apart from "we couldn't find out" — a plain
- * empty array reads identically to a paid-off balance either way, and both
- * failure modes are dangerous if mistaken for one:
- *   - a ledger-read blip (getPortalPaidMapStrict throwing) must NOT fall back
- *     to "paid so far = 0", which would reopen every invoice's FULL total and
- *     let the sweep charge for invoices that are already paid;
- *   - a Seazona outage (unreachable) must NOT read as "zero invoices", which
- *     would mark the enrollment `completed` with no balance ever checked —
- *     and (before this fix) `completed` had no path back to `active`, so one
- *     blip on sweep day permanently disabled AutoPay for that doctor.
+ * I6 — this used to fetch Seazona's invoice list itself, once PER
+ * ENROLLMENT: with hundreds of enrollments that's hundreds of full-archive
+ * fetches against an API that rate-limits hard (this exact repo tripped a
+ * host-level 403 from ~950 requests once). The sweep now fetches the archive
+ * ONCE (see runAutopaySweep) and every doctor's open invoices are just a
+ * filter over that same in-memory array — reachability is therefore decided
+ * once, by the caller, not per doctor; this function only ever sees a
+ * reachable result.
  *
- * kind: "ok" | "seazona_unreachable" | "ledger_error"
+ * Still returns a discriminated result (rather than a bare array) for the
+ * remaining local-only failure mode: a ledger-read blip
+ * (getPortalPaidMapStrict throwing) must NOT fall back to "paid so far = 0",
+ * which would reopen every invoice's FULL total and let the sweep charge for
+ * invoices that are already paid.
+ *
+ * kind: "ok" | "ledger_error"
  */
-async function resolveOpenInvoices(doctor) {
-  const { reachable, invoices } = await seazonaService.getInvoicesResult("1900-01-01T00:00:00Z");
-  if (!reachable) {
-    return { kind: "seazona_unreachable" };
-  }
-
+async function resolveOpenInvoices(doctor, rawInvoices) {
   let paidMap;
   try {
     paidMap = await getPortalPaidMapStrict(doctor.id);
@@ -92,7 +136,7 @@ async function resolveOpenInvoices(doctor) {
     return { kind: "ledger_error", error: err };
   }
 
-  const openInvoices = (invoices || [])
+  const openInvoices = (rawInvoices || [])
     .filter((inv) => String(inv.clientId) === String(doctor.seazonaClientId))
     .map((inv) => ({
       id: String(inv.id),
@@ -168,6 +212,25 @@ export async function processEnrollment({ enrollment, doctor, invoices, dryRun, 
             redis,
             allocations.map((a) => a.invoiceId),
             async () => {
+              // I3 — re-verify the over-allocation cap INSIDE the lock, first
+              // thing. Every human charge path (payment.routes.js,
+              // admin-payment.routes.js) does this; the sweep computed
+              // `invoices`/`chargeAmount` well before this point (and, per I6,
+              // off a single up-front fetch for the WHOLE sweep), so another
+              // charge could have landed on one of these invoices since. Do
+              // NOT charge on a cap violation — record it as `failed` below.
+              const capErr = await verifyAllocations(allocations, doctor, { enforceCap: true });
+              if (capErr) throw new AllocationCapExceededError(capErr.message);
+
+              // C2 — durable per-cycle charge guard, keyed on the DOCTOR
+              // (user_id), not the enrollment. A fresh read, right here,
+              // right before the gateway call — see AlreadyChargedThisCycleError's
+              // docstring for why the redis idempotency key alone isn't enough.
+              const cycleAttempts = await attemptsThisCycle(doctor.id, base.cycleKey);
+              if (cycleAttempts.some((a) => a.status === "succeeded" && a.dryRun === false)) {
+                throw new AlreadyChargedThisCycleError();
+              }
+
               const charge = await authorizenetService.chargeCustomerProfile({
                 customerProfileId: doctor.authorizeNetCustomerProfileId,
                 paymentProfileId: enrollment.paymentProfileId,
@@ -212,6 +275,36 @@ export async function processEnrollment({ enrollment, doctor, invoices, dryRun, 
         log
       );
     } catch (err) {
+      // C2 — already charged this cycle (by a concurrent run, or this same
+      // run racing itself under a stale/expired redis key). Not a decline:
+      // record `skipped`, touch nothing else. Must be checked before the
+      // generic failure branch below, which would otherwise count this as a
+      // consecutive failure and could wrongly pause/email the doctor.
+      if (err instanceof AlreadyChargedThisCycleError) {
+        return writeAttempt(
+          { ...base, status: "skipped", failureReason: "already charged this cycle" },
+          log
+        );
+      }
+
+      // I3 — the in-lock cap re-check failed. An internal invariant/race, not
+      // a card decline — record `failed` with the cap message, but do NOT
+      // count it against consecutiveFailures/pause or email the doctor a
+      // "card declined" notice for something that was never sent to the card.
+      if (err instanceof AllocationCapExceededError) {
+        await updateEnrollment(enrollment.id, { lastRunAt: now, updatedAt: now }, log);
+        return writeAttempt(
+          {
+            ...base,
+            status: "failed",
+            amountAttempted: totalAllocated.toFixed(2),
+            allocations,
+            failureReason: String(err.message).slice(0, 500),
+          },
+          log
+        );
+      }
+
       const failures = Number(enrollment.consecutiveFailures || 0) + 1;
       const shouldPause = failures >= Number(env.AUTOPAY_MAX_FAILURES);
 
@@ -296,20 +389,57 @@ export async function runAutopaySweep({ dryRun = true, now = new Date(), log, ru
       )
     );
 
-  const due = rows.filter(({ enrollment }) => isDueOn(enrollment.dayOfMonth, now, env.AUTOPAY_TIMEZONE));
+  const cycleKey = cycleKeyFor(now, env.AUTOPAY_TIMEZONE);
+
+  // I4 — due today either on the enrollment's own charge day, OR on a
+  // decline RETRY day (charge day + 2 / + 5) when this cycle already logged
+  // a real failed attempt. C2's durable per-cycle guard (re-checked, fresh,
+  // inside processEnrollment's lock) is what makes firing a retry candidate
+  // here safe — a match below is only ever a CANDIDATE to run, never a
+  // guarantee it charges (it may already have succeeded via the OTHER
+  // matched day, or via an admin "charge now").
+  const due = [];
+  for (const row of rows) {
+    const { enrollment } = row;
+    if (isDueOn(enrollment.dayOfMonth, now, env.AUTOPAY_TIMEZONE)) {
+      due.push(row);
+      continue;
+    }
+    if (isRetryDay(enrollment.dayOfMonth, now, env.AUTOPAY_TIMEZONE)) {
+      const cycleAttempts = await attemptsThisCycle(enrollment.userId, cycleKey);
+      const hasRealFailure = cycleAttempts.some((a) => a.status === "failed" && a.dryRun === false);
+      if (hasRealFailure) due.push(row);
+    }
+  }
 
   const summary = { considered: due.length, charged: 0, skipped: 0, failed: 0, wouldCharge: 0, totalAmount: 0 };
 
+  // I6 — fetch the FULL invoice archive ONCE for the whole sweep, not once
+  // PER ENROLLMENT. Every doctor's open invoices are just a filter over this
+  // same in-memory array (see resolveOpenInvoices). Seazona rate-limits hard
+  // — this exact repo tripped a host-level 403 from ~950 requests once — and
+  // with hundreds of enrollments, a per-doctor fetch multiplies that risk by
+  // hundreds. CRITICAL 1 — this MUST be the paginating getAllInvoicesResult(),
+  // not getInvoicesResult(): Seazona truncates a single page at a hard 10,000
+  // records sorted by id, and the historical archive was bulk-restamped to
+  // one lastModified, so a single-page fetch here silently drops ~37% of
+  // invoices — understating balances and flipping a doctor who still owes
+  // money to `completed`. Do not "simplify" this back to the single-page call.
+  const invoicesResult = await seazonaService.getAllInvoicesResult();
+
   for (const { enrollment, doctor } of due) {
     // Serialized on purpose — Seazona rate-limits hard (concurrency 8 failed
-    // 448/476 requests). Do not Promise.all this loop.
+    // 448/476 requests). Do not Promise.all this loop. Note this lengthens
+    // the read→charge window per doctor (the invoice snapshot above ages as
+    // the loop runs) — that is exactly why I3's in-lock cap re-check inside
+    // processEnrollment exists; this spacing and that re-check are a pair.
     await sleep(SEAZONA_SPACING_MS);
     try {
-      const resolved = await resolveOpenInvoices(doctor);
-
-      if (resolved.kind === "seazona_unreachable") {
+      if (!invoicesResult.reachable) {
         // Never infer a zero balance from an unreachable upstream — leave
-        // enrollment status untouched and charge nothing.
+        // enrollment status untouched and charge nothing. One fetch covers
+        // the whole sweep, so an outage here means EVERY due enrollment is
+        // unreachable this run, not just this one.
         await writeAttempt(
           {
             ...attemptBase({ enrollment, doctor, runId, now, dryRun }),
@@ -321,6 +451,8 @@ export async function runAutopaySweep({ dryRun = true, now = new Date(), log, ru
         summary.skipped++;
         continue;
       }
+
+      const resolved = await resolveOpenInvoices(doctor, invoicesResult.invoices);
 
       if (resolved.kind === "ledger_error") {
         // Never fall back to "paid so far = 0" — that would reopen every

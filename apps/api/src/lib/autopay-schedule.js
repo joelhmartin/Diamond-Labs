@@ -50,3 +50,46 @@ export function cycleKeyFor(date, timeZone) {
   const { year, month } = zonedParts(date, timeZone);
   return `${year}-${String(month).padStart(2, "0")}`;
 }
+
+/**
+ * Walk a 1-based (year, month, day) forward by `days` calendar days. Pure
+ * calendar arithmetic via Date.UTC — no timezone conversion happens here, we
+ * are just counting days on a calendar page, not consulting a clock.
+ */
+function addDays(year, month, day, days) {
+  const d = new Date(Date.UTC(year, month - 1, day + days));
+  return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };
+}
+
+/** RETRY_OFFSETS_DAYS — decline retries fire on charge-day + 2 and + 5 (spec). */
+const RETRY_OFFSETS_DAYS = [2, 5];
+
+/**
+ * Is `date` (in `timeZone`) a scheduled decline-RETRY day for this
+ * `dayOfMonth` preference — day+2 or day+5 after the (month-length-clamped)
+ * charge day, correctly rolling into the following month? Returns the
+ * matched offset (2 or 5) or `null`.
+ *
+ * The offset is walked from the CHARGE day actually used that month
+ * (`resolveChargeDay`), not the raw preference — a doctor who picked the
+ * 31st charges on Feb 28, so their retries are Mar 2 / Mar 5, not a
+ * nonexistent "Feb 33/36". Because the base charge day can fall in either
+ * the current or the previous lab-local month (a late-month charge day's
+ * +5 retry rolls into next month), both are checked — `date`'s own month
+ * and the one before it are sufficient since the max offset is 5 days.
+ */
+export function isRetryDay(dayOfMonth, date, timeZone) {
+  const { year, month, day } = zonedParts(date, timeZone);
+  const prevMonth = month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
+
+  for (const base of [{ year, month }, prevMonth]) {
+    const chargeDay = resolveChargeDay(base.year, base.month, dayOfMonth);
+    for (const offset of RETRY_OFFSETS_DAYS) {
+      const target = addDays(base.year, base.month, chargeDay, offset);
+      if (target.year === year && target.month === month && target.day === day) {
+        return offset;
+      }
+    }
+  }
+  return null;
+}

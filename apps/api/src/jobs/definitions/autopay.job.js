@@ -13,6 +13,13 @@ defineJob({
     if (dryRun !== effectiveDryRun) {
       log?.warn?.("AutoPay asked for a live run but AUTOPAY_LIVE_RUN is false — running dry");
     }
-    return runAutopaySweep({ dryRun: effectiveDryRun, log, runId });
+    const summary = await runAutopaySweep({ dryRun: effectiveDryRun, log, runId });
+    // Thread the EFFECTIVE dry-run value back through the summary — never the
+    // REQUESTED one, which could read "live" while nothing actually charged.
+    // The Cloud Run Job log (what jobs/cli.js prints) is the operator's
+    // primary artifact for the go-live gate, and it prints runJob's result —
+    // which is exactly this summary — so this is the only place that value
+    // can reach that log.
+    return { ...summary, dryRun: effectiveDryRun };
   },
 });

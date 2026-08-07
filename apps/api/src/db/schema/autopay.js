@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { pgTable, varchar, boolean, integer, numeric, timestamp, date, jsonb, pgEnum, index, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const autopayStatusEnum = pgEnum("autopay_status", ["active", "paused", "completed"]);
@@ -58,4 +59,17 @@ export const autopayAttempts = pgTable("autopay_attempts", {
   index("autopay_attempts_user_idx").on(table.userId),
   index("autopay_attempts_cycle_idx").on(table.enrollmentId, table.cycleKey),
   index("autopay_attempts_job_run_idx").on(table.jobRunId),
+  // CRITICAL 2 — DB-level backstop for "at most one successful, real charge
+  // per doctor per cycle." Keyed on user_id (NOT enrollment_id) so it holds
+  // across a delete-and-re-enroll within the same month, which mints a new
+  // enrollment_id and would otherwise dodge a guard scoped to the old one.
+  // The application-level check in autopay-runner.service.js (a fresh read
+  // inside the per-invoice lock, right before charging) is the primary
+  // guard; this partial unique index is what makes a violation impossible
+  // even under a bug or a race the application check missed — Postgres
+  // rejects the second `succeeded, dry_run=false` row outright rather than
+  // relying on app code never getting it wrong twice in the same millisecond.
+  uniqueIndex("autopay_attempts_user_cycle_success_idx")
+    .on(table.userId, table.cycleKey)
+    .where(sql`status = 'succeeded' AND dry_run = false`),
 ]);

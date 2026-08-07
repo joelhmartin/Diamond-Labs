@@ -62,6 +62,7 @@ const SOURCE_LABEL = {
   doctor_hosted: "Doctor — card",
   admin_card: "Admin — card",
   admin_offline: "Offline",
+  refund: "Refund",
 };
 
 function StatusPill({ status }) {
