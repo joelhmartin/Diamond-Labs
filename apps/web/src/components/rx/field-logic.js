@@ -11,9 +11,13 @@
  * in sync.
  *
  * Supported showIf shapes — see form-logic.js for the authoritative contract:
- *   { key, includes } | { key, equals } | { key, prefix }
+ *   { key, includes } | { key, equals } | { key, prefix } | { key, oneOf } |
+ *   { key, answered: true } | { key, cell }
+ *
+ * Also re-exports disabledOptions(field, answers) — the field-level
+ * `disableOptionsIf` reader — for the same single-source-of-truth reason.
  *
  * Kept as its own JSX-free module so importers (fields.jsx re-exports it) and
  * plain-node tests do not change.
  */
-export { shouldShow } from "../../data/forms/form-logic.js";
+export { shouldShow, disabledOptions } from "../../data/forms/form-logic.js";

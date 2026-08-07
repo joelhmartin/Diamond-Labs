@@ -1,7 +1,10 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { shouldShow } from "./field-logic.js";
-import { shouldShow as formLogicShouldShow } from "../../data/forms/form-logic.js";
+import { shouldShow, disabledOptions } from "./field-logic.js";
+import {
+  shouldShow as formLogicShouldShow,
+  disabledOptions as formLogicDisabledOptions,
+} from "../../data/forms/form-logic.js";
 
 test("shouldShow: true when no showIf", () => {
   assert.equal(shouldShow({ key: "a" }, {}), true);
@@ -51,4 +54,19 @@ test("shouldShow understands showIf.includes (a multi-select gate)", () => {
 test("a null/undefined field never throws", () => {
   assert.equal(shouldShow(null, {}), true);
   assert.equal(shouldShow(undefined, {}), true);
+});
+
+test("shouldShow understands the new showIf shapes too (answered, oneOf, cell)", () => {
+  assert.equal(shouldShow({ key: "b", showIf: { key: "a", answered: true } }, { a: "x" }), true);
+  assert.equal(shouldShow({ key: "b", showIf: { key: "a", answered: true } }, {}), false);
+  assert.equal(shouldShow({ key: "b", showIf: { key: "a", oneOf: ["x"] } }, { a: "x" }), true);
+  assert.equal(shouldShow({ key: "b", showIf: { key: "a", oneOf: ["x"] } }, { a: "z" }), false);
+  assert.equal(
+    shouldShow({ key: "b", showIf: { key: "m", cell: "r__c" } }, { m: { r__c: "v" } }),
+    true
+  );
+});
+
+test("disabledOptions re-exports form-logic's helper — same function, not a copy", () => {
+  assert.equal(disabledOptions, formLogicDisabledOptions);
 });

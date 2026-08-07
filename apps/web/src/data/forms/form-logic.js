@@ -7,42 +7,48 @@
  * Field contract:
  *   field = { type, key, label, required?, options?, placeholder?, unit?, rows?,
  *             columns?, palette?, accept?, maxFiles?, note?, src?, alt?, html?,
- *             showIf?: ({ key, includes } | { key, equals } | { key, prefix }) }
+ *             showIf?: Condition,
+ *             disableOptionsIf?: [{ when: Condition, options: [optionValue] }] }
  *
- * Form definition:
- *   { slug, jotformId, title, route, sections: [{ id, heading?, note?, fields: [field] }] }
+ * Condition (the `showIf` shape, also reused as `disableOptionsIf[].when`):
+ *   { key, equals }   → answers[key] === equals
+ *   { key, prefix }   → answers[key] is a string that startsWith(prefix)
+ *   { key, includes } → answers[key] is an array containing the value, or
+ *                       equals it outright (a scalar answer)
+ *   { key, oneOf }    → answers[key] is in the oneOf list (scalar answer), or
+ *                       any element of answers[key] is in the list (array
+ *                       answer, e.g. a checkbox)
+ *   { key, answered: true } → answers[key] carries any non-empty answer, by
+ *                       the same emptiness rules validateForm uses (see
+ *                       isEmptyValue below) — checkbox/fileUpload arrays,
+ *                       fullname/address/matrix objects, signature/artboard
+ *                       data URLs, and plain strings are all handled.
+ *   { key, cell }     → answers[key] is a matrix answer object (flat-keyed
+ *                       `${row}__${col}` per MatrixField's setCell) and the
+ *                       cell named by `cell` carries a non-empty value.
+ *
+ * An unrecognised Condition shape throws in development (see conditionMet)
+ * rather than silently defaulting to visible — a showIf that doesn't match
+ * any known shape is almost always a typo in a field definition, and for a
+ * medical Rx form, silently *showing* a field that was meant to be gated is
+ * worse than a loud crash during development. Production builds swallow the
+ * throw and fall back to "always visible" so a bad definition degrades to the
+ * old (safe, all-fields-shown) behaviour instead of a blank/broken form.
+ *
+ * `disableOptionsIf` is field-level, not answer-shaping: it does not hide the
+ * field, it marks specific option *values* as unavailable given an earlier
+ * answer (e.g. a "(Fixed ONLY)" radio option once the arch retention answer
+ * is a removable type). Read it with `disabledOptions(field, answers)`.
  */
 
 /**
- * Conditional-visibility predicate. Mirrors the semantics used by the device
- * wizard's DeviceOptionsPanel / field-logic.js (kept self-contained here), and
- * matches sectionVisible's superset below so a field-level and section-level
- * showIf never silently disagree:
- *   - no `showIf`           → always visible
- *   - `showIf.includes` set → visible when answers[showIf.key] is an array
- *                             containing the value, or equals it outright
- *   - `showIf.equals` set   → visible when answers[showIf.key] === equals
- *   - `showIf.prefix` set   → visible when answers[showIf.key] is a string that
- *                             startsWith prefix
+ * Shared condition evaluator behind both shouldShow and sectionVisible (and
+ * disableOptionsIf's `when`). There is exactly ONE implementation of this
+ * predicate — see field-logic.js's docstring for the history of the bug that
+ * came from field-level and section-level visibility drifting apart when
+ * this was two hand-written copies.
  */
-export function shouldShow(field, answers) {
-  if (!field || !field.showIf) return true;
-  const other = (answers || {})[field.showIf.key];
-  if (field.showIf.includes != null)
-    return Array.isArray(other) ? other.includes(field.showIf.includes) : other === field.showIf.includes;
-  if (field.showIf.equals != null) return other === field.showIf.equals;
-  if (field.showIf.prefix != null)
-    return typeof other === "string" && other.startsWith(field.showIf.prefix);
-  return true;
-}
-
-/**
- * Section-level conditional visibility. Superset of shouldShow's semantics,
- * adding { key, includes }: matches when answers[key] is an array containing
- * the value, or equals it outright.
- */
-export function sectionVisible(section, answers) {
-  const cond = section && section.showIf;
+function conditionMet(cond, answers) {
   if (!cond) return true;
   const other = (answers || {})[cond.key];
   if (cond.includes != null)
@@ -50,7 +56,61 @@ export function sectionVisible(section, answers) {
   if (cond.equals != null) return other === cond.equals;
   if (cond.prefix != null)
     return typeof other === "string" && other.startsWith(cond.prefix);
+  if (cond.oneOf != null)
+    return Array.isArray(other)
+      ? other.some((v) => cond.oneOf.includes(v))
+      : cond.oneOf.includes(other);
+  if (cond.answered === true) return !isEmptyValue(other);
+  if (cond.cell != null) {
+    if (!other || typeof other !== "object") return false;
+    return !isEmptyValue(other[cond.cell]);
+  }
+  // Unrecognised shape. Throw loudly in development (Vite/Vitest set
+  // import.meta.env.DEV); fall back to "always visible" everywhere else
+  // (production builds, or any non-Vite runtime that lacks import.meta.env).
+  if (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.DEV) {
+    throw new Error(`Unrecognised showIf/condition shape: ${JSON.stringify(cond)}`);
+  }
   return true;
+}
+
+/**
+ * Conditional-visibility predicate. See the Condition contract in this
+ * module's docstring. `shouldShow` and `sectionVisible` are deliberately the
+ * same predicate — both delegate to conditionMet — so a field-level and
+ * section-level showIf never silently disagree.
+ */
+export function shouldShow(field, answers) {
+  if (!field || !field.showIf) return true;
+  return conditionMet(field.showIf, answers);
+}
+
+/** Section-level conditional visibility. Same predicate as shouldShow. */
+export function sectionVisible(section, answers) {
+  if (!section || !section.showIf) return true;
+  return conditionMet(section.showIf, answers);
+}
+
+/**
+ * The option VALUES that should be unavailable on `field` given the current
+ * answers, per `field.disableOptionsIf`:
+ *   [{ when: Condition, options: [optionValue, ...] }, ...]
+ * Every rule whose `when` condition currently matches contributes its
+ * `options` to the returned set; a field with no disableOptionsIf (or none of
+ * whose rules match) returns an empty set.
+ *
+ * This only computes which option values are disabled — it does not touch
+ * `answers` or decide what should happen to an already-selected value that
+ * becomes disabled. See validateForm below for that half.
+ */
+export function disabledOptions(field, answers) {
+  const out = new Set();
+  const rules = (field && field.disableOptionsIf) || [];
+  for (const rule of rules) {
+    if (!rule || !conditionMet(rule.when, answers)) continue;
+    for (const opt of rule.options || []) out.add(opt);
+  }
+  return out;
 }
 
 /** Flatten every field across all sections, preserving declaration order. */
@@ -79,6 +139,18 @@ export function visibleFields(form, answers) {
 const STATIC_TYPES = new Set(["heading", "divider", "image", "static"]);
 
 /**
+ * Whether a plain object carries any non-empty value on any of its own keys.
+ * This is the matrix branch's original rule, factored out because
+ * isEmptyValue (below) reuses it for every object-shaped answer.
+ */
+function objectHasNoContent(obj) {
+  if (!obj || typeof obj !== "object") return true;
+  return !Object.values(obj).some(
+    (v) => v != null && v !== "" && !(Array.isArray(v) && v.length === 0)
+  );
+}
+
+/**
  * Whether a field's answer counts as "empty" for required-field validation.
  * Empty rules are keyed by field type.
  */
@@ -97,14 +169,9 @@ function isEmpty(field, value) {
         !value.state ||
         !value.zip
       );
-    case "matrix": {
+    case "matrix":
       // value shape: { [rowKey]: cellValue } — empty if no cell has a value.
-      if (!value || typeof value !== "object") return true;
-      return !Object.values(value).some(
-        (cell) => cell != null && cell !== "" &&
-          !(Array.isArray(cell) && cell.length === 0)
-      );
-    }
+      return objectHasNoContent(value);
     case "signature":
     case "artboard":
       return typeof value !== "string" || value === "";
@@ -115,18 +182,67 @@ function isEmpty(field, value) {
 }
 
 /**
+ * Value-only emptiness check, for conditions like `{ key, answered }` and
+ * `{ key, cell }` that only have `answers[key]` to work with — not the
+ * referenced field's definition, so not its `type`. Duck-types the value's
+ * own shape instead:
+ *   - array            → checkbox/fileUpload rule: empty iff length 0
+ *   - plain object      → fullname/address/matrix answers all serialize as
+ *                         objects; reuses objectHasNoContent (the matrix
+ *                         rule: empty iff no own value is non-empty). This is
+ *                         a deliberate widening for fullname/address: isEmpty
+ *                         requires ALL subfields present for submission
+ *                         validity, but "answered" only needs the doctor to
+ *                         have started — ANY subfield counts.
+ *   - string            → plain-string/signature/artboard rule: empty iff ""
+ *   - anything else     → empty iff null/undefined
+ */
+function isEmptyValue(value) {
+  if (Array.isArray(value)) return value.length === 0;
+  if (value !== null && typeof value === "object") return objectHasNoContent(value);
+  if (typeof value === "string") return value === "";
+  return value == null;
+}
+
+/**
  * Validate a form against an answers map.
- * A field is invalid ONLY when it is required AND visible AND its answer is empty.
+ * A field is invalid when:
+ *   - it is required AND visible AND its answer is empty, OR
+ *   - it has `disableOptionsIf` AND its current (non-empty) answer is one of
+ *     the option values disabled by the current answers.
+ * The second rule exists because a doctor can select a valid option, then
+ * change an earlier answer in a way that makes that selection contradictory
+ * (e.g. picking "Standard Hyrax RPE (Fixed ONLY)" for expansion type, then
+ * changing arch retention to a removable type). form-logic.js doesn't own
+ * `answers` state so it can't clear the stale value itself — but it must not
+ * let that now-invalid, now-hidden-in-the-UI answer silently pass validation
+ * and ride along into the submitted order. Blocking submission forces the
+ * doctor back to that field to re-select, same as any other required field.
+ * This applies regardless of `field.required` — a contradictory answer is a
+ * correctness problem, not just a completeness one.
+ *
  * Returns { ok, errors: { [field.key]: message } }.
  */
 export function validateForm(form, answers) {
   const errors = {};
   for (const field of visibleFields(form, answers)) {
-    if (!field.required) continue;
     if (STATIC_TYPES.has(field.type)) continue;
     const value = (answers || {})[field.key];
-    if (isEmpty(field, value)) {
+
+    if (field.required && isEmpty(field, value)) {
       errors[field.key] = `${field.label || field.key} is required`;
+      continue;
+    }
+
+    if (field.disableOptionsIf && !isEmpty(field, value)) {
+      const disabled = disabledOptions(field, answers);
+      const stale = Array.isArray(value)
+        ? value.some((v) => disabled.has(v))
+        : disabled.has(value);
+      if (stale) {
+        errors[field.key] =
+          `${field.label || field.key} selection is no longer valid for the current answers — please re-select`;
+      }
     }
   }
   return { ok: Object.keys(errors).length === 0, errors };

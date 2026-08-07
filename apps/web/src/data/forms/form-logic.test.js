@@ -8,6 +8,7 @@ import {
   shouldShow,
   buildSubmitFormData,
   sectionVisible,
+  disabledOptions,
 } from "./form-logic.js";
 
 function makeForm() {
@@ -159,4 +160,197 @@ test("validateForm does not require fields the doctor cannot see", () => {
   const { ok, errors } = validateForm(gatedForm, { devices: ["guard"] });
   assert.equal(ok, true);
   assert.equal(errors.b, undefined);
+});
+
+/* ── new showIf shape: { key, answered: true } ────────────────────────── */
+
+test("shouldShow: answered — plain string", () => {
+  const field = { key: "b", showIf: { key: "a", answered: true } };
+  assert.equal(shouldShow(field, { a: "filled" }), true);
+  assert.equal(shouldShow(field, { a: "" }), false);
+  assert.equal(shouldShow(field, {}), false);
+});
+
+test("shouldShow: answered — checkbox array", () => {
+  const field = { key: "b", showIf: { key: "a", answered: true } };
+  assert.equal(shouldShow(field, { a: ["x"] }), true);
+  assert.equal(shouldShow(field, { a: [] }), false);
+});
+
+test("shouldShow: answered — fullname/address/matrix object (any sub-value counts)", () => {
+  const field = { key: "b", showIf: { key: "a", answered: true } };
+  assert.equal(shouldShow(field, { a: { first: "Jane", last: "" } }), true);
+  assert.equal(shouldShow(field, { a: { first: "", last: "" } }), false);
+  assert.equal(shouldShow(field, { a: {} }), false);
+});
+
+test("shouldShow: answered — signature/artboard data URL", () => {
+  const field = { key: "b", showIf: { key: "a", answered: true } };
+  assert.equal(shouldShow(field, { a: "data:image/png;base64,AAAA" }), true);
+  assert.equal(shouldShow(field, { a: "" }), false);
+});
+
+/* ── new showIf shape: { key, oneOf: [...] } ──────────────────────────── */
+
+test("shouldShow: oneOf — scalar answer", () => {
+  const field = { key: "b", showIf: { key: "a", oneOf: ["x", "y"] } };
+  assert.equal(shouldShow(field, { a: "x" }), true);
+  assert.equal(shouldShow(field, { a: "z" }), false);
+  assert.equal(shouldShow(field, {}), false);
+});
+
+test("shouldShow: oneOf — array answer matches if ANY selected value is in the list", () => {
+  const field = { key: "b", showIf: { key: "a", oneOf: ["x", "y"] } };
+  assert.equal(shouldShow(field, { a: ["z", "y"] }), true);
+  assert.equal(shouldShow(field, { a: ["z"] }), false);
+  assert.equal(shouldShow(field, { a: [] }), false);
+});
+
+/* ── new showIf shape: { key, cell: "<row>__<col>" } ──────────────────── */
+
+test("shouldShow: cell — matrix flat-keyed answer", () => {
+  const field = {
+    key: "b",
+    showIf: { key: "sportGuardSpecs", cell: "Please Select:__Add logo" },
+  };
+  assert.equal(
+    shouldShow(field, { sportGuardSpecs: { "Please Select:__Add logo": "Yes" } }),
+    true
+  );
+  assert.equal(
+    shouldShow(field, { sportGuardSpecs: { "Please Select:__Add logo": "" } }),
+    false
+  );
+  assert.equal(shouldShow(field, { sportGuardSpecs: {} }), false);
+  assert.equal(shouldShow(field, {}), false);
+});
+
+/* ── sectionVisible must agree with shouldShow for every new shape ────── */
+
+test("sectionVisible agrees with shouldShow on answered/oneOf/cell", () => {
+  const answeredSection = { showIf: { key: "a", answered: true } };
+  assert.equal(sectionVisible(answeredSection, { a: "x" }), true);
+  assert.equal(sectionVisible(answeredSection, {}), false);
+
+  const oneOfSection = { showIf: { key: "a", oneOf: ["x"] } };
+  assert.equal(sectionVisible(oneOfSection, { a: "x" }), true);
+  assert.equal(sectionVisible(oneOfSection, { a: "z" }), false);
+
+  const cellSection = { showIf: { key: "m", cell: "r__c" } };
+  assert.equal(sectionVisible(cellSection, { m: { r__c: "v" } }), true);
+  assert.equal(sectionVisible(cellSection, { m: { r__c: "" } }), false);
+});
+
+/* ── unrecognised showIf shape: throws in dev rather than hiding silently ── */
+
+test("shouldShow throws on an unrecognised showIf shape (dev-mode guard rail)", () => {
+  const field = { key: "b", showIf: { key: "a", bogus: "nonsense" } };
+  assert.throws(() => shouldShow(field, { a: "x" }));
+});
+
+test("sectionVisible throws on an unrecognised showIf shape too — same predicate", () => {
+  const section = { showIf: { key: "a", bogus: "nonsense" } };
+  assert.throws(() => sectionVisible(section, { a: "x" }));
+});
+
+/* ── disableOptionsIf / disabledOptions(field, answers) ────────────────── */
+
+test("disabledOptions returns an empty set when no rule matches", () => {
+  const field = {
+    key: "upperExpansionType",
+    disableOptionsIf: [
+      {
+        when: { key: "upperArchRetention", oneOf: ["Removable"] },
+        options: ["Memory Screw (Fixed ONLY)", "Standard Hyrax RPE (Fixed ONLY)"],
+      },
+    ],
+  };
+  const set = disabledOptions(field, { upperArchRetention: "Fixed (Banded)" });
+  assert.equal(set.size, 0);
+});
+
+test("disabledOptions returns the rule's options when the `when` condition matches", () => {
+  const field = {
+    key: "upperExpansionType",
+    disableOptionsIf: [
+      {
+        when: { key: "upperArchRetention", oneOf: ["Removable"] },
+        options: ["Memory Screw (Fixed ONLY)", "Standard Hyrax RPE (Fixed ONLY)"],
+      },
+    ],
+  };
+  const set = disabledOptions(field, { upperArchRetention: "Removable" });
+  assert.ok(set.has("Memory Screw (Fixed ONLY)"));
+  assert.ok(set.has("Standard Hyrax RPE (Fixed ONLY)"));
+  assert.equal(set.size, 2);
+});
+
+test("disabledOptions with no disableOptionsIf on the field returns an empty set", () => {
+  const set = disabledOptions({ key: "x" }, {});
+  assert.equal(set.size, 0);
+});
+
+test("validateForm flags a selected option that is now disabled — stale answer must not silently pass", () => {
+  const form = {
+    sections: [
+      {
+        id: "s",
+        fields: [
+          { type: "radio", key: "upperArchRetention", options: ["Fixed", "Removable"] },
+          {
+            type: "radio",
+            key: "upperExpansionType",
+            label: "UPPER Expansion type",
+            options: ["No Expansion", "Standard Hyrax RPE (Fixed ONLY)"],
+            disableOptionsIf: [
+              {
+                when: { key: "upperArchRetention", oneOf: ["Removable"] },
+                options: ["Standard Hyrax RPE (Fixed ONLY)"],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  // Doctor originally picked Fixed + the Hyrax screw, then changed their mind
+  // to Removable — the screw answer is now contradictory but still present.
+  const answers = {
+    upperArchRetention: "Removable",
+    upperExpansionType: "Standard Hyrax RPE (Fixed ONLY)",
+  };
+  const { ok, errors } = validateForm(form, answers);
+  assert.equal(ok, false);
+  assert.ok(errors.upperExpansionType, "stale disabled selection should be flagged");
+});
+
+test("validateForm passes when the selected option is not among the disabled ones", () => {
+  const form = {
+    sections: [
+      {
+        id: "s",
+        fields: [
+          { type: "radio", key: "upperArchRetention", options: ["Fixed", "Removable"] },
+          {
+            type: "radio",
+            key: "upperExpansionType",
+            label: "UPPER Expansion type",
+            options: ["No Expansion", "Standard Hyrax RPE (Fixed ONLY)"],
+            disableOptionsIf: [
+              {
+                when: { key: "upperArchRetention", oneOf: ["Removable"] },
+                options: ["Standard Hyrax RPE (Fixed ONLY)"],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  const answers = {
+    upperArchRetention: "Removable",
+    upperExpansionType: "No Expansion",
+  };
+  const { ok } = validateForm(form, answers);
+  assert.equal(ok, true);
 });
