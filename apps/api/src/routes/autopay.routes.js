@@ -9,14 +9,42 @@ import { db } from "../config/database.js";
 import { autopayAttempts } from "../db/schema/index.js";
 import { eq, desc } from "drizzle-orm";
 import { env } from "../config/env.js";
-import { resolveChargeDay, zonedParts } from "../lib/autopay-schedule.js";
+import { resolveChargeDay, zonedParts, cycleKeyFor } from "../lib/autopay-schedule.js";
 
-/** Next calendar date this enrollment would charge, in lab time. */
-function nextRunDate(enrollment, now = new Date()) {
+/**
+ * Next calendar date this enrollment would charge, in lab time.
+ *
+ * This is NOT a pure calendar function — it also consults `lastChargedAt`.
+ * On the calendar alone, "today == the scheduled charge day" is ambiguous:
+ * the nightly sweep may not have run yet (today IS still the next run), or it
+ * may have already run earlier today (the next run is a month out). A pure
+ * `day < thisMonth ? thisMonth : nextMonth` comparison collapses both cases
+ * into "next month" the instant today reaches the charge day — which shows a
+ * doctor opening their dashboard the morning of the 15th "next payment: next
+ * month" even though tonight's sweep hasn't happened yet. Comparing
+ * `lastChargedAt`'s cycle against the current cycle (`cycleKeyFor`) is what
+ * tells those two cases apart.
+ *
+ * Exported (in addition to being used by `serialize` below) so it can be unit
+ * tested directly against a fixed `now` rather than the real clock.
+ */
+export function nextRunDate(enrollment, now = new Date()) {
   if (!enrollment?.enabled || enrollment.status !== "active") return null;
   const { year, month, day } = zonedParts(now, env.AUTOPAY_TIMEZONE);
   const thisMonth = resolveChargeDay(year, month, enrollment.dayOfMonth);
-  if (day < thisMonth) return `${year}-${String(month).padStart(2, "0")}-${String(thisMonth).padStart(2, "0")}`;
+  const todayStr = `${year}-${String(month).padStart(2, "0")}-${String(thisMonth).padStart(2, "0")}`;
+
+  if (day < thisMonth) return todayStr;
+
+  if (day === thisMonth) {
+    const currentCycle = cycleKeyFor(now, env.AUTOPAY_TIMEZONE);
+    const chargedCycle = enrollment.lastChargedAt
+      ? cycleKeyFor(new Date(enrollment.lastChargedAt), env.AUTOPAY_TIMEZONE)
+      : null;
+    // This cycle hasn't been charged yet (or ever) — today is still the next run.
+    if (!chargedCycle || chargedCycle < currentCycle) return todayStr;
+  }
+
   const ny = month === 12 ? year + 1 : year;
   const nm = month === 12 ? 1 : month + 1;
   const next = resolveChargeDay(ny, nm, enrollment.dayOfMonth);
@@ -36,6 +64,17 @@ function serialize(enrollment) {
     minAmount: autopayService.effectiveFloor(enrollment),
     lastChargedAt: enrollment.lastChargedAt,
     nextRunDate: nextRunDate(enrollment),
+  };
+}
+
+// Drizzle returns numeric columns as strings; the enrollment endpoint already
+// converts `amount` to a Number (see `serialize` above) — do the same here so
+// the frontend doesn't need to special-case one endpoint vs. the other.
+function serializeAttempt(row) {
+  return {
+    ...row,
+    amountAttempted: row.amountAttempted != null ? Number(row.amountAttempted) : null,
+    amountCharged: row.amountCharged != null ? Number(row.amountCharged) : null,
   };
 }
 
@@ -148,6 +187,6 @@ export default async function autopayRoutes(fastify) {
       .where(eq(autopayAttempts.userId, request.user.id))
       .orderBy(desc(autopayAttempts.createdAt))
       .limit(50);
-    return { data: { attempts: rows } };
+    return { data: { attempts: rows.map(serializeAttempt) } };
   });
 }
