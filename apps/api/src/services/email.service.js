@@ -328,10 +328,16 @@ export async function sendOrderReceipt({
 
 /**
  * Doctor invoice-payment receipt. Sent (soft-fail) after a successful invoice
- * payment is recorded — covers both the saved-card and hosted-card flows.
- * `invoices` are { number, amount } per invoice the charge was applied to.
+ * payment is recorded — covers the saved-card, hosted-card, AutoPay, and admin
+ * offline-record flows. `invoices` are { number, amount } per invoice the
+ * payment was applied to.
+ *
+ * `wasCharged` (default true) distinguishes an actual card charge from an
+ * admin recording a payment that was already taken by other means (check,
+ * cash, or entered directly in Seazona) — pass `false` for the latter so the
+ * copy never tells a doctor their card was charged when it wasn't.
  */
-export async function sendPaymentReceipt({ to, amount, invoices = [], transactionId, date }) {
+export async function sendPaymentReceipt({ to, amount, invoices = [], transactionId, date, wasCharged = true }) {
   if (!to) return false;
   const when = (date instanceof Date ? date : new Date()).toLocaleDateString("en-US", {
     year: "numeric",
@@ -348,10 +354,16 @@ export async function sendPaymentReceipt({ to, amount, invoices = [], transactio
     )
     .join("");
 
+  const heading = wasCharged ? "Payment received" : "Payment recorded";
+  const intro = wasCharged
+    ? `Thank you — your payment to Diamond Orthotic Laboratory was processed on ${when}.`
+    : `We've recorded a payment of ${money(amount)} on your Diamond Orthotic Laboratory account, applied on ${when}. Your card was not charged through the portal for this payment.`;
+  const totalLabel = wasCharged ? "Total charged" : "Total recorded";
+
   const html = `
     <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a2733;">
-      <h1 style="font-size:20px;margin:0 0 4px;">Payment received</h1>
-      <p style="margin:0 0 20px;color:#5a6b7b;font-size:13px;">Thank you — your payment to Diamond Orthotic Laboratory was processed on ${when}.</p>
+      <h1 style="font-size:20px;margin:0 0 4px;">${heading}</h1>
+      <p style="margin:0 0 20px;color:#5a6b7b;font-size:13px;">${intro}</p>
       <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
         <thead>
           <tr>
@@ -362,7 +374,7 @@ export async function sendPaymentReceipt({ to, amount, invoices = [], transactio
         <tbody>${rows}</tbody>
         <tfoot>
           <tr>
-            <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">Total charged</td>
+            <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${totalLabel}</td>
             <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${money(amount)}</td>
           </tr>
         </tfoot>
@@ -376,7 +388,10 @@ export async function sendPaymentReceipt({ to, amount, invoices = [], transactio
     </div>
   `;
 
-  return send({ to, subject: "Payment received — Diamond Orthotic Laboratory", html });
+  const subject = wasCharged
+    ? "Payment received — Diamond Orthotic Laboratory"
+    : "Payment recorded — Diamond Orthotic Laboratory";
+  return send({ to, subject, html });
 }
 
 /**

@@ -3,7 +3,7 @@ import { requireApprovedDoctor, requireAdmin } from "../middleware/require-role.
 import * as seazonaService from "../services/seazona.service.js";
 import { ERROR_CODES } from "@my-app/shared";
 import { db } from "../config/database.js";
-import { invoicePayments, users } from "../db/schema/index.js";
+import { users } from "../db/schema/index.js";
 import { eq } from "drizzle-orm";
 import { createId } from "../lib/id.js";
 import {
@@ -15,11 +15,23 @@ import {
 import * as auditService from "../services/audit.service.js";
 import { redis } from "../config/redis.js";
 import { withInvoiceLocks, InvoiceLockedError } from "../lib/payment-helpers.js";
+import { recordPaymentAndAllocations } from "../services/payment-recording.service.js";
 
 /** Round to cents consistently (avoids FP drift). */
 function round2(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 }
+
+// Doctor-shaped column set the offline-payment route needs to pass a full
+// `user` into recordPaymentAndAllocations (receipt email + optional Seazona
+// write) — more than the id-only select the route used before unification.
+const DOCTOR_COLUMNS = {
+  id: users.id,
+  email: users.email,
+  name: users.name,
+  seazonaClientId: users.seazonaClientId,
+  seazonaAccountNumber: users.seazonaAccountNumber,
+};
 
 /**
  * Normalize a Seazona invoice into the shape the frontend renders.
@@ -183,22 +195,36 @@ export default async function invoiceRoutes(fastify) {
   });
 
   // ───────────────────────────────────────────────────────────────
-  // ADMIN — record an OFFLINE payment (#4 mitigation). Payments that staff
-  // entered DIRECTLY in Seazona are invisible to the portal balance (Seazona
-  // exposes no readable paid-state). This lets an admin reflect such a payment
-  // in the local invoice_payments ledger so the doctor's portal balance is
-  // accurate. No Seazona write is made (the payment already exists there);
-  // seazonaPaymentId is null and transactionId is an OFFLINE-<id> sentinel.
+  // ADMIN — record an OFFLINE payment (#4 mitigation). By default this covers
+  // payments staff already entered DIRECTLY in Seazona, which are invisible to
+  // the portal balance (Seazona exposes no readable paid-state) — this reflects
+  // such a payment in the local invoice_payments ledger so the doctor's portal
+  // balance is accurate, WITHOUT writing to Seazona (the payment already exists
+  // there — writing again would double-credit the client's account).
   //
-  // Body: { amount, invoiceNumber?, seazonaClientId, userId? }. The ledger row's
-  // userId is the invoice's doctor — resolved from seazonaClientId, or taken from
-  // the body when provided. Capped at the invoice's remaining balance (C1 helper).
+  // `recordInSeazona: true` opts into the other case — a check/cash payment the
+  // lab has received but NOT yet entered anywhere — and makes this route also
+  // write the one account-level Seazona payment via the shared
+  // recordPaymentAndAllocations component (same as every other payment path).
+  // Defaults to false so existing callers see no behavior change.
+  //
+  // Routes through recordPaymentAndAllocations (shared with every other
+  // payment path) so an offline record also sends the doctor a receipt email
+  // (copy adjusted — "recorded", not "charged") and emits the same
+  // [PAYMENT][LEDGER_WRITE_FAILED] alertable line on a ledger-insert failure
+  // instead of a bare 500. transactionId is still an OFFLINE-<id> sentinel;
+  // seazonaPaymentId is null unless recordInSeazona was set.
+  //
+  // Body: { amount, invoiceNumber?, seazonaClientId, userId?, recordInSeazona? }.
+  // The ledger row's userId is the invoice's doctor — resolved from
+  // seazonaClientId, or taken from the body when provided. Capped at the
+  // invoice's remaining balance (C1 helper).
   // ───────────────────────────────────────────────────────────────
   fastify.post("/admin/invoices/:invoiceId/offline-payment", {
     preHandler: [authenticate, requireAdmin],
   }, async (request, reply) => {
     const invoiceId = String(request.params.invoiceId);
-    const { amount, invoiceNumber, seazonaClientId, userId: bodyUserId } = request.body || {};
+    const { amount, invoiceNumber, seazonaClientId, userId: bodyUserId, recordInSeazona } = request.body || {};
 
     const amt = Number(amount);
     if (!(amt > 0) || amt > 100000 || Number(amt.toFixed(2)) !== amt) {
@@ -224,16 +250,18 @@ export default async function invoiceRoutes(fastify) {
     }
 
     // Resolve the doctor user for the ledger row: explicit userId wins, else the
-    // user linked to this Seazona client.
+    // user linked to this Seazona client. Load the full doctor-shaped row (not
+    // just id) — recordPaymentAndAllocations needs email/name/seazonaAccountNumber
+    // for the receipt email and (when recordInSeazona is set) the Seazona write.
     //
     // An explicit userId MUST be verified to belong to this Seazona client. The
     // remaining-balance cap below is computed per (userId, invoiceId), so an
     // unchecked userId would compute "already paid = 0" against a user with no
     // ledger history and re-open the invoice's full balance for re-recording.
-    let ledgerUserId = null;
+    let doctorUser = null;
     if (bodyUserId) {
       const [named] = await db
-        .select({ id: users.id, seazonaClientId: users.seazonaClientId })
+        .select(DOCTOR_COLUMNS)
         .from(users)
         .where(eq(users.id, String(bodyUserId)))
         .limit(1);
@@ -245,28 +273,34 @@ export default async function invoiceRoutes(fastify) {
           },
         });
       }
-      ledgerUserId = named.id;
+      doctorUser = named;
     } else {
       const [doctor] = await db
-        .select({ id: users.id })
+        .select(DOCTOR_COLUMNS)
         .from(users)
         .where(eq(users.seazonaClientId, String(seazonaClientId)));
-      ledgerUserId = doctor?.id || null;
+      doctorUser = doctor || null;
     }
-    if (!ledgerUserId) {
+    if (!doctorUser) {
       return reply.code(422).send({
         error: { ...ERROR_CODES.VALIDATION_ERROR, message: "No portal user is linked to this seazonaClientId; pass an explicit userId." },
       });
     }
+    const ledgerUserId = doctorUser.id;
+    const resolvedInvoiceNumber = invoiceNumber
+      ? String(invoiceNumber)
+      : invoice.invoiceNumber != null
+        ? String(invoice.invoiceNumber)
+        : null;
 
-    // Cap-then-insert must be atomic against other writers on this invoice.
+    // Cap-then-record must be atomic against other writers on this invoice.
     // Without the lock, two submits (or one racing a doctor's card charge, which
     // holds this same invoice mutex) both read `alreadyPaid`, both pass the cap,
-    // and both insert — over-crediting the invoice so the portal shows paid when
+    // and both record — over-crediting the invoice so the portal shows paid when
     // it isn't. This is the same guard every card path already takes.
-    let rowId;
+    let recorded;
     try {
-      rowId = await withInvoiceLocks(redis, [invoiceId], async () => {
+      recorded = await withInvoiceLocks(redis, [invoiceId], async () => {
         // Cap at the invoice's remaining balance (C1 helper). Already-paid portion
         // is whatever the local ledger has recorded for THIS doctor + invoice.
         // STRICT read: this is a guard, so a DB error must abort rather than report
@@ -281,19 +315,34 @@ export default async function invoiceRoutes(fastify) {
           throw err;
         }
 
-        const id = createId();
-        await db.insert(invoicePayments).values({
-          id,
-          userId: ledgerUserId,
-          seazonaClientId: String(seazonaClientId),
-          seazonaInvoiceId: invoiceId,
-          invoiceNumber: invoiceNumber ? String(invoiceNumber) : (invoice.invoiceNumber != null ? String(invoice.invoiceNumber) : null),
-          appliedAmount: amt.toFixed(2),
-          transactionId: `OFFLINE-${id}`,
-          seazonaPaymentId: null,
+        // Routed through the same shared component every other payment path
+        // uses (#offline-payment-unification): this is what gives the offline
+        // path a receipt email (copy adjusted for "recorded" vs "charged"), an
+        // alertable [PAYMENT][LEDGER_WRITE_FAILED] line on ledger-insert failure
+        // instead of a bare 500, and — when recordInSeazona is set — the one
+        // account-level Seazona write. transactionId keeps its OFFLINE-<id>
+        // sentinel shape (nothing else parses beyond the prefix — see
+        // lib/payment-summary.js's OFFLINE_PREFIX).
+        const transactionId = `OFFLINE-${createId()}`;
+        const { seazonaPaymentId, ledgerWriteFailed } = await recordPaymentAndAllocations({
+          user: doctorUser,
+          amount: amt,
+          transactionId,
+          allocations: [{ invoiceId, invoiceNumber: resolvedInvoiceNumber, amount: amt }],
           source: "admin_offline",
+          // Default false — staff have typically already entered this payment
+          // directly in Seazona; writing again would double-credit the client.
+          writeToSeazona: recordInSeazona === true,
+          // Not a card charge — the receipt email must say so.
+          wasCharged: false,
+          // The shared component's default audit action is "payment.charge";
+          // an offline record must not be logged as one (the admin UI already
+          // renders this exact action as "Offline payment recorded"). The actor
+          // is the admin who recorded it, not the doctor the payment credits.
+          auditAction: "payment.offline_recorded",
+          actorUserId: request.user.id,
         });
-        return id;
+        return { transactionId, seazonaPaymentId, ledgerWriteFailed };
       });
     } catch (err) {
       if (err?.capExceeded) {
@@ -313,21 +362,20 @@ export default async function invoiceRoutes(fastify) {
     }
 
     request.log.info(
-      { invoiceId, seazonaClientId, ledgerUserId, amount: amt },
+      { invoiceId, seazonaClientId, ledgerUserId, amount: amt, recordInSeazona: recordInSeazona === true },
       "admin recorded offline payment in portal ledger"
     );
 
-    // Durable audit trail (who recorded an offline payment). Soft-fail — the
-    // ledger row is already written; audit must not break the response.
-    await auditService.logSafe({
-      userId: request.user.id,
-      action: "payment.offline_recorded",
-      targetType: "transaction",
-      targetId: `OFFLINE-${rowId}`,
-      metadata: { invoiceId, invoiceNumber: invoiceNumber || invoice.invoiceNumber || null, amount: amt, ledgerUserId },
-      ipAddress: request.ip,
-    });
-
-    return { data: { invoiceId, amount: amt, recorded: true, userId: ledgerUserId } };
+    return {
+      data: {
+        invoiceId,
+        amount: amt,
+        recorded: true,
+        userId: ledgerUserId,
+        transactionId: recorded.transactionId,
+        seazonaPaymentId: recorded.seazonaPaymentId,
+        ...(recorded.ledgerWriteFailed ? { ledgerWriteFailed: true } : {}),
+      },
+    };
   });
 }

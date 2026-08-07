@@ -12,11 +12,14 @@ function round2(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 }
 
+// "payment" rather than "txn" — this reads fine whether `transactionId` is a
+// real gateway transaction id or the `OFFLINE-<id>` sentinel an admin offline
+// record uses (there is no gateway transaction in that case).
 function buildAllocationNotes(allocations, transactionId) {
   const parts = allocations.map(
     (a) => `${a.invoiceNumber || a.invoiceId} $${Number(a.amount).toFixed(2)}`
   );
-  return `DOL portal txn ${transactionId} — ${parts.join("; ")}`.slice(0, 500);
+  return `DOL portal payment ${transactionId} — ${parts.join("; ")}`.slice(0, 500);
 }
 
 /**
@@ -32,26 +35,58 @@ export function buildInvoiceReference(allocations) {
 }
 
 /**
- * After a successful charge: record ONE account-level payment in Seazona (their
- * payment API has no invoice-level granularity) with notes describing the split,
- * then write one local invoice_payments row per allocated invoice.
+ * After a successful charge (or an admin's offline payment record): record ONE
+ * account-level payment in Seazona (their payment API has no invoice-level
+ * granularity) with notes describing the split, then write one local
+ * invoice_payments row per allocated invoice.
  *
- * `source` tags where the charge originated (e.g. "doctor_card", "doctor_hosted",
+ * `source` tags where the payment originated (e.g. "doctor_card", "doctor_hosted",
  * "admin_card", "admin_offline") for the invoice_payments ledger — optional and
  * defaulted so existing callers are unchanged.
  *
- * Returns `{ seazonaPaymentId, ledgerWriteFailed }`. NEVER throws — the card is
- * already charged, so a Seazona or local-ledger write failure is logged loudly
- * (alertable) and reported back as a warning rather than surfaced as a 500
- * (which would invite a re-charge on retry).
+ * `writeToSeazona` (default true) ANDs with the existing production/clientId
+ * gate below — it never turns Seazona writes ON where they weren't already
+ * possible, only lets a caller suppress one that would otherwise happen. This
+ * exists for the admin offline-payment path: by default staff have already
+ * entered the payment directly in Seazona, so writing again would double-credit
+ * the client's account. An admin can opt in per-payment (`writeToSeazona: true`)
+ * for a check/cash payment that has NOT yet been entered anywhere.
+ *
+ * `wasCharged` (default true) controls the doctor's receipt-email copy — an
+ * offline record is not a card charge, so the email must not claim one happened.
+ * Pass `false` for offline records.
+ *
+ * `auditAction` (default "payment.charge") and `actorUserId` (default
+ * `user.id`) let a caller override the audit-log shape. The offline path passes
+ * `auditAction: "payment.offline_recorded"` (matching the label the admin UI
+ * already renders for that action) and `actorUserId` = the admin who recorded
+ * it, since `user` here is the doctor the payment is credited to, not the actor.
+ *
+ * Returns `{ seazonaPaymentId, ledgerWriteFailed }`. NEVER throws — for a real
+ * charge the card is already captured, and for an offline record the ledger
+ * write is the one durable side effect — so either a Seazona or local-ledger
+ * write failure is logged loudly (alertable) and reported back as a warning
+ * rather than surfaced as a 500 (which, for a charge, would invite a re-charge
+ * on retry).
  */
-export async function recordPaymentAndAllocations({ user, amount, transactionId, allocations, source = null }) {
+export async function recordPaymentAndAllocations({
+  user,
+  amount,
+  transactionId,
+  allocations,
+  source = null,
+  writeToSeazona = true,
+  wasCharged = true,
+  auditAction = "payment.charge",
+  actorUserId = null,
+}) {
   let seazonaPaymentId = null;
 
   // Seazona has no sandbox — createPayment writes to the live system. Only do it
   // for real (production) charges; in sandbox we still write the local ledger so
   // the flow is fully testable without polluting Seazona's production data.
-  if (user.seazonaClientId && env.AUTHORIZE_NET_ENV === "production") {
+  // `writeToSeazona` is ANDed on top — see the doc comment above.
+  if (writeToSeazona && user.seazonaClientId && env.AUTHORIZE_NET_ENV === "production") {
     const res = await seazonaService.createPayment({
       clientId: user.seazonaClientId,
       accountNumber: user.seazonaAccountNumber,
@@ -124,8 +159,9 @@ export async function recordPaymentAndAllocations({ user, amount, transactionId,
     );
   }
 
-  // Payment receipt — soft-fail, never blocks (the card already charged). Covers
-  // both saved-card and hosted-card paths since both funnel through here.
+  // Payment receipt — soft-fail, never blocks (the money side is already
+  // settled — either charged at the gateway, or an offline record staff need
+  // reflected). Covers every path that funnels through here.
   if (user.email) {
     try {
       await sendPaymentReceipt({
@@ -137,17 +173,18 @@ export async function recordPaymentAndAllocations({ user, amount, transactionId,
         })),
         transactionId,
         date: new Date(),
+        wasCharged,
       });
     } catch {
       /* send() never throws; this is belt-and-suspenders */
     }
   }
 
-  // Durable audit trail (who paid what). Soft-fail — the card already charged.
-  // Covers both saved-card and hosted paths since both funnel through here.
+  // Durable audit trail (who paid/recorded what). Soft-fail — the money side is
+  // already settled. Covers every path that funnels through here.
   await auditService.logSafe({
-    userId: user.id,
-    action: "payment.charge",
+    userId: actorUserId || user.id,
+    action: auditAction,
     targetType: "transaction",
     targetId: transactionId,
     metadata: {
