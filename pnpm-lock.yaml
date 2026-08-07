@@ -6,7 +6,7 @@ settings:
 
 overrides:
   form-data: '>=4.0.6'
-  fast-uri: '>=3.1.2 <4'
+  fast-uri: '>=3.1.5 <4'
   shell-quote: '>=1.8.4'
   picomatch@2: ^2.3.2
   picomatch@4: ^4.0.4
@@ -40,8 +40,8 @@ importers:
         specifier: ^10.3.0
         version: 10.3.0
       '@fastify/static':
-        specifier: ^9.3.0
-        version: 9.3.0
+        specifier: ^10.1.3
+        version: 10.1.3
       '@google-cloud/storage':
         specifier: ^7.21.0
         version: 7.21.0
@@ -883,8 +883,8 @@ packages:
   '@fastify/send@4.1.0':
     resolution: {integrity: sha512-TMYeQLCBSy2TOFmV95hQWkiTYgC/SEx7vMdV+wnZVX4tt8VBLKzmH8vV9OzJehV0+XBfg+WxPMt5wp+JBUKsVw==}
 
-  '@fastify/static@9.3.0':
-    resolution: {integrity: sha512-9YMYRpCOtMBrqKYWcqiw7ykOrn4D0jogHpJrFS0KGeSuOwzKMM5/mjj7B0CFLVoQ6htqKYw//Zs7APn9DBq05w==}
+  '@fastify/static@10.1.3':
+    resolution: {integrity: sha512-W6jqajYS974XjPjB5hQWoxPM8NKM4+p8YmQT6G5IbCa4uhdWSVadZUv75siy1wEA/3ty8RYdpBydfWeu9AqAqQ==}
 
   '@google-cloud/paginator@5.0.2':
     resolution: {integrity: sha512-DJS3s0OVH4zFDB1PzjxAsHqJT6sKVbRwwML0ZBP9PbU7Yebtu/7SWMRzvO2J3nUi9pRNITCfu4LJeooM2w4pjg==}
@@ -1426,8 +1426,8 @@ packages:
   console-control-strings@1.1.0:
     resolution: {integrity: sha512-ty/fTekppD2fIwRvnZAVdeOiGd1c7YXEixbgJTNzqcxJWKQnjJ/V1bNEEE6hygpM3WjwHFUVK6HTjWSzV4a8sQ==}
 
-  content-disposition@1.1.0:
-    resolution: {integrity: sha512-5jRCH9Z/+DRP7rkvY83B+yGIGX96OYdJmzngqnw2SBSxqCFPd0w2km3s5iawpGX8krnwSGmF0FW5Nhr0Hfai3g==}
+  content-disposition@2.0.1:
+    resolution: {integrity: sha512-e+H0ZXHSWYrENhQzw1LPuP4oF5MzVKmDU6d3hxlvaPEYLLg62MxtQNPRx4SYSuYJSBUgnQIG4HIN2tEtNv7Dog==}
     engines: {node: '>=18'}
 
   convert-source-map@2.0.0:
@@ -1741,8 +1741,8 @@ packages:
   fast-querystring@1.1.2:
     resolution: {integrity: sha512-g6KuKWmFXc0fID8WWH0jit4g0AGBoJhCkJMb1RmbsSEUNvQ+ZC8D6CUZ+GtF8nMzSPXnhiePyyqqipzNNEnHjg==}
 
-  fast-uri@3.1.3:
-    resolution: {integrity: sha512-i70LwGWUduXqzicKXWshooq+sWL1K3WUU5rKZNG/0i3a1OSoX3HqhH5WbWwTmqWfor4urUakGPiRQcleRZTwOg==}
+  fast-uri@3.1.5:
+    resolution: {integrity: sha512-gHwA1O9LDIcKunMKhObS/HimwtehO1nPUECKAu5TpKgaO19fcWEl4bliWe1jWxVFvIXztJjjQ4L8XQ1EU9f7Jw==}
 
   fast-xml-builder@1.2.0:
     resolution: {integrity: sha512-00aAWieqff+ZJhsXA4g1g7M8k+7AYoMUUHF+/zFb5U6Uv/P0Vl4QZo84/IcufzYalLuEj9928bXN9PbbFzMF0Q==}
@@ -3274,7 +3274,7 @@ snapshots:
     dependencies:
       ajv: 8.18.0
       ajv-formats: 3.0.1(ajv@8.18.0)
-      fast-uri: 3.1.3
+      fast-uri: 3.1.5
 
   '@fastify/busboy@3.2.0': {}
 
@@ -3342,11 +3342,12 @@ snapshots:
       http-errors: 2.0.1
       mime: 3.0.0
 
-  '@fastify/static@9.3.0':
+  '@fastify/static@10.1.3':
     dependencies:
       '@fastify/accept-negotiator': 2.0.1
+      '@fastify/error': 4.2.0
       '@fastify/send': 4.1.0
-      content-disposition: 1.1.0
+      content-disposition: 2.0.1
       fastify-plugin: 6.0.0
       fastq: 1.20.1
       glob: 13.0.6
@@ -3689,7 +3690,7 @@ snapshots:
   ajv@8.18.0:
     dependencies:
       fast-deep-equal: 3.1.3
-      fast-uri: 3.1.3
+      fast-uri: 3.1.5
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
@@ -3868,7 +3869,7 @@ snapshots:
 
   console-control-strings@1.1.0: {}
 
-  content-disposition@1.1.0: {}
+  content-disposition@2.0.1: {}
 
   convert-source-map@2.0.0: {}
 
@@ -4144,7 +4145,7 @@ snapshots:
       '@fastify/merge-json-schemas': 0.2.1
       ajv: 8.18.0
       ajv-formats: 3.0.1(ajv@8.18.0)
-      fast-uri: 3.1.3
+      fast-uri: 3.1.5
       json-schema-ref-resolver: 3.0.0
       rfdc: 1.4.1
 
@@ -4153,7 +4154,7 @@ snapshots:
       '@fastify/merge-json-schemas': 0.2.1
       ajv: 8.18.0
       ajv-formats: 3.0.1(ajv@8.18.0)
-      fast-uri: 3.1.3
+      fast-uri: 3.1.5
       json-schema-ref-resolver: 3.0.0
       rfdc: 1.4.1
 
@@ -4161,7 +4162,7 @@ snapshots:
     dependencies:
       fast-decode-uri-component: 1.0.1
 
-  fast-uri@3.1.3: {}
+  fast-uri@3.1.5: {}
 
   fast-xml-builder@1.2.0:
     dependencies:

@@ -78,22 +78,38 @@ export async function listAllPayments({ userId } = {}) {
 
 /**
  * Sum of applied portal payments for a single Seazona invoice + user.
+ * THROWS on a database error — callers that use this figure as a guard must
+ * fail closed.
+ * @returns {Promise<number>}
+ */
+export async function getInvoicePortalPaidStrict(userId, seazonaInvoiceId) {
+  const [row] = await db
+    .select({
+      totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
+    })
+    .from(invoicePayments)
+    .where(
+      and(
+        eq(invoicePayments.userId, userId),
+        eq(invoicePayments.seazonaInvoiceId, String(seazonaInvoiceId))
+      )
+    );
+  return parseFloat(row?.totalPaid || 0);
+}
+
+/**
+ * Soft-fail variant for DISPLAY ONLY: on a database error it degrades to 0,
+ * which renders an invoice as unpaid.
+ *
+ * Never use this to enforce an over-payment cap. "Paid so far = 0" makes
+ * `remaining = invoice.total`, so a transient DB blip would re-open the full
+ * balance on an already-paid invoice and let it be charged again — the guard
+ * would fail OPEN. Money paths must call `getInvoicePortalPaidStrict`.
  * @returns {Promise<number>}
  */
 export async function getInvoicePortalPaid(userId, seazonaInvoiceId) {
   try {
-    const [row] = await db
-      .select({
-        totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
-      })
-      .from(invoicePayments)
-      .where(
-        and(
-          eq(invoicePayments.userId, userId),
-          eq(invoicePayments.seazonaInvoiceId, String(seazonaInvoiceId))
-        )
-      );
-    return parseFloat(row?.totalPaid || 0);
+    return await getInvoicePortalPaidStrict(userId, seazonaInvoiceId);
   } catch (err) {
     console.error(
       `[invoiceLedger] getInvoicePortalPaid DB error for invoice ${seazonaInvoiceId} — degrading to 0:`,

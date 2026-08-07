@@ -5,6 +5,7 @@ import {
   resetPasswordSchema,
   verifyEmailSchema,
   mfaVerifySchema,
+  mfaSetupSchema,
   mfaEnableSchema,
   mfaDisableSchema,
   doctorRegisterSchema,
@@ -176,8 +177,8 @@ export default async function authRoutes(fastify) {
   });
 
   // MFA: setup
-  fastify.post("/mfa/setup", { preHandler: [authenticate] }, async (request) => {
-    const result = await authService.setupMfa(request.user.id);
+  fastify.post("/mfa/setup", { preHandler: [authenticate, validate(mfaSetupSchema)] }, async (request) => {
+    const result = await authService.setupMfa(request.user.id, request.body.password);
     return { data: result };
   });
 

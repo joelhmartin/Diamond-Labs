@@ -4,7 +4,7 @@ import { validate } from "../middleware/validate.js";
 import * as authorizenetService from "../services/authorizenet.service.js";
 import * as seazonaService from "../services/seazona.service.js";
 import {
-  getInvoicePortalPaid,
+  getInvoicePortalPaidStrict,
   listPaymentsForUser,
   listAllPayments,
 } from "../services/invoice-ledger.service.js";
@@ -275,7 +275,9 @@ async function verifyAllocations(allocations, user, { enforceCap = false } = {})
       // C1 — remaining = invoice total minus what's already been applied through
       // the portal ledger for this doctor. The +0.005 tolerance absorbs cent
       // rounding; a fully-paid invoice has remaining ~0 and is therefore blocked.
-      const paid = await getInvoicePortalPaid(user.id, a.invoiceId);
+      // STRICT read on purpose: a DB error here must abort the charge, not
+      // silently report "paid so far = 0" and re-open the full balance.
+      const paid = await getInvoicePortalPaidStrict(user.id, a.invoiceId);
       const remaining = round2(Number(inv.total || 0) - paid);
       if (Number(a.amount) > remaining + 0.005) {
         return {
@@ -1643,8 +1645,12 @@ export default async function paymentRoutes(fastify) {
   // the Authorize.net pipeline. `mode` defaults to sandbox; production is allowed
   // for a small real-charge smoke test (void it in the Authorize.net dashboard).
   // ───────────────────────────────────────────────────────────────
+  // ADMIN-ONLY. These mint real production hosted-payment tokens for up to
+  // $100,000 and read arbitrary transaction details, so `authenticate` alone is
+  // not a guard — it would let any registered user (role "user") charge against
+  // the live merchant account and enumerate other people's transactions.
   fastify.post("/payments/test/hosted-token", {
-    preHandler: [authenticate],
+    preHandler: [authenticate, requireAdmin],
   }, async (request, reply) => {
     const { amount, mode = "sandbox", iframeCommunicatorUrl } = request.body || {};
 
@@ -1674,8 +1680,12 @@ export default async function paymentRoutes(fastify) {
     return { data: { token: result.token, formUrl: result.formUrl, refId, mode } };
   });
 
+  // ADMIN-ONLY — see the note on /payments/test/hosted-token. There is no
+  // ownership check on `transId`, so without this guard any authenticated user
+  // could read production transaction details (amount, card last-4, expiry) for
+  // an arbitrary transaction id.
   fastify.post("/payments/test/hosted-complete", {
-    preHandler: [authenticate],
+    preHandler: [authenticate, requireAdmin],
   }, async (request, reply) => {
     const { transId, mode = "sandbox" } = request.body || {};
 

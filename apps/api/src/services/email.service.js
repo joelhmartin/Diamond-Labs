@@ -99,7 +99,33 @@ export async function sendPortalInvitation({ email, name, activateUrl }) {
   });
 }
 
-export async function sendAdminApprovalRequest({ doctorName, doctorEmail, npiNumber, companyName, approveUrl, rejectUrl }) {
+export async function sendAdminApprovalRequest({
+  doctorName,
+  doctorEmail,
+  npiNumber,
+  companyName,
+  approveUrl,
+  rejectUrl,
+  seazonaLink,
+  suggestedSeazonaClient,
+}) {
+  // Approving grants access to a Seazona client's invoices — which carry patient
+  // names (PHI). Show the admin exactly which client, if any, this account is
+  // linked to, so approval is an informed decision rather than a blind one.
+  const linkRow = seazonaLink
+    ? `<tr><td style="padding:6px 12px;font-weight:bold;">Seazona account</td><td style="padding:6px 12px;">Linked by verified email — ${esc(seazonaLink.company || "account")} (acct ${esc(seazonaLink.accountNumber || "—")})</td></tr>`
+    : `<tr><td style="padding:6px 12px;font-weight:bold;">Seazona account</td><td style="padding:6px 12px;">Not linked</td></tr>`;
+
+  const suggestionBlock = suggestedSeazonaClient
+    ? `<p style="margin:16px 0;padding:12px;border-left:4px solid #f59e0b;background:#fffbeb;">
+         <strong>Possible match, NOT linked.</strong> This registration's phone number matches
+         Seazona client ${esc(suggestedSeazonaClient.company || "—")}
+         (acct ${esc(suggestedSeazonaClient.accountNumber || "—")}).
+         A phone number is public information, so we do not link on it automatically.
+         Verify this is the same practice and link it manually before approving.
+       </p>`
+    : "";
+
   await send({
     to: env.ADMIN_NOTIFICATION_EMAIL,
     subject: `New Doctor Registration — ${doctorName}`,
@@ -107,11 +133,13 @@ export async function sendAdminApprovalRequest({ doctorName, doctorEmail, npiNum
       <h1>New Doctor Registration Request</h1>
       <p>A new doctor has requested access to Diamond Labs:</p>
       <table style="border-collapse:collapse;margin:16px 0;">
-        <tr><td style="padding:6px 12px;font-weight:bold;">Name</td><td style="padding:6px 12px;">${doctorName}</td></tr>
-        <tr><td style="padding:6px 12px;font-weight:bold;">Email</td><td style="padding:6px 12px;">${doctorEmail}</td></tr>
-        <tr><td style="padding:6px 12px;font-weight:bold;">NPI Number</td><td style="padding:6px 12px;">${npiNumber}</td></tr>
-        <tr><td style="padding:6px 12px;font-weight:bold;">Company</td><td style="padding:6px 12px;">${companyName}</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:bold;">Name</td><td style="padding:6px 12px;">${esc(doctorName)}</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:bold;">Email</td><td style="padding:6px 12px;">${esc(doctorEmail)}</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:bold;">NPI Number</td><td style="padding:6px 12px;">${esc(npiNumber)}</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:bold;">Company</td><td style="padding:6px 12px;">${esc(companyName)}</td></tr>
+        ${linkRow}
       </table>
+      ${suggestionBlock}
       <p style="margin:24px 0;">
         <a href="${approveUrl}" style="display:inline-block;padding:12px 24px;background:#16a34a;color:#fff;text-decoration:none;border-radius:6px;margin-right:12px;">Approve</a>
         <a href="${rejectUrl}" style="display:inline-block;padding:12px 24px;background:#dc2626;color:#fff;text-decoration:none;border-radius:6px;">Reject</a>
@@ -145,13 +173,21 @@ export async function sendDoctorRejected({ email, name }) {
   });
 }
 
-/** Escape user-supplied strings before interpolating into the receipt HTML. */
+/**
+ * Escape user-supplied strings before interpolating into email HTML.
+ *
+ * Used by the receipts AND by the admin approval request, whose name/NPI/company
+ * come straight from the PUBLIC doctor-registration body and render next to
+ * one-click Approve/Reject links — unescaped, a registrant could inject a decoy
+ * "Approve" anchor pointing at their own URL, or hide the real Reject button.
+ */
 function esc(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function money(n) {

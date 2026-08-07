@@ -1,6 +1,6 @@
 import { db } from "../config/database.js";
 import { users, memberships, accounts, sessions, invitations } from "../db/schema/index.js";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { hashPassword, comparePassword } from "../lib/passwords.js";
 import { ERROR_CODES } from "@my-app/shared";
 
@@ -131,12 +131,15 @@ export async function getUserSessions(userId) {
     .where(
       and(
         eq(sessions.userId, userId),
-        eq(sessions.revokedAt, null),
+        // `eq(col, null)` compiles to `revoked_at = NULL`, which is never true in
+        // SQL — so this returned an empty list for everyone, leaving users unable
+        // to see or revoke their own active sessions after a credential
+        // compromise. IS NULL is the correct predicate.
+        isNull(sessions.revokedAt),
       )
     );
 
-  // Filter to only non-revoked sessions manually if null comparison is tricky
-  return results.filter((s) => !s.revokedAt);
+  return results;
 }
 
 export async function revokeSession(sessionId, userId) {
