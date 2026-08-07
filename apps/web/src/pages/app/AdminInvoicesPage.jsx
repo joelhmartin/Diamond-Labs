@@ -101,7 +101,9 @@ function remainingOf(inv) {
 // Modal for recording a payment that staff already took directly in Seazona,
 // reflecting it in the portal's invoice_payments ledger so the doctor's balance
 // is accurate. No Seazona write is made (the payment already exists there).
-function OfflinePaymentModal({ invoice, onClose, onRecorded }) {
+// Exported so DoctorPaymentDrawer.jsx (admin per-doctor payment parity panel)
+// can reuse the identical flow instead of duplicating it.
+export function OfflinePaymentModal({ invoice, onClose, onRecorded }) {
   const remaining = remainingOf(invoice);
   const [amountStr, setAmountStr] = useState(String(remaining.toFixed(2)));
   const [submitting, setSubmitting] = useState(false);

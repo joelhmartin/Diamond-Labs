@@ -11,8 +11,10 @@ import {
   Loader2,
   Link2,
   XCircle,
+  CreditCard,
 } from "lucide-react";
 import api from "../../config/api.js";
+import { DoctorPaymentDrawer } from "../../components/admin/DoctorPaymentDrawer.jsx";
 
 const INPUT =
   "w-full px-3.5 py-2.5 rounded-lg bg-white border border-surface-300/60 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-navy/25";
@@ -75,6 +77,7 @@ export function AdminUsersPage() {
   const [toast, setToast] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [paymentsUser, setPaymentsUser] = useState(null); // { userId, name, email, accountNumber }
 
   const load = async () => {
     try {
@@ -377,6 +380,24 @@ export function AdminUsersPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-1">
+                          {u.role === "doctor" && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPaymentsUser({
+                                  userId: u.id,
+                                  name: u.name,
+                                  email: u.email,
+                                  accountNumber: u.seazonaAccountNumber,
+                                })
+                              }
+                              title="Manage cards, charges, and AutoPay"
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20"
+                            >
+                              <CreditCard size={11} />
+                              Payments
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => send(u.id, "invitation")}
@@ -412,6 +433,10 @@ export function AdminUsersPage() {
         <Toast tone={toast.tone} onDismiss={() => setToast(null)}>
           {toast.text}
         </Toast>
+      )}
+
+      {paymentsUser && (
+        <DoctorPaymentDrawer doctor={paymentsUser} onClose={() => setPaymentsUser(null)} />
       )}
 
       <p className="mt-6 text-[11px] font-mono text-navy/30 text-center">
