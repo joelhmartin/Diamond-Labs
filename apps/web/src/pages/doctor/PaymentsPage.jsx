@@ -26,6 +26,18 @@ const STATUS_LABEL = {
   refund_pending: "Refund pending",
 };
 
+// How the payment was made. AutoPay is the one a doctor did not personally
+// initiate, so it is the one worth naming — seeing an unexplained charge and
+// not knowing it was their own scheduled payment is how support tickets start.
+// Legacy rows predate the column and carry null; show nothing rather than guess.
+const SOURCE_LABEL = {
+  autopay: "AutoPay",
+  doctor_card: "Card",
+  doctor_hosted: "Card",
+  admin_card: "By lab",
+  admin_offline: "Recorded by lab",
+};
+
 export function PaymentsPage() {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -72,6 +84,7 @@ export function PaymentsPage() {
               <tr className="text-left text-xs uppercase tracking-wide text-gray-400">
                 <th className="px-4 py-3 font-medium">Date</th>
                 <th className="px-4 py-3 font-medium">Invoices</th>
+                <th className="px-4 py-3 font-medium">Method</th>
                 <th className="px-4 py-3 font-medium text-right">Amount</th>
                 <th className="px-4 py-3 font-medium text-right">Refunded</th>
                 <th className="px-4 py-3 font-medium text-right">Net</th>
@@ -84,6 +97,15 @@ export function PaymentsPage() {
                   <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{formatDate(p.createdAt)}</td>
                   <td className="px-4 py-3 text-gray-600 text-xs">
                     {p.invoices.map((inv) => inv.invoiceNumber || inv.seazonaInvoiceId).join(", ") || "—"}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    {p.source === "autopay" ? (
+                      <span className="inline-block rounded-full bg-brand-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-brand-700">
+                        AutoPay
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-500">{SOURCE_LABEL[p.source] || "—"}</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right text-gray-800 whitespace-nowrap">{formatUSD(p.gross)}</td>
                   <td className="px-4 py-3 text-right text-gray-500 whitespace-nowrap">
