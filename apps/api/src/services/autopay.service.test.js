@@ -19,11 +19,24 @@ vi.mock("./card.service.js", () => ({
   },
 }));
 
+// In-memory row array standing in for the table. `select` always reflects
+// whatever `insert`/`update` last wrote, so the service's post-write
+// getEnrollment() re-read returns real, current state — same as a real DB.
 const rows = [];
 vi.mock("../config/database.js", () => ({
   db: {
     select: () => ({ from: () => ({ where: () => ({ limit: async () => rows.slice(0, 1) }) }) }),
-    insert: () => ({ values: async (v) => { rows.push(v); return v; } }),
+    insert: () => ({
+      values: async (v) => {
+        // Model the columns that come from DB defaults rather than app code
+        // (e.g. createdAt: timestamp().defaultNow()) — the app never sets
+        // these explicitly, so a mock that only stored `v` verbatim would
+        // silently hide the exact bug this fix addresses.
+        const row = { createdAt: new Date(), ...v };
+        rows.push(row);
+        return row;
+      },
+    }),
     update: () => ({ set: (v) => ({ where: async () => { Object.assign(rows[0], v); } }) }),
     delete: () => ({ where: async () => { rows.length = 0; } }),
   },
@@ -86,6 +99,17 @@ describe("enrollment validation", () => {
   it("defaults a new enrollment to disabled", async () => {
     const e = await upsertEnrollment({ user, amount: 300, dayOfMonth: 15, paymentProfileId: "pp1", actorUserId: "u1" });
     expect(e.enabled).toBe(false);
+  });
+
+  it("returns a fully-persisted row on create, not a locally-built approximation", async () => {
+    const created = await upsertEnrollment({
+      user, amount: 300, dayOfMonth: 15, paymentProfileId: "pp1", actorUserId: "u1",
+    });
+    // createdAt/status come from the DB (default/explicit) and must be
+    // present via a re-read, same as what an update returns — not undefined
+    // because the insert branch built its own return value by hand.
+    expect(created.createdAt).toBeInstanceOf(Date);
+    expect(created.status).toBe("active");
   });
 
   it("does not report a transient gateway error as a missing card", async () => {
