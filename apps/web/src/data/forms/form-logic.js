@@ -26,6 +26,13 @@
  *   { key, cell }     → answers[key] is a matrix answer object (flat-keyed
  *                       `${row}__${col}` per MatrixField's setCell) and the
  *                       cell named by `cell` carries a non-empty value.
+ *   { all: [Condition, ...] } → every sub-condition is met (AND). Composes
+ *                       with any other shape, including `not`. An empty array
+ *                       is vacuously true.
+ *   { not: Condition } → the wrapped condition is NOT met (negation). Exists
+ *                       for cases like "hide this field once a contradictory
+ *                       answer has been given elsewhere" — the other shapes
+ *                       only express positive "show when" conditions.
  *
  * An unrecognised Condition shape throws in development (see conditionMet)
  * rather than silently defaulting to visible — a showIf that doesn't match
@@ -50,6 +57,8 @@
  */
 function conditionMet(cond, answers) {
   if (!cond) return true;
+  if (cond.all != null) return cond.all.every((c) => conditionMet(c, answers));
+  if (cond.not != null) return !conditionMet(cond.not, answers);
   const other = (answers || {})[cond.key];
   if (cond.includes != null)
     return Array.isArray(other) ? other.includes(cond.includes) : other === cond.includes;

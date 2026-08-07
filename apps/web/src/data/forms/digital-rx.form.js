@@ -156,7 +156,7 @@ const SPORT_GUARD_DEVICE_OPTIONS = [
 // helper (matching orthodontic-rx.form.js's own local builders); unlike that
 // file's `image()`, this one takes an explicit `key` so every field in this
 // form carries a stable key.
-const image = (key, src, alt = "") => ({ type: "image", key, src, alt });
+const image = (key, src, alt = "", opts = {}) => ({ type: "image", key, src, alt, ...opts });
 const artboard = (key, label, opts = {}) => ({
   type: "artboard",
   key,
@@ -257,7 +257,17 @@ export const digitalRxForm = {
         email(
           "digitalSetupEmail",
           "Email to submit digital setup once completed:",
-          { showIf: { key: "devicesToOrder", includes: "ortho" } }
+          {
+            // No point asking where to send a setup nobody ordered — ortho
+            // must be selected AND nuveloDigitalSetup must actually carry an
+            // answer.
+            showIf: {
+              all: [
+                { key: "devicesToOrder", includes: "ortho" },
+                { key: "nuveloDigitalSetup", answered: true },
+              ],
+            },
+          }
         ),
       ],
     },
@@ -327,8 +337,10 @@ export const digitalRxForm = {
           "Standard Screw",
           "Slimline Screw",
           "Memory Screw",
-        ]),
-        text("odPonticTooth", "Pontic Tooth #"),
+        ], { showIf: { key: "odExpansionOptions", includes: "Add expansion screw:" } }),
+        text("odPonticTooth", "Pontic Tooth #", {
+          showIf: { key: "odExpansionOptions", includes: "Add pontic(s):" },
+        }),
         text("odIndexing", "Indexing, guidance, etc..."),
         // qid 495
         textarea("odComments", "OD Device- Additional Comments/Instructions:", {
@@ -349,18 +361,26 @@ export const digitalRxForm = {
           ["mm"],
           VERTICAL_COLS
         ),
-        // qid 417
-        radio("opposingTrutaine", "Opposing trutaine ONLY", [
-          "With anterior buildup",
-          "Without anterior buildup",
-        ]),
-        // qid 418
+        // qid 418 — moved before qid 417 (opposingTrutaine): a doctor could
+        // answer "Upper arch ONLY (No opposing trutaine)" here AND then give
+        // a contradictory opposingTrutaine answer below it. Declaring this
+        // first and gating opposingTrutaine to hide once that option is
+        // picked makes the contradiction unreachable instead of just visible.
         checkbox("onSpecifications", "ON Specifications", [
           "Upper arch ONLY (No opposing trutaine)",
           "No anterior build-up on lower",
           "Add posterior contacts (Tripod Occlusion)",
           "OK to create holes for cusps to keep vertical dimension",
         ]),
+        // qid 417
+        radio("opposingTrutaine", "Opposing trutaine ONLY", [
+          "With anterior buildup",
+          "Without anterior buildup",
+        ], {
+          showIf: {
+            not: { key: "onSpecifications", includes: "Upper arch ONLY (No opposing trutaine)" },
+          },
+        }),
         // qid 497
         textarea("onComments", "ON Device- Additional Comments/Instructions:", {
           rows: 3,
@@ -607,7 +627,9 @@ export const digitalRxForm = {
           ]
         ),
         // qid 363
-        fileUpload("sportGuardLogoUpload", "Please upload any images for logo addition:"),
+        fileUpload("sportGuardLogoUpload", "Please upload any images for logo addition:", {
+          showIf: { key: "sportGuardSpecs", cell: "Please Select:__Add logo" },
+        }),
         // qid 359: widget "Advanced Color Picker" → free-text color capture
         text("sportGuardColor", "Please select the primary sports-guard color:"),
         // qid 505
@@ -638,10 +660,13 @@ export const digitalRxForm = {
       showIf: { key: "devicesToOrder", includes: "ortho" },
       fields: [
         radio("selectDevice", "Select Device", ["Modified Tandem", "Twin Block"]),
+        // No Twin Block equivalent diagram exists — only relevant once the
+        // doctor has actually selected Modified Tandem.
         image(
           "imgModifiedTandem",
-          "https://www.jotform.com/uploads/Diamondlab/form_files/tandem.64c15648dcbe62.63375354.6526b51a539c04.55985396.png",
-          "MODIFIED TANDEM"
+          "/images/rx/ortho/modified-tandem-diagram.png",
+          "MODIFIED TANDEM",
+          { showIf: { key: "selectDevice", equals: "Modified Tandem" } }
         ),
         radio("upperArchRetention", "UPPER arch retention and base material:", [
           "Fixed (Banded)",
@@ -657,7 +682,24 @@ export const digitalRxForm = {
           "Memory Screw (Fixed ONLY)",
           "Standard Hyrax RPE (Fixed ONLY)",
           "NiTi - Nickel Titanium (Fixed ONLY)",
-        ]),
+        ], {
+          // The four "(Fixed ONLY)" options are contradictory once
+          // upperArchRetention is a removable type.
+          disableOptionsIf: [
+            {
+              when: {
+                key: "upperArchRetention",
+                oneOf: ["Acrylic w/ clasp retention", "Printed NYLON w/ composite retention"],
+              },
+              options: [
+                'Slim-line "Variety-Click" (Fixed ONLY)',
+                "Memory Screw (Fixed ONLY)",
+                "Standard Hyrax RPE (Fixed ONLY)",
+                "NiTi - Nickel Titanium (Fixed ONLY)",
+              ],
+            },
+          ],
+        }),
         radio("lowerArchRetention", "Lower arch retention and base material:", [
           "Fixed (Banded)",
           "Fixed [3D Printed] Bands",
@@ -674,7 +716,19 @@ export const digitalRxForm = {
           "Standard Transverse Screw",
           'Slim-line "Variety-Click"',
           "Memory Screw (Removable Only)",
-        ]),
+        ], {
+          // "Memory Screw (Removable Only)" is contradictory once
+          // lowerArchRetention is a fixed type.
+          disableOptionsIf: [
+            {
+              when: {
+                key: "lowerArchRetention",
+                oneOf: ["Fixed (Banded)", "Fixed [3D Printed] Bands"],
+              },
+              options: ["Memory Screw (Removable Only)"],
+            },
+          ],
+        }),
         matrix(
           "requiredSelection",
           "Required Selection",
@@ -686,14 +740,17 @@ export const digitalRxForm = {
             "Place bands on:",
           ]
         ),
-        // qid 252: inline (short text + radio composed template)
+        // qid 252: inline (short text + radio composed template). A Twin
+        // Block has no tandem bow, so this is meaningless outside Modified
+        // Tandem.
         text(
           "tandemBowSetting",
-          "Set tandem bow ___ mm from incisal edge of lower anterior teeth. (Lipskis Bow)"
+          "Set tandem bow ___ mm from incisal edge of lower anterior teeth. (Lipskis Bow)",
+          { showIf: { key: "selectDevice", equals: "Modified Tandem" } }
         ),
         image(
           "imgTandemLength",
-          "https://www.jotform.com/uploads/Diamondlab/form_files/tandem_length.6050f23672bf51.92273108.png",
+          "/images/rx/ortho/tandem-length-reference.png",
           "Tandem length reference"
         ),
         checkbox("addToMaxillary", "Add to Maxillary:", [
@@ -726,12 +783,16 @@ export const digitalRxForm = {
             "Occlusal rest on:",
             "Composite build up on:",
             "Other",
-          ]
+          ],
+          { showIf: { key: "selectDevice", equals: "Modified Tandem" } }
         ),
         textarea("dualArchComments", "Additional Comments/Instructions"),
         checkbox("dualArchDesignDraw", ORTHO_DESIGN_DRAW_LABEL, ["Diamond ORTHO Artboard"]),
         // qid 513: widget (drawOnImage artboard)
-        artboard("dualArchArtboard", ORTHO_ARTBOARD_LABEL, { src: ORTHO_ARTBOARD_BG }),
+        artboard("dualArchArtboard", ORTHO_ARTBOARD_LABEL, {
+          src: ORTHO_ARTBOARD_BG,
+          showIf: { key: "dualArchDesignDraw", includes: "Diamond ORTHO Artboard" },
+        }),
       ],
     },
 
@@ -770,9 +831,15 @@ export const digitalRxForm = {
             "Other",
           ]
         ),
+        // NOTE: this and imgMandibularReference (mandibularLower section,
+        // below) point at the SAME source image in the JotForm snapshot
+        // ("Untitled-1.604c0641ecde48.53101509.png"). Rescued as one local
+        // file referenced from both fields, unchanged from the snapshot —
+        // but one of the two placements may be the wrong diagram; that's a
+        // question for the lab, not something to guess at here.
         image(
           "imgMaxillaryReference",
-          "https://www.jotform.com/uploads/Diamondlab/form_files/Untitled-1.604c0641ecde48.53101509.png",
+          "/images/rx/ortho/arch-reference-diagram.png",
           "Maxillary reference"
         ),
         checkbox("maxillaryAdd", "Add:", [
@@ -788,7 +855,10 @@ export const digitalRxForm = {
         ]),
         checkbox("maxillaryDesignDraw", ORTHO_DESIGN_DRAW_LABEL, ["Diamond ORTHO Artboard"]),
         // qid 472: widget (drawOnImage artboard)
-        artboard("maxillaryArtboard", ORTHO_ARTBOARD_LABEL, { src: ORTHO_ARTBOARD_BG }),
+        artboard("maxillaryArtboard", ORTHO_ARTBOARD_LABEL, {
+          src: ORTHO_ARTBOARD_BG,
+          showIf: { key: "maxillaryDesignDraw", includes: "Diamond ORTHO Artboard" },
+        }),
         textarea("maxillaryComments", "Additional Comments/Instructions"),
       ],
     },
@@ -825,7 +895,10 @@ export const digitalRxForm = {
             "Other",
           ]
         ),
-        // qid 496: widget (image checkbox, single select)
+        // qid 496: widget (image checkbox, single select). Lower arch
+        // retention's last two options ("Acrylic w/ clasp retention",
+        // "Printed NYLON w/ composite retention") are removable; the first
+        // two ("Fixed (Banded)", "Fixed [3D Printed] Bands") are fixed.
         checkbox("removableMandibularExpansion", "Removable Mandibular Expansion (Only)", [
           imgOpt(
             "Mandibular Schwarz",
@@ -839,7 +912,12 @@ export const digitalRxForm = {
             "Mandibular Slim-line",
             "https://diamondorthoticlab.com/wp-content/uploads/2023/05/lower-fixed-expander.jpg"
           ),
-        ]),
+        ], {
+          showIf: {
+            key: "lowerArchRetention",
+            oneOf: ["Acrylic w/ clasp retention", "Printed NYLON w/ composite retention"],
+          },
+        }),
         // qid 487: widget (image checkbox, single select)
         checkbox("fixedMandibularExpansion", "Fixed Mandibular Expansion (Only)", [
           imgOpt(
@@ -854,10 +932,17 @@ export const digitalRxForm = {
             "Mandibular E-Arch",
             "https://diamondorthoticlab.com/wp-content/uploads/2023/05/e-arch-lower.jpg"
           ),
-        ]),
+        ], {
+          showIf: {
+            key: "lowerArchRetention",
+            oneOf: ["Fixed (Banded)", "Fixed [3D Printed] Bands"],
+          },
+        }),
+        // See imgMaxillaryReference (maxillaryUpper section, above) — same
+        // source file, rescued once and referenced from both.
         image(
           "imgMandibularReference",
-          "https://www.jotform.com/uploads/Diamondlab/form_files/Untitled-1.604c0641ecde48.53101509.png",
+          "/images/rx/ortho/arch-reference-diagram.png",
           "Mandibular reference"
         ),
         checkbox("mandibularAdd", "Add:", [
@@ -872,7 +957,10 @@ export const digitalRxForm = {
         ]),
         checkbox("mandibularDesignDraw", ORTHO_DESIGN_DRAW_LABEL, ["Diamond ORTHO Artboard"]),
         // qid 42: widget (drawOnImage artboard)
-        artboard("mandibularArtboard", ORTHO_ARTBOARD_LABEL, { src: ORTHO_ARTBOARD_BG }),
+        artboard("mandibularArtboard", ORTHO_ARTBOARD_LABEL, {
+          src: ORTHO_ARTBOARD_BG,
+          showIf: { key: "mandibularDesignDraw", includes: "Diamond ORTHO Artboard" },
+        }),
         textarea("orthoDesignComments", "Additional Comments for ORTHO Design"),
       ],
     },
@@ -891,22 +979,23 @@ export const digitalRxForm = {
         signature("doctorSignature", "Doctor Signature", { required: true }),
         // qid 391
         checkbox("rushCase", "Would you like to rush this case?", ["Yes"]),
-        // qid 337 / 335: the two ex-ortho rush-charge sliders. Both are
-        // labelled "RUSH case request:", so ungated they showed a DDSO-only
-        // doctor three rush controls, two of them indistinguishable. Gated on
-        // ortho like every other ex-ortho extra; `rushCase` above stays
-        // ungated as the one rush control every doctor sees.
+        // qid 337 / 335: the two rush-charge sliders. Both are labelled "RUSH
+        // case request:", so ungated they showed every doctor three rush
+        // controls, two of them indistinguishable. Gated on `rushCase` itself
+        // (not devicesToOrder — rush pricing applies to any device once a
+        // rush is actually requested) so they only appear once the doctor has
+        // ticked the shared "Would you like to rush this case?" checkbox.
         radio(
           "rushChargeBiomed",
           "RUSH case request: (BIOMED / PMT / ACRYLIC devices)",
           ["No Rush", "Standard", "Expedited"],
-          { showIf: { key: "devicesToOrder", includes: "ortho" } }
+          { showIf: { key: "rushCase", includes: "Yes" } }
         ),
         radio(
           "rushChargeNylon",
           "RUSH case request: (NYLON devices)",
           ["No Rush", "Standard", "Expedited", "Max Rush"],
-          { showIf: { key: "devicesToOrder", includes: "ortho" } }
+          { showIf: { key: "rushCase", includes: "Yes" } }
         ),
         // qid 141: widget (textarea autosize) — ex-ortho
         textarea(

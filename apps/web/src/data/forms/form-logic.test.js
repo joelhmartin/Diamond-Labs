@@ -241,6 +241,43 @@ test("sectionVisible agrees with shouldShow on answered/oneOf/cell", () => {
   assert.equal(sectionVisible(cellSection, { m: { r__c: "" } }), false);
 });
 
+/* ── new showIf shape: { all: [Condition, ...] } — AND of sub-conditions ── */
+
+test("shouldShow: all — true only when every sub-condition holds", () => {
+  const field = {
+    key: "b",
+    showIf: { all: [{ key: "a", equals: "x" }, { key: "c", answered: true }] },
+  };
+  assert.equal(shouldShow(field, { a: "x", c: "yes" }), true);
+  assert.equal(shouldShow(field, { a: "x", c: "" }), false);
+  assert.equal(shouldShow(field, { a: "y", c: "yes" }), false);
+  assert.equal(shouldShow(field, {}), false);
+});
+
+test("shouldShow: all — empty array is vacuously true", () => {
+  const field = { key: "b", showIf: { all: [] } };
+  assert.equal(shouldShow(field, {}), true);
+});
+
+/* ── new showIf shape: { not: Condition } — negation ───────────────────── */
+
+test("shouldShow: not — inverts the wrapped condition", () => {
+  const field = { key: "b", showIf: { not: { key: "a", includes: "x" } } };
+  assert.equal(shouldShow(field, { a: ["x"] }), false);
+  assert.equal(shouldShow(field, { a: ["y"] }), true);
+  assert.equal(shouldShow(field, {}), true);
+});
+
+test("sectionVisible agrees with shouldShow on all/not", () => {
+  const allSection = { showIf: { all: [{ key: "a", equals: "x" }, { key: "b", answered: true }] } };
+  assert.equal(sectionVisible(allSection, { a: "x", b: "y" }), true);
+  assert.equal(sectionVisible(allSection, { a: "x" }), false);
+
+  const notSection = { showIf: { not: { key: "a", equals: "x" } } };
+  assert.equal(sectionVisible(notSection, { a: "x" }), false);
+  assert.equal(sectionVisible(notSection, { a: "y" }), true);
+});
+
 /* ── unrecognised showIf shape: throws in dev rather than hiding silently ── */
 
 test("shouldShow throws on an unrecognised showIf shape (dev-mode guard rail)", () => {

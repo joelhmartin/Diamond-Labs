@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { Artboard } from "./Artboard.jsx";
 import { Signature } from "./Signature.jsx";
-import { shouldShow } from "./field-logic.js";
+import { shouldShow, disabledOptions } from "./field-logic.js";
 
 export { shouldShow };
 
@@ -39,7 +39,12 @@ function normalizeOption(o) {
    click, the X button, or Escape. Use anywhere an image should be zoomable. */
 export function useLightbox() {
   const [item, setItem] = useState(null); // { src, label } | null
-  const open = (src, label = "") => setItem({ src, label });
+  // Natural pixel width of the loaded image, so small sources can be scaled UP.
+  // `max-*` alone only ever shrinks: a 300x200 source rendered at 300x200 on any
+  // screen, which is why most option images looked tiny. Several of these assets
+  // are exported at 300x200, so we allow up to 2x and let 90vw/80vh cap the rest.
+  const [naturalWidth, setNaturalWidth] = useState(null);
+  const open = (src, label = "") => { setNaturalWidth(null); setItem({ src, label }); };
   const close = () => setItem(null);
 
   useEffect(() => {
@@ -69,6 +74,8 @@ export function useLightbox() {
         <img
           src={item.src}
           alt={item.label || ""}
+          onLoad={(e) => setNaturalWidth(e.currentTarget.naturalWidth)}
+          style={naturalWidth ? { width: `min(90vw, ${naturalWidth * 2}px)` } : undefined}
           className="object-contain max-h-[80vh] max-w-[90vw] rounded-xl bg-white"
         />
         {item.label && (
@@ -98,7 +105,7 @@ function ZoomButton({ onClick, label }) {
 /* Selectable image card used by radio/checkbox image-option grids. The broken
    image hides itself onError so a dead URL falls back to just the label. On
    hover, a magnifier in the top-right opens the image in a lightbox. */
-function ImageOptionCard({ option, active, onClick }) {
+function ImageOptionCard({ option, active, disabled, onClick }) {
   const [imgOk, setImgOk] = useState(true);
   const { open, lightbox } = useLightbox();
   const showImg = option.image && imgOk;
@@ -107,10 +114,15 @@ function ImageOptionCard({ option, active, onClick }) {
     <div className="relative group">
       <button
         type="button"
-        onClick={onClick}
+        onClick={disabled ? undefined : onClick}
+        disabled={disabled}
         aria-pressed={active}
+        aria-disabled={disabled || undefined}
+        title={disabled ? "Not available for your current selections" : undefined}
         className={`w-full flex flex-col items-center gap-2 p-3 rounded-2xl border text-center transition-all duration-300 ${
-          active
+          disabled
+            ? "border-surface-300/40 bg-surface-50/60 opacity-45 grayscale cursor-not-allowed"
+            : active
             ? "border-brand-500 ring-2 ring-brand-500/20 bg-brand-50"
             : "border-surface-300/50 hover:border-brand-300 bg-surface-50"
         }`}
@@ -125,8 +137,13 @@ function ImageOptionCard({ option, active, onClick }) {
           />
         )}
         <span className="flex items-center justify-center gap-1.5 text-xs font-medium text-secondary">
-          {active && <Check size={12} className="text-brand-500 flex-shrink-0" />}
+          {active && !disabled && <Check size={12} className="text-brand-500 flex-shrink-0" />}
           {option.label}
+          {disabled && (
+            <span className="text-[9px] font-mono uppercase tracking-wider text-muted/70">
+              N/A
+            </span>
+          )}
         </span>
       </button>
 
@@ -144,9 +161,10 @@ function ImageOptionCard({ option, active, onClick }) {
   );
 }
 
-export function RadioField({ field, value, onChange }) {
+export function RadioField({ field, value, onChange, answers }) {
   const opts = field.options.map(normalizeOption);
   const hasImages = opts.some((o) => o.image);
+  const disabled = disabledOptions(field, answers || {});
 
   return (
     <div>
@@ -158,6 +176,7 @@ export function RadioField({ field, value, onChange }) {
               key={o.value}
               option={o}
               active={value === o.value}
+              disabled={disabled.has(o.value)}
               onClick={() => onChange(o.value)}
             />
           ))}
@@ -166,18 +185,24 @@ export function RadioField({ field, value, onChange }) {
         <div className="flex flex-wrap gap-2">
           {opts.map((o) => {
             const active = value === o.value;
+            const isDisabled = disabled.has(o.value);
             return (
               <button
                 key={o.value}
                 type="button"
-                onClick={() => onChange(o.value)}
+                disabled={isDisabled}
+                aria-disabled={isDisabled || undefined}
+                title={isDisabled ? "Not available for your current selections" : undefined}
+                onClick={isDisabled ? undefined : () => onChange(o.value)}
                 className={`px-4 py-2.5 rounded-full text-sm font-medium transition-all duration-300 ${
-                  active
+                  isDisabled
+                    ? "bg-surface-50/60 text-muted/50 border border-surface-300/30 opacity-50 line-through cursor-not-allowed"
+                    : active
                     ? "bg-brand-500 text-white shadow-sm"
                     : "bg-surface-50 text-navy/60 border border-surface-300/50 hover:border-brand-500/30 hover:text-navy"
                 }`}
               >
-                {active && <Check size={12} className="inline mr-1.5 -mt-0.5" />}
+                {active && !isDisabled && <Check size={12} className="inline mr-1.5 -mt-0.5" />}
                 {o.label}
               </button>
             );
@@ -194,10 +219,11 @@ export function RadioField({ field, value, onChange }) {
   );
 }
 
-export function CheckboxField({ field, value, onChange }) {
+export function CheckboxField({ field, value, onChange, answers }) {
   const selected = Array.isArray(value) ? value : [];
   const opts = field.options.map(normalizeOption);
   const hasImages = opts.some((o) => o.image);
+  const disabled = disabledOptions(field, answers || {});
   const toggle = (v) =>
     onChange(selected.includes(v) ? selected.filter((x) => x !== v) : [...selected, v]);
 
@@ -211,6 +237,7 @@ export function CheckboxField({ field, value, onChange }) {
               key={o.value}
               option={o}
               active={selected.includes(o.value)}
+              disabled={disabled.has(o.value)}
               onClick={() => toggle(o.value)}
             />
           ))}
@@ -219,18 +246,24 @@ export function CheckboxField({ field, value, onChange }) {
         <div className="flex flex-wrap gap-2">
           {opts.map((o) => {
             const active = selected.includes(o.value);
+            const isDisabled = disabled.has(o.value);
             return (
               <button
                 key={o.value}
                 type="button"
-                onClick={() => toggle(o.value)}
+                disabled={isDisabled}
+                aria-disabled={isDisabled || undefined}
+                title={isDisabled ? "Not available for your current selections" : undefined}
+                onClick={isDisabled ? undefined : () => toggle(o.value)}
                 className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
-                  active
+                  isDisabled
+                    ? "bg-surface-50/60 text-muted/50 border border-surface-300/30 opacity-50 line-through cursor-not-allowed"
+                    : active
                     ? "bg-brand-500 text-white"
                     : "bg-surface-50 text-navy/60 border border-surface-300/50 hover:border-brand-500/30"
                 }`}
               >
-                {active && <Check size={12} className="inline mr-1.5 -mt-0.5" />}
+                {active && !isDisabled && <Check size={12} className="inline mr-1.5 -mt-0.5" />}
                 {o.label}
               </button>
             );
@@ -786,7 +819,7 @@ export function FormField({ field, value, onChange, answers }) {
 
   return (
     <div>
-      <Renderer field={field} value={value} onChange={onChange} />
+      <Renderer field={field} value={value} onChange={onChange} answers={answers} />
       {field.note && field.type !== "radio" && (
         <p className="mt-2 flex items-start gap-1.5 text-xs text-secondary">
           <AlertCircle size={11} className="mt-0.5 text-accent-500 flex-shrink-0" />
