@@ -18,7 +18,7 @@ const by = (s) => ALL.filter((r) => r.status === s);
 // "default" is an internal placeholder, not something a lab owner can act on —
 // show the device name instead. Only match[0] (the current form's wording) is
 // shown; match[1]+ is legacy wizard wording that would just confuse the lab.
-const deviceOf = (r) => DEVICE_LABELS[r.device] || DEVICE_LABELS[(r.mapKey.split(":")[1] || "")] || "—";
+const deviceOf = (r) => (r.device ? DEVICE_LABELS[r.device] || r.device : "—");
 const selectionOf = (r) => (r.match[0] === "default" ? deviceOf(r) : r.match[0]);
 
 const line = (r) => `| ${deviceOf(r)} | ${selectionOf(r)} | ${r.code ?? "—"} | ${r.name} |`;
