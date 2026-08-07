@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { mfaEnableSchema } from "@my-app/shared";
+import { mfaEnableSchema, mfaSetupSchema } from "@my-app/shared";
 import { Input } from "../ui/Input.jsx";
 import { Button } from "../ui/Button.jsx";
 import { useToast } from "../ui/Toast.jsx";
@@ -18,13 +18,24 @@ export function MfaSetup({ onComplete }) {
     formState: { errors, isSubmitting },
   } = useForm({ resolver: zodResolver(mfaEnableSchema) });
 
-  const startSetup = async () => {
+  // Separate form: starting setup re-keys the second factor, so the API asks
+  // for the password before it will hand back a provisioning secret.
+  const {
+    register: registerStart,
+    handleSubmit: handleSubmitStart,
+    formState: { errors: startErrors },
+  } = useForm({ resolver: zodResolver(mfaSetupSchema) });
+
+  const startSetup = async (startData) => {
     setLoading(true);
     try {
-      const { data } = await api.post("/auth/mfa/setup");
+      const { data } = await api.post("/auth/mfa/setup", startData);
       setSetupData(data.data);
-    } catch {
-      addToast({ message: "Failed to start MFA setup.", type: "error" });
+    } catch (err) {
+      addToast({
+        message: err.response?.data?.error?.message || "Failed to start MFA setup.",
+        type: "error",
+      });
     } finally {
       setLoading(false);
     }
@@ -45,9 +56,21 @@ export function MfaSetup({ onComplete }) {
 
   if (!setupData) {
     return (
-      <Button onClick={startSetup} loading={loading}>
-        Set up two-factor authentication
-      </Button>
+      <form onSubmit={handleSubmitStart(startSetup)} className="space-y-3">
+        <p className="text-sm text-gray-600">
+          Confirm your password to set up two-factor authentication.
+        </p>
+        <Input
+          label="Password"
+          type="password"
+          autoComplete="current-password"
+          error={startErrors.password?.message}
+          {...registerStart("password")}
+        />
+        <Button type="submit" loading={loading}>
+          Set up two-factor authentication
+        </Button>
+      </form>
     );
   }
 

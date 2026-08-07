@@ -83,6 +83,35 @@ async function apiRequest(payload, mode) {
  * string-key insertion order), so `billTo`/`shipTo` land AFTER `order`. When
  * absent (e.g. doctor invoice charges) the request is byte-for-byte unchanged.
  */
+/**
+ * Assert that a createTransactionRequest actually captured funds.
+ *
+ * The envelope `messages.resultCode` can be "Ok" while the transaction itself
+ * was declined (2), errored (3), or HELD FOR REVIEW by the Fraud Detection
+ * Suite (4). Only responseCode "1" means approved-and-captured. Returning a
+ * held transaction as success is how you credit a ledger, write a payment to
+ * the lab system, and email a receipt for money that never moved — so every
+ * money-moving call funnels through this.
+ */
+function assertApproved(data, action) {
+  // apiRequest returns null when credentials are unconfigured. Treat that as a
+  // failed charge with a legible message rather than a TypeError.
+  if (!data) {
+    throw new Error(`Authorize.net ${action} failed: gateway credentials are not configured`);
+  }
+  const tr = data.transactionResponse;
+  if (String(tr?.responseCode) !== "1") {
+    const reason = tr?.errors?.[0]?.errorText || tr?.messages?.[0]?.description;
+    const err = new Error(
+      `Authorize.net ${action} not approved (responseCode ${tr?.responseCode ?? "?"})` +
+        (reason ? `: ${reason}` : "")
+    );
+    err.authNetResponse = data;
+    throw err;
+  }
+  return tr;
+}
+
 export async function chargeWithNonce({ amount, opaqueData, description, invoiceNumber, billTo, shipTo }) {
   const transactionRequest = {
     transactionType: "authCaptureTransaction",
@@ -106,10 +135,11 @@ export async function chargeWithNonce({ amount, opaqueData, description, invoice
     },
   });
 
+  const tr = assertApproved(data, "charge");
   return {
-    transactionId: data.transactionResponse?.transId,
-    responseCode: data.transactionResponse?.responseCode,
-    authCode: data.transactionResponse?.authCode,
+    transactionId: tr.transId,
+    responseCode: tr.responseCode,
+    authCode: tr.authCode,
   };
 }
 
@@ -172,10 +202,11 @@ export async function chargeCustomerProfile({ customerProfileId, paymentProfileI
     },
   });
 
+  const tr = assertApproved(data, "saved-card charge");
   return {
-    transactionId: data.transactionResponse?.transId,
-    responseCode: data.transactionResponse?.responseCode,
-    authCode: data.transactionResponse?.authCode,
+    transactionId: tr.transId,
+    responseCode: tr.responseCode,
+    authCode: tr.authCode,
   };
 }
 

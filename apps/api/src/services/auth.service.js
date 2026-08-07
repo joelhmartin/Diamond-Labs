@@ -364,14 +364,22 @@ export async function verifyEmail(token) {
   await redis.del(`email_verify:${token}`);
 }
 
-export async function setupMfa(userId) {
+// Re-key of the second factor is as sensitive as removing it, so it takes the
+// same password proof `disableMfa` takes. Without this, anyone holding a live
+// session (stolen access token, unlocked laptop) could bind their OWN
+// authenticator and hold the account past a password reset.
+export async function setupMfa(userId, password) {
   const [user] = await db
-    .select({ email: users.email })
+    .select({ email: users.email, passwordHash: users.passwordHash })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
 
   if (!user) throw createAppError(ERROR_CODES.USER_NOT_FOUND);
+
+  if (!user.passwordHash) throw createAppError(ERROR_CODES.INCORRECT_PASSWORD);
+  const valid = await comparePassword(password, user.passwordHash);
+  if (!valid) throw createAppError(ERROR_CODES.INCORRECT_PASSWORD);
 
   const { secret, uri } = generateMfaSecret(user.email);
 
@@ -428,9 +436,20 @@ export async function registerDoctor(data) {
     .limit(1);
   if (existing) throw createAppError(ERROR_CODES.EMAIL_ALREADY_EXISTS);
 
-  // Try to find existing Seazona client by email, then by phone
+  // Link this registration to an existing Seazona client.
+  //
+  // ONLY an email match auto-links. Registration is public and unauthenticated,
+  // and the linked client id is what gates access to that practice's invoices —
+  // i.e. patient names, which are PHI. A practice's phone number is public
+  // information, so auto-linking on it let anyone who could look up a phone
+  // number register their way into another practice's billing data.
+  //
+  // A phone hit is now only a SUGGESTION surfaced to the admin in the approval
+  // email; a human links it deliberately. Email still auto-links because the
+  // address is the account's own identifier.
   let seazonaClientId = null;
   let seazonaAccountNumber = null;
+  let suggestedSeazonaClient = null;
 
   const emailMatch = await seazonaService.checkLoginExists(data.email);
   if (emailMatch && emailMatch.clientId) {
@@ -439,8 +458,12 @@ export async function registerDoctor(data) {
   } else if (data.phone) {
     const phoneMatch = await seazonaService.findClientByPhone(data.phone);
     if (phoneMatch) {
-      seazonaClientId = String(phoneMatch.clientId || phoneMatch.id);
-      seazonaAccountNumber = phoneMatch.accountNumber ? String(phoneMatch.accountNumber) : null;
+      suggestedSeazonaClient = {
+        clientId: String(phoneMatch.clientId || phoneMatch.id),
+        accountNumber: phoneMatch.accountNumber ? String(phoneMatch.accountNumber) : null,
+        company: phoneMatch.company || phoneMatch.fullName || null,
+        matchedOn: "phone",
+      };
     }
   }
 
@@ -520,6 +543,10 @@ export async function registerDoctor(data) {
     companyName: data.companyName,
     approveUrl,
     rejectUrl,
+    seazonaLink: seazonaClientId
+      ? { clientId: seazonaClientId, accountNumber: seazonaAccountNumber, company: data.companyName }
+      : null,
+    suggestedSeazonaClient,
   });
 
   return { message: "Registration submitted. Awaiting admin approval." };
