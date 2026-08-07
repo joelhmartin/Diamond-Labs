@@ -305,3 +305,35 @@ test("ortho-only case-submission extras are hidden unless ortho is selected", ()
   for (const k of ["nuveloDigitalSetup", "digitalStudyModels", "digitalSetupEmail"])
     assert.ok(shown.includes(k), `${k} should be visible with ortho`);
 });
+
+test("a DDSO-only doctor sees exactly one rush control", () => {
+  const shown = visibleFields(digitalRxForm, { devicesToOrder: ["ddso"] }).map((f) => f.key);
+  assert.ok(shown.includes("rushCase"), "the shared rush checkbox must always show");
+  for (const k of ["rushChargeBiomed", "rushChargeNylon"])
+    assert.ok(!shown.includes(k), `${k} is an ex-ortho extra and must be gated on ortho`);
+
+  const withOrtho = visibleFields(digitalRxForm, { devicesToOrder: ["ortho"] }).map((f) => f.key);
+  for (const k of ["rushCase", "rushChargeBiomed", "rushChargeNylon"])
+    assert.ok(withOrtho.includes(k), `${k} should be visible with ortho`);
+});
+
+test("no two fields in the same section carry the same label", () => {
+  // The two ex-ortho rush sliders were both labelled "RUSH case request:" and
+  // sat side by side in `submit-form` — indistinguishable to a doctor. The same
+  // label under a different section heading (Maxillary vs Mandibular "Add:") is
+  // disambiguated by that heading, so duplicates are only checked per section.
+  const SKIP = new Set(["heading", "note", "static", "image", "divider"]);
+  for (const devices of [["ddso"], ["ortho"], ["ddso", "ortho", "nightguards"]]) {
+    const answers = { devicesToOrder: devices };
+    const visible = new Set(visibleFields(digitalRxForm, answers).map((f) => f.key));
+    for (const section of digitalRxForm.sections) {
+      const seen = new Map();
+      for (const f of section.fields || []) {
+        if (!f.label || SKIP.has(f.type) || !visible.has(f.key)) continue;
+        const prev = seen.get(f.label);
+        assert.ok(!prev, `section ${section.id}: "${f.label}" is on both ${prev} and ${f.key}`);
+        seen.set(f.label, f.key);
+      }
+    }
+  }
+});

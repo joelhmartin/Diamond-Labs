@@ -891,19 +891,23 @@ export const digitalRxForm = {
         signature("doctorSignature", "Doctor Signature", { required: true }),
         // qid 391
         checkbox("rushCase", "Would you like to rush this case?", ["Yes"]),
-        // qid 337: widget (rush-charge slider — BIOMED / PMT / ACRYLIC) — ex-ortho
-        radio("rushChargeBiomed", "RUSH case request:", [
-          "No Rush",
-          "Standard",
-          "Expedited",
-        ]),
-        // qid 335: widget (rush-charge slider — NYLON DEVICES) — ex-ortho
-        radio("rushChargeNylon", "RUSH case request:", [
-          "No Rush",
-          "Standard",
-          "Expedited",
-          "Max Rush",
-        ]),
+        // qid 337 / 335: the two ex-ortho rush-charge sliders. Both are
+        // labelled "RUSH case request:", so ungated they showed a DDSO-only
+        // doctor three rush controls, two of them indistinguishable. Gated on
+        // ortho like every other ex-ortho extra; `rushCase` above stays
+        // ungated as the one rush control every doctor sees.
+        radio(
+          "rushChargeBiomed",
+          "RUSH case request: (BIOMED / PMT / ACRYLIC devices)",
+          ["No Rush", "Standard", "Expedited"],
+          { showIf: { key: "devicesToOrder", includes: "ortho" } }
+        ),
+        radio(
+          "rushChargeNylon",
+          "RUSH case request: (NYLON devices)",
+          ["No Rush", "Standard", "Expedited", "Max Rush"],
+          { showIf: { key: "devicesToOrder", includes: "ortho" } }
+        ),
         // qid 141: widget (textarea autosize) — ex-ortho
         textarea(
           "additionalComments",
