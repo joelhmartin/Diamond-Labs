@@ -18,6 +18,7 @@
     "db:seed-rx-overrides": "node --env-file=.env src/db/seed-rx-overrides.js",
     "db:migrate-rx-override-keys": "node --env-file=.env src/db/migrate-rx-override-keys.js",
     "db:set-test-credentials": "node --env-file=.env src/db/set-test-credentials.js",
+    "db:backfill-payment-source": "node --env-file=.env src/db/backfill-payment-source.js",
     "rx:mapping-report": "node src/db/report-rx-mapping-gaps.js",
     "jobs:run": "node --env-file=.env src/jobs/cli.js"
   },
