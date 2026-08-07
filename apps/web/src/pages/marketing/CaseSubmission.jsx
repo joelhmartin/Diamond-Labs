@@ -52,8 +52,10 @@ function CaseHero() {
 
 /* ════════════════════════════════════════════════════════════════
    MARKETING TEASER PAGE
-   This page is shown to unauthenticated visitors. Approved doctors
-   are directed to /app/cases/new for the live submission wizard.
+   Online case submission from the website is temporarily unavailable
+   (the click-through wizard has been retired). This page now points
+   doctors to phone/email, and signed-in doctors to the portal's Rx
+   form, rather than promising a working wizard.
    ════════════════════════════════════════════════════════════════ */
 
 export function CaseSubmissionPage() {
@@ -76,20 +78,23 @@ export function CaseSubmissionPage() {
               {isApprovedDoctor ? (
                 <>
                   <h2 className="font-heading font-bold text-2xl text-navy">
-                    Ready to Submit
+                    Online Submission — Coming Soon
                   </h2>
                   <p className="mt-3 text-sm text-navy/50 max-w-md mx-auto leading-relaxed">
-                    Your account is approved. Open the live wizard to pick a
-                    device, upload scans and records, and sign your case for
-                    fabrication.
+                    Submitting a new case from the website isn&apos;t available
+                    right now while we rebuild this page. We&apos;re still
+                    accepting prescriptions — call 619.724.6400 or email
+                    info@diamondorthotic.com and we&apos;ll get your case
+                    started. Signed in on the portal? The Rx form there is up
+                    and working.
                   </p>
                   <div className="mt-8 flex items-center justify-center">
                     <Link
-                      to={ROUTES.DOCTOR_NEW_CASE}
+                      to={ROUTES.RX_CHOOSER}
                       className="btn-magnetic inline-flex items-center gap-2 px-8 py-3.5 rounded-full text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 transition-colors"
                     >
                       <span className="relative z-10 flex items-center gap-2">
-                        <Send size={15} /> Submit a New Case
+                        <Send size={15} /> Open the Portal Rx Form
                       </span>
                     </Link>
                   </div>
@@ -100,15 +105,17 @@ export function CaseSubmissionPage() {
                     Doctors Only
                   </h2>
                   <p className="mt-3 text-sm text-navy/50 max-w-md mx-auto leading-relaxed">
-                    The Digital Rx portal is available to approved Diamond Labs
-                    partner doctors. Sign in with your doctor account to access
-                    the full case submission wizard.
+                    Online case submission from the website is temporarily
+                    unavailable. Approved Diamond Labs partner doctors can
+                    still submit through the Rx form in their account portal
+                    — or call 619.724.6400 / email info@diamondorthotic.com
+                    and we&apos;ll take it from there.
                   </p>
 
                   <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
                     <Link
                       to={ROUTES.LOGIN}
-                      state={{ from: { pathname: ROUTES.DOCTOR_NEW_CASE } }}
+                      state={{ from: { pathname: ROUTES.RX_CHOOSER } }}
                       className="btn-magnetic inline-flex items-center gap-2 px-8 py-3.5 rounded-full text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 transition-colors"
                     >
                       <span className="relative z-10 flex items-center gap-2">
@@ -148,7 +155,7 @@ export function CaseSubmissionPage() {
           {!isApprovedDoctor && (
             <p className="mt-6 text-center text-xs text-navy/30 max-w-sm mx-auto leading-relaxed">
               Already an approved doctor? Sign in above — the link will take you
-              straight to the case submission wizard.
+              straight to the Rx form.
             </p>
           )}
         </div>

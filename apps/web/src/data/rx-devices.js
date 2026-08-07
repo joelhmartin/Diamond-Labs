@@ -1,5 +1,18 @@
 /**
- * Rx device catalog — used by the Digital Rx wizard (CaseSubmission page).
+ * Rx device catalog — was the source of truth for the click-through wizard
+ * at /app/cases/new. That wizard has been retired (replaced by the single
+ * consolidated Rx form at /app/rx); this file has no runtime consumer in
+ * the web app anymore.
+ *
+ * It stays because it is the canonical record of the legacy wizard's exact
+ * option wording. apps/api/src/services/rx/catalog-map/wizard-literals.test.js
+ * imports RX_DEVICES from here and checks every literal against the
+ * catalog-map's `match[]` alias tables — those aliases exist to keep
+ * resolving option strings the old wizard actually produced (and that may
+ * still sit in historical rx_cases rows). Reword an option here and that
+ * test fails instead of the alias silently drifting out of sync. Do not
+ * delete this file, and treat renames to `key`/option strings as breaking
+ * changes to that coverage.
  *
  * Each device describes:
  *   - key          : unique id used everywhere in the form
