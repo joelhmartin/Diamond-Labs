@@ -4,18 +4,54 @@ import { DEVICE_ROWS } from "../services/rx/catalog-map/devices.table.js";
 import { MODIFICATION_ROWS } from "../services/rx/catalog-map/modifications.table.js";
 import { ATTRIBUTE_ROWS } from "../services/rx/catalog-map/attributes.table.js";
 import { GUARD_ROWS, GUARD_ROW_LABELS, resolveGuard } from "../services/rx/catalog-map/resolvers/guard.js";
+import { ALL, bucket, renderDoc } from "./report-rx-mapping-gaps.js";
 
-const ALL = [...DEVICE_ROWS, ...MODIFICATION_ROWS, ...ATTRIBUTE_ROWS, ...GUARD_ROWS];
+const ROWS = [...DEVICE_ROWS, ...MODIFICATION_ROWS, ...ATTRIBUTE_ROWS, ...GUARD_ROWS];
+
+test("the generator reports on exactly the four row sources", () => {
+  assert.deepEqual([...ALL].sort(), [...ROWS].sort());
+});
 
 test("every open row carries a plain-language reason", () => {
-  for (const r of ALL.filter((x) => x.status === "open"))
+  for (const r of ROWS.filter((x) => x.status === "open"))
     assert.ok(r.reason && r.reason.trim().length > 20, `open row ${r.mapKey} has no usable reason`);
 });
 
 test("a 'none' row is never bucketed into the lab document", () => {
-  for (const s of ["confirmed", "proposed", "open"])
-    assert.equal(ALL.filter((r) => r.status === s).some((r) => r.status === "none"), false);
-  assert.ok(ALL.some((r) => r.status === "none"), "expected at least one none row to exist");
+  // Assert against the GENERATOR's buckets and its rendered output. The earlier
+  // version filtered ALL by status s and then asked whether any of those rows
+  // had status "none" — false by construction for every s !== "none", so it
+  // proved nothing.
+  const none = ROWS.filter((r) => r.status === "none");
+  assert.ok(none.length > 0, "expected at least one none row to exist");
+
+  const bucketed = ["confirmed", "proposed", "open"].flatMap((s) => bucket(s));
+  for (const r of none)
+    assert.ok(!bucketed.includes(r), `none row ${r.mapKey} was bucketed into the document`);
+
+  // Every row is either bucketed or a none row — nothing falls off the report.
+  assert.equal(bucketed.length + none.length, ALL.length);
+
+  const doc = renderDoc();
+  for (const r of none)
+    assert.ok(!doc.includes(r.name), `none row ${r.mapKey} ("${r.name}") reached the lab document`);
+});
+
+test("the document tells the lab about the unmapped ortho taxonomy", () => {
+  // resolveOrtho contributes no rows, so ~36 SKUs — the largest open decision,
+  // and the reason every ortho order is held — were invisible in the document
+  // the lab owner is asked to sign off, while resolvers/ortho.js points here.
+  const doc = renderDoc();
+  assert.match(doc, /## Orthodontic appliances — not yet mapped/);
+  assert.match(doc, /36 orthodontic products/);
+  assert.match(doc, /every orthodontic order is held/i);
+});
+
+test("the document never claims a code for an open row", () => {
+  const doc = renderDoc();
+  for (const r of bucket("open")) assert.equal(r.code, null, `${r.mapKey} is open but carries ${r.code}`);
+  for (const r of [...bucket("confirmed"), ...bucket("proposed")])
+    assert.ok(doc.includes(r.code), `${r.mapKey}'s code ${r.code} is missing from the document`);
 });
 
 test("every GUARD_ROWS mapKey is one resolveGuard can actually emit", () => {
@@ -39,7 +75,7 @@ test("every GUARD_ROWS mapKey is one resolveGuard can actually emit", () => {
 });
 
 test("no row shown to the lab carries a null code unless it is open", () => {
-  for (const r of ALL)
+  for (const r of ROWS)
     if (r.status === "confirmed" || r.status === "proposed")
       assert.ok(r.code, `${r.mapKey} is ${r.status} but has no code`);
 });

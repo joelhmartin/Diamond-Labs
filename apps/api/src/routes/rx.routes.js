@@ -276,13 +276,15 @@ export default async function rxRoutes(fastify) {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // POST /rx/form-submissions — generic intake for the faithful 1:1 forms
-  // (digital | ortho). Multipart/form-data, mirroring /rx/cases for
-  // auth, file limits, upload, and atomic insert.
+  // POST /rx/form-submissions — generic intake for the faithful 1:1 form.
+  // There is ONE form now: ortho folded into the digital Rx as a gated device
+  // rather than a separate formType, so the schema is z.enum(["digital"]).
+  // Multipart/form-data, mirroring /rx/cases for auth, file limits, upload,
+  // and atomic insert.
   //
   // Frontend (buildSubmitFormData in apps/web/src/data/forms/form-logic.js)
   // emits these parts:
-  //   text   formType         — one of digital | ortho
+  //   text   formType         — "digital" (the only accepted value)
   //   text   patientFirst     — extracted from the patient fullname field
   //   text   patientLast
   //   text   formData         — JSON string of ALL non-file answers
