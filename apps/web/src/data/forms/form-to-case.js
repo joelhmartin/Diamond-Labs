@@ -160,7 +160,10 @@ function buildDigitalDevices(answers) {
       case "nightguards":
         devices.push(
           makeDevice("guard", {
-            variant: answers.nightguardDevice?.[0],
+            // The device picker is a CHECKBOX — pass every checked render, not
+            // just the first. resolveGuard accepts a string or an array and
+            // flags anything it cannot map, so nothing selected is dropped.
+            variant: answers.nightguardDevice,
             standardGuards: answers.standardGuards,
             modifications: answers.attachmentsModifications,
             comments: answers.nightguardComments,

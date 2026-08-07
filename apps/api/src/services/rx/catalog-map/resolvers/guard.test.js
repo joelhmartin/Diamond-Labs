@@ -69,3 +69,56 @@ test("a material-keyed row still carries its material in the mapKey", () => {
   assert.equal(items[0].mapKey, "guard:nightguard-full-occlusion:nylon-printed");
   assert.equal(items[0].code, "2166");
 });
+
+/* ── the "Select Device:" picker (nightguardDevice → variant) ───────────────
+   Regression: the resolver used to read ONLY standardGuards, so a picker
+   selection produced items:[] unmapped:[] — a doctor's choice vanishing with
+   nothing flagged. */
+
+test("a device-picker variant is never silently dropped", () => {
+  const { items, unmapped } = resolveGuard({ variant: "Dual Arch - FLATPLANE" });
+  assert.ok(items.length > 0 || unmapped.length > 0, "picker selection produced nothing at all");
+});
+
+test("a picker variant that names a matrix row resolves exactly like that row", () => {
+  const picked = resolveGuard({ variant: "Dual Arch - FLATPLANE", baseMaterial: "Nylon (Printed)" });
+  assert.equal(picked.unmapped.length, 0);
+  assert.equal(picked.items.length, 1);
+  assert.equal(picked.items[0].code, "2163");
+  assert.equal(picked.items[0].mapKey, "guard:dual-arch-flatplane:nylon-printed");
+});
+
+test("a picker variant with no material is flagged, never guessed", () => {
+  const { items, unmapped } = resolveGuard({ variant: "Dual Arch - FLATPLANE" });
+  assert.equal(items.length, 0);
+  assert.deepEqual(unmapped, ["guard:dual-arch-flatplane:no-material"]);
+});
+
+test("a picker variant with no catalog row at all lands in unmapped as a bare mapKey", () => {
+  assert.deepEqual(resolveGuard({ variant: "Dual Arch - SLIDER" }).unmapped, ["guard:dual-arch-slider"]);
+  assert.deepEqual(resolveGuard({ variant: "Single Arch - NIGHTGUARD" }).unmapped, ["guard:single-arch-nightguard"]);
+});
+
+test("an unrecognised wizard device literal is flagged rather than dropped", () => {
+  // The older wizard's guard picker offers wording of its own ("Hard Nightguard"…).
+  assert.deepEqual(resolveGuard({ variant: "Hard Nightguard" }).unmapped, ["guard:hard-nightguard"]);
+});
+
+test("a wizard baseMaterial alone is treated as the appliance signal", () => {
+  const { items, unmapped } = resolveGuard({ baseMaterial: "Essix Tray" });
+  assert.equal(unmapped.length, 0);
+  assert.equal(items[0].mapKey, "guard:essix-tray:any");
+});
+
+test("every checked picker render is resolved, not just the first", () => {
+  const { unmapped } = resolveGuard({ variant: ["Dual Arch - SLIDER", "Single Arch - NIGHTGUARD"] });
+  assert.deepEqual(unmapped.sort(), ["guard:dual-arch-slider", "guard:single-arch-nightguard"]);
+});
+
+test("a picker choice duplicating an ordered matrix row does not double the order", () => {
+  const { items } = resolveGuard({
+    variant: "Essix Tray",
+    standardGuards: { "Essix Tray": { "UPPER ARCH": true } },
+  });
+  assert.equal(items.length, 1);
+});

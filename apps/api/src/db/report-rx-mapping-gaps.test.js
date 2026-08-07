@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { DEVICE_ROWS } from "../services/rx/catalog-map/devices.table.js";
 import { MODIFICATION_ROWS } from "../services/rx/catalog-map/modifications.table.js";
 import { ATTRIBUTE_ROWS } from "../services/rx/catalog-map/attributes.table.js";
-import { GUARD_ROWS, resolveGuard } from "../services/rx/catalog-map/resolvers/guard.js";
+import { GUARD_ROWS, GUARD_ROW_LABELS, resolveGuard } from "../services/rx/catalog-map/resolvers/guard.js";
 
 const ALL = [...DEVICE_ROWS, ...MODIFICATION_ROWS, ...ATTRIBUTE_ROWS, ...GUARD_ROWS];
 
@@ -20,16 +20,19 @@ test("a 'none' row is never bucketed into the lab document", () => {
 
 test("every GUARD_ROWS mapKey is one resolveGuard can actually emit", () => {
   const emitted = new Set();
-  const rows = ["Nightguard - Full Occlusion", "Occlusal Guard - NTI Type", "Michigan Splint - Anterior Guidance",
-                "Essix Tray", "Bleaching Trays", "Neurosensory Stent", "Dual Arch - FLATPLANE", "Occlusal Guard - Slider Type"];
   const materials = [undefined, "PMT (Diamoform)", "BIOMED (Printed)", "Nylon (Printed)", "Dual-Laminate", "Acrylic w/clasps", "BioFlex"];
-  for (const row of rows)
+  const collect = ({ items, unmapped }) => {
+    items.forEach((i) => emitted.add(i.mapKey));
+    unmapped.forEach((u) => emitted.add(u));
+  };
+  // Row labels come from the resolver itself — a row added there but reachable
+  // by neither path must fail here rather than ship to the lab as Confirmed.
+  for (const row of GUARD_ROW_LABELS)
     for (const m of materials) {
       const cells = { "UPPER ARCH": true };
       if (m) cells["Base Material"] = m;
-      const { items, unmapped } = resolveGuard({ standardGuards: { [row]: cells } });
-      items.forEach((i) => emitted.add(i.mapKey));
-      unmapped.forEach((u) => emitted.add(u));
+      collect(resolveGuard({ standardGuards: { [row]: cells } }));   // matrix path
+      collect(resolveGuard({ variant: row, baseMaterial: m }));      // device-picker path
     }
   for (const r of GUARD_ROWS)
     assert.ok(emitted.has(r.mapKey), `GUARD_ROWS mapKey ${r.mapKey} is never emitted by resolveGuard`);
