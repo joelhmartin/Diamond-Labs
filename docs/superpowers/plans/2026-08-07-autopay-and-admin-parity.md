@@ -43,6 +43,7 @@
 - `apps/api/src/services/autopay.service.js` — enrollment CRUD + validation
 - `apps/api/src/services/autopay.service.test.js`
 - `apps/api/src/services/card.service.js` — `ensureCustomerProfile`, `listCardsForUser`, shared by doctor + admin
+- `apps/api/src/services/payment-recording.service.js` — `verifyAllocations` + `recordPaymentAndAllocations`, moved out of the route file so services and jobs can use them
 - `apps/api/src/routes/autopay.routes.js` — doctor routes
 - `apps/api/src/routes/admin-payment.routes.js` — admin cards, charge, autopay
 - `apps/api/src/routes/__tests__/admin-payment.authz.test.js`
@@ -1795,12 +1796,31 @@ describe("admin payment routes reject non-admins", () => {
 });
 ```
 
-Note: the routes must use `requireAdmin` **without** `authenticate` re-selecting the user for this test to work — so structure the file as `preHandler: [authenticate, requireAdmin]` and have the test's `onRequest` hook satisfy `authenticate`'s contract by pre-setting `request.user`. Import `authenticate` normally; it short-circuits when `request.user` is already set. If it does not, add that short-circuit to `authenticate.js`:
+**Do NOT modify `authenticate.js` to make this test pass.** An earlier draft of
+this plan suggested giving `authenticate` a "skip if `request.user` is already
+set" short-circuit. That is an authentication bypass added for test
+convenience: any future plugin or hook that sets `request.user` would silently
+disable authentication on every route. This repo just shipped a critical fix for
+exactly this class of bug (an MFA token accepted as an access token because a
+verifier trusted something it should have checked). Production auth does not
+get weakened for a test.
+
+Instead, mock the middleware module — the test's subject is `requireAdmin`, not
+`authenticate`. Put this ABOVE the route import in the test file:
 
 ```js
-  // Already authenticated by an upstream hook (used by route-level tests).
-  if (request.user) return;
+let currentUser = { id: "u1", role: "admin", approvalStatus: "approved", email: "x@y.z", name: "X" };
+
+vi.mock("../../middleware/authenticate.js", () => ({
+  // Stands in for a successful authentication; the real token path is covered
+  // by auth-security.test.js and token-confusion.test.js.
+  authenticate: async (request) => { request.user = currentUser; },
+}));
 ```
+
+and have `appAs(role)` set `currentUser = { ...currentUser, role }` before
+registering the routes. The real `requireAdmin` still runs, which is the whole
+point of the test.
 
 - [ ] **Step 2: Run it and confirm it fails**
 
@@ -2127,7 +2147,7 @@ Expected: PASS (28 tests — 14 routes × 2 roles).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add apps/api/src/routes/admin-payment.routes.js apps/api/src/routes/__tests__/admin-payment.authz.test.js apps/api/src/index.js apps/api/src/middleware/authenticate.js
+git add apps/api/src/routes/admin-payment.routes.js apps/api/src/routes/__tests__/admin-payment.authz.test.js apps/api/src/index.js
 git commit -m "feat(admin): AutoPay oversight, card parity, and job control routes"
 ```
 
@@ -2136,21 +2156,44 @@ git commit -m "feat(admin): AutoPay oversight, card parity, and job control rout
 ## Task 11: Admin charge-on-behalf
 
 **Files:**
+- Create: `apps/api/src/services/payment-recording.service.js`
 - Modify: `apps/api/src/routes/admin-payment.routes.js`, `apps/api/src/routes/payment.routes.js`
 
 **Interfaces:**
-- Consumes: `verifyAllocations`, `recordPaymentAndAllocations`, `chargeErrorReply` — currently module-private in `payment.routes.js`. Export them.
+- Produces from the new service: `verifyAllocations(allocations, user, { enforceCap })`, `recordPaymentAndAllocations({ user, amount, transactionId, allocations, source })`, `buildInvoiceReference(allocations)`.
+- Stays in `payment.routes.js`: `chargeErrorReply(reply, err)` — it maps an error to an HTTP reply, so it belongs with the routes. Export it.
 - Produces: `POST /admin/users/:userId/payments/charge-saved`, body `{ paymentProfileId, amount, allocations[] }`, header `Idempotency-Key` required.
 
-- [ ] **Step 1: Export the shared spine from `payment.routes.js`**
+- [ ] **Step 1: Move the charge spine into a service**
 
-Change the declarations to named exports so the admin route reuses the exact same logic rather than a parallel copy:
+`verifyAllocations` and `recordPaymentAndAllocations` are currently module-private
+in `payment.routes.js`. Three callers now need them: the doctor routes, the new
+admin route, and the AutoPay sweep (Task 12).
+
+**Move them to `apps/api/src/services/payment-recording.service.js` rather than
+exporting them from the route file.** A service importing from a route module
+inverts the dependency direction — the AutoPay sweep would pull in Fastify route
+registration just to record a payment, and it makes the route file's HTTP
+concerns a dependency of a background job. Move the two functions and their
+private helpers (`buildInvoiceReference`, the `round2` used by them) verbatim
+into the service, then have `payment.routes.js` import them:
 
 ```js
-export async function verifyAllocations(allocations, user, { enforceCap = false } = {}) { /* unchanged */ }
-export async function recordPaymentAndAllocations({ user, amount, transactionId, allocations, source = "doctor_card" }) { /* see step 2 */ }
+import {
+  verifyAllocations,
+  recordPaymentAndAllocations,
+} from "../services/payment-recording.service.js";
+```
+
+Keep `chargeErrorReply` in `payment.routes.js` and export it — it builds an HTTP
+reply, so it is genuinely route-layer code:
+
+```js
 export function chargeErrorReply(reply, err) { /* unchanged */ }
 ```
+
+Run `pnpm --filter @my-app/api test` after the move and before adding anything
+new — the move must be behaviour-preserving.
 
 - [ ] **Step 2: Thread `source` through `recordPaymentAndAllocations`**
 
@@ -2177,7 +2220,8 @@ Update the two existing call sites: `/payments/charge-saved` passes `source: "do
 In `admin-payment.routes.js`:
 
 ```js
-import { verifyAllocations, recordPaymentAndAllocations, chargeErrorReply } from "./payment.routes.js";
+import { verifyAllocations, recordPaymentAndAllocations } from "../services/payment-recording.service.js";
+import { chargeErrorReply } from "./payment.routes.js";
 import { withIdempotency, withInvoiceLocks, ChargeInProgressError, InvoiceLockedError } from "../lib/payment-helpers.js";
 import { redis } from "../config/redis.js";
 
@@ -2314,10 +2358,9 @@ vi.mock("../../services/authorizenet.service.js", () => ({
 }));
 
 const recorded = [];
-vi.mock("../../routes/payment.routes.js", () => ({
+vi.mock("../../services/payment-recording.service.js", () => ({
   recordPaymentAndAllocations: vi.fn(async (args) => { recorded.push(args); return { seazonaPaymentId: "sp1" }; }),
   verifyAllocations: async () => null,
-  chargeErrorReply: () => {},
 }));
 
 const attempts = [];
@@ -2411,7 +2454,7 @@ import { env } from "../config/env.js";
 import * as seazonaService from "./seazona.service.js";
 import * as authorizenetService from "./authorizenet.service.js";
 import { getPortalPaidMap } from "./invoice-ledger.service.js";
-import { recordPaymentAndAllocations } from "../routes/payment.routes.js";
+import { recordPaymentAndAllocations } from "./payment-recording.service.js";
 import { allocateOldestFirst, resolveChargeAmount } from "../lib/autopay-allocation.js";
 import { isDueOn, cycleKeyFor } from "../lib/autopay-schedule.js";
 import { withInvoiceLocks, withIdempotency } from "../lib/payment-helpers.js";
