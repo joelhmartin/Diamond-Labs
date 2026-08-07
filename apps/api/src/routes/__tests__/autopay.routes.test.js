@@ -68,7 +68,45 @@ vi.mock("../../services/audit.service.js", () => ({
   logSafe: () => {},
 }));
 
-const { default: autopayRoutes } = await import("../autopay.routes.js");
+// Intercept eq/desc so the /autopay/attempts test below can prove the route's
+// WHERE clause actually threads request.user.id (scoping), and that the
+// ORDER BY is descending — without reimplementing a SQL evaluator. Every
+// other named export of drizzle-orm passes through untouched.
+vi.mock("drizzle-orm", async () => {
+  const actual = await vi.importActual("drizzle-orm");
+  return {
+    ...actual,
+    eq: (column, value) => ({ __op: "eq", column, value }),
+    desc: (column) => ({ __op: "desc", column }),
+  };
+});
+
+// In-memory stand-in for the autopay_attempts table. `where`/`orderBy`/`limit`
+// apply the eq/desc markers above against `attemptRows` — this is what lets
+// the scoping test seed rows for TWO different userIds and assert the route
+// only returns the caller's.
+let attemptRows = [];
+vi.mock("../../config/database.js", () => ({
+  db: {
+    select: () => ({
+      from: () => ({
+        where: (cond) => ({
+          orderBy: (sortCond) => ({
+            limit: async (n) => {
+              const filtered = attemptRows.filter((r) => r.userId === cond.value);
+              const sorted = sortCond?.__op === "desc"
+                ? [...filtered].sort((a, b) => b.createdAt - a.createdAt)
+                : filtered;
+              return sorted.slice(0, n);
+            },
+          }),
+        }),
+      }),
+    }),
+  },
+}));
+
+const { default: autopayRoutes, nextRunDate } = await import("../autopay.routes.js");
 const { AutopayValidationError, AutopayGatewayError } = await import("../../services/autopay.service.js");
 
 let fastify;
@@ -97,6 +135,7 @@ beforeEach(() => {
   cardsThrow = null;
   upsertResult = null;
   upsertThrow = null;
+  attemptRows = [];
 });
 
 describe("GET /api/v1/autopay", () => {
@@ -215,5 +254,92 @@ describe("DELETE /api/v1/autopay", () => {
     const res = await fastify.inject({ method: "DELETE", url: "/api/v1/autopay" });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ data: { message: "AutoPay cancelled." } });
+  });
+});
+
+describe("nextRunDate", () => {
+  // Noon UTC keeps the same Chicago calendar date across both CDT (-5) and
+  // CST (-6) — the fixed `now` values below are all unambiguous either way.
+  const base = { enabled: true, status: "active", dayOfMonth: 15, lastChargedAt: null };
+
+  it("returns this month's charge day when today is before it", () => {
+    const now = new Date("2026-08-10T12:00:00Z");
+    expect(nextRunDate(base, now)).toBe("2026-08-15");
+  });
+
+  it("returns TODAY when today is the charge day and this cycle hasn't been charged yet", () => {
+    const now = new Date("2026-08-15T12:00:00Z");
+    expect(nextRunDate({ ...base, lastChargedAt: null }, now)).toBe("2026-08-15");
+  });
+
+  it("rolls to next month when today is the charge day but this cycle was already charged", () => {
+    const now = new Date("2026-08-15T12:00:00Z");
+    expect(nextRunDate({ ...base, lastChargedAt: "2026-08-01T12:00:00Z" }, now)).toBe("2026-09-15");
+  });
+
+  it("returns next month's charge day when today is after it", () => {
+    const now = new Date("2026-08-20T12:00:00Z");
+    expect(nextRunDate(base, now)).toBe("2026-09-15");
+  });
+
+  it("clamps a day-31 preference to Feb 28 in a non-leap year", () => {
+    const now = new Date("2026-02-05T12:00:00Z");
+    expect(nextRunDate({ ...base, dayOfMonth: 31 }, now)).toBe("2026-02-28");
+  });
+
+  it("rolls December into January of the next year", () => {
+    const now = new Date("2026-12-20T12:00:00Z");
+    expect(nextRunDate(base, now)).toBe("2027-01-15");
+  });
+
+  it("returns null for a paused enrollment", () => {
+    const now = new Date("2026-08-15T12:00:00Z");
+    expect(nextRunDate({ ...base, status: "paused" }, now)).toBeNull();
+  });
+});
+
+describe("GET /api/v1/autopay/attempts", () => {
+  it("returns only the calling doctor's attempts, not another doctor's", async () => {
+    attemptRows = [
+      { id: "a1", userId: "doc-1", createdAt: new Date("2026-08-01T00:00:00Z"), amountAttempted: "10.00", amountCharged: null },
+      { id: "a2", userId: "doc-2", createdAt: new Date("2026-08-02T00:00:00Z"), amountAttempted: "20.00", amountCharged: null },
+      { id: "a3", userId: "doc-1", createdAt: new Date("2026-08-03T00:00:00Z"), amountAttempted: "30.00", amountCharged: "30.00" },
+    ];
+    const res = await fastify.inject({ method: "GET", url: "/api/v1/autopay/attempts" });
+    expect(res.statusCode).toBe(200);
+    const { attempts } = res.json().data;
+    expect(attempts.map((a) => a.id).sort()).toEqual(["a1", "a3"]);
+    expect(attempts.every((a) => a.userId === "doc-1")).toBe(true);
+  });
+
+  it("orders newest-first and caps at 50", async () => {
+    attemptRows = Array.from({ length: 60 }, (_, i) => ({
+      id: `row-${i}`,
+      userId: "doc-1",
+      createdAt: new Date(Date.UTC(2026, 0, 1 + i)),
+      amountAttempted: "10.00",
+      amountCharged: null,
+    }));
+    const res = await fastify.inject({ method: "GET", url: "/api/v1/autopay/attempts" });
+    expect(res.statusCode).toBe(200);
+    const { attempts } = res.json().data;
+    expect(attempts).toHaveLength(50);
+    // Newest first: row-59 (Jan 1 + 59 days) has the latest createdAt.
+    expect(attempts[0].id).toBe("row-59");
+    expect(attempts.at(-1).id).toBe("row-10");
+  });
+
+  it("serializes amountAttempted/amountCharged as numbers, matching the enrollment endpoint", async () => {
+    attemptRows = [
+      { id: "a1", userId: "doc-1", createdAt: new Date(), amountAttempted: "12.50", amountCharged: "12.50" },
+      { id: "a2", userId: "doc-1", createdAt: new Date(), amountAttempted: "9.00", amountCharged: null },
+    ];
+    const res = await fastify.inject({ method: "GET", url: "/api/v1/autopay/attempts" });
+    const { attempts } = res.json().data;
+    const a1 = attempts.find((a) => a.id === "a1");
+    const a2 = attempts.find((a) => a.id === "a2");
+    expect(a1.amountAttempted).toBe(12.5);
+    expect(a1.amountCharged).toBe(12.5);
+    expect(a2.amountCharged).toBeNull();
   });
 });
