@@ -25,6 +25,12 @@ export const invoicePayments = pgTable("invoice_payments", {
   seazonaPaymentId: varchar("seazona_payment_id", { length: 128 }),
   // Set only on refund/void reversal rows → the ORIGINAL charge's transaction id.
   refundsTransactionId: varchar("refunds_transaction_id", { length: 100 }),
+  // Payment origin. Additive and nullable: existing rows stay NULL and
+  // summarizePayments is unaffected. Before this, origin was encoded only in a
+  // transactionId prefix (OFFLINE-, REFUND-PENDING-), which made AutoPay charges
+  // indistinguishable from manual ones in every admin view.
+  // Values: doctor_card | doctor_hosted | admin_offline | admin_card | autopay | refund
+  source: varchar("source", { length: 32 }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   index("invoice_payments_user_id_idx").on(table.userId),
