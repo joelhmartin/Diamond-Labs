@@ -5,6 +5,90 @@ function getAuthHeader() {
   return `Basic ${credentials}`;
 }
 
+// ── Rate limiting ───────────────────────────────────────────────────────────
+//
+// Seazona's documented limits (https://support.seazona.net/Api.html#rate-limits):
+//   • 60 requests/minute per integration, ALL request types combined
+//   • 20 requests/minute for POST/PUT/PATCH/DELETE, counted INSIDE the 60
+//   • Exceeding either returns 429 with a Retry-After header
+//
+// Sustained overage escalates past 429 to a tenant-wide block: on 2026-08-07 a
+// burst of ~950 GETs in 90s (~630/min, 10x the limit) got API access disabled
+// for the whole host — every endpoint 403 "API access is temporarily disabled
+// for this host", unfixable by new credentials or a different IP.
+//
+// So the throttle lives HERE, not in callers. Every Seazona request in the
+// codebase funnels through requestRaw, which means no caller — present or
+// future — can bypass the limit or has to remember to.
+const RATE_LIMIT_WINDOW_MS = 60_000;
+// Deliberately under the documented 60: leaves headroom for clock skew and for
+// any traffic from another process sharing this integration's quota.
+const MAX_REQUESTS_PER_WINDOW = 50;
+const MAX_WRITES_PER_WINDOW = 15; // under the documented 20
+const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/** Timestamps of recent requests, and of recent writes, within the window. */
+const recentRequests = [];
+const recentWrites = [];
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Serializes admission so two concurrent callers cannot both pass the check. */
+let admissionChain = Promise.resolve();
+
+function prune(list, now) {
+  while (list.length && now - list[0] >= RATE_LIMIT_WINDOW_MS) list.shift();
+}
+
+/**
+ * Block until making one more request keeps us inside both documented limits.
+ * Admission is serialized through a promise chain so concurrent callers queue
+ * rather than racing past the check together.
+ */
+function acquireSlot(method) {
+  const isWrite = WRITE_METHODS.has(String(method || "GET").toUpperCase());
+  const run = admissionChain.then(async () => {
+    for (;;) {
+      const now = Date.now();
+      prune(recentRequests, now);
+      prune(recentWrites, now);
+
+      const overall = recentRequests.length >= MAX_REQUESTS_PER_WINDOW;
+      const writes = isWrite && recentWrites.length >= MAX_WRITES_PER_WINDOW;
+      if (!overall && !writes) {
+        recentRequests.push(now);
+        if (isWrite) recentWrites.push(now);
+        return;
+      }
+
+      // Wait exactly until the oldest relevant request ages out of the window.
+      const oldest = overall ? recentRequests[0] : recentWrites[0];
+      await sleep(Math.max(RATE_LIMIT_WINDOW_MS - (now - oldest), 25));
+    }
+  });
+  // Keep the chain alive even if a link rejects, so one failure can't wedge
+  // every subsequent Seazona call in the process.
+  admissionChain = run.catch(() => {});
+  return run;
+}
+
+/** Parse Retry-After, which may be seconds or an HTTP date. Clamped to 5 min. */
+function retryAfterMs(header) {
+  if (!header) return null;
+  const secs = Number(header);
+  if (Number.isFinite(secs)) return Math.min(Math.max(secs, 0) * 1000, 300_000);
+  const when = Date.parse(header);
+  if (!Number.isNaN(when)) return Math.min(Math.max(when - Date.now(), 0), 300_000);
+  return null;
+}
+
+/** Test-only: reset the limiter between cases. */
+export function __resetRateLimiter() {
+  recentRequests.length = 0;
+  recentWrites.length = 0;
+  admissionChain = Promise.resolve();
+}
+
 /**
  * Low-level Seazona call. Returns `{ ok, status, data }` so each caller learns its
  * OWN call's outcome with no shared module state — important for the health probe,
@@ -18,34 +102,57 @@ async function requestRaw(path, options = {}) {
   }
 
   const url = `${env.SEAZONA_BASE_URL}${path}`;
-  let res;
-  try {
-    res = await fetch(url, {
-      ...options,
-      // Auth + Content-Type are applied AFTER the caller's headers so a caller can
-      // never accidentally override them — the wrapper's contract is that every
-      // Seazona request is HTTP Basic authed and sends application/json.
-      headers: {
-        ...options.headers,
-        Authorization: getAuthHeader(),
-        "Content-Type": "application/json",
-      },
-    });
-  } catch (err) {
-    // Network-level failure (DNS, TLS, connection reset). Treat like a non-2xx:
-    // log with the same `[Seazona]` token the alerting metric matches, and resolve
-    // to a not-ok result so callers degrade gracefully instead of throwing.
-    console.error(`[Seazona] ${options.method || "GET"} ${path} → network error: ${err?.message || err}`);
-    return { ok: false, status: 0, data: null };
+  const method = options.method || "GET";
+
+  // One retry only. A 429 means we already misjudged the pace; retrying harder
+  // is what turns a throttle into a tenant-wide block.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await acquireSlot(method);
+
+    let res;
+    try {
+      res = await fetch(url, {
+        ...options,
+        // Auth + Content-Type are applied AFTER the caller's headers so a caller can
+        // never accidentally override them — the wrapper's contract is that every
+        // Seazona request is HTTP Basic authed and sends application/json.
+        headers: {
+          ...options.headers,
+          Authorization: getAuthHeader(),
+          "Content-Type": "application/json",
+        },
+      });
+    } catch (err) {
+      // Network-level failure (DNS, TLS, connection reset). Treat like a non-2xx:
+      // log with the same `[Seazona]` token the alerting metric matches, and resolve
+      // to a not-ok result so callers degrade gracefully instead of throwing.
+      console.error(`[Seazona] ${method} ${path} → network error: ${err?.message || err}`);
+      return { ok: false, status: 0, data: null };
+    }
+
+    if (res.status === 429 && attempt === 0) {
+      // Honour the server's own backoff instruction rather than guessing. Fall
+      // back to a full window if the header is absent or unparseable.
+      const waitMs = retryAfterMs(res.headers?.get?.("retry-after")) ?? RATE_LIMIT_WINDOW_MS;
+      console.warn(
+        `[Seazona] ${method} ${path} → 429 rate limited; honouring Retry-After and waiting ${Math.round(waitMs / 1000)}s before one retry`
+      );
+      await sleep(waitMs);
+      continue;
+    }
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.error(`[Seazona] ${method} ${path} → ${res.status}: ${text}`);
+      return { ok: false, status: res.status, data: null };
+    }
+
+    return { ok: true, status: res.status, data: await res.json() };
   }
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    console.error(`[Seazona] ${options.method || "GET"} ${path} → ${res.status}: ${text}`);
-    return { ok: false, status: res.status, data: null };
-  }
-
-  return { ok: true, status: res.status, data: await res.json() };
+  // Both attempts rate limited.
+  console.error(`[Seazona] ${method} ${path} → 429 after retry; giving up this call`);
+  return { ok: false, status: 429, data: null };
 }
 
 /**

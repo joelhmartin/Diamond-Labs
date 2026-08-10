@@ -70,8 +70,23 @@ async function attemptsThisCycle(userId, cycleKey) {
     .where(and(eq(autopayAttempts.userId, userId), eq(autopayAttempts.cycleKey, cycleKey)));
 }
 
-/** Seazona rate-limits hard: concurrency 8 failed 448/476. Serial + spaced. */
-const SEAZONA_SPACING_MS = 110;
+/**
+ * Pacing between doctors.
+ *
+ * The hard limit is enforced centrally in `seazona.service.js` (60 req/min per
+ * integration, documented at https://support.seazona.net/Api.html#rate-limits),
+ * so this is not the thing keeping us legal — the wrapper will block us if we
+ * ask too fast regardless of what this says.
+ *
+ * It exists to keep the sweep from queueing up behind that limiter in one burst
+ * and starving concurrent doctor traffic: while the job is mid-sweep, a doctor
+ * loading their invoice page is competing for the same 60/min budget. Spacing
+ * per doctor leaves gaps for them.
+ *
+ * An earlier value of 110ms (~545 req/min) predated knowing the real limit and
+ * was 9x over it.
+ */
+const SEAZONA_SPACING_MS = 1_100;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function round2(n) {
