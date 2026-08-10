@@ -18,7 +18,9 @@
     "db:seed-rx-overrides": "node --env-file=.env src/db/seed-rx-overrides.js",
     "db:migrate-rx-override-keys": "node --env-file=.env src/db/migrate-rx-override-keys.js",
     "db:set-test-credentials": "node --env-file=.env src/db/set-test-credentials.js",
-    "rx:mapping-report": "node src/db/report-rx-mapping-gaps.js"
+    "db:backfill-payment-source": "node --env-file=.env src/db/backfill-payment-source.js",
+    "rx:mapping-report": "node src/db/report-rx-mapping-gaps.js",
+    "jobs:run": "node --env-file=.env src/jobs/cli.js"
   },
   "dependencies": {
     "@fastify/compress": "^9.1.1",
@@ -27,7 +29,7 @@
     "@fastify/helmet": "^13.1.0",
     "@fastify/multipart": "^10.1.0",
     "@fastify/rate-limit": "^10.3.0",
-    "@fastify/static": "^9.3.0",
+    "@fastify/static": "^10.1.3",
     "@google-cloud/storage": "^7.21.0",
     "@my-app/shared": "workspace:*",
     "@paralleldrive/cuid2": "^2.2.2",

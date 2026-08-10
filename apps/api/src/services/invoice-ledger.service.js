@@ -11,16 +11,63 @@ import { summarizePayments } from "../lib/payment-summary.js";
  * routes (display) and the payment routes (the C1 over-allocation cap) read the
  * SAME aggregation, with no behavior drift.
  *
- * Both helpers fail SOFT (degrade to 0 / empty map) on a DB error — consistent
+ * Most callers fail SOFT (degrade to 0 / empty map) on a DB error — consistent
  * with the original invoice.routes.js behavior — rather than propagating a 500.
+ * Money-path callers (over-allocation caps, AutoPay balance resolution) must
+ * use the STRICT variant instead: "paid so far = 0" makes an invoice look
+ * fully unpaid again, which fails a guard OPEN rather than closed.
  */
 
 /**
  * Sum of applied portal payments per Seazona invoice for one user.
+ * THROWS on a database error — callers that use this map to resolve a
+ * balance to charge must fail closed, not silently reopen every invoice's
+ * full total (see getInvoicePortalPaidStrict for the single-invoice sibling).
  * @param {string} userId
  * @returns {Promise<Record<string, number>>} { [seazonaInvoiceId]: sumAppliedAmount }
  */
+export async function getPortalPaidMapStrict(userId) {
+  const rows = await db
+    .select({
+      seazonaInvoiceId: invoicePayments.seazonaInvoiceId,
+      totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
+    })
+    .from(invoicePayments)
+    .where(eq(invoicePayments.userId, userId))
+    .groupBy(invoicePayments.seazonaInvoiceId);
+
+  const map = {};
+  for (const row of rows) {
+    map[row.seazonaInvoiceId] = parseFloat(row.totalPaid || 0);
+  }
+  return map;
+}
+
+/**
+ * Soft-fail variant for DISPLAY ONLY: on a database error it degrades to an
+ * empty map (every invoice reads as fully unpaid). Never use this on a money
+ * path — see the module doc comment. Wraps getPortalPaidMapStrict so there is
+ * one query, not two copies that can drift.
+ * @param {string} userId
+ * @returns {Promise<Record<string, number>>}
+ */
 export async function getPortalPaidMap(userId) {
+  try {
+    return await getPortalPaidMapStrict(userId);
+  } catch (err) {
+    console.error("[invoiceLedger] getPortalPaidMap DB error — degrading to empty map:", err);
+    return {};
+  }
+}
+
+/**
+ * Applied totals for EVERY invoice across all users, keyed by seazonaInvoiceId.
+ * The admin invoice list needs balances for many doctors at once; calling
+ * getPortalPaidMap per user would be N queries. Soft-fails to {} — this is a
+ * display path, never a guard.
+ * @returns {Promise<Record<string, number>>} { [seazonaInvoiceId]: sumAppliedAmount }
+ */
+export async function getGlobalPortalPaidMap() {
   try {
     const rows = await db
       .select({
@@ -28,16 +75,10 @@ export async function getPortalPaidMap(userId) {
         totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
       })
       .from(invoicePayments)
-      .where(eq(invoicePayments.userId, userId))
       .groupBy(invoicePayments.seazonaInvoiceId);
-
-    const map = {};
-    for (const row of rows) {
-      map[row.seazonaInvoiceId] = parseFloat(row.totalPaid || 0);
-    }
-    return map;
+    return Object.fromEntries(rows.map((r) => [String(r.seazonaInvoiceId), parseFloat(r.totalPaid || 0)]));
   } catch (err) {
-    console.error("[invoiceLedger] getPortalPaidMap DB error — degrading to empty map:", err);
+    console.error("[invoiceLedger] getGlobalPortalPaidMap failed — degrading to empty:", err);
     return {};
   }
 }
@@ -78,22 +119,38 @@ export async function listAllPayments({ userId } = {}) {
 
 /**
  * Sum of applied portal payments for a single Seazona invoice + user.
+ * THROWS on a database error — callers that use this figure as a guard must
+ * fail closed.
+ * @returns {Promise<number>}
+ */
+export async function getInvoicePortalPaidStrict(userId, seazonaInvoiceId) {
+  const [row] = await db
+    .select({
+      totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
+    })
+    .from(invoicePayments)
+    .where(
+      and(
+        eq(invoicePayments.userId, userId),
+        eq(invoicePayments.seazonaInvoiceId, String(seazonaInvoiceId))
+      )
+    );
+  return parseFloat(row?.totalPaid || 0);
+}
+
+/**
+ * Soft-fail variant for DISPLAY ONLY: on a database error it degrades to 0,
+ * which renders an invoice as unpaid.
+ *
+ * Never use this to enforce an over-payment cap. "Paid so far = 0" makes
+ * `remaining = invoice.total`, so a transient DB blip would re-open the full
+ * balance on an already-paid invoice and let it be charged again — the guard
+ * would fail OPEN. Money paths must call `getInvoicePortalPaidStrict`.
  * @returns {Promise<number>}
  */
 export async function getInvoicePortalPaid(userId, seazonaInvoiceId) {
   try {
-    const [row] = await db
-      .select({
-        totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
-      })
-      .from(invoicePayments)
-      .where(
-        and(
-          eq(invoicePayments.userId, userId),
-          eq(invoicePayments.seazonaInvoiceId, String(seazonaInvoiceId))
-        )
-      );
-    return parseFloat(row?.totalPaid || 0);
+    return await getInvoicePortalPaidStrict(userId, seazonaInvoiceId);
   } catch (err) {
     console.error(
       `[invoiceLedger] getInvoicePortalPaid DB error for invoice ${seazonaInvoiceId} — degrading to 0:`,

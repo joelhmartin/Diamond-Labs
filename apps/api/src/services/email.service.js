@@ -8,7 +8,7 @@ import { env } from "../config/env.js";
  * callers are unaffected and the receipt flow can report honestly whether an
  * email actually went out.
  */
-async function send({ to, subject, html, text }) {
+async function send({ to, cc, subject, html, text }) {
   if (!mailgun) {
     console.log(`[EMAIL] To: ${to} | Subject: ${subject}`);
     if (env.NODE_ENV === "development") {
@@ -20,6 +20,7 @@ async function send({ to, subject, html, text }) {
   const form = new URLSearchParams();
   form.set("from", env.EMAIL_FROM);
   form.set("to", to);
+  if (cc) form.set("cc", cc);
   form.set("subject", subject);
   if (html) form.set("html", html);
   if (text) form.set("text", text);
@@ -99,7 +100,33 @@ export async function sendPortalInvitation({ email, name, activateUrl }) {
   });
 }
 
-export async function sendAdminApprovalRequest({ doctorName, doctorEmail, npiNumber, companyName, approveUrl, rejectUrl }) {
+export async function sendAdminApprovalRequest({
+  doctorName,
+  doctorEmail,
+  npiNumber,
+  companyName,
+  approveUrl,
+  rejectUrl,
+  seazonaLink,
+  suggestedSeazonaClient,
+}) {
+  // Approving grants access to a Seazona client's invoices — which carry patient
+  // names (PHI). Show the admin exactly which client, if any, this account is
+  // linked to, so approval is an informed decision rather than a blind one.
+  const linkRow = seazonaLink
+    ? `<tr><td style="padding:6px 12px;font-weight:bold;">Seazona account</td><td style="padding:6px 12px;">Linked by verified email — ${esc(seazonaLink.company || "account")} (acct ${esc(seazonaLink.accountNumber || "—")})</td></tr>`
+    : `<tr><td style="padding:6px 12px;font-weight:bold;">Seazona account</td><td style="padding:6px 12px;">Not linked</td></tr>`;
+
+  const suggestionBlock = suggestedSeazonaClient
+    ? `<p style="margin:16px 0;padding:12px;border-left:4px solid #f59e0b;background:#fffbeb;">
+         <strong>Possible match, NOT linked.</strong> This registration's phone number matches
+         Seazona client ${esc(suggestedSeazonaClient.company || "—")}
+         (acct ${esc(suggestedSeazonaClient.accountNumber || "—")}).
+         A phone number is public information, so we do not link on it automatically.
+         Verify this is the same practice and link it manually before approving.
+       </p>`
+    : "";
+
   await send({
     to: env.ADMIN_NOTIFICATION_EMAIL,
     subject: `New Doctor Registration — ${doctorName}`,
@@ -107,11 +134,13 @@ export async function sendAdminApprovalRequest({ doctorName, doctorEmail, npiNum
       <h1>New Doctor Registration Request</h1>
       <p>A new doctor has requested access to Diamond Labs:</p>
       <table style="border-collapse:collapse;margin:16px 0;">
-        <tr><td style="padding:6px 12px;font-weight:bold;">Name</td><td style="padding:6px 12px;">${doctorName}</td></tr>
-        <tr><td style="padding:6px 12px;font-weight:bold;">Email</td><td style="padding:6px 12px;">${doctorEmail}</td></tr>
-        <tr><td style="padding:6px 12px;font-weight:bold;">NPI Number</td><td style="padding:6px 12px;">${npiNumber}</td></tr>
-        <tr><td style="padding:6px 12px;font-weight:bold;">Company</td><td style="padding:6px 12px;">${companyName}</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:bold;">Name</td><td style="padding:6px 12px;">${esc(doctorName)}</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:bold;">Email</td><td style="padding:6px 12px;">${esc(doctorEmail)}</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:bold;">NPI Number</td><td style="padding:6px 12px;">${esc(npiNumber)}</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:bold;">Company</td><td style="padding:6px 12px;">${esc(companyName)}</td></tr>
+        ${linkRow}
       </table>
+      ${suggestionBlock}
       <p style="margin:24px 0;">
         <a href="${approveUrl}" style="display:inline-block;padding:12px 24px;background:#16a34a;color:#fff;text-decoration:none;border-radius:6px;margin-right:12px;">Approve</a>
         <a href="${rejectUrl}" style="display:inline-block;padding:12px 24px;background:#dc2626;color:#fff;text-decoration:none;border-radius:6px;">Reject</a>
@@ -145,13 +174,47 @@ export async function sendDoctorRejected({ email, name }) {
   });
 }
 
-/** Escape user-supplied strings before interpolating into the receipt HTML. */
+/**
+ * AutoPay charge failed. Sent to the doctor; the lab is copied via
+ * ADMIN_NOTIFICATION_EMAIL so a paused enrollment does not go unnoticed.
+ */
+export async function sendAutopayFailure({ email, name, amount, reason, paused }) {
+  return send({
+    to: email,
+    cc: env.ADMIN_NOTIFICATION_EMAIL,
+    subject: paused ? "AutoPay paused — payment failed" : "AutoPay payment failed",
+    html: `
+      <h1>We couldn't process your AutoPay payment</h1>
+      <p>Hello${name ? `, ${esc(name)}` : ""} — your scheduled AutoPay payment of
+         <strong>$${Number(amount).toFixed(2)}</strong> did not go through.</p>
+      <p style="color:#5a6b7b;">Reason: ${esc(reason)}</p>
+      ${paused
+        ? `<p style="padding:12px;border-left:4px solid #f59e0b;background:#fffbeb;">
+             We've <strong>paused</strong> your AutoPay after repeated failures. Update your
+             card and contact the lab to resume — no further attempts will be made until then.
+           </p>`
+        : `<p>We'll try again in a couple of days. You can also update your card or pay
+             manually from your portal at any time.</p>`}
+      <p><a href="${env.APP_URL}/doctor/saved-cards" style="display:inline-block;padding:12px 24px;background:#13AEEF;color:#fff;text-decoration:none;border-radius:999px;font-weight:600;">Update your card</a></p>
+    `,
+  });
+}
+
+/**
+ * Escape user-supplied strings before interpolating into email HTML.
+ *
+ * Used by the receipts AND by the admin approval request, whose name/NPI/company
+ * come straight from the PUBLIC doctor-registration body and render next to
+ * one-click Approve/Reject links — unescaped, a registrant could inject a decoy
+ * "Approve" anchor pointing at their own URL, or hide the real Reject button.
+ */
 function esc(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function money(n) {
@@ -265,10 +328,16 @@ export async function sendOrderReceipt({
 
 /**
  * Doctor invoice-payment receipt. Sent (soft-fail) after a successful invoice
- * payment is recorded — covers both the saved-card and hosted-card flows.
- * `invoices` are { number, amount } per invoice the charge was applied to.
+ * payment is recorded — covers the saved-card, hosted-card, AutoPay, and admin
+ * offline-record flows. `invoices` are { number, amount } per invoice the
+ * payment was applied to.
+ *
+ * `wasCharged` (default true) distinguishes an actual card charge from an
+ * admin recording a payment that was already taken by other means (check,
+ * cash, or entered directly in Seazona) — pass `false` for the latter so the
+ * copy never tells a doctor their card was charged when it wasn't.
  */
-export async function sendPaymentReceipt({ to, amount, invoices = [], transactionId, date }) {
+export async function sendPaymentReceipt({ to, amount, invoices = [], transactionId, date, wasCharged = true }) {
   if (!to) return false;
   const when = (date instanceof Date ? date : new Date()).toLocaleDateString("en-US", {
     year: "numeric",
@@ -285,10 +354,16 @@ export async function sendPaymentReceipt({ to, amount, invoices = [], transactio
     )
     .join("");
 
+  const heading = wasCharged ? "Payment received" : "Payment recorded";
+  const intro = wasCharged
+    ? `Thank you — your payment to Diamond Orthotic Laboratory was processed on ${when}.`
+    : `We've recorded a payment of ${money(amount)} on your Diamond Orthotic Laboratory account, applied on ${when}. Your card was not charged through the portal for this payment.`;
+  const totalLabel = wasCharged ? "Total charged" : "Total recorded";
+
   const html = `
     <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a2733;">
-      <h1 style="font-size:20px;margin:0 0 4px;">Payment received</h1>
-      <p style="margin:0 0 20px;color:#5a6b7b;font-size:13px;">Thank you — your payment to Diamond Orthotic Laboratory was processed on ${when}.</p>
+      <h1 style="font-size:20px;margin:0 0 4px;">${heading}</h1>
+      <p style="margin:0 0 20px;color:#5a6b7b;font-size:13px;">${intro}</p>
       <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
         <thead>
           <tr>
@@ -299,7 +374,7 @@ export async function sendPaymentReceipt({ to, amount, invoices = [], transactio
         <tbody>${rows}</tbody>
         <tfoot>
           <tr>
-            <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">Total charged</td>
+            <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${totalLabel}</td>
             <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${money(amount)}</td>
           </tr>
         </tfoot>
@@ -313,7 +388,10 @@ export async function sendPaymentReceipt({ to, amount, invoices = [], transactio
     </div>
   `;
 
-  return send({ to, subject: "Payment received — Diamond Orthotic Laboratory", html });
+  const subject = wasCharged
+    ? "Payment received — Diamond Orthotic Laboratory"
+    : "Payment recorded — Diamond Orthotic Laboratory";
+  return send({ to, subject, html });
 }
 
 /**

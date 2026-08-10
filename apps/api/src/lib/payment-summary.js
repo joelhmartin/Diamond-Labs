@@ -71,10 +71,18 @@ export function summarizePayments(rows) {
       null
     );
 
+    // Where this payment came from: doctor_card | doctor_hosted | admin_card |
+    // admin_offline | autopay. Null on rows written before the column existed.
+    // Carried through so payment history can distinguish an unattended AutoPay
+    // charge from one a person initiated — without it the `source` column is
+    // written but never readable, and every history view looks identical.
+    const source = sourceRows[0]?.source || null;
+
     summaries.push({
       transactionId: chargeTxn,
       userId: sourceRows[0]?.userId || null,
       seazonaClientId: sourceRows[0]?.seazonaClientId || null,
+      source,
       gross,
       refunded,
       net,

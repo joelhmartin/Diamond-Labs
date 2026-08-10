@@ -24,6 +24,10 @@ import adminRoutes from "./routes/admin.routes.js";
 import rxRoutes from "./routes/rx.routes.js";
 import rxMappingRoutes from "./routes/admin-rx-mapping.routes.js";
 import themeRoutes from "./routes/theme.routes.js";
+import autopayRoutes from "./routes/autopay.routes.js";
+import adminPaymentRoutes from "./routes/admin-payment.routes.js";
+import { registerAllJobs } from "./jobs/definitions/index.js";
+import { registerJobTriggerRoutes } from "./jobs/triggers/http.js";
 
 const fastify = Fastify({
   logger: {
@@ -190,6 +194,11 @@ await fastify.register(adminRoutes,   { prefix: "/api/v1" });
 await fastify.register(rxRoutes,      { prefix: "/api/v1" });
 await fastify.register(rxMappingRoutes, { prefix: "/api/v1" });
 await fastify.register(themeRoutes,     { prefix: "/api/v1" });
+await fastify.register(autopayRoutes,   { prefix: "/api/v1" });
+await fastify.register(adminPaymentRoutes, { prefix: "/api/v1" });
+
+registerAllJobs();
+registerJobTriggerRoutes(fastify);
 
 // Serve the built React frontend from this same service (single Cloud Run app:
 // the SPA and the /api/v1 backend share one origin, which is what the frontend's
@@ -221,6 +230,10 @@ const start = async () => {
   try {
     await fastify.listen({ port: env.PORT, host: "0.0.0.0" });
     console.log(`Server running on port ${env.PORT}`);
+    if (env.JOBS_DEV_INTERVAL && env.NODE_ENV !== "production") {
+      const { startIntervalTrigger } = await import("./jobs/triggers/interval.js");
+      startIntervalTrigger({ log: fastify.log });
+    }
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);

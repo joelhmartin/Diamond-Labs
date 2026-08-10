@@ -3,12 +3,12 @@ import { requireApprovedDoctor, requireAdmin } from "../middleware/require-role.
 import { validate } from "../middleware/validate.js";
 import * as authorizenetService from "../services/authorizenet.service.js";
 import * as seazonaService from "../services/seazona.service.js";
+import { ensureCustomerProfile } from "../services/card.service.js";
 import {
-  getInvoicePortalPaid,
   listPaymentsForUser,
   listAllPayments,
 } from "../services/invoice-ledger.service.js";
-import { sendOrderReceipt, sendPaymentReceipt, sendRefundReceipt } from "../services/email.service.js";
+import { sendOrderReceipt, sendRefundReceipt } from "../services/email.service.js";
 import { voidOrRefund } from "../lib/void-refund.js";
 import * as auditService from "../services/audit.service.js";
 import { db } from "../config/database.js";
@@ -34,6 +34,10 @@ import {
   safeParse,
   idemResultKey,
 } from "../lib/payment-helpers.js";
+import {
+  verifyAllocations,
+  recordPaymentAndAllocations,
+} from "../services/payment-recording.service.js";
 
 // Per-route strict rate limit for the charge-producing endpoints (M3). Layered
 // ON TOP of the global limiter; the global localhost allowList still applies in
@@ -67,7 +71,7 @@ function round2(n) {
  * is a system failure → 502 PAYMENT_GATEWAY_ERROR with a generic message. We
  * never leak internals or stack traces to the client.
  */
-function chargeErrorReply(reply, err) {
+export function chargeErrorReply(reply, err) {
   if (err?.authNetResponse) {
     const message = extractDeclineMessage(err.authNetResponse) || ERROR_CODES.CARD_DECLINED.message;
     return reply.code(402).send({ error: { ...ERROR_CODES.CARD_DECLINED, message } });
@@ -109,190 +113,11 @@ function buildAddresses(shipping, phone) {
   return { billTo, shipTo: { ...base } };
 }
 
-function buildAllocationNotes(allocations, transactionId) {
-  const parts = allocations.map(
-    (a) => `${a.invoiceNumber || a.invoiceId} $${Number(a.amount).toFixed(2)}`
-  );
-  return `DOL portal txn ${transactionId} — ${parts.join("; ")}`.slice(0, 500);
-}
-
-/**
- * Seazona's "Invoices & Payments" report attributes an account-level payment to
- * specific invoices by parsing the literal token `Invoices <num>, <num>` out of
- * the payment's `referenceNumber` field (verified live 2026-06-10 — it matches
- * on referenceNumber, NOT notes, and by invoice NUMBER, not GUID). Build exactly
- * that token; returns null if no allocation carries an invoice number.
- */
-function buildInvoiceReference(allocations) {
-  const numbers = allocations.map((a) => a.invoiceNumber).filter(Boolean);
-  return numbers.length ? `Invoices ${numbers.join(", ")}` : null;
-}
-
-/**
- * After a successful charge: record ONE account-level payment in Seazona (their
- * payment API has no invoice-level granularity) with notes describing the split,
- * then write one local invoice_payments row per allocated invoice.
- *
- * Returns `{ seazonaPaymentId, ledgerWriteFailed }`. NEVER throws — the card is
- * already charged, so a Seazona or local-ledger write failure is logged loudly
- * (alertable) and reported back as a warning rather than surfaced as a 500
- * (which would invite a re-charge on retry).
- */
-async function recordPaymentAndAllocations({ user, amount, transactionId, allocations }) {
-  let seazonaPaymentId = null;
-
-  // Seazona has no sandbox — createPayment writes to the live system. Only do it
-  // for real (production) charges; in sandbox we still write the local ledger so
-  // the flow is fully testable without polluting Seazona's production data.
-  if (user.seazonaClientId && env.AUTHORIZE_NET_ENV === "production") {
-    const res = await seazonaService.createPayment({
-      clientId: user.seazonaClientId,
-      accountNumber: user.seazonaAccountNumber,
-      // `Invoices <num>` token is what Seazona's report matches on to attribute
-      // this payment to the invoice(s); the gateway txn id lives in notes. Fall
-      // back to the txn id only if no allocation carried an invoice number.
-      referenceNumber: buildInvoiceReference(allocations) || transactionId,
-      notes: buildAllocationNotes(allocations, transactionId),
-      amount,
-    });
-    // H3 — Seazona's payment-id field name is not firmly known. Accept the
-    // plausible shapes; if the call returned a body but no id resolves, log the
-    // KEYS ONLY (never values — avoid PHI) so the real field can be learned.
-    seazonaPaymentId = res?.paymentId ?? res?.id ?? res?.PaymentId ?? res?.paymentID ?? null;
-    if (res && !seazonaPaymentId) {
-      console.error(`[Seazona][PAYMENT_ID_SHAPE] keys=${Object.keys(res).join(",")}`);
-    }
-
-    // CRITICAL: the card was already charged at Authorize.net. If the Seazona
-    // write didn't land, the payment exists at the processor but NOT in the
-    // billing system of record — it must be entered manually. This was silently
-    // swallowed before. Log a distinct, alertable line (the `[Seazona]` token is
-    // what the GCP log-based metric matches) carrying everything needed to
-    // reconcile by hand. We do NOT throw — failing here can't un-charge the card.
-    if (!seazonaPaymentId) {
-      console.error(
-        `[Seazona][PAYMENT_WRITE_FAILED] charge ${transactionId} succeeded at Authorize.net but did NOT record in Seazona — manual entry required ` +
-          JSON.stringify({
-            transactionId,
-            clientId: user.seazonaClientId,
-            accountNumber: user.seazonaAccountNumber || null,
-            amount,
-            invoices: allocations.map((a) => a.invoiceNumber || a.invoiceId),
-          })
-      );
-    }
-  }
-
-  // M4 — the card is already charged; a local-ledger insert failure must NOT
-  // 500 (that would invite a re-charge on retry). Guard it, log an alertable
-  // line carrying ONLY ids/amounts (no card or patient data), and report the
-  // charge as succeeded-with-warning.
-  let ledgerWriteFailed = false;
-  try {
-    await db.insert(invoicePayments).values(
-      allocations.map((a) => ({
-        id: createId(),
-        userId: user.id,
-        seazonaClientId: user.seazonaClientId || null,
-        seazonaInvoiceId: String(a.invoiceId),
-        invoiceNumber: a.invoiceNumber ? String(a.invoiceNumber) : null,
-        appliedAmount: Number(a.amount).toFixed(2),
-        transactionId,
-        seazonaPaymentId,
-      }))
-    );
-  } catch (ledgerErr) {
-    ledgerWriteFailed = true;
-    console.error(
-      `[PAYMENT][LEDGER_WRITE_FAILED] charge ${transactionId} succeeded but the local invoice_payments ledger insert failed — manual reconcile required ` +
-        JSON.stringify({
-          transactionId,
-          seazonaPaymentId,
-          userId: user.id,
-          amount,
-          invoices: allocations.map((a) => ({ invoiceId: a.invoiceId, amount: Number(a.amount) })),
-          error: String(ledgerErr?.message || ledgerErr).slice(0, 300),
-        })
-    );
-  }
-
-  // Payment receipt — soft-fail, never blocks (the card already charged). Covers
-  // both saved-card and hosted-card paths since both funnel through here.
-  if (user.email) {
-    try {
-      await sendPaymentReceipt({
-        to: user.email,
-        amount,
-        invoices: allocations.map((a) => ({
-          number: a.invoiceNumber || a.invoiceId,
-          amount: Number(a.amount),
-        })),
-        transactionId,
-        date: new Date(),
-      });
-    } catch {
-      /* send() never throws; this is belt-and-suspenders */
-    }
-  }
-
-  // Durable audit trail (who paid what). Soft-fail — the card already charged.
-  // Covers both saved-card and hosted paths since both funnel through here.
-  await auditService.logSafe({
-    userId: user.id,
-    action: "payment.charge",
-    targetType: "transaction",
-    targetId: transactionId,
-    metadata: {
-      amount,
-      invoices: allocations.map((a) => a.invoiceNumber || a.invoiceId),
-      seazonaPaymentId: seazonaPaymentId || null,
-      ledgerWriteFailed,
-    },
-  });
-
-  return { seazonaPaymentId, ledgerWriteFailed };
-}
-
-/**
- * Verify every allocated invoice belongs to the doctor's Seazona client, and
- * (optionally, C1) that no allocation exceeds the invoice's remaining balance.
- *
- * Backfills each allocation's invoiceNumber from the live invoice (Seazona's
- * report matches on number, not GUID). Returns `null` when all good, else
- * `{ kind, message }` where kind is "forbidden" (not found / not owned, → 403)
- * or "validation" (cap exceeded, → 422). Uses the SAME live invoice it already
- * fetched for ownership to compute the remaining balance — no extra fetch.
- */
-async function verifyAllocations(allocations, user, { enforceCap = false } = {}) {
-  for (const a of allocations) {
-    const inv = await seazonaService.getInvoice(a.invoiceId);
-    if (!inv) return { kind: "forbidden", message: `Invoice ${a.invoiceNumber || a.invoiceId} not found.` };
-    if (!a.invoiceNumber && inv.invoiceNumber != null) a.invoiceNumber = inv.invoiceNumber;
-    if (String(inv.clientId) !== String(user.seazonaClientId)) {
-      return { kind: "forbidden", message: `Invoice ${a.invoiceNumber || a.invoiceId} does not belong to your account.` };
-    }
-    if (enforceCap) {
-      // C1 — remaining = invoice total minus what's already been applied through
-      // the portal ledger for this doctor. The +0.005 tolerance absorbs cent
-      // rounding; a fully-paid invoice has remaining ~0 and is therefore blocked.
-      const paid = await getInvoicePortalPaid(user.id, a.invoiceId);
-      const remaining = round2(Number(inv.total || 0) - paid);
-      if (Number(a.amount) > remaining + 0.005) {
-        return {
-          kind: "validation",
-          message: `Allocation $${Number(a.amount).toFixed(2)} for invoice ${a.invoiceNumber || a.invoiceId} exceeds its remaining balance of $${remaining.toFixed(2)}.`,
-        };
-      }
-    }
-  }
-  return null;
-}
-
 /**
  * Reply for a per-invoice lock contention (D1). Reuses CHARGE_IN_PROGRESS's 409
  * shape with an invoice-specific message so the client shows a clean "retry".
  */
-function sendInvoiceLockedError(reply) {
+export function sendInvoiceLockedError(reply) {
   return reply.code(409).send({
     error: {
       ...ERROR_CODES.CHARGE_IN_PROGRESS,
@@ -302,33 +127,11 @@ function sendInvoiceLockedError(reply) {
 }
 
 /** Send the appropriate reply for a verifyAllocations result. */
-function sendAllocationError(reply, v) {
+export function sendAllocationError(reply, v) {
   if (v.kind === "validation") {
     return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: v.message } });
   }
   return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: v.message } });
-}
-
-/**
- * Lazily create an Authorize.net CIM customer profile for `user` if they don't
- * have one yet. Persists the new ID to the DB row and reflects it on the
- * in-flight user object so subsequent reads within the same request don't need
- * an extra DB round-trip. Returns the customerProfileId (existing or new).
- */
-async function ensureCustomerProfile(user) {
-  let customerProfileId = user.authorizeNetCustomerProfileId;
-  if (!customerProfileId) {
-    customerProfileId = await authorizenetService.createCustomerProfile({
-      email: user.email,
-      description: `Doctor: ${user.name}`,
-    });
-    await db
-      .update(users)
-      .set({ authorizeNetCustomerProfileId: customerProfileId, updatedAt: new Date() })
-      .where(eq(users.id, user.id));
-    user.authorizeNetCustomerProfileId = customerProfileId;
-  }
-  return customerProfileId;
 }
 
 /**
@@ -963,6 +766,7 @@ export default async function paymentRoutes(fastify) {
                 amount,
                 transactionId: result.transactionId,
                 allocations,
+                source: "doctor_card",
               });
               return { ...result, seazonaPaymentId, ...(ledgerWriteFailed ? { ledgerWriteFailed: true } : {}) };
             },
@@ -1156,6 +960,7 @@ export default async function paymentRoutes(fastify) {
               amount: details.amount,
               transactionId: String(transId),
               allocations: boundAllocations,
+              source: "doctor_hosted",
             }),
           };
         },
@@ -1353,6 +1158,13 @@ export default async function paymentRoutes(fastify) {
           // above to not exceed what each invoice was charged). Either way the
           // rows sum to exactly what was reversed at the gateway, so per-invoice
           // totals stay consistent.
+          // M3 — tag every reversal row `source: "refund"`. Before this, no
+          // runtime path ever wrote it (only the one-off backfill script
+          // guessed it retroactively from the transactionId prefix), so a
+          // refund recorded through the live admin flow showed no source at
+          // all in both payment history views — the one origin they could
+          // have derived with certainty (this IS the refund code path) was
+          // the one left blank.
           const reversalRows = partialPlan
             ? partialPlan.rows.map((r) => ({
                 id: createId(),
@@ -1364,6 +1176,7 @@ export default async function paymentRoutes(fastify) {
                 transactionId: refundTxnId,
                 refundsTransactionId: txid,
                 seazonaPaymentId: null,
+                source: "refund",
               }))
             : originalRows.map((r) => ({
                 id: createId(),
@@ -1375,6 +1188,7 @@ export default async function paymentRoutes(fastify) {
                 transactionId: refundTxnId,
                 refundsTransactionId: txid,
                 seazonaPaymentId: null,
+                source: "refund",
               }));
 
           let ledgerWriteFailed = false;
@@ -1643,8 +1457,12 @@ export default async function paymentRoutes(fastify) {
   // the Authorize.net pipeline. `mode` defaults to sandbox; production is allowed
   // for a small real-charge smoke test (void it in the Authorize.net dashboard).
   // ───────────────────────────────────────────────────────────────
+  // ADMIN-ONLY. These mint real production hosted-payment tokens for up to
+  // $100,000 and read arbitrary transaction details, so `authenticate` alone is
+  // not a guard — it would let any registered user (role "user") charge against
+  // the live merchant account and enumerate other people's transactions.
   fastify.post("/payments/test/hosted-token", {
-    preHandler: [authenticate],
+    preHandler: [authenticate, requireAdmin],
   }, async (request, reply) => {
     const { amount, mode = "sandbox", iframeCommunicatorUrl } = request.body || {};
 
@@ -1674,8 +1492,12 @@ export default async function paymentRoutes(fastify) {
     return { data: { token: result.token, formUrl: result.formUrl, refId, mode } };
   });
 
+  // ADMIN-ONLY — see the note on /payments/test/hosted-token. There is no
+  // ownership check on `transId`, so without this guard any authenticated user
+  // could read production transaction details (amount, card last-4, expiry) for
+  // an arbitrary transaction id.
   fastify.post("/payments/test/hosted-complete", {
-    preHandler: [authenticate],
+    preHandler: [authenticate, requireAdmin],
   }, async (request, reply) => {
     const { transId, mode = "sandbox" } = request.body || {};
 

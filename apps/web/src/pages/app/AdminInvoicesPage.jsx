@@ -101,9 +101,12 @@ function remainingOf(inv) {
 // Modal for recording a payment that staff already took directly in Seazona,
 // reflecting it in the portal's invoice_payments ledger so the doctor's balance
 // is accurate. No Seazona write is made (the payment already exists there).
-function OfflinePaymentModal({ invoice, onClose, onRecorded }) {
+// Exported so DoctorPaymentDrawer.jsx (admin per-doctor payment parity panel)
+// can reuse the identical flow instead of duplicating it.
+export function OfflinePaymentModal({ invoice, onClose, onRecorded }) {
   const remaining = remainingOf(invoice);
   const [amountStr, setAmountStr] = useState(String(remaining.toFixed(2)));
+  const [recordInSeazona, setRecordInSeazona] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState(null);
   const { addToast } = useToast();
@@ -120,6 +123,7 @@ function OfflinePaymentModal({ invoice, onClose, onRecorded }) {
         amount: Number(amount.toFixed(2)),
         invoiceNumber: invoice.invoiceNumber,
         seazonaClientId: invoice.clientId,
+        recordInSeazona,
       });
       addToast({
         message: `Recorded ${formatUSD(amount)} offline payment on #${invoice.invoiceNumber}.`,
@@ -159,8 +163,8 @@ function OfflinePaymentModal({ invoice, onClose, onRecorded }) {
           Record offline payment
         </h3>
         <p className="mt-1 text-xs text-navy/50">
-          Entered in Seazona · reflects in the portal balance only. No charge is
-          made.
+          Reflects a payment already received (check, cash, or entered in
+          Seazona) in the portal balance. No card is charged.
         </p>
 
         <div className="mt-4 rounded-xl bg-surface-50 border border-surface-300/50 p-3 text-xs text-navy/60 space-y-0.5">
@@ -197,6 +201,24 @@ function OfflinePaymentModal({ invoice, onClose, onRecorded }) {
             autoFocus
           />
         </div>
+
+        <label className="mt-4 flex items-start gap-2.5 rounded-xl border border-surface-300/50 bg-surface-50 p-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={recordInSeazona}
+            onChange={(e) => setRecordInSeazona(e.target.checked)}
+            disabled={submitting}
+            className="mt-0.5 h-3.5 w-3.5 rounded border-surface-300 text-brand-500 focus:ring-brand-500/30"
+          />
+          <span className="text-xs text-navy/70">
+            <span className="font-semibold text-navy">
+              Also record this payment in Seazona
+            </span>
+            <br />
+            Leave unchecked if staff already entered it in Seazona — checking
+            it would double-credit the account.
+          </span>
+        </label>
 
         {err && (
           <div className="mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
