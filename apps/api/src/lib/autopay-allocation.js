@@ -39,11 +39,21 @@ export function allocateOldestFirst(invoices, chargeAmount) {
   const ordered = [...(invoices || [])]
     .filter((i) => round2(i.balance) > 0)
     .sort((a, b) => {
-      // Missing dueDate sorts to front as "most overdue" — this handles cases where
-      // Seazona's due field is null, and ensures oldest invoices are paid first.
-      const da = a.dueDate ? String(a.dueDate) : "";
-      const db = b.dueDate ? String(b.dueDate) : "";
-      if (da !== db) return da < db ? -1 : 1;
+      // A missing dueDate sorts LAST, not first.
+      //
+      // An earlier version treated null as "most overdue" and sorted it to the
+      // front. A live dry run showed why that is wrong: a doctor holding two
+      // undated invoices had them paid ahead of a genuinely overdue one dated
+      // 2024-10-25, which received only the leftover $3.50. A null due date
+      // means "no date recorded", not "maximally overdue" — it should never
+      // outrank an invoice that is demonstrably older.
+      //
+      // Rare but real: 74 of 18,281 live invoices (0.4%) have no due date.
+      const da = a.dueDate ? String(a.dueDate) : null;
+      const db = b.dueDate ? String(b.dueDate) : null;
+      if (da === null && db !== null) return 1;
+      if (db === null && da !== null) return -1;
+      if (da !== null && db !== null && da !== db) return da < db ? -1 : 1;
       // Deterministic tiebreak so a run is reproducible.
       const na = String(a.invoiceNumber ?? a.id);
       const nb = String(b.invoiceNumber ?? b.id);

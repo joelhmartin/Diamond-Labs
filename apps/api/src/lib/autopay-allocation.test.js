@@ -100,13 +100,33 @@ describe("allocateOldestFirst", () => {
     expect(allocations[0].invoiceNumber).toBe("IN-1");
   });
 
-  it("sorts an invoice with no dueDate ahead of one that has a date", () => {
+  // Reversed after a live dry run: an undated invoice must not outrank one that
+  // is demonstrably older. A doctor holding two undated invoices had them paid
+  // ahead of a genuinely overdue 2024 invoice, which got only the remainder.
+  it("sorts an invoice with no dueDate AFTER one that has a date", () => {
     const { allocations } = allocateOldestFirst(
-      [inv("a", 100, "2026-02-01"), inv("b", 100, undefined)],
+      [inv("b", 100, undefined), inv("a", 100, "2026-02-01")],
+      200
+    );
+    expect(allocations.map((x) => x.invoiceId)).toEqual(["a", "b"]);
+  });
+
+  it("pays a genuinely old dated invoice before undated ones", () => {
+    const { allocations } = allocateOldestFirst(
+      [inv("undated1", 480, undefined), inv("undated2", 16.5, undefined), inv("old", 15, "2024-10-25")],
       100
     );
-    // Missing dueDate sorts to front as "most overdue".
-    expect(allocations[0].invoiceId).toBe("b");
+    // The 2024 invoice is the only one with a real date — it goes first.
+    expect(allocations[0].invoiceId).toBe("old");
+    expect(allocations[0].amount).toBe(15);
+  });
+
+  it("still orders undated invoices deterministically among themselves", () => {
+    const { allocations } = allocateOldestFirst(
+      [inv("b", 50, undefined, "IN-2"), inv("a", 50, undefined, "IN-1")],
+      100
+    );
+    expect(allocations.map((x) => x.invoiceNumber)).toEqual(["IN-1", "IN-2"]);
   });
 
   it("returns an empty allocation for a NaN chargeAmount", () => {
