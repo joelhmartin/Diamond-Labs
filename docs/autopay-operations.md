@@ -389,3 +389,38 @@ These were found during implementation and are accepted risks, not bugs to
 | Recent runs | `select * from job_runs where job_name = 'autopay' order by started_at desc limit 10;` |
 | Recent attempts | `select * from autopay_attempts order by created_at desc limit 50;` |
 | Current enrollments | `select * from autopay_enrollments where enabled = true;` |
+
+## Seazona rate limits (documented, confirmed by Seazona support)
+
+<https://support.seazona.net/Api.html#rate-limits>
+
+- **60 requests/minute per integration**, all request types combined
+- **20 requests/minute** for POST/PUT/PATCH/DELETE — counted *inside* the 60, not on top
+- Exceeding either returns **429 with a `Retry-After` header**
+
+**Sustained overage escalates past 429 to a tenant-wide block.** On 2026-08-07 a burst of
+roughly 950 GETs in 90 seconds (~630/min, about 10x the limit) got API access disabled for the
+entire host: every endpoint returned `403 API access is temporarily disabled for this host`.
+It was not recoverable by issuing new credentials or calling from a different IP — only Seazona
+support can clear it. Treat the limit as a hard operational boundary, not a guideline.
+
+**How we comply.** The throttle is enforced centrally in
+`apps/api/src/services/seazona.service.js`, inside the single `requestRaw` every Seazona call
+funnels through — so no caller can bypass it and no future code has to remember to. It caps at
+50 requests/minute overall and 15 writes/minute, deliberately under the documented ceilings to
+leave headroom, and it honours `Retry-After` on a 429 with exactly one retry (never an
+unbounded loop, which is what turns a throttle into a block).
+
+The AutoPay sweep additionally paces ~1.1s between doctors. That is not what keeps us legal —
+the wrapper does — it exists so a long sweep does not consume the whole minute's budget in one
+burst and starve doctors loading their invoice pages concurrently.
+
+**Sizing the Cloud Run Job timeout.** Because the ceiling is 60/min, sweep duration is bounded
+by request count, not CPU. Budget roughly: (invoice-archive pages) + (one `getInvoice` per
+allocated invoice, per doctor) requests, at <=50/min. A cohort large enough to approach the
+`--task-timeout` should be split across days rather than run faster.
+
+**Seazona's own recommendation for bulk reads:** use the `lastModified` query parameter to pull
+only records changed since the last sync rather than refetching the full set. Our invoice reads
+currently pass the epoch (everything) on each run — moving to incremental sync is the main
+remaining lever if the archive grows.
