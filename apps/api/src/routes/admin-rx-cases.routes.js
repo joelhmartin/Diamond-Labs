@@ -79,17 +79,38 @@ export function canPush(lines = []) {
 }
 
 /**
+ * The single source of truth for the noteOnly ⇄ seazonaCode invariant: a
+ * note-only ruling wins and the code is cleared. `noteOnly: true` is an
+ * explicit statement that the line is a build instruction, not a charged
+ * product — and both downstream readers already behave that way (canPush
+ * filters noteOnly lines out of the sendable set; itemFromOverride checks
+ * noteOnly first and emits `code: null`). Storing a code alongside
+ * noteOnly: true would just be a value neither reader will ever honour, so
+ * normalising here keeps the persisted row honest about what will actually
+ * happen. Exported and pure so both write paths (the PUT/POST line handlers
+ * and overrideRowFor below) can share and test it directly.
+ */
+export function normalizeSeazonaCode({ seazonaCode, noteOnly }) {
+  return noteOnly ? null : (seazonaCode ?? null);
+}
+
+/**
  * Build the rx_code_overrides row for an "always" resolution.
  *
  * mapKey is the override table's unique key — an unmapped line carries the same
  * mapKey the resolver would have used, which is what makes this possible. A
  * line with no mapKey cannot be resolved permanently, only for this order.
+ *
+ * It never invents a code when none is given — and, as a second line of
+ * defence against the noteOnly ⇄ seazonaCode invariant above, it never
+ * leaks one through either: a noteOnly ruling clears whatever seazonaCode
+ * was passed in, regardless of what the caller already normalised.
  */
 export function overrideRowFor({ mapKey, seazonaCode, seazonaName, noteOnly, confirmedBy }) {
   if (!mapKey) throw new Error("cannot write an override without a mapKey");
   return {
     mapKey,
-    seazonaCode: seazonaCode ?? null,
+    seazonaCode: normalizeSeazonaCode({ seazonaCode, noteOnly }),
     seazonaName: seazonaName ?? null,
     // A real, queryable column — not just implied by `note`'s prose — so
     // catalog-map/index.js can branch on it later without parsing text.
@@ -346,10 +367,16 @@ export default async function adminRxCasesRoutes(fastify) {
       return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
     }
 
-    const seazonaCode = body.seazonaCode !== undefined ? (body.seazonaCode || null) : existing.seazonaCode;
     const name = body.name !== undefined ? (body.name || null) : existing.name;
     const arch = body.arch !== undefined ? (body.arch || null) : existing.arch;
     const noteOnly = body.noteOnly !== undefined ? !!body.noteOnly : existing.noteOnly;
+    // seazonaCode and noteOnly are merged independently above (each falls
+    // back to the existing row when the body omits it), so a partial update
+    // that only flips one of them can produce the noteOnly + code pair — the
+    // Critical defect this normalisation exists to close. Normalise BEFORE
+    // this reaches statusForLine, overrideRowFor, or the DB .set() below.
+    const rawSeazonaCode = body.seazonaCode !== undefined ? (body.seazonaCode || null) : existing.seazonaCode;
+    const seazonaCode = normalizeSeazonaCode({ seazonaCode: rawSeazonaCode, noteOnly });
     const status = statusForLine({ seazonaCode, noteOnly });
 
     let overrideRow = null;
@@ -447,10 +474,12 @@ export default async function adminRxCasesRoutes(fastify) {
       });
     }
 
-    const seazonaCode = body.seazonaCode || null;
     const arch = body.arch || null;
     const mapKey = body.mapKey || null;
     const noteOnly = !!body.noteOnly;
+    // Same noteOnly ⇄ seazonaCode invariant as the PUT handler above — a
+    // hand-added line can arrive with both set, and note-only must win.
+    const seazonaCode = normalizeSeazonaCode({ seazonaCode: body.seazonaCode || null, noteOnly });
     const sourceLabel = body.sourceLabel || null;
     const status = statusForLine({ seazonaCode, noteOnly });
 

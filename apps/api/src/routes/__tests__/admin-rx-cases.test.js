@@ -1,6 +1,12 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { DEFAULT_QUEUE_STATUSES, summariseLines, canPush, overrideRowFor } from "../admin-rx-cases.routes.js";
+import {
+  DEFAULT_QUEUE_STATUSES,
+  summariseLines,
+  canPush,
+  overrideRowFor,
+  normalizeSeazonaCode,
+} from "../admin-rx-cases.routes.js";
 
 test("the queue defaults to everything needing attention", () => {
   assert.deepEqual(
@@ -95,4 +101,40 @@ test("an 'always' note-only ruling is recorded without inventing a code", () => 
 
 test("an override cannot be written without a mapKey to key it on", () => {
   assert.throws(() => overrideRowFor({ mapKey: null, seazonaCode: "2181" }), /mapKey/);
+});
+
+test("overrideRowFor clears a code paired with noteOnly — note-only wins", () => {
+  // A partial update can send noteOnly: true while a real seazonaCode still
+  // sits on the row from a previous edit. Both downstream readers (canPush,
+  // itemFromOverride) key off noteOnly and would silently drop the code, so
+  // the persisted row must not lie about what will actually happen.
+  const row = overrideRowFor({
+    mapKey: "x",
+    seazonaCode: "1234",
+    noteOnly: true,
+  });
+  assert.equal(row.seazonaCode, null);
+  assert.equal(row.noteOnly, true);
+});
+
+test("overrideRowFor still passes a code through when noteOnly is false", () => {
+  // Pins the normal path so the noteOnly-wins fix cannot over-reach.
+  const row = overrideRowFor({
+    mapKey: "x",
+    seazonaCode: "1234",
+    noteOnly: false,
+  });
+  assert.equal(row.seazonaCode, "1234");
+});
+
+test("normalizeSeazonaCode clears the code when noteOnly is true", () => {
+  assert.equal(normalizeSeazonaCode({ seazonaCode: "1234", noteOnly: true }), null);
+});
+
+test("normalizeSeazonaCode keeps the code when noteOnly is false", () => {
+  assert.equal(normalizeSeazonaCode({ seazonaCode: "1234", noteOnly: false }), "1234");
+});
+
+test("normalizeSeazonaCode is null-safe when there's no code and no ruling", () => {
+  assert.equal(normalizeSeazonaCode({ seazonaCode: null, noteOnly: false }), null);
 });
