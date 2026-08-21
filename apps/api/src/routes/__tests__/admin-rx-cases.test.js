@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { DEFAULT_QUEUE_STATUSES, summariseLines } from "../admin-rx-cases.routes.js";
+import { DEFAULT_QUEUE_STATUSES, summariseLines, canPush } from "../admin-rx-cases.routes.js";
 
 test("the queue defaults to everything needing attention", () => {
   assert.deepEqual(
@@ -26,4 +26,21 @@ test("an open line that is not noteOnly counts as unmapped", () => {
     { status: "open", noteOnly: false },
   ]);
   assert.equal(s.unmappedCount, 1);
+});
+
+test("a case with an unresolved line cannot be pushed", () => {
+  assert.equal(canPush([{ status: "open", noteOnly: false }]).ok, false);
+});
+
+test("a case whose only open line is noteOnly can be pushed", () => {
+  assert.equal(canPush([
+    { status: "confirmed", noteOnly: false },
+    { status: "open", noteOnly: true },
+  ]).ok, true);
+});
+
+test("a case with no lines at all cannot be pushed", () => {
+  const r = canPush([]);
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /no lines/i);
 });

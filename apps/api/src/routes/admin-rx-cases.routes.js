@@ -1,9 +1,10 @@
 import { authenticate } from "../middleware/authenticate.js";
 import { requireAdmin } from "../middleware/require-role.js";
 import { db } from "../config/database.js";
-import { rxCases, rxCaseLines } from "../db/schema/index.js";
+import { rxCases, rxCaseLines, rxCaseFiles } from "../db/schema/index.js";
 import { decryptRxPhi } from "../services/rx/phi-crypto.js";
-import { desc, inArray } from "drizzle-orm";
+import { ERROR_CODES } from "@my-app/shared";
+import { asc, desc, eq, inArray } from "drizzle-orm";
 
 /**
  * Statuses the queue shows when the caller does not ask for specific ones —
@@ -33,6 +34,38 @@ export function summariseLines(lines = []) {
     lineCount: lines.length,
     unmappedCount: lines.filter((l) => l.status === "open" && !l.noteOnly).length,
   };
+}
+
+/**
+ * Whether a case may be pushed. Exported and pure so the gate is testable
+ * without a database or a live Seazona client.
+ *
+ * The invariant this protects: never send Seazona a partial order.
+ *
+ * - A `noteOnly` line never blocks — it's a doctor selection the lab has
+ *   ruled is a build instruction rather than a charged product; it travels
+ *   in the order notes, not as a line. Counting it as blocking would make
+ *   such a case permanently unsendable.
+ * - A case with no sendable (non-noteOnly) lines is refused too — an order
+ *   with no lines is not a lesser order, it is a wrong one.
+ *
+ * @param {Array<{status: string, noteOnly?: boolean, mapKey?: string, sourceLabel?: string}>} lines
+ * @returns {{ ok: boolean, reason?: string, blocking?: Array<string|undefined> }}
+ */
+export function canPush(lines = []) {
+  const emitting = lines.filter((l) => !l.noteOnly);
+  if (emitting.length === 0) {
+    return { ok: false, reason: "This case has no lines to send." };
+  }
+  const blocking = emitting.filter((l) => l.status === "open");
+  if (blocking.length > 0) {
+    return {
+      ok: false,
+      reason: `${blocking.length} selection(s) still need a product code.`,
+      blocking: blocking.map((l) => l.mapKey || l.sourceLabel),
+    };
+  }
+  return { ok: true };
 }
 
 /**
@@ -140,5 +173,50 @@ export default async function adminRxCasesRoutes(fastify) {
     });
 
     return { data, meta: { total } };
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // GET /admin/rx-cases/:id
+  // One case in full: the decrypted case row, its order lines (ordered by
+  // position), its uploaded files (scans/photos/artboards), and the
+  // decrypted prescription form data staff need to review the submission
+  // against the derived lines.
+  //
+  // Never log the decrypted row — patient name is PHI.
+  // ───────────────────────────────────────────────────────────────────────────
+  fastify.get("/admin/rx-cases/:id", {
+    preHandler: [authenticate, requireAdmin],
+  }, async (request, reply) => {
+    const [caseRow] = await db
+      .select()
+      .from(rxCases)
+      .where(eq(rxCases.id, request.params.id));
+
+    if (!caseRow) {
+      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    }
+
+    const decrypted = decryptRxPhi(caseRow);
+
+    const [lines, files] = await Promise.all([
+      db
+        .select()
+        .from(rxCaseLines)
+        .where(eq(rxCaseLines.caseId, decrypted.id))
+        .orderBy(asc(rxCaseLines.position)),
+      db
+        .select()
+        .from(rxCaseFiles)
+        .where(eq(rxCaseFiles.caseId, decrypted.id)),
+    ]);
+
+    return {
+      data: {
+        case: decrypted,
+        lines,
+        files,
+        prescription: decrypted.formData,
+      },
+    };
   });
 }
