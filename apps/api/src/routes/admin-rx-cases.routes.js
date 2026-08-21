@@ -13,67 +13,33 @@ import { encryptJson } from "../lib/crypto.js";
 import { env } from "../config/env.js";
 import { ERROR_CODES } from "@my-app/shared";
 import { and, asc, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
+import {
+  CASE_STATUSES,
+  DEFAULT_QUEUE_STATUSES,
+  canPush,
+  canTransition,
+  isFrozen,
+  normalizeSeazonaCode,
+  overrideRowFor,
+  statusForLine,
+  summariseLines,
+} from "../services/rx/case-gates.js";
 
-/**
- * Statuses the queue shows when the caller does not ask for specific ones —
- * everything that still needs lab attention. Deliberately excludes `pushed`
- * (already sent to Seazona) and `cancelled` (dead).
- */
-export const DEFAULT_QUEUE_STATUSES = ["new", "in_review", "awaiting_doctor", "failed"];
-
-/**
- * The six states a case can be in. This is the third status vocabulary in
- * this codebase, alongside SUBMISSION_STATUS (rx.routes.js — what a
- * freshly-submitted case is written as) and DEFAULT_QUEUE_STATUSES above
- * (what the admin queue shows by default). Vocabulary drift between the
- * first two already produced this plan's worst defect — the admin queue
- * silently returned zero rows forever because the status the submit route
- * wrote was not one the queue selected. rx-status-vocabulary.test.js pins
- * all three together; if you add or rename a status here, that test is
- * where a drift will surface.
- */
-export const CASE_STATUSES = [
-  "new", "in_review", "awaiting_doctor", "pushed", "failed", "cancelled",
-];
-
-/**
- * Whether a case may move from `from` to `to`.
- *
- * `pushed` is terminal — the Seazona order already exists, so moving the
- * case back would make the portal disagree with the lab's own system about
- * what was ordered. A mistake after a push is corrected in Seazona, not
- * here. (A later "marked manually added" resolution also lands on `pushed`
- * for the same reason: it too commits the case to an order the lab
- * considers placed.)
- *
- * Both `from` and `to` are validated against CASE_STATUSES. A `from` outside
- * the known vocabulary is not a state anything should transition out of —
- * checking only `to` would let an unknown or `undefined` origin (e.g. a
- * caller that forgot to load the current status, or a status a future
- * producer misspells) through as `true`.
- */
-export function canTransition(from, to) {
-  if (!CASE_STATUSES.includes(from)) return false;
-  if (!CASE_STATUSES.includes(to)) return false;
-  if (from === "pushed") return false;
-  return true;
-}
-
-/**
- * Whether a case's ORDER LINES are frozen against further edits. Same rule
- * canTransition already applies to the case's status label (see its
- * docstring for the reasoning: once pushed, the Seazona order already
- * exists, so a change here would make the portal disagree with the lab's
- * own system about what was ordered) — this is that rule applied to the
- * case's contents, which is the half that actually matters. Deliberately
- * checks `status === "pushed"` only; `cancelled` is NOT frozen by this
- * rule — widening that is a separate question nobody has ruled on.
- *
- * Pure and exported so it's directly testable without a database.
- */
-export function isFrozen(status) {
-  return status === "pushed";
-}
+// Pure domain rules (status vocabulary, transition/push gates, the noteOnly
+// <-> seazonaCode invariant) now live in case-gates.js so services can reach
+// them without importing this route module — see Task 10 fix 1. Re-exported
+// here so every existing importer of this file keeps working unchanged.
+export {
+  CASE_STATUSES,
+  DEFAULT_QUEUE_STATUSES,
+  canPush,
+  canTransition,
+  isFrozen,
+  normalizeSeazonaCode,
+  overrideRowFor,
+  statusForLine,
+  summariseLines,
+} from "../services/rx/case-gates.js";
 
 /**
  * The 409 body every pushed-case refusal sends. Pulled out on its own so
@@ -125,117 +91,6 @@ async function refusePushedCase(caseId, reply) {
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
-
-/**
- * Count a case's order lines and, separately, the ones blocking a push.
- *
- * A `noteOnly` line is deliberately NOT unmapped: the lab has ruled it is a
- * build instruction rather than a charged product, so it travels in the order
- * notes and does not block the push. Counting it here would make a case with
- * a noteOnly selection permanently unsendable (unmappedCount > 0 gates the
- * push).
- *
- * Pure — no DB, no I/O — so it is testable on its own.
- * @param {Array<{status: string, noteOnly?: boolean}>} lines
- * @returns {{ lineCount: number, unmappedCount: number }}
- */
-export function summariseLines(lines = []) {
-  return {
-    lineCount: lines.length,
-    unmappedCount: lines.filter((l) => l.status === "open" && !l.noteOnly).length,
-  };
-}
-
-/**
- * Whether a case may be pushed. Exported and pure so the gate is testable
- * without a database or a live Seazona client.
- *
- * The invariant this protects: never send Seazona a partial order.
- *
- * - A `noteOnly` line never blocks — it's a doctor selection the lab has
- *   ruled is a build instruction rather than a charged product; it travels
- *   in the order notes, not as a line. Counting it as blocking would make
- *   such a case permanently unsendable.
- * - A case with no sendable (non-noteOnly) lines is refused too — an order
- *   with no lines is not a lesser order, it is a wrong one.
- * - A sendable line blocks if it has no `seazonaCode`, regardless of what
- *   its own `status` claims. This gate is the last check before a real
- *   order reaches the lab, so it does not trust a line's self-reported
- *   status — it independently confirms the one thing that actually makes a
- *   line sendable: a product code is present. Nothing upstream produces a
- *   codeless "confirmed" line today (statusForLine guards the write path,
- *   the resolver routes codeless rows to unmapped), but this gate must hold
- *   even if a future producer gets that wrong.
- *
- * @param {Array<{status: string, noteOnly?: boolean, seazonaCode?: string|null, mapKey?: string, sourceLabel?: string}>} lines
- * @returns {{ ok: boolean, reason?: string, blocking?: Array<string|undefined> }}
- */
-export function canPush(lines = []) {
-  const emitting = lines.filter((l) => !l.noteOnly);
-  if (emitting.length === 0) {
-    return { ok: false, reason: "This case has no lines to send." };
-  }
-  const blocking = emitting.filter((l) => l.status === "open" || !l.seazonaCode);
-  if (blocking.length > 0) {
-    return {
-      ok: false,
-      reason: `${blocking.length} selection(s) still need a product code.`,
-      blocking: blocking.map((l) => l.mapKey || l.sourceLabel),
-    };
-  }
-  return { ok: true };
-}
-
-/**
- * The single source of truth for the noteOnly ⇄ seazonaCode invariant: a
- * note-only ruling wins and the code is cleared. `noteOnly: true` is an
- * explicit statement that the line is a build instruction, not a charged
- * product — and both downstream readers already behave that way (canPush
- * filters noteOnly lines out of the sendable set; itemFromOverride checks
- * noteOnly first and emits `code: null`). Storing a code alongside
- * noteOnly: true would just be a value neither reader will ever honour, so
- * normalising here keeps the persisted row honest about what will actually
- * happen. Exported and pure so both write paths (the PUT/POST line handlers
- * and overrideRowFor below) can share and test it directly.
- */
-export function normalizeSeazonaCode({ seazonaCode, noteOnly }) {
-  return noteOnly ? null : (seazonaCode ?? null);
-}
-
-/**
- * Build the rx_code_overrides row for an "always" resolution.
- *
- * mapKey is the override table's unique key — an unmapped line carries the same
- * mapKey the resolver would have used, which is what makes this possible. A
- * line with no mapKey cannot be resolved permanently, only for this order.
- *
- * It never invents a code when none is given — and, as a second line of
- * defence against the noteOnly ⇄ seazonaCode invariant above, it never
- * leaks one through either: a noteOnly ruling clears whatever seazonaCode
- * was passed in, regardless of what the caller already normalised.
- */
-export function overrideRowFor({ mapKey, seazonaCode, seazonaName, noteOnly, confirmedBy }) {
-  if (!mapKey) throw new Error("cannot write an override without a mapKey");
-  return {
-    mapKey,
-    seazonaCode: normalizeSeazonaCode({ seazonaCode, noteOnly }),
-    seazonaName: seazonaName ?? null,
-    // A real, queryable column — not just implied by `note`'s prose — so
-    // catalog-map/index.js can branch on it later without parsing text.
-    noteOnly: !!noteOnly,
-    note: noteOnly ? "note only — instruction, not a charged product" : null,
-    confirmedBy: confirmedBy ?? null,
-  };
-}
-
-/**
- * A line is "confirmed" once it has a real code or the lab has ruled it's a
- * note-only instruction — either way staff resolved it. Otherwise it's still
- * "open" and blocks a push (see canPush).
- */
-function statusForLine({ seazonaCode, noteOnly }) {
-  return noteOnly || seazonaCode ? "confirmed" : "open";
-}
 
 /**
  * Decrypt a case row for a LIST context. A single corrupt / wrong-key row
@@ -822,10 +677,22 @@ export default async function adminRxCasesRoutes(fastify) {
   // docstring) — this route performs its own, stricter claim and is the one
   // place allowed to move a case TO `pushed`.
   //
+  // Two preflight checks run BEFORE the claim, in this order: (1) the
+  // SEAZONA_ORDER_USER_ID precondition, and (2) the canPush gate. Both are
+  // pure refusals — no claim taken, no status/seazonaPushStatus/
+  // seazonaPushError written, the case stays exactly where it was. A refusal
+  // is not an attempt: "we refused to send" needs a different next action
+  // from staff than "we sent it and it failed" (fix the missing config /
+  // unmapped line, vs. check Seazona and maybe retry) — conflating them by
+  // writing `failed` sends staff hunting for orders that were never
+  // attempted. canPush is called again inside pushCaseToSeazona as defence in
+  // depth for any future caller of that function.
+  //
   // All Seazona-facing decision logic (the canPush gate, payload build, and
   // interpreting Seazona's response) lives in pushCaseToSeazona so it stays
   // unit-testable without a Fastify harness; this route is a thin caller that
-  // only does the DB claim, the final write, and audit logging.
+  // only does the preflight checks, the DB claim, the final write, and audit
+  // logging.
   // ───────────────────────────────────────────────────────────────────────────
   fastify.post("/admin/rx-cases/:id/push", {
     preHandler: [authenticate, requireAdmin],
@@ -839,6 +706,43 @@ export default async function adminRxCasesRoutes(fastify) {
 
     if (!caseRowRaw) {
       return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    }
+
+    // Precondition 1: without a configured lab-staff Seazona user id, the
+    // order can't be attributed. Mirrors payment.routes.js's
+    // resolveOrderPushStatus, which refuses the sibling Seazona order path
+    // ("skipped_no_user") rather than send an order with no user or let
+    // Seazona reject it with an error nobody will recognise. No claim taken,
+    // no status written — Seazona is never called.
+    if (!env.SEAZONA_ORDER_USER_ID) {
+      return reply.code(503).send({
+        error: {
+          code: "SEAZONA_ORDER_USER_NOT_CONFIGURED",
+          status: 503,
+          message: "Seazona order user is not configured, so this order cannot be attributed. Set SEAZONA_ORDER_USER_ID before pushing.",
+        },
+      });
+    }
+
+    // Precondition 2: the canPush gate, run against the case's STORED lines
+    // — loaded here, before the claim, so a refusal never takes and releases
+    // a lock for a send that was never going to happen.
+    const lines = await db
+      .select()
+      .from(rxCaseLines)
+      .where(eq(rxCaseLines.caseId, caseId))
+      .orderBy(asc(rxCaseLines.position));
+
+    const gate = canPush(lines);
+    if (!gate.ok) {
+      return reply.code(422).send({
+        error: {
+          code: "RX_PUSH_BLOCKED",
+          status: 422,
+          message: gate.reason,
+          blocking: gate.blocking,
+        },
+      });
     }
 
     const claimed = await db.update(rxCases)
@@ -882,11 +786,10 @@ export default async function adminRxCasesRoutes(fastify) {
       });
     }
 
-    const lines = await db
-      .select()
-      .from(rxCaseLines)
-      .where(eq(rxCaseLines.caseId, caseId))
-      .orderBy(asc(rxCaseLines.position));
+    // `lines` was already loaded above (before the claim) for the canPush
+    // preflight — reused here rather than re-queried, same as
+    // payloadFromLines' own reasoning: the stored lines at whatever moment
+    // they're read are the source of truth, not a fresh re-resolve.
 
     // codeToId from the live Seazona catalog — listProducts() returns [] if
     // Seazona is unreachable (soft-fail), which then surfaces as "no catalog

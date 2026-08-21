@@ -246,3 +246,49 @@ test("PUT /admin/rx-cases/:id/status is NOT double-gated by the new guard — ca
   const body = handlerSource('fastify.put("/admin/rx-cases/:id/status",');
   assert.doesNotMatch(body, /refusePushedCase\(/);
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// POST /admin/rx-cases/:id/push — Task 10 fix round 1, findings 2 and 3.
+//
+// Same limitation as the wiring checks above: no Fastify-inject harness
+// exists in this repo, so these are static source checks on the push
+// handler's registration body. They prove the refusal codes and the
+// before-the-claim ordering exist at the right place in source — they do
+// NOT prove the handler actually returns early at runtime without ever
+// reaching the DB claim. That would need a real HTTP harness this module
+// doesn't have.
+// ─────────────────────────────────────────────────────────────────────────
+
+const PUSH_ROUTE_MARKER = 'fastify.post("/admin/rx-cases/:id/push",';
+
+test("POST /admin/rx-cases/:id/push refuses with 503 SEAZONA_ORDER_USER_NOT_CONFIGURED before claiming the case (fix 3)", () => {
+  const body = handlerSource(PUSH_ROUTE_MARKER);
+  const userCheckIdx = body.indexOf("env.SEAZONA_ORDER_USER_ID");
+  const claimIdx = body.indexOf('seazonaPushStatus: "pushing"');
+  assert.ok(userCheckIdx >= 0, "push route should check env.SEAZONA_ORDER_USER_ID");
+  assert.ok(claimIdx >= 0, "push route should still claim the case once preflight passes");
+  assert.ok(
+    userCheckIdx < claimIdx,
+    "the SEAZONA_ORDER_USER_ID check must run before the DB claim — refusing must not take and release a lock"
+  );
+  assert.match(body, /SEAZONA_ORDER_USER_NOT_CONFIGURED/);
+  assert.match(body, /reply\.code\(503\)/);
+});
+
+test("POST /admin/rx-cases/:id/push gates on canPush before claiming the case, and refuses with 422 RX_PUSH_BLOCKED (fix 2)", () => {
+  const body = handlerSource(PUSH_ROUTE_MARKER);
+  const gateIdx = body.indexOf("canPush(lines)");
+  const claimIdx = body.indexOf('seazonaPushStatus: "pushing"');
+  assert.ok(gateIdx >= 0, "push route should call canPush(lines) as a route-level preflight");
+  assert.ok(
+    gateIdx < claimIdx,
+    "the canPush gate must run before the DB claim — a refusal must not be recorded as a push failure"
+  );
+  assert.match(body, /RX_PUSH_BLOCKED/);
+  assert.match(body, /reply\.code\(422\)/);
+});
+
+test("POST /admin/rx-cases/:id/push still calls pushCaseToSeazona, which re-runs canPush as defence in depth", () => {
+  const body = handlerSource(PUSH_ROUTE_MARKER);
+  assert.match(body, /pushCaseToSeazona\(/);
+});

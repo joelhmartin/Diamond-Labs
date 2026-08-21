@@ -1,5 +1,5 @@
 import * as seazonaService from "../seazona.service.js";
-import { canPush } from "../../routes/admin-rx-cases.routes.js";
+import { canPush } from "./case-gates.js";
 
 /**
  * Build a Seazona order payload from the case's STORED lines.

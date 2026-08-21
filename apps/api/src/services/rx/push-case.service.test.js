@@ -1,5 +1,7 @@
 import { describe, it, test, expect, vi, beforeEach } from "vitest";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 // Replace the Seazona service entirely so pushCaseToSeazona's decision logic
 // is tested in isolation — no env config, no network, and CRITICALLY no way
@@ -10,8 +12,58 @@ vi.mock("../seazona.service.js", () => ({
 
 import { createOrder } from "../seazona.service.js";
 import { payloadFromLines, pushCaseToSeazona } from "./push-case.service.js";
+import * as caseGates from "./case-gates.js";
+import * as routesModule from "../../routes/admin-rx-cases.routes.js";
 
 const caseRow = { seazonaClientId: "c1", patientFirst: "A", patientLast: "B", dueDate: null };
+
+// ─── Task 10 fix 1 — the circular import (service importing from routes/) ──
+//
+// push-case.service.js used to import canPush from admin-rx-cases.routes.js
+// while that route module imported pushCaseToSeazona from this service — a
+// real cycle that survived only on ESM function hoisting, and forced any
+// service test to transitively load Fastify, drizzle, and config/database.js
+// just to test a pure function. The fix moved the pure domain rules into
+// case-gates.js (which imports nothing from routes/) and made the route
+// re-export them so every existing importer keeps working unchanged.
+
+test("push-case.service.js imports canPush from case-gates.js, never from routes/ — no circular import", () => {
+  const path = fileURLToPath(new URL("./push-case.service.js", import.meta.url));
+  const source = readFileSync(path, "utf8");
+  assert.doesNotMatch(
+    source,
+    /from\s+["'][^"']*\/routes\//,
+    "push-case.service.js must not import anything from a routes/ module"
+  );
+  assert.match(
+    source,
+    /canPush.*from\s+["']\.\/case-gates\.js["']/,
+    "push-case.service.js should import canPush from ./case-gates.js"
+  );
+});
+
+test("case-gates.js exports everything admin-rx-cases.routes.js re-exports, as the exact same bindings", () => {
+  const expectedExports = [
+    "CASE_STATUSES",
+    "DEFAULT_QUEUE_STATUSES",
+    "canPush",
+    "canTransition",
+    "isFrozen",
+    "normalizeSeazonaCode",
+    "overrideRowFor",
+    "statusForLine",
+    "summariseLines",
+  ];
+  for (const name of expectedExports) {
+    assert.ok(name in caseGates, `case-gates.js is missing export "${name}"`);
+    assert.ok(name in routesModule, `admin-rx-cases.routes.js no longer re-exports "${name}"`);
+    assert.equal(
+      routesModule[name],
+      caseGates[name],
+      `admin-rx-cases.routes.js's "${name}" is not the same binding as case-gates.js's — the re-export is not a plain pass-through`
+    );
+  }
+});
 
 // ─── payloadFromLines ──────────────────────────────────────────────────────
 
