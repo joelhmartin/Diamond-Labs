@@ -2,6 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 
 import { rxFormSubmitSchema, buildDigitalDevices } from "@my-app/shared";
+import { linesForDevices } from "../../services/rx/case-lines.service.js";
 
 test("valid payload parses", () => {
   const result = rxFormSubmitSchema.safeParse({
@@ -70,4 +71,19 @@ test("a multi-device submission keeps every device, not just the first", () => {
     ddsoMaterial: "NYLON",
   });
   assert.deepEqual(devices.map((d) => d.deviceKey).sort(), ["ddso", "snorehook"]);
+});
+
+test("a submitted DDSO prescription yields a coded order line", () => {
+  const devices = buildDigitalDevices({ devicesToOrder: ["ddso"], ddsoMaterial: "NYLON" });
+  const lines = linesForDevices(devices);
+  assert.ok(lines.some((l) => l.seazonaCode === "2608"));
+});
+
+test("a prescription with an unmappable selection still yields a line, flagged open", () => {
+  const devices = buildDigitalDevices({
+    devicesToOrder: ["olmos"],
+    onDesign: "DEPROGRAMMER (ON-D) - Anterior Occlusion",
+  });
+  const lines = linesForDevices(devices);
+  assert.ok(lines.some((l) => l.status === "open"));
 });

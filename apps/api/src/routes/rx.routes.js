@@ -8,6 +8,8 @@ import { eq, desc, and } from "drizzle-orm";
 import { ERROR_CODES, rxCaseSubmitSchema, rxFormSubmitSchema, buildDigitalDevices } from "@my-app/shared";
 import * as seazonaService from "../services/seazona.service.js";
 import { buildSeazonaOrderPayload } from "../services/rx/build-order-payload.js";
+import { seedLines } from "../services/rx/case-lines.service.js";
+import { loadOverrides } from "./admin-rx-mapping.routes.js";
 import { uploadCaseFile, deleteStoredFile, getSignedReadUrl } from "../services/storage.service.js";
 import { encryptRxPhi, decryptRxPhi } from "../services/rx/phi-crypto.js";
 import { encryptJson } from "../lib/crypto.js";
@@ -464,6 +466,10 @@ export default async function rxRoutes(fastify) {
       // deviceOptions.devices so a multi-device prescription loses nothing.
       const devices = buildDigitalDevices(data.formData ?? {});
 
+      // Load admin-confirmed code overrides once, before the transaction opens
+      // (not per-device) — same loader admin-rx-mapping.routes.js uses.
+      const overrides = await loadOverrides();
+
       await db.transaction(async (tx) => {
         // Encrypt PHI columns at rest (patientFirst/Last + the formData blob).
         await tx.insert(rxCases).values(encryptRxPhi({
@@ -487,6 +493,10 @@ export default async function rxRoutes(fastify) {
         if (fileRows.length > 0) {
           await tx.insert(rxCaseFiles).values(fileRows);
         }
+
+        // Materialise the order now so the queue can show "4 lines · 1 unmapped"
+        // without recomputing, and so staff have something to edit.
+        await seedLines(caseId, devices, { overrides, tx });
       });
     } catch (err) {
       await Promise.allSettled(uploadedFiles.map((f) => deleteStoredFile(f.gcsUrl)));
