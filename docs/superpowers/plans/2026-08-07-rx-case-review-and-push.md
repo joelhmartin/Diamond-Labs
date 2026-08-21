@@ -1098,6 +1098,132 @@ guarded by a conditional update, not a disabled button."
 
 ---
 
+### Task 10b: "Added manually" resolution
+
+**Files:**
+- Modify: `apps/api/src/routes/admin-rx-cases.routes.js`
+- Test: `apps/api/src/routes/__tests__/admin-rx-cases.test.js`
+
+**Interfaces:**
+- Consumes: `rxCases`, `rxCaseLines`, `canPush`, `auditService.logSafe`.
+- Produces: `POST /admin/rx-cases/:id/mark-manual`, and an exported
+  `manualResolution(lines, { seazonaOrderId })` returning the column values to write.
+
+**Why this exists.** Staff will sometimes just type the order into Seazona
+themselves — it is what they do today. Without a way to say so, those cases sit
+in the queue forever and someone eventually pushes a duplicate.
+
+**Two decisions baked in, both deliberate:**
+
+1. **It bypasses the send gate.** `canPush` is irrelevant here: a human has
+   already created the order, so an unmapped line cannot stop them recording
+   that. This is the one sanctioned way past the gate.
+2. **It does not erase the mapping gap.** Precisely because it bypasses the
+   gate, it records what was still unresolved at the time. Otherwise "mark
+   manual" quietly becomes the way mapping problems disappear — the exact
+   failure this project exists to remove. Those mapKeys are what the lab's
+   open questions are made of.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+import { manualResolution } from "../admin-rx-cases.routes.js";
+
+test("a manual resolution ends the case and tags how it got there", () => {
+  const r = manualResolution([{ seazonaCode: "2608", noteOnly: false, status: "confirmed" }], { seazonaOrderId: "SZ-4471" });
+  assert.equal(r.status, "pushed");
+  assert.equal(r.seazonaPushStatus, "manual");
+  assert.equal(r.seazonaOrderId, "SZ-4471");
+});
+
+test("the Seazona order number is optional", () => {
+  const r = manualResolution([{ seazonaCode: "2608", noteOnly: false, status: "confirmed" }], {});
+  assert.equal(r.status, "pushed");
+  assert.equal(r.seazonaOrderId, null);
+});
+
+test("marking manual records what was still unmapped, rather than erasing it", () => {
+  const r = manualResolution([
+    { seazonaCode: "2608", noteOnly: false, status: "confirmed" },
+    { seazonaCode: null, noteOnly: false, status: "open", mapKey: "mod:anterior-pad" },
+  ], {});
+  assert.equal(r.status, "pushed");
+  assert.deepEqual(r.unresolvedAtManual, ["mod:anterior-pad"]);
+});
+
+test("a case with unmapped lines can still be marked manual — the gate does not apply", () => {
+  const lines = [{ seazonaCode: null, noteOnly: false, status: "open", mapKey: "mod:anterior-pad" }];
+  assert.equal(canPush(lines).ok, false, "precondition: this case cannot be pushed");
+  assert.equal(manualResolution(lines, {}).status, "pushed", "but it can be recorded as done by hand");
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `pnpm --filter api test -- admin-rx-cases`
+Expected: FAIL — `manualResolution` is not exported.
+
+- [ ] **Step 3: Implement the pure helper**
+
+```js
+/**
+ * The column values for "a human already entered this in Seazona".
+ *
+ * Resolves the case exactly as a successful push does — same terminal status,
+ * so it leaves the queue and cannot be pushed again — but tags HOW it got
+ * there, so "we sent this" and "someone typed it in" stay distinguishable
+ * forever.
+ *
+ * Deliberately ignores canPush: the order already exists, so an unresolved
+ * line cannot stop someone recording that. It captures those unresolved
+ * mapKeys instead of discarding them — otherwise this button becomes the
+ * quiet way mapping gaps disappear, and those gaps are the lab's open
+ * questions.
+ */
+export function manualResolution(lines = [], { seazonaOrderId } = {}) {
+  const unresolved = lines
+    .filter((l) => !l.noteOnly && (l.status === "open" || !l.seazonaCode))
+    .map((l) => l.mapKey || l.sourceLabel)
+    .filter(Boolean);
+  return {
+    status: "pushed",
+    seazonaPushStatus: "manual",
+    seazonaOrderId: seazonaOrderId || null,
+    unresolvedAtManual: unresolved,
+  };
+}
+```
+
+- [ ] **Step 4: Wire the route**
+
+`POST /admin/rx-cases/:id/mark-manual`, admin-gated, body `{ seazonaOrderId?, note? }`.
+
+Claim the case with the same conditional update the push uses — `WHERE status != 'pushed'` — so a case already resolved cannot be re-marked, and a double click cannot double-record. Return 409 with a clear message if the claim finds nothing.
+
+Write `status`, `seazonaPushStatus` and `seazonaOrderId` from `manualResolution`. Put `unresolvedAtManual` and the operator's `note` in the audit metadata, not in a new column — **no PHI**, only mapKeys and the order number.
+
+Audit with `action: "rx_case.marked_manual"`, following the module's existing `logSafe` shape.
+
+- [ ] **Step 5: Run tests**
+
+Run: `pnpm --filter api test`
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/api/src/routes/admin-rx-cases.routes.js apps/api/src/routes/__tests__/admin-rx-cases.test.js
+git commit -m "feat(rx): let staff record a case they entered in Seazona by hand
+
+Resolves the case exactly as a push does so it leaves the queue, tagged
+seazonaPushStatus=manual so the two stay distinguishable. Bypasses the
+send gate by design — the order already exists — but records which
+selections were still unmapped, so this cannot become the quiet way
+mapping gaps disappear."
+```
+
+---
+
 ### Task 11: The queue page
 
 **Files:**
@@ -1227,6 +1353,14 @@ export function pushBlockedReason(lines = []) {
   return `Needs a product code for: ${names.join(", ")}`;
 }
 ```
+
+Alongside **Push to Seazona**, the page carries a second action: **I'll add this
+manually**. It posts to `/admin/rx-cases/:id/mark-manual` with an optional
+Seazona order number, and it stays enabled even when Push is disabled — that is
+its purpose, since a case blocked on an unmapped selection can still be entered
+by hand. Make the distinction visible rather than presenting two equivalent
+buttons: Push is the primary action, this is the secondary one, and a resolved
+case shows which route it took ("Sent to Seazona" vs "Added manually").
 
 The order tab renders each line with its code, name, arch, and an `edited` badge
 when `origin === "manual"`. An `open` line renders inline catalog search (reuse
