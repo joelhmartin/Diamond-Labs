@@ -55,6 +55,70 @@ export function canTransition(from, to) {
   return true;
 }
 
+/**
+ * Whether a case's ORDER LINES are frozen against further edits. Same rule
+ * canTransition already applies to the case's status label (see its
+ * docstring for the reasoning: once pushed, the Seazona order already
+ * exists, so a change here would make the portal disagree with the lab's
+ * own system about what was ordered) — this is that rule applied to the
+ * case's contents, which is the half that actually matters. Deliberately
+ * checks `status === "pushed"` only; `cancelled` is NOT frozen by this
+ * rule — widening that is a separate question nobody has ruled on.
+ *
+ * Pure and exported so it's directly testable without a database.
+ */
+export function isFrozen(status) {
+  return status === "pushed";
+}
+
+/**
+ * The 409 body every pushed-case refusal sends. Pulled out on its own so
+ * the re-resolve route (which already has the case row loaded, status and
+ * all, before this runs) can reuse the exact same shape without a second
+ * DB round trip through refusePushedCase below.
+ */
+function pushedCaseRefusal() {
+  return {
+    error: {
+      code: "CASE_ALREADY_PUSHED",
+      status: 409,
+      message: "This case has already been sent to Seazona. Correct it in Seazona, not here.",
+    },
+  };
+}
+
+/**
+ * Shared write guard for the routes that mutate a case's order lines: add a
+ * line, edit a line, delete a line, re-resolve. None of those routes already
+ * has the case's status in hand (they load a line row, or only `id`), so
+ * this does the one lookup and, if frozen, sends the refusal and returns
+ * true so the caller can stop immediately.
+ *
+ * Returns false — and sends nothing — both when the case is editable AND
+ * when it doesn't exist at all. A missing case is each route's own 404 to
+ * report (via its existing lookup), not this guard's; conflating the two
+ * would blur "refused because pushed" with "doesn't exist" behind the same
+ * signal.
+ *
+ * Deliberately NOT applied to: the push route itself and clear-push-lock
+ * (Task 10 — they SET `pushed` / recover a case whose push was
+ * interrupted), mark-manual (Task 10b — also lands on `pushed`), PUT
+ * .../status (already gated by canTransition; do not double-gate or change
+ * its 409 shape), or either GET route (a pushed case must stay fully
+ * readable — this is a write guard only).
+ */
+async function refusePushedCase(caseId, reply) {
+  const [caseRow] = await db
+    .select({ status: rxCases.status })
+    .from(rxCases)
+    .where(eq(rxCases.id, caseId));
+
+  if (!caseRow || !isFrozen(caseRow.status)) return false;
+
+  reply.code(409).send(pushedCaseRefusal());
+  return true;
+}
+
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 
@@ -398,6 +462,8 @@ export default async function adminRxCasesRoutes(fastify) {
     const body = request.body || {};
     const scope = body.scope === "always" ? "always" : "once";
 
+    if (await refusePushedCase(caseId, reply)) return;
+
     const [existing] = await db
       .select()
       .from(rxCaseLines)
@@ -502,6 +568,8 @@ export default async function adminRxCasesRoutes(fastify) {
     const caseId = request.params.id;
     const body = request.body || {};
 
+    if (await refusePushedCase(caseId, reply)) return;
+
     const [caseRow] = await db.select({ id: rxCases.id }).from(rxCases).where(eq(rxCases.id, caseId));
     if (!caseRow) {
       return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
@@ -571,6 +639,8 @@ export default async function adminRxCasesRoutes(fastify) {
     preHandler: [authenticate, requireAdmin],
   }, async (request, reply) => {
     const { id: caseId, lineId } = request.params;
+
+    if (await refusePushedCase(caseId, reply)) return;
 
     const [existing] = await db
       .select()
@@ -685,6 +755,12 @@ export default async function adminRxCasesRoutes(fastify) {
 
     if (!caseRowRaw) {
       return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    }
+
+    // Already have the row (status and all) from the select above — no need
+    // for a second refusePushedCase lookup, just the same predicate + body.
+    if (isFrozen(caseRowRaw.status)) {
+      return reply.code(409).send(pushedCaseRefusal());
     }
 
     let caseRow;

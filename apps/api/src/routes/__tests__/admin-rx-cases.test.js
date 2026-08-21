@@ -1,5 +1,8 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import {
   DEFAULT_QUEUE_STATUSES,
   summariseLines,
@@ -8,6 +11,7 @@ import {
   normalizeSeazonaCode,
   CASE_STATUSES,
   canTransition,
+  isFrozen,
 } from "../admin-rx-cases.routes.js";
 
 test("the queue defaults to everything needing attention", () => {
@@ -169,4 +173,76 @@ test("canTransition rejects a 'from' status the system does not recognise", () =
 
 test("canTransition still rejects an unrecognised 'to' status", () => {
   assert.equal(canTransition("new", "bogus_status"), false);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// isFrozen — the write guard for a pushed case's LINES (Task 9 fix 1).
+//
+// canTransition already makes `pushed` terminal for the case's status.
+// isFrozen is the same rule applied to the case's CONTENTS: once pushed, the
+// Seazona order already exists, so the four line-mutating routes (add/edit/
+// delete a line, re-resolve) must refuse rather than silently drift from
+// what the lab actually received.
+// ─────────────────────────────────────────────────────────────────────────
+
+test("a pushed case is frozen", () => {
+  assert.equal(isFrozen("pushed"), true);
+});
+
+test("a non-pushed case is not frozen, including cancelled — that scope widening is a separate, unruled-on question", () => {
+  for (const status of ["new", "in_review", "awaiting_doctor", "failed", "cancelled"]) {
+    assert.equal(isFrozen(status), false, `${status} must not be frozen`);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Wiring check: does each of the four line-mutating routes actually call
+// the guard?
+//
+// This module has no Fastify-inject harness (every other test in this file
+// exercises an exported pure function, never a running route — see the
+// imports above), so the route handlers can't be invoked to prove the guard
+// runs. The nearest available check that would still fail if the guard were
+// deleted from one specific route is a static one: isolate that route's
+// handler body by its registration line and confirm the guard call
+// (refusePushedCase or an inline isFrozen check, for re-resolve which
+// already has the row loaded) appears inside it. This proves the call site
+// exists in the right place in the source; it does NOT prove the guard runs
+// before the mutation or short-circuits the handler at runtime — that would
+// need a real HTTP harness this module doesn't have.
+// ─────────────────────────────────────────────────────────────────────────
+
+const routesFilePath = join(dirname(fileURLToPath(import.meta.url)), "../admin-rx-cases.routes.js");
+const routesSource = readFileSync(routesFilePath, "utf8");
+
+function handlerSource(registrationMarker) {
+  const start = routesSource.indexOf(registrationMarker);
+  assert.ok(start >= 0, `route registration not found in source: ${registrationMarker}`);
+  const next = routesSource.indexOf("\n  fastify.", start + registrationMarker.length);
+  return routesSource.slice(start, next === -1 ? routesSource.length : next);
+}
+
+test("POST /admin/rx-cases/:id/lines is wired to the pushed-case guard", () => {
+  const body = handlerSource('fastify.post("/admin/rx-cases/:id/lines",');
+  assert.match(body, /refusePushedCase\(|isFrozen\(/);
+});
+
+test("PUT /admin/rx-cases/:id/lines/:lineId is wired to the pushed-case guard", () => {
+  const body = handlerSource('fastify.put("/admin/rx-cases/:id/lines/:lineId",');
+  assert.match(body, /refusePushedCase\(|isFrozen\(/);
+});
+
+test("DELETE /admin/rx-cases/:id/lines/:lineId is wired to the pushed-case guard", () => {
+  const body = handlerSource('fastify.delete("/admin/rx-cases/:id/lines/:lineId",');
+  assert.match(body, /refusePushedCase\(|isFrozen\(/);
+});
+
+test("POST /admin/rx-cases/:id/re-resolve is wired to the pushed-case guard", () => {
+  const body = handlerSource('fastify.post("/admin/rx-cases/:id/re-resolve",');
+  assert.match(body, /refusePushedCase\(|isFrozen\(/);
+});
+
+test("PUT /admin/rx-cases/:id/status is NOT double-gated by the new guard — canTransition already handles it, and the 409 shape must not change", () => {
+  const body = handlerSource('fastify.put("/admin/rx-cases/:id/status",');
+  assert.doesNotMatch(body, /refusePushedCase\(/);
 });
