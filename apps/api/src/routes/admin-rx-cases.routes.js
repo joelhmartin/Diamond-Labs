@@ -3,6 +3,7 @@ import { requireAdmin } from "../middleware/require-role.js";
 import { db } from "../config/database.js";
 import { rxCases, rxCaseLines, rxCaseFiles } from "../db/schema/index.js";
 import { decryptRxPhi } from "../services/rx/phi-crypto.js";
+import * as auditService from "../services/audit.service.js";
 import { ERROR_CODES } from "@my-app/shared";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 
@@ -69,6 +70,34 @@ export function canPush(lines = []) {
 }
 
 /**
+ * Decrypt a case row for a LIST context. A single corrupt / wrong-key row
+ * must not break the whole queue — replace it with a redacted placeholder
+ * (PHI nulled, `decryptError` flagged) and log the failure, rather than
+ * letting the exception 500 the whole page. Mirrors rx.routes.js's
+ * `GET /rx/cases` list route.
+ */
+function safeDecryptForList(row, request) {
+  try {
+    return decryptRxPhi(row);
+  } catch (err) {
+    request.log.error({ caseId: row.id, err: err.message }, "rx PHI decrypt failed");
+    return {
+      ...row,
+      patientFirst: null,
+      patientLast: null,
+      dob: null,
+      contactPhone: null,
+      generalComments: null,
+      shipTo: null,
+      formData: null,
+      deviceOptions: null,
+      payloadSnapshot: null,
+      decryptError: true,
+    };
+  }
+}
+
+/**
  * Case-insensitive "does this case match the search text" check, run against
  * the DECRYPTED row. patientFirst/patientLast/practiceName/caseNumber are the
  * fields staff search by. Patient name is PHI (encrypted at rest), so this
@@ -124,7 +153,7 @@ export default async function adminRxCasesRoutes(fastify) {
         .where(whereClause)
         .orderBy(desc(rxCases.createdAt));
 
-      const decrypted = all.map((row) => decryptRxPhi(row));
+      const decrypted = all.map((row) => safeDecryptForList(row, request));
       const matched = decrypted.filter((row) => matchesQuery(row, search));
       total = matched.length;
       pageRows = matched.slice(offset, offset + limit);
@@ -140,7 +169,7 @@ export default async function adminRxCasesRoutes(fastify) {
         db.select({ id: rxCases.id }).from(rxCases).where(whereClause),
       ]);
       total = countRows.length;
-      pageRows = rows.map((row) => decryptRxPhi(row));
+      pageRows = rows.map((row) => safeDecryptForList(row, request));
     }
 
     const caseIds = pageRows.map((row) => row.id);
@@ -172,6 +201,15 @@ export default async function adminRxCasesRoutes(fastify) {
       };
     });
 
+    auditService.logSafe({
+      userId: request.user.id,
+      action: "rx_case.list",
+      targetType: "rx_case",
+      targetId: null,
+      metadata: { count: data.length, total },
+      ipAddress: request.ip,
+    });
+
     return { data, meta: { total } };
   });
 
@@ -196,19 +234,38 @@ export default async function adminRxCasesRoutes(fastify) {
       return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
     }
 
-    const decrypted = decryptRxPhi(caseRow);
-
     const [lines, files] = await Promise.all([
       db
         .select()
         .from(rxCaseLines)
-        .where(eq(rxCaseLines.caseId, decrypted.id))
+        .where(eq(rxCaseLines.caseId, caseRow.id))
         .orderBy(asc(rxCaseLines.position)),
       db
         .select()
         .from(rxCaseFiles)
-        .where(eq(rxCaseFiles.caseId, decrypted.id)),
+        .where(eq(rxCaseFiles.caseId, caseRow.id)),
     ]);
+
+    auditService.logSafe({
+      userId: request.user.id,
+      action: "rx_case.read",
+      targetType: "rx_case",
+      targetId: caseRow.id,
+      ipAddress: request.ip,
+    });
+
+    // Decrypt PHI columns before returning to staff. On a decrypt failure
+    // (corrupt / wrong-key), return a generic 500 — never leak the raw error
+    // or any partial PHI. Mirrors rx.routes.js's GET /rx/cases/:id.
+    let decrypted;
+    try {
+      decrypted = decryptRxPhi(caseRow);
+    } catch (err) {
+      request.log.error({ caseId: caseRow.id, err: err.message }, "rx PHI decrypt failed");
+      return reply.code(500).send({
+        error: { code: "INTERNAL_ERROR", status: 500, message: "Failed to load case." },
+      });
+    }
 
     return {
       data: {

@@ -44,3 +44,11 @@ test("a case with no lines at all cannot be pushed", () => {
   assert.equal(r.ok, false);
   assert.match(r.reason, /no lines/i);
 });
+
+test("a case whose only line is note-only has nothing to send", () => {
+  // Guards the difference between "no lines" and "no SENDABLE lines" — an
+  // implementation checking lines.length instead of emitting.length passes
+  // every other test here and still lets this through.
+  const r = canPush([{ status: "open", noteOnly: true }]);
+  assert.equal(r.ok, false);
+});
