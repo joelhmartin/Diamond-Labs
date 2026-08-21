@@ -505,6 +505,12 @@ export default async function rxRoutes(fastify) {
           userId,
           seazonaClientId: seazonaClientId || null,
           seazonaAccountNumber: seazonaAccountNumber || null,
+          // Same source the arrival email uses, so the queue row and the
+          // email about it never disagree. This route's payload carries no
+          // practice name of its own, and the submitting doctor is the best
+          // "who sent this" available without a memberships join in the
+          // submit path — see follow-up 9 for using accounts.name properly.
+          practiceName: request.user.name || null,
           patientFirst: data.patientFirst,
           patientLast: data.patientLast,
           formType: data.formType,
