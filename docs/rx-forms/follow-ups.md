@@ -93,3 +93,23 @@ decision about where that adapter should live, not just code.
   with a green suite.
 - `ROUTES.DOCTOR_NEW_CASE` is now referenced by nothing after the wizard
   retirement.
+
+## 8. The Seazona claim predicate is duplicated across two routes
+
+`POST /admin/rx-cases/:id/push` and `POST /admin/rx-cases/:id/mark-manual` each
+build the same conditional-update claim by hand:
+
+```js
+ne(rxCases.status, "pushed"),
+or(isNull(rxCases.seazonaPushStatus), ne(rxCases.seazonaPushStatus, "pushing")),
+```
+
+This is the guard that stops one case becoming two Seazona orders, and Seazona
+has no idempotency key — a duplicate is a real order someone has to find and
+delete. Editing one site and not the other reopens the race.
+
+Not urgent: the paired static-source tests in `admin-rx-cases.test.js` assert
+both sites, so a one-sided edit fails the suite today. **Fix when a real
+Fastify-inject harness lands** (follow-up 5) — at that point the static tests
+get replaced anyway, and the shared helper should land with them rather than
+being refactored in isolation now.
