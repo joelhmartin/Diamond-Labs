@@ -700,6 +700,18 @@ export default async function rxRoutes(fastify) {
             // wrongly assuming it's still "new" and unattempted. Still
             // conditioned on the "pushing" claim so this can't stomp a
             // status some other actor already wrote.
+            //
+            // The push lock is deliberately NOT released here. An unexpected
+            // throw can happen AFTER createOrder already succeeded (the
+            // outcome write failing is exactly that shape), so the order may
+            // well exist in Seazona while we record a failure. That is the
+            // same ambiguity shouldReleasePushLock exists for, and here we
+            // cannot even consult it — `outcome` may never have been
+            // assigned. Unknown means hold: leave seazonaPushStatus at
+            // "pushing" so clear-push-lock forces someone to check Seazona
+            // before a retry can create a second real order. `status`
+            // still becomes "failed", so the case stays visible and
+            // actionable in the queue either way.
             request.log.error(
               { caseId, err: err.message },
               "[Seazona][RX_AUTO_PUSH_ERROR] auto-push threw unexpectedly"
@@ -707,8 +719,9 @@ export default async function rxRoutes(fastify) {
             try {
               const [written] = await db.update(rxCases).set({
                 status: "failed",
-                seazonaPushStatus: "failed",
-                seazonaPushError: err.message || "Auto-push failed unexpectedly.",
+                seazonaPushError:
+                  `${err.message || "Auto-push failed unexpectedly."} `
+                  + "Check Seazona before retrying — the order may have been created.",
                 updatedAt: new Date(),
               })
                 .where(and(eq(rxCases.id, caseId), eq(rxCases.seazonaPushStatus, "pushing")))
