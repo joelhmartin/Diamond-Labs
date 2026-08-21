@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import api from "../../config/api.js";
 import { ROUTES } from "../../config/routes.js";
+import { resolutionLabel } from "../../lib/rx-case-labels.js";
 
 const INPUT =
   "w-full px-3.5 py-2.5 rounded-lg bg-white border border-surface-300/60 text-primary text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-icon";
@@ -18,6 +19,13 @@ const INPUT =
 // still needing lab attention). `pushed` and `cancelled` are resolved/dead
 // and deliberately excluded, mirroring the backend's DEFAULT_QUEUE_STATUSES.
 const QUEUE_STATUSES = ["new", "in_review", "awaiting_doctor", "failed"];
+
+// The one resolved status this page offers a path to: cases the lab already
+// finished, either by pushing to Seazona or by recording a manual add
+// (resolutionLabel tells those two apart). Excluded from the default fetch
+// (matching the backend's DEFAULT_QUEUE_STATUSES), so it's fetched
+// separately, on demand, when staff actually ask to see resolved work.
+const RESOLVED_STATUS = "pushed";
 
 /**
  * Human label for a case status. Exported (and pure) so it's directly
@@ -90,19 +98,62 @@ export function AdminRxCasesPage() {
   const [cases, setCases] = useState([]);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [resolvedLoaded, setResolvedLoaded] = useState(false);
+  const [resolvedLoading, setResolvedLoading] = useState(false);
+
+  // Merges rows into `cases` by id rather than replacing the array — called
+  // by both the initial mount (open queue) and, lazily, the Resolved filter
+  // pill (RESOLVED_STATUS rows), and neither fetch should stomp the other's
+  // results.
+  const mergeCases = (rows) => {
+    setCases((prev) => {
+      const byId = new Map(prev.map((c) => [c.id, c]));
+      for (const row of rows) byId.set(row.id, row);
+      return Array.from(byId.values());
+    });
+  };
 
   const load = async () => {
     try {
       // limit=200 (the API's max) so a normal-sized queue loads in one
       // request without pagination UI — no status param, so the backend
-      // applies its own DEFAULT_QUEUE_STATUSES.
+      // applies its own DEFAULT_QUEUE_STATUSES. Resolved (pushed) cases are
+      // deliberately NOT part of this fetch; see loadResolved below.
       const res = await api.get("/admin/rx-cases", { params: { limit: 200 } });
-      setCases(res.data.data || []);
+      mergeCases(res.data.data || []);
       setError(null);
     } catch (err) {
       setError(err.response?.data?.error?.message || err.message || "Failed to load the case queue.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fetches resolved (pushed) cases on demand — the queue's default fetch
+  // excludes them, so without this the Resolved filter would show nothing
+  // even though matching rows exist. Idempotent: a repeat call while already
+  // loaded/loading is a no-op rather than a redundant request.
+  const loadResolved = async () => {
+    if (resolvedLoaded || resolvedLoading) return;
+    setResolvedLoading(true);
+    try {
+      const res = await api.get("/admin/rx-cases", {
+        params: { limit: 200, status: RESOLVED_STATUS },
+      });
+      mergeCases(res.data.data || []);
+      setResolvedLoaded(true);
+    } catch (err) {
+      setError(err.response?.data?.error?.message || err.message || "Failed to load resolved cases.");
+    } finally {
+      setResolvedLoading(false);
+    }
+  };
+
+  const refresh = () => {
+    load();
+    if (resolvedLoaded) {
+      setResolvedLoaded(false);
+      loadResolved();
     }
   };
 
@@ -117,15 +168,30 @@ export function AdminRxCasesPage() {
     return counts;
   }, [cases]);
 
+  // "In queue" — the open-queue count only (QUEUE_STATUSES), not
+  // cases.length: once the Resolved pill has been used, `cases` also holds
+  // pushed rows, and those are resolved work, not backlog.
+  const queueCount = useMemo(
+    () => QUEUE_STATUSES.reduce((sum, s) => sum + (statusCounts[s] || 0), 0),
+    [statusCounts],
+  );
+
   const blockedCount = useMemo(
-    () => cases.filter((c) => c.unmappedCount > 0).length,
+    () => cases.filter((c) => QUEUE_STATUSES.includes(c.status) && c.unmappedCount > 0).length,
     [cases],
   );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return cases.filter((c) => {
-      if (statusFilter !== "all" && c.status !== statusFilter) return false;
+      // "All" means the open queue (matching the page's own description
+      // below) — not literally every fetched row, since resolved cases may
+      // also be sitting in `cases` once the Resolved pill has been used.
+      if (statusFilter === "all") {
+        if (!QUEUE_STATUSES.includes(c.status)) return false;
+      } else if (c.status !== statusFilter) {
+        return false;
+      }
       if (!q) return true;
       const blob = [c.caseNumber, c.patientName, c.practiceName, c.deviceKey]
         .filter(Boolean)
@@ -146,7 +212,7 @@ export function AdminRxCasesPage() {
         </div>
         <button
           type="button"
-          onClick={load}
+          onClick={refresh}
           className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-100 transition-all"
         >
           <RefreshCw size={12} />
@@ -156,7 +222,7 @@ export function AdminRxCasesPage() {
 
       {!loading && !error && cases.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          <Stat label="In queue" value={cases.length} />
+          <Stat label="In queue" value={queueCount} />
           <Stat label="Awaiting doctor" value={statusCounts.awaiting_doctor || 0} tint="text-amber-700" />
           <Stat label="Failed" value={statusCounts.failed || 0} tint="text-red-600" />
           <Stat label="Blocked (unmapped)" value={blockedCount} tint="text-red-600" />
@@ -182,7 +248,7 @@ export function AdminRxCasesPage() {
               statusFilter === "all" ? "bg-navy text-white" : "bg-surface-100 text-secondary hover:text-primary"
             }`}
           >
-            All ({cases.length})
+            All ({queueCount})
           </button>
           {QUEUE_STATUSES.map((s) => {
             const active = statusFilter === s;
@@ -200,6 +266,19 @@ export function AdminRxCasesPage() {
               </button>
             );
           })}
+          <button
+            type="button"
+            onClick={() => {
+              setStatusFilter(RESOLVED_STATUS);
+              loadResolved();
+            }}
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold transition-all ${
+              statusFilter === RESOLVED_STATUS ? "bg-navy text-white" : `${statusColor(RESOLVED_STATUS)} hover:bg-navy/10`
+            }`}
+          >
+            {resolvedLoading && <Loader2 size={11} className="animate-spin" />}
+            Resolved{resolvedLoaded ? ` (${statusCounts[RESOLVED_STATUS] || 0})` : ""}
+          </button>
         </div>
       </div>
 
@@ -267,9 +346,16 @@ export function AdminRxCasesPage() {
                     </td>
                     <td className="px-4 py-3 text-xs text-secondary">{formatDate(c.createdAt)}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${statusColor(c.status)}`}>
-                        {statusLabel(c.status)}
-                      </span>
+                      <div className="flex flex-col items-start gap-1">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${statusColor(c.status)}`}>
+                          {statusLabel(c.status)}
+                        </span>
+                        {resolutionLabel(c.seazonaPushStatus) && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-700">
+                            {resolutionLabel(c.seazonaPushStatus)}
+                          </span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

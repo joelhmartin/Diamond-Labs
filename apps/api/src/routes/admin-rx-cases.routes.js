@@ -6,6 +6,7 @@ import { decryptRxPhi } from "../services/rx/phi-crypto.js";
 import { reResolveLines } from "../services/rx/case-lines.service.js";
 import { loadOverrides } from "../services/rx/code-overrides.service.js";
 import { pushCaseToSeazona, shouldReleasePushLock } from "../services/rx/push-case.service.js";
+import { getSignedReadUrl } from "../services/storage.service.js";
 import * as seazonaService from "../services/seazona.service.js";
 import * as auditService from "../services/audit.service.js";
 import { createId } from "../lib/id.js";
@@ -346,6 +347,65 @@ export default async function adminRxCasesRoutes(fastify) {
         prescription: decrypted.formData,
       },
     };
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // GET /admin/rx-cases/:id/files/:fileId — issue a short-lived signed URL for
+  // a stored case file. Mirrors GET /rx/cases/:id/files/:fileId in
+  // rx.routes.js: same getSignedReadUrl() mechanism, same "the file must
+  // belong to the case" check, same never-serve-the-raw-pointer discipline
+  // (HIPAA: PHI files are never served via a public or long-lived link). The
+  // one difference is the access gate — the doctor route also checks case
+  // ownership; here the admin role gate (requireAdmin) replaces that check,
+  // since an admin legitimately has no ownership constraint. Precisely
+  // because that access is broad, the audit entry below is not optional —
+  // it's what makes it accountable.
+  // ───────────────────────────────────────────────────────────────────────────
+  fastify.get("/admin/rx-cases/:id/files/:fileId", {
+    preHandler: [authenticate, requireAdmin],
+  }, async (request, reply) => {
+    const [caseRow] = await db
+      .select({ id: rxCases.id })
+      .from(rxCases)
+      .where(eq(rxCases.id, request.params.id));
+
+    if (!caseRow) {
+      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    }
+
+    // Load the file row, verifying it belongs to THIS case (prevents fetching
+    // another case's file by guessing a fileId).
+    const [fileRow] = await db
+      .select()
+      .from(rxCaseFiles)
+      .where(and(eq(rxCaseFiles.id, request.params.fileId), eq(rxCaseFiles.caseId, caseRow.id)));
+
+    if (!fileRow) {
+      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    }
+
+    let url;
+    try {
+      url = await getSignedReadUrl(fileRow.gcsUrl);
+    } catch (err) {
+      request.log.error(
+        { caseId: caseRow.id, fileId: fileRow.id, err: err.message },
+        "failed to sign admin rx case file URL"
+      );
+      return reply.code(500).send({
+        error: { code: "INTERNAL_ERROR", status: 500, message: "Failed to generate file link." },
+      });
+    }
+
+    auditService.logSafe({
+      userId: request.user.id,
+      action: "rx_case.file_access",
+      targetType: "rx_case",
+      targetId: caseRow.id,
+      metadata: { fileId: fileRow.id, kind: fileRow.kind },
+      ipAddress: request.ip,
+    });
+    return { data: { url } };
   });
 
   // ───────────────────────────────────────────────────────────────────────────

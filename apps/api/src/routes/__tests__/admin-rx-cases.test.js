@@ -477,3 +477,36 @@ test("phi-crypto.js's TEXT_FIELDS includes manualNote — it is decrypted on eve
   const source = readFileSync(phiCryptoPath, "utf8");
   assert.match(source, /TEXT_FIELDS\s*=\s*\[[^\]]*"manualNote"[^\]]*\]/);
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// C1 — admin file access must mirror the doctor-facing signed-URL route
+// (rx.routes.js GET /rx/cases/:id/files/:fileId), not the raw stored
+// pointer. Same reasoning as the guard tests above: this module has no
+// fastify.inject harness, so these are static checks that the right calls
+// exist in the right handler — not proof of runtime behaviour.
+// ─────────────────────────────────────────────────────────────────────────
+
+const FILE_ACCESS_ROUTE_MARKER = 'fastify.get("/admin/rx-cases/:id/files/:fileId",';
+
+test("GET /admin/rx-cases/:id/files/:fileId is admin-gated, not doctor-gated", () => {
+  const body = handlerSource(FILE_ACCESS_ROUTE_MARKER);
+  assert.match(body, /preHandler:\s*\[authenticate,\s*requireAdmin\]/);
+});
+
+test("GET /admin/rx-cases/:id/files/:fileId signs the stored URL rather than returning it raw", () => {
+  const body = handlerSource(FILE_ACCESS_ROUTE_MARKER);
+  assert.match(body, /getSignedReadUrl\(fileRow\.gcsUrl\)/);
+  assert.doesNotMatch(body, /data:\s*\{\s*url:\s*fileRow\.gcsUrl/, "must not hand back the raw stored pointer");
+});
+
+test("GET /admin/rx-cases/:id/files/:fileId verifies the file belongs to the requested case", () => {
+  const body = handlerSource(FILE_ACCESS_ROUTE_MARKER);
+  assert.match(body, /eq\(rxCaseFiles\.id,\s*request\.params\.fileId\)/);
+  assert.match(body, /eq\(rxCaseFiles\.caseId,\s*caseRow\.id\)/);
+});
+
+test("GET /admin/rx-cases/:id/files/:fileId audits every access — broad admin access is not optional to log", () => {
+  const body = handlerSource(FILE_ACCESS_ROUTE_MARKER);
+  assert.match(body, /action:\s*"rx_case\.file_access"/);
+  assert.match(body, /fileId:\s*fileRow\.id/);
+});

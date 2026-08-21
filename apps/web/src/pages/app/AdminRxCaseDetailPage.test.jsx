@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { pushBlockedReason, resolutionLabel, statusLabel } from "./AdminRxCaseDetailPage.jsx";
+import { pushBlockedReason, statusLabel } from "./AdminRxCaseDetailPage.jsx";
 
 test("the push button explains why it is disabled, rather than just being grey", () => {
   const reason = pushBlockedReason([{ status: "open", noteOnly: false, sourceLabel: "Anterior Pad" }]);
@@ -36,13 +36,6 @@ test("a note-only line never blocks the push, even while still 'open'", () => {
 test("a case with nothing to send is blocked too, same as the server's canPush gate", () => {
   assert.match(pushBlockedReason([]), /no lines to send/);
   assert.match(pushBlockedReason([{ status: "open", noteOnly: true }]), /no lines to send/);
-});
-
-test("resolution label distinguishes a real push from a manual add", () => {
-  assert.equal(resolutionLabel("pushed"), "Sent to Seazona");
-  assert.equal(resolutionLabel("manual"), "Added manually");
-  assert.equal(resolutionLabel(null), null);
-  assert.equal(resolutionLabel("pushing"), null);
 });
 
 test("every case status has a human label", () => {
