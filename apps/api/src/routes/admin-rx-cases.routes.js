@@ -50,8 +50,16 @@ export function summariseLines(lines = []) {
  *   such a case permanently unsendable.
  * - A case with no sendable (non-noteOnly) lines is refused too — an order
  *   with no lines is not a lesser order, it is a wrong one.
+ * - A sendable line blocks if it has no `seazonaCode`, regardless of what
+ *   its own `status` claims. This gate is the last check before a real
+ *   order reaches the lab, so it does not trust a line's self-reported
+ *   status — it independently confirms the one thing that actually makes a
+ *   line sendable: a product code is present. Nothing upstream produces a
+ *   codeless "confirmed" line today (statusForLine guards the write path,
+ *   the resolver routes codeless rows to unmapped), but this gate must hold
+ *   even if a future producer gets that wrong.
  *
- * @param {Array<{status: string, noteOnly?: boolean, mapKey?: string, sourceLabel?: string}>} lines
+ * @param {Array<{status: string, noteOnly?: boolean, seazonaCode?: string|null, mapKey?: string, sourceLabel?: string}>} lines
  * @returns {{ ok: boolean, reason?: string, blocking?: Array<string|undefined> }}
  */
 export function canPush(lines = []) {
@@ -59,7 +67,7 @@ export function canPush(lines = []) {
   if (emitting.length === 0) {
     return { ok: false, reason: "This case has no lines to send." };
   }
-  const blocking = emitting.filter((l) => l.status === "open");
+  const blocking = emitting.filter((l) => l.status === "open" || !l.seazonaCode);
   if (blocking.length > 0) {
     return {
       ok: false,
