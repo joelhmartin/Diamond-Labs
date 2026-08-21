@@ -5,7 +5,7 @@ import { rxCases, rxCaseFiles } from "../db/schema/index.js";
 import { createId } from "../lib/id.js";
 import { env } from "../config/env.js";
 import { eq, desc, and } from "drizzle-orm";
-import { ERROR_CODES, rxCaseSubmitSchema, rxFormSubmitSchema } from "@my-app/shared";
+import { ERROR_CODES, rxCaseSubmitSchema, rxFormSubmitSchema, buildDigitalDevices } from "@my-app/shared";
 import * as seazonaService from "../services/seazona.service.js";
 import { buildSeazonaOrderPayload } from "../services/rx/build-order-payload.js";
 import { uploadCaseFile, deleteStoredFile, getSignedReadUrl } from "../services/storage.service.js";
@@ -459,6 +459,11 @@ export default async function rxRoutes(fastify) {
         signatureUrl = gcsUrl;
       }
 
+      // Resolve the doctor's selections into devices so the case is reviewable.
+      // rx_cases carries one deviceKey for display; the full list lives in
+      // deviceOptions.devices so a multi-device prescription loses nothing.
+      const devices = buildDigitalDevices(data.formData ?? {});
+
       await db.transaction(async (tx) => {
         // Encrypt PHI columns at rest (patientFirst/Last + the formData blob).
         await tx.insert(rxCases).values(encryptRxPhi({
@@ -471,9 +476,9 @@ export default async function rxRoutes(fastify) {
           patientLast: data.patientLast,
           formType: data.formType,
           formData: data.formData ?? {},
-          deviceKey: null,
+          deviceKey: devices[0]?.deviceKey ?? null,
           deviceCategory: null,
-          deviceOptions: {},
+          deviceOptions: { devices },
           dueDate: data.dueDate || null,
           signatureUrl,
           status: "pending_approval",

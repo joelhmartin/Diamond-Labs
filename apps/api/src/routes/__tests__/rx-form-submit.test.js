@@ -1,7 +1,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 
-import { rxFormSubmitSchema } from "@my-app/shared";
+import { rxFormSubmitSchema, buildDigitalDevices } from "@my-app/shared";
 
 test("valid payload parses", () => {
   const result = rxFormSubmitSchema.safeParse({
@@ -53,4 +53,21 @@ test("omitted formData defaults to {}", () => {
   });
   assert.equal(result.success, true);
   assert.deepEqual(result.data.formData, {});
+});
+
+test("a form submission resolves its devices instead of storing null", () => {
+  const devices = buildDigitalDevices({
+    devicesToOrder: ["ddso"],
+    ddsoMaterial: "NYLON",
+  });
+  assert.equal(devices.length, 1);
+  assert.equal(devices[0].deviceKey, "ddso");
+});
+
+test("a multi-device submission keeps every device, not just the first", () => {
+  const devices = buildDigitalDevices({
+    devicesToOrder: ["ddso", "snorehook"],
+    ddsoMaterial: "NYLON",
+  });
+  assert.deepEqual(devices.map((d) => d.deviceKey).sort(), ["ddso", "snorehook"]);
 });
