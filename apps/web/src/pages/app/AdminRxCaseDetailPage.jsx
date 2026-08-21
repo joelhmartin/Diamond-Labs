@@ -43,7 +43,13 @@ export function pushBlockedReason(lines = []) {
   if (emitting.length === 0) {
     return "This case has no lines to send.";
   }
-  const blocking = emitting.filter((l) => l.status === "open");
+  // Both halves of the server's rule, deliberately. canPush blocks a line with
+  // no seazonaCode REGARDLESS of what its status claims — it was made
+  // self-sufficient precisely so a stale "confirmed" can't wave a codeless line
+  // through. Mirroring only the status half would light up Push for a case the
+  // server then refuses with a 422, which is the dead end this helper exists to
+  // prevent.
+  const blocking = emitting.filter((l) => l.status === "open" || !l.seazonaCode);
   if (blocking.length === 0) return null;
   const names = blocking.map((l) => l.sourceLabel || l.mapKey).filter(Boolean);
   return `Needs a product code for: ${names.join(", ")}`;

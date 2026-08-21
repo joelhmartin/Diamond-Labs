@@ -8,13 +8,25 @@ test("the push button explains why it is disabled, rather than just being grey",
 });
 
 test("nothing blocking means no reason", () => {
-  assert.equal(pushBlockedReason([{ status: "confirmed", noteOnly: false }]), null);
+  assert.equal(pushBlockedReason([{ status: "confirmed", noteOnly: false, seazonaCode: "2608" }]), null);
+});
+
+// The server's canPush deliberately does not trust a line's own `status` — it
+// blocks any sendable line with no seazonaCode, whatever the status claims.
+// This helper mirrors that whole rule, not half of it: checking only `status`
+// would light Push up for a case the server then refuses with a 422, which is
+// exactly the dead end the helper exists to prevent.
+test("a line claiming 'confirmed' with no product code still blocks", () => {
+  assert.match(
+    pushBlockedReason([{ status: "confirmed", noteOnly: false, sourceLabel: "Anterior Pad" }]),
+    /Anterior Pad/,
+  );
 });
 
 test("a note-only line never blocks the push, even while still 'open'", () => {
   assert.equal(
     pushBlockedReason([
-      { status: "confirmed", noteOnly: false },
+      { status: "confirmed", noteOnly: false, seazonaCode: "2608" },
       { status: "open", noteOnly: true },
     ]),
     null,
