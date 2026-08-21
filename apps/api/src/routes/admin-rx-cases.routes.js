@@ -1,11 +1,12 @@
 import { authenticate } from "../middleware/authenticate.js";
 import { requireAdmin } from "../middleware/require-role.js";
 import { db } from "../config/database.js";
-import { rxCases, rxCaseLines, rxCaseFiles } from "../db/schema/index.js";
+import { rxCases, rxCaseLines, rxCaseFiles, rxCodeOverrides } from "../db/schema/index.js";
 import { decryptRxPhi } from "../services/rx/phi-crypto.js";
 import * as auditService from "../services/audit.service.js";
+import { createId } from "../lib/id.js";
 import { ERROR_CODES } from "@my-app/shared";
-import { asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 
 /**
  * Statuses the queue shows when the caller does not ask for specific ones —
@@ -67,6 +68,33 @@ export function canPush(lines = []) {
     };
   }
   return { ok: true };
+}
+
+/**
+ * Build the rx_code_overrides row for an "always" resolution.
+ *
+ * mapKey is the override table's unique key — an unmapped line carries the same
+ * mapKey the resolver would have used, which is what makes this possible. A
+ * line with no mapKey cannot be resolved permanently, only for this order.
+ */
+export function overrideRowFor({ mapKey, seazonaCode, seazonaName, noteOnly, confirmedBy }) {
+  if (!mapKey) throw new Error("cannot write an override without a mapKey");
+  return {
+    mapKey,
+    seazonaCode: seazonaCode ?? null,
+    seazonaName: seazonaName ?? null,
+    note: noteOnly ? "note only — instruction, not a charged product" : null,
+    confirmedBy: confirmedBy ?? null,
+  };
+}
+
+/**
+ * A line is "confirmed" once it has a real code or the lab has ruled it's a
+ * note-only instruction — either way staff resolved it. Otherwise it's still
+ * "open" and blocks a push (see canPush).
+ */
+function statusForLine({ seazonaCode, noteOnly }) {
+  return noteOnly || seazonaCode ? "confirmed" : "open";
 }
 
 /**
@@ -275,5 +303,219 @@ export default async function adminRxCasesRoutes(fastify) {
         prescription: decrypted.formData,
       },
     };
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // PUT /admin/rx-cases/:id/lines/:lineId
+  // Correct one order line. Body: { seazonaCode, name, arch, noteOnly, scope }
+  // — scope is "once" (this order only) or "always" (also confirm the
+  // mapping permanently via rx_code_overrides).
+  //
+  // Any edit here sets origin: "manual" — re-resolving a case recomputes only
+  // "auto" lines (see case-lines.service.js's reResolveLines), so this is what
+  // makes a staff correction survive an unrelated mapping answer elsewhere.
+  //
+  // scope: "always" needs a mapKey to key the override on. A line with none
+  // (e.g. one staff added by hand) can only be resolved "once" — overrideRowFor
+  // throws in that case and this route turns it into a 422, not a 500.
+  // ───────────────────────────────────────────────────────────────────────────
+  fastify.put("/admin/rx-cases/:id/lines/:lineId", {
+    preHandler: [authenticate, requireAdmin],
+  }, async (request, reply) => {
+    const { id: caseId, lineId } = request.params;
+    const body = request.body || {};
+    const scope = body.scope === "always" ? "always" : "once";
+
+    const [existing] = await db
+      .select()
+      .from(rxCaseLines)
+      .where(and(eq(rxCaseLines.id, lineId), eq(rxCaseLines.caseId, caseId)));
+
+    if (!existing) {
+      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    }
+
+    const seazonaCode = body.seazonaCode !== undefined ? (body.seazonaCode || null) : existing.seazonaCode;
+    const name = body.name !== undefined ? (body.name || null) : existing.name;
+    const arch = body.arch !== undefined ? (body.arch || null) : existing.arch;
+    const noteOnly = body.noteOnly !== undefined ? !!body.noteOnly : existing.noteOnly;
+    const status = statusForLine({ seazonaCode, noteOnly });
+
+    let overrideRow = null;
+    if (scope === "always") {
+      try {
+        overrideRow = overrideRowFor({
+          mapKey: existing.mapKey,
+          seazonaCode,
+          seazonaName: name,
+          noteOnly,
+          confirmedBy: request.user.id,
+        });
+      } catch {
+        return reply.code(422).send({
+          error: {
+            ...ERROR_CODES.VALIDATION_ERROR,
+            message: 'This line has no mapKey, so it can only be resolved for this order (scope: "once").',
+          },
+        });
+      }
+    }
+
+    const [updated] = await db
+      .update(rxCaseLines)
+      .set({
+        seazonaCode,
+        name,
+        arch,
+        noteOnly,
+        origin: "manual",
+        status,
+        updatedAt: new Date(),
+      })
+      .where(eq(rxCaseLines.id, lineId))
+      .returning();
+
+    if (overrideRow) {
+      await db
+        .insert(rxCodeOverrides)
+        .values({ id: createId(), ...overrideRow })
+        .onConflictDoUpdate({
+          target: rxCodeOverrides.mapKey,
+          set: {
+            seazonaCode: overrideRow.seazonaCode,
+            seazonaName: overrideRow.seazonaName,
+            note: overrideRow.note,
+            confirmedBy: overrideRow.confirmedBy,
+            updatedAt: new Date(),
+          },
+        });
+    }
+
+    // Metadata carries only product codes, never the patient's name or any
+    // other decrypted field — rx_case_lines has no PHI, but this route sits
+    // right next to routes that decrypt PHI, so the boundary is deliberate.
+    auditService.logSafe({
+      userId: request.user.id,
+      action: "rx_case_line.updated",
+      targetType: "rx_case",
+      targetId: caseId,
+      metadata: {
+        lineId,
+        scope,
+        before: { seazonaCode: existing.seazonaCode },
+        after: { seazonaCode },
+      },
+      ipAddress: request.ip,
+    });
+
+    return { data: updated };
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // POST /admin/rx-cases/:id/lines
+  // Add a line the resolver never produced — e.g. a build instruction the
+  // prescription didn't cleanly map to a device/modification/attribute row.
+  // Always origin: "manual" (see the PUT handler above for why).
+  // ───────────────────────────────────────────────────────────────────────────
+  fastify.post("/admin/rx-cases/:id/lines", {
+    preHandler: [authenticate, requireAdmin],
+  }, async (request, reply) => {
+    const caseId = request.params.id;
+    const body = request.body || {};
+
+    const [caseRow] = await db.select({ id: rxCases.id }).from(rxCases).where(eq(rxCases.id, caseId));
+    if (!caseRow) {
+      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    }
+
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    if (!name) {
+      return reply.code(422).send({
+        error: { ...ERROR_CODES.VALIDATION_ERROR, message: "name is required." },
+      });
+    }
+
+    const seazonaCode = body.seazonaCode || null;
+    const arch = body.arch || null;
+    const mapKey = body.mapKey || null;
+    const noteOnly = !!body.noteOnly;
+    const sourceLabel = body.sourceLabel || null;
+    const status = statusForLine({ seazonaCode, noteOnly });
+
+    const [lastLine] = await db
+      .select({ position: rxCaseLines.position })
+      .from(rxCaseLines)
+      .where(eq(rxCaseLines.caseId, caseId))
+      .orderBy(desc(rxCaseLines.position))
+      .limit(1);
+    const position = (lastLine?.position ?? -1) + 1;
+
+    const [created] = await db
+      .insert(rxCaseLines)
+      .values({
+        id: createId(),
+        caseId,
+        position,
+        seazonaCode,
+        seazonaProductId: null,
+        name,
+        arch,
+        mapKey,
+        status,
+        origin: "manual",
+        noteOnly,
+        sourceLabel,
+      })
+      .returning();
+
+    auditService.logSafe({
+      userId: request.user.id,
+      action: "rx_case_line.updated",
+      targetType: "rx_case",
+      targetId: caseId,
+      metadata: { lineId: created.id, op: "create", before: null, after: { seazonaCode } },
+      ipAddress: request.ip,
+    });
+
+    return reply.code(201).send({ data: created });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // DELETE /admin/rx-cases/:id/lines/:lineId
+  // Remove a line entirely — e.g. staff added one by mistake, or the resolver
+  // produced a line that shouldn't exist. Hard delete; canPush/summariseLines
+  // simply see one fewer line on the next read.
+  // ───────────────────────────────────────────────────────────────────────────
+  fastify.delete("/admin/rx-cases/:id/lines/:lineId", {
+    preHandler: [authenticate, requireAdmin],
+  }, async (request, reply) => {
+    const { id: caseId, lineId } = request.params;
+
+    const [existing] = await db
+      .select()
+      .from(rxCaseLines)
+      .where(and(eq(rxCaseLines.id, lineId), eq(rxCaseLines.caseId, caseId)));
+
+    if (!existing) {
+      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    }
+
+    await db.delete(rxCaseLines).where(eq(rxCaseLines.id, lineId));
+
+    auditService.logSafe({
+      userId: request.user.id,
+      action: "rx_case_line.updated",
+      targetType: "rx_case",
+      targetId: caseId,
+      metadata: {
+        lineId,
+        op: "delete",
+        before: { seazonaCode: existing.seazonaCode },
+        after: null,
+      },
+      ipAddress: request.ip,
+    });
+
+    return { data: { ok: true } };
   });
 }

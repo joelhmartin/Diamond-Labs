@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { DEFAULT_QUEUE_STATUSES, summariseLines, canPush } from "../admin-rx-cases.routes.js";
+import { DEFAULT_QUEUE_STATUSES, summariseLines, canPush, overrideRowFor } from "../admin-rx-cases.routes.js";
 
 test("the queue defaults to everything needing attention", () => {
   assert.deepEqual(
@@ -51,4 +51,31 @@ test("a case whose only line is note-only has nothing to send", () => {
   // every other test here and still lets this through.
   const r = canPush([{ status: "open", noteOnly: true }]);
   assert.equal(r.ok, false);
+});
+
+test("an 'always' code assignment becomes an override row", () => {
+  const row = overrideRowFor({
+    mapKey: "mod:anterior-pad",
+    seazonaCode: "2181",
+    seazonaName: "Acrylic Palatal Pads",
+    noteOnly: false,
+    confirmedBy: "u1",
+  });
+  assert.equal(row.mapKey, "mod:anterior-pad");
+  assert.equal(row.seazonaCode, "2181");
+});
+
+test("an 'always' note-only ruling is recorded without inventing a code", () => {
+  const row = overrideRowFor({
+    mapKey: "mod:wrap-distal",
+    seazonaCode: null,
+    noteOnly: true,
+    confirmedBy: "u1",
+  });
+  assert.equal(row.seazonaCode, null);
+  assert.match(row.note, /note only/i);
+});
+
+test("an override cannot be written without a mapKey to key it on", () => {
+  assert.throws(() => overrideRowFor({ mapKey: null, seazonaCode: "2181" }), /mapKey/);
 });

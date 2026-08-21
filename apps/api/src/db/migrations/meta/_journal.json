@@ -134,6 +134,13 @@
       "when": 1787326353101,
       "tag": "0018_high_wind_dancer",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1787327504482,
+      "tag": "0019_strange_tenebrous",
+      "breakpoints": true
     }
   ]
 }
