@@ -5,10 +5,14 @@ import { rxCases, rxCaseLines, rxCaseFiles, rxCodeOverrides } from "../db/schema
 import { decryptRxPhi } from "../services/rx/phi-crypto.js";
 import { reResolveLines } from "../services/rx/case-lines.service.js";
 import { loadOverrides } from "../services/rx/code-overrides.service.js";
+import { pushCaseToSeazona } from "../services/rx/push-case.service.js";
+import * as seazonaService from "../services/seazona.service.js";
 import * as auditService from "../services/audit.service.js";
 import { createId } from "../lib/id.js";
+import { encryptJson } from "../lib/crypto.js";
+import { env } from "../config/env.js";
 import { ERROR_CODES } from "@my-app/shared";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 
 /**
  * Statuses the queue shows when the caller does not ask for specific ones —
@@ -793,5 +797,219 @@ export default async function adminRxCasesRoutes(fastify) {
     });
 
     return { data: { lines, replaced, kept } };
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // POST /admin/rx-cases/:id/push
+  // Send a reviewed case to Seazona as a real order. HIGHEST-RISK route in this
+  // module: Seazona has no idempotency key, so a duplicate push is a real
+  // order a human has to go find and delete.
+  //
+  // The payload is built from the case's STORED lines (push-case.service.js's
+  // payloadFromLines), never re-resolved from the raw device selections —
+  // re-resolving here would silently discard every staff correction at the
+  // exact moment those corrections matter. canPush (also in push-case.service.js
+  // via pushCaseToSeazona) independently re-verifies a real product code exists
+  // on every sendable line; it does not trust a line's own `status`.
+  //
+  // Double-push guard: a conditional DB update claims the row by flipping
+  // seazonaPushStatus to "pushing" in the SAME statement that checks it isn't
+  // already pushed or already mid-push (guard at the database, not the button).
+  // The claim is taken on seazonaPushStatus, NOT on `status` — `status` must
+  // only ever hold one of CASE_STATUSES, so a crash between claim and outcome
+  // can never strand a case in a value the queue and UI don't understand.
+  // Deliberately not gated by refusePushedCase/isFrozen (see that guard's
+  // docstring) — this route performs its own, stricter claim and is the one
+  // place allowed to move a case TO `pushed`.
+  //
+  // All Seazona-facing decision logic (the canPush gate, payload build, and
+  // interpreting Seazona's response) lives in pushCaseToSeazona so it stays
+  // unit-testable without a Fastify harness; this route is a thin caller that
+  // only does the DB claim, the final write, and audit logging.
+  // ───────────────────────────────────────────────────────────────────────────
+  fastify.post("/admin/rx-cases/:id/push", {
+    preHandler: [authenticate, requireAdmin],
+  }, async (request, reply) => {
+    const caseId = request.params.id;
+
+    const [caseRowRaw] = await db
+      .select()
+      .from(rxCases)
+      .where(eq(rxCases.id, caseId));
+
+    if (!caseRowRaw) {
+      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    }
+
+    const claimed = await db.update(rxCases)
+      .set({ seazonaPushStatus: "pushing", updatedAt: new Date() })
+      .where(and(
+        eq(rxCases.id, caseId),
+        ne(rxCases.status, "pushed"),
+        or(isNull(rxCases.seazonaPushStatus), ne(rxCases.seazonaPushStatus, "pushing")),
+      ))
+      .returning({ id: rxCases.id });
+
+    if (claimed.length === 0) {
+      return reply.code(409).send({
+        error: {
+          code: "PUSH_IN_FLIGHT_OR_DONE",
+          status: 409,
+          message: "This case has already been sent, or a push is already running.",
+        },
+      });
+    }
+
+    // From here on the row is claimed: seazonaPushStatus="pushing" until this
+    // handler writes a final outcome below. If the process dies before that
+    // write lands, the case is left stuck at "pushing" — recovered via
+    // PUT /admin/rx-cases/:id/clear-push-lock, not automatically.
+    let caseRow;
+    try {
+      caseRow = decryptRxPhi(caseRowRaw);
+    } catch (err) {
+      request.log.error({ caseId, err: err.message }, "rx PHI decrypt failed");
+      await db.update(rxCases)
+        .set({
+          status: "failed",
+          seazonaPushStatus: "failed",
+          seazonaPushError: "Failed to decrypt case PHI before push.",
+          updatedAt: new Date(),
+        })
+        .where(eq(rxCases.id, caseId));
+      return reply.code(500).send({
+        error: { code: "INTERNAL_ERROR", status: 500, message: "Failed to load case." },
+      });
+    }
+
+    const lines = await db
+      .select()
+      .from(rxCaseLines)
+      .where(eq(rxCaseLines.caseId, caseId))
+      .orderBy(asc(rxCaseLines.position));
+
+    // codeToId from the live Seazona catalog — listProducts() returns [] if
+    // Seazona is unreachable (soft-fail), which then surfaces as "no catalog
+    // id for code …" warnings on every line and a failed push, same as the
+    // legacy /rx/cases/:id/approve pattern.
+    const products = await seazonaService.listProducts();
+    const codeToId = {};
+    for (const p of products) {
+      if (p.code) codeToId[p.code] = String(p.id);
+    }
+
+    const outcome = await pushCaseToSeazona(caseRow, lines, {
+      codeToId,
+      userId: env.SEAZONA_ORDER_USER_ID,
+    });
+
+    const updateValues = {
+      status: outcome.status,
+      seazonaPushStatus: outcome.status,
+      seazonaOrderId: outcome.seazonaOrderId,
+      seazonaPushError: outcome.seazonaPushError,
+      updatedAt: new Date(),
+    };
+    if (outcome.status === "pushed") {
+      // PHI (embeds patientName) — encrypt at rest, same treatment as the
+      // legacy /rx/cases/:id/approve dry-run snapshot.
+      updateValues.payloadSnapshot = encryptJson(outcome.payload);
+    }
+
+    const [updated] = await db
+      .update(rxCases)
+      .set(updateValues)
+      .where(eq(rxCases.id, caseId))
+      .returning({
+        id: rxCases.id,
+        status: rxCases.status,
+        seazonaPushStatus: rxCases.seazonaPushStatus,
+        seazonaOrderId: rxCases.seazonaOrderId,
+        seazonaPushError: rxCases.seazonaPushError,
+        updatedAt: rxCases.updatedAt,
+      });
+
+    if (outcome.status === "failed") {
+      request.log.error(
+        { caseId, error: outcome.seazonaPushError },
+        "[Seazona][RX_PUSH_FAILED] case push failed"
+      );
+    }
+
+    auditService.logSafe({
+      userId: request.user.id,
+      action: "rx_case.pushed",
+      targetType: "rx_case",
+      targetId: caseId,
+      metadata: {
+        outcome: outcome.status,
+        seazonaOrderId: outcome.seazonaOrderId,
+        error: outcome.seazonaPushError,
+      },
+      ipAddress: request.ip,
+    });
+
+    if (outcome.status === "failed") {
+      return reply.code(422).send({
+        error: {
+          code: "RX_PUSH_FAILED",
+          status: 422,
+          message: outcome.seazonaPushError || "Failed to push this case to Seazona.",
+        },
+        data: updated,
+      });
+    }
+
+    return { data: updated };
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // PUT /admin/rx-cases/:id/clear-push-lock
+  // Recover a case whose push was interrupted — the process died between the
+  // claim above and its outcome write, leaving seazonaPushStatus stuck at
+  // "pushing" (which blocks every future push attempt via the claim's WHERE).
+  // Resets seazonaPushStatus to null so the case can be retried.
+  //
+  // Deliberately NOT automatic / on a timer: an interrupted push may well have
+  // reached Seazona even though this process never recorded the outcome — a
+  // human must check Seazona before a second attempt, or risk a real duplicate
+  // order. This route only clears the lock; it does not touch `status`,
+  // seazonaOrderId, or the case's lines.
+  // ───────────────────────────────────────────────────────────────────────────
+  fastify.put("/admin/rx-cases/:id/clear-push-lock", {
+    preHandler: [authenticate, requireAdmin],
+  }, async (request, reply) => {
+    const caseId = request.params.id;
+
+    const [existing] = await db
+      .select({ id: rxCases.id, seazonaPushStatus: rxCases.seazonaPushStatus })
+      .from(rxCases)
+      .where(eq(rxCases.id, caseId));
+
+    if (!existing) {
+      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    }
+
+    const [updated] = await db
+      .update(rxCases)
+      .set({ seazonaPushStatus: null, updatedAt: new Date() })
+      .where(eq(rxCases.id, caseId))
+      .returning({
+        id: rxCases.id,
+        status: rxCases.status,
+        seazonaPushStatus: rxCases.seazonaPushStatus,
+        updatedAt: rxCases.updatedAt,
+      });
+
+    auditService.logSafe({
+      userId: request.user.id,
+      action: "rx_case.push_lock_cleared",
+      targetType: "rx_case",
+      targetId: caseId,
+      metadata: { previousSeazonaPushStatus: existing.seazonaPushStatus },
+      ipAddress: request.ip,
+    });
+
+    return { data: updated };
   });
 }
