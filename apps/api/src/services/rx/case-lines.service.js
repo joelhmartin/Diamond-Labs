@@ -1,20 +1,8 @@
 import { eq, and } from "drizzle-orm";
+import { db } from "../../config/database.js";
 import { rxCaseLines } from "../../db/schema/index.js";
 import { resolveLineItems } from "./catalog-map/index.js";
 import { createId } from "../../lib/id.js";
-
-// `db` (../../config/database.js) is only needed by the DB-touching functions
-// below. A static top-level `import { db } from "../../config/database.js"`
-// would run immediately on module load and pull in env validation that calls
-// process.exit(1) when DATABASE_URL/JWT_SECRET aren't set — which is the case
-// under `vitest run` (nothing loads .env for the test process). Deferring the
-// import to call time keeps `linesForDevices` genuinely importable with zero
-// DB dependency, including at test-import time, not just zero DB *calls*.
-let dbPromise;
-function getDb() {
-  if (!dbPromise) dbPromise = import("../../config/database.js").then((m) => m.db);
-  return dbPromise;
-}
 
 /**
  * Pure: devices -> line drafts. No database, so the interesting part is
@@ -62,11 +50,10 @@ export function linesForDevices(devices = [], { overrides = {} } = {}) {
 }
 
 /** Insert the seeded lines for a case. Call inside the submit transaction. */
-export async function seedLines(caseId, devices, { overrides = {}, tx } = {}) {
-  const activeTx = tx || (await getDb());
+export async function seedLines(caseId, devices, { overrides = {}, tx = db } = {}) {
   const drafts = linesForDevices(devices, { overrides });
   if (drafts.length === 0) return;
-  await activeTx.insert(rxCaseLines).values(
+  await tx.insert(rxCaseLines).values(
     drafts.map((l) => ({ ...l, id: createId(), caseId }))
   );
 }
@@ -77,18 +64,17 @@ export async function seedLines(caseId, devices, { overrides = {}, tx } = {}) {
  * Explicit, never automatic: a case someone has already corrected must not
  * change under them because a mapping was answered elsewhere.
  */
-export async function reResolveLines(caseId, devices, { overrides = {}, tx } = {}) {
-  const activeTx = tx || (await getDb());
-  const existing = await activeTx.select().from(rxCaseLines).where(eq(rxCaseLines.caseId, caseId));
+export async function reResolveLines(caseId, devices, { overrides = {}, tx = db } = {}) {
+  const existing = await tx.select().from(rxCaseLines).where(eq(rxCaseLines.caseId, caseId));
   const kept = existing.filter((l) => l.origin === "manual");
 
-  await activeTx.delete(rxCaseLines).where(
+  await tx.delete(rxCaseLines).where(
     and(eq(rxCaseLines.caseId, caseId), eq(rxCaseLines.origin, "auto"))
   );
 
   const drafts = linesForDevices(devices, { overrides });
   if (drafts.length > 0) {
-    await activeTx.insert(rxCaseLines).values(
+    await tx.insert(rxCaseLines).values(
       drafts.map((l, i) => ({ ...l, id: createId(), caseId, position: kept.length + i }))
     );
   }
