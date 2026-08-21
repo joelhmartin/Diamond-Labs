@@ -27,6 +27,14 @@ const MAX_TOTAL_BYTES = MAX_FILES * MAX_FILE_SIZE_BYTES;
 // The five allowed file field names, each mapping directly to the rx_case_files.kind column.
 const FILE_FIELD_KINDS = new Set(["scan", "photo", "prescription", "sleep_study", "artboard"]);
 
+// The status a freshly-submitted case is written with. Exported so a test can
+// pin it against admin-rx-cases.routes.js's DEFAULT_QUEUE_STATUSES — those two
+// have to agree, or the admin queue silently shows nothing (the exact defect
+// this constant exists to catch: rx_cases.status used to default to
+// 'pending_approval' at the schema level while nothing ever queried for that
+// value, so the queue could never return a row).
+export const SUBMISSION_STATUS = "new";
+
 /**
  * Build the 422 response body for an approve attempt whose payload lost a
  * device line (buildSeazonaOrderPayload's ok === false). Pure + exported so
@@ -244,7 +252,7 @@ export default async function rxRoutes(fastify) {
           practiceName: data.practiceName || null,
           signatureUrl: data.signatureUrl || null,
           generalComments: data.generalComments || null,
-          // status defaults to 'pending_approval' at the schema level
+          status: SUBMISSION_STATUS,
         }));
         if (uploadedFiles.length > 0) {
           await tx.insert(rxCaseFiles).values(uploadedFiles);
@@ -274,7 +282,7 @@ export default async function rxRoutes(fastify) {
       metadata: { caseNumber, fileCount: uploadedFiles.length },
       ipAddress: request.ip,
     });
-    return reply.code(201).send({ data: { id: caseId, caseNumber, status: "pending_approval" } });
+    return reply.code(201).send({ data: { id: caseId, caseNumber, status: SUBMISSION_STATUS } });
   });
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -487,7 +495,7 @@ export default async function rxRoutes(fastify) {
           deviceOptions: { devices },
           dueDate: data.dueDate || null,
           signatureUrl,
-          status: "pending_approval",
+          status: SUBMISSION_STATUS,
         }));
         const fileRows = uploadedFiles.filter((f) => !f._signatureOnly);
         if (fileRows.length > 0) {
@@ -521,7 +529,7 @@ export default async function rxRoutes(fastify) {
       metadata: { caseNumber, formType: data.formType, fileCount: pendingFiles.length },
       ipAddress: request.ip,
     });
-    return reply.code(201).send({ data: { id: caseId, caseNumber, status: "pending_approval" } });
+    return reply.code(201).send({ data: { id: caseId, caseNumber, status: SUBMISSION_STATUS } });
   });
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -678,7 +686,7 @@ export default async function rxRoutes(fastify) {
   // POST /rx/cases/:id/approve — build the Seazona order payload and,
   // when RX_LIVE_PUSH=true, push it; otherwise run dry.
   //
-  // Status gate: only `pending_approval` cases can be approved (409 otherwise).
+  // Status gate: only `new` cases can be approved (409 otherwise).
   // Ownership gate: the requesting doctor must own the case.
   //
   // DRY-RUN behaviour (default — RX_LIVE_PUSH unset or not "true"):
@@ -709,7 +717,7 @@ export default async function rxRoutes(fastify) {
     // Decrypt PHI before building the Seazona payload so build-order-payload
     // (and its notes/name compilation) sees plaintext.
     const caseRow = decryptRxPhi(caseRowRaw);
-    if (caseRow.status !== "pending_approval") {
+    if (caseRow.status !== SUBMISSION_STATUS) {
       return reply.code(409).send({
         error: {
           code: "CASE_NOT_PENDING",
@@ -773,7 +781,7 @@ export default async function rxRoutes(fastify) {
     // ── Persist approval (ATOMIC) ─────────────────────────────────────────────
     // Fold the status predicate into the WHERE so two concurrent approves can't
     // both pass the earlier app-level check and double-process (TOCTOU). Only the
-    // request that actually flips pending_approval → approved proceeds; a loser
+    // request that actually flips new → approved proceeds; a loser
     // gets 409. Critical once the RX_LIVE_PUSH branch calls createOrder.
     const updated = await db
       .update(rxCases)
@@ -784,7 +792,7 @@ export default async function rxRoutes(fastify) {
         seazonaOrderId,
         updatedAt: new Date(),
       })
-      .where(and(eq(rxCases.id, caseRow.id), eq(rxCases.status, "pending_approval")))
+      .where(and(eq(rxCases.id, caseRow.id), eq(rxCases.status, SUBMISSION_STATUS)))
       .returning({ id: rxCases.id });
 
     if (updated.length === 0) {
@@ -792,7 +800,7 @@ export default async function rxRoutes(fastify) {
         error: {
           code: "CASE_NOT_PENDING",
           status: 409,
-          message: "Case is no longer pending approval (already approved or being approved).",
+          message: "Case is no longer new (already approved or being approved).",
         },
       });
     }
