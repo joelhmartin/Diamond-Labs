@@ -35,7 +35,7 @@ export const rxCases = pgTable("rx_cases", {
   rushTier: varchar("rush_tier", { length: 40 }),
   signatureUrl: text("signature_url"),
   generalComments: text("general_comments"),
-  status: varchar("status", { length: 40 }).notNull().default("pending_approval"),
+  status: varchar("status", { length: 40 }).notNull().default("new"),
   seazonaPushStatus: varchar("seazona_push_status", { length: 40 }),
   seazonaOrderId: varchar("seazona_order_id", { length: 128 }),
   seazonaPushError: text("seazona_push_error"),
