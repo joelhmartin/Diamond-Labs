@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Search,
   RefreshCw,
@@ -7,6 +8,7 @@ import {
   ClipboardCheck,
 } from "lucide-react";
 import api from "../../config/api.js";
+import { ROUTES } from "../../config/routes.js";
 
 const INPUT =
   "w-full px-3.5 py-2.5 rounded-lg bg-white border border-surface-300/60 text-primary text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-icon";
@@ -82,6 +84,7 @@ function Th({ children, className = "" }) {
 }
 
 export function AdminRxCasesPage() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [cases, setCases] = useState([]);
@@ -238,7 +241,11 @@ export function AdminRxCasesPage() {
               </thead>
               <tbody>
                 {filtered.map((c) => (
-                  <tr key={c.id} className="border-b border-surface-300/30 hover:bg-surface-50">
+                  <tr
+                    key={c.id}
+                    onClick={() => navigate(ROUTES.ADMIN_RX_CASE_DETAIL.replace(":id", c.id))}
+                    className="border-b border-surface-300/30 hover:bg-surface-50 cursor-pointer"
+                  >
                     <td className="px-4 py-3 font-mono text-xs text-brand-600">{c.caseNumber || "—"}</td>
                     <td className="px-4 py-3">
                       <div className="text-sm font-medium text-primary truncate max-w-[200px]">
