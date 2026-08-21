@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { db } from "../../config/database.js";
 import { rxCaseLines } from "../../db/schema/index.js";
 import { resolveLineItems } from "./catalog-map/index.js";
@@ -63,14 +63,33 @@ export async function seedLines(caseId, devices, { overrides = {}, tx = db } = {
  *
  * Explicit, never automatic: a case someone has already corrected must not
  * change under them because a mapping was answered elsewhere.
+ *
+ * Re-resolve renumbers: kept manual lines take 0..n-1 in their existing
+ * relative order, then the regenerated auto lines follow. A manual line's
+ * old position relative to auto lines is meaningless once the auto set has
+ * changed, so a stable total order beats preserving a stale relationship.
  */
 export async function reResolveLines(caseId, devices, { overrides = {}, tx = db } = {}) {
-  const existing = await tx.select().from(rxCaseLines).where(eq(rxCaseLines.caseId, caseId));
+  const existing = await tx
+    .select()
+    .from(rxCaseLines)
+    .where(eq(rxCaseLines.caseId, caseId))
+    .orderBy(asc(rxCaseLines.position));
   const kept = existing.filter((l) => l.origin === "manual");
 
   await tx.delete(rxCaseLines).where(
     and(eq(rxCaseLines.caseId, caseId), eq(rxCaseLines.origin, "auto"))
   );
+
+  // Renumber kept rows deterministically rather than assuming they already
+  // occupy 0..kept.length-1 — nothing establishes that, and with no unique
+  // constraint on (caseId, position) a wrong assumption here silently
+  // collides with the regenerated auto lines instead of erroring.
+  for (let i = 0; i < kept.length; i++) {
+    if (kept[i].position !== i) {
+      await tx.update(rxCaseLines).set({ position: i }).where(eq(rxCaseLines.id, kept[i].id));
+    }
+  }
 
   const drafts = linesForDevices(devices, { overrides });
   if (drafts.length > 0) {
