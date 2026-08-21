@@ -9,7 +9,7 @@ import { ERROR_CODES, rxCaseSubmitSchema, rxFormSubmitSchema, buildDigitalDevice
 import * as seazonaService from "../services/seazona.service.js";
 import { buildSeazonaOrderPayload } from "../services/rx/build-order-payload.js";
 import { seedLines } from "../services/rx/case-lines.service.js";
-import { loadOverrides } from "./admin-rx-mapping.routes.js";
+import { loadOverrides } from "../services/rx/code-overrides.service.js";
 import { uploadCaseFile, deleteStoredFile, getSignedReadUrl } from "../services/storage.service.js";
 import { encryptRxPhi, decryptRxPhi } from "../services/rx/phi-crypto.js";
 import { encryptJson } from "../lib/crypto.js";
