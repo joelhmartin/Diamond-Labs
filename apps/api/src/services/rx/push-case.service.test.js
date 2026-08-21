@@ -124,6 +124,42 @@ test("general comments and noteOnly labels are joined in the notes", () => {
   assert.match(payload.notes, /Trim distal/);
 });
 
+// Regression for a review finding: a noteOnly line with no sourceLabel AND no
+// name used to `continue` silently — no line, no note, no warning. It
+// disappears from the order with nothing telling a human it ever existed.
+// mapKey is the last fallback (mirroring the codeless-line branch just below
+// it in payloadFromLines, which already falls back to mapKey) — an unmapped
+// line seeded with `name: null, sourceLabel: mapKey` still has a name-shaped
+// identifier worth recording even when sourceLabel/name are genuinely empty.
+test("a noteOnly line with no sourceLabel or name falls back to mapKey and still reaches the notes", () => {
+  const { payload, ok } = payloadFromLines(
+    caseRow,
+    [
+      { seazonaCode: "2608", name: "DDSO Nylon", arch: "upper", status: "confirmed", noteOnly: false },
+      { seazonaCode: null, name: null, sourceLabel: null, mapKey: "mod:x", status: "open", noteOnly: true },
+    ],
+    { codeToId: { 2608: "id-2608" }, userId: "u1" }
+  );
+  assert.match(payload.notes, /mod:x/);
+  assert.equal(ok, true);
+});
+
+// The true edge case: a noteOnly line with NOTHING to name it (no
+// sourceLabel, no name, no mapKey either). This must not vanish silently —
+// it has to surface as a warning a human sees, which also means the push is
+// refused (ok === false) rather than sent short an instruction the lab ruled
+// on.
+test("a noteOnly line with no name, sourceLabel, or mapKey at all produces a warning instead of vanishing", () => {
+  const { payload, ok, warnings } = payloadFromLines(
+    caseRow,
+    [{ seazonaCode: null, name: null, sourceLabel: null, mapKey: null, status: "open", noteOnly: true }],
+    { codeToId: {}, userId: "u1" }
+  );
+  assert.equal(ok, false);
+  assert.ok(warnings.length > 0, "expected a warning for the unnameable noteOnly line");
+  assert.doesNotMatch(payload.notes, /null/);
+});
+
 // ─── pushCaseToSeazona — the actual send decision ─────────────────────────
 
 describe("pushCaseToSeazona — one push attempt, decision logic only (Seazona mocked)", () => {
@@ -138,12 +174,14 @@ describe("pushCaseToSeazona — one push attempt, decision logic only (Seazona m
     expect(outcome.seazonaOrderId).toBeNull();
     expect(outcome.seazonaPushError).toBeTruthy();
     expect(createOrder).not.toHaveBeenCalled();
+    expect(outcome.contactedSeazona).toBe(false);
   });
 
   it("a case with no sendable lines at all is refused before Seazona is ever called", async () => {
     const outcome = await pushCaseToSeazona(caseRow, [], { codeToId: {}, userId: "u1" });
     expect(outcome.status).toBe("failed");
     expect(createOrder).not.toHaveBeenCalled();
+    expect(outcome.contactedSeazona).toBe(false);
   });
 
   it("a line whose code has no catalog id fails the push before Seazona is called", async () => {
@@ -156,9 +194,10 @@ describe("pushCaseToSeazona — one push attempt, decision logic only (Seazona m
     expect(outcome.seazonaOrderId).toBeNull();
     expect(outcome.seazonaPushError).toMatch(/2608/);
     expect(createOrder).not.toHaveBeenCalled();
+    expect(outcome.contactedSeazona).toBe(false);
   });
 
-  it("Seazona returning null (the wrapper's signal for both a network error and a non-2xx) lands the case in failed, never pushed", async () => {
+  it("Seazona returning null (the wrapper's signal for both a network error and a non-2xx) lands the case in failed, never pushed, and is marked contacted", async () => {
     createOrder.mockResolvedValue(null);
     const lines = [{ seazonaCode: "9999", name: "Product", arch: "upper", status: "confirmed", noteOnly: false }];
     const outcome = await pushCaseToSeazona(caseRow, lines, { codeToId: { 9999: "id-9999" }, userId: "u1" });
@@ -166,17 +205,22 @@ describe("pushCaseToSeazona — one push attempt, decision logic only (Seazona m
     expect(outcome.seazonaOrderId).toBeNull();
     expect(outcome.seazonaPushError).toBeTruthy();
     expect(createOrder).toHaveBeenCalledOnce();
+    // This is the whole point of the flag: a null result is ambiguous (could
+    // be a network error OR an order that actually landed) — the caller must
+    // be told Seazona was contacted so it knows a retry might duplicate.
+    expect(outcome.contactedSeazona).toBe(true);
   });
 
-  it("Seazona resolving but with no orderId on the response also lands the case in failed", async () => {
+  it("Seazona resolving but with no orderId on the response also lands the case in failed, and is marked contacted", async () => {
     createOrder.mockResolvedValue({ someOtherField: true });
     const lines = [{ seazonaCode: "9999", name: "Product", arch: "upper", status: "confirmed", noteOnly: false }];
     const outcome = await pushCaseToSeazona(caseRow, lines, { codeToId: { 9999: "id-9999" }, userId: "u1" });
     expect(outcome.status).toBe("failed");
     expect(outcome.seazonaOrderId).toBeNull();
+    expect(outcome.contactedSeazona).toBe(true);
   });
 
-  it("a successful create records the order id (as a string) and marks the case pushed", async () => {
+  it("a successful create records the order id (as a string), marks the case pushed, and is marked contacted", async () => {
     createOrder.mockResolvedValue({ orderId: 555 });
     const lines = [{ seazonaCode: "2608", name: "DDSO Nylon", arch: "upper", status: "confirmed", noteOnly: false }];
     const outcome = await pushCaseToSeazona(caseRow, lines, { codeToId: { 2608: "id-2608" }, userId: "u1" });
@@ -186,5 +230,6 @@ describe("pushCaseToSeazona — one push attempt, decision logic only (Seazona m
     expect(outcome.payload.items).toEqual([{ id: "id-2608", arch: 1 }]);
     expect(createOrder).toHaveBeenCalledOnce();
     expect(createOrder).toHaveBeenCalledWith(outcome.payload);
+    expect(outcome.contactedSeazona).toBe(true);
   });
 });

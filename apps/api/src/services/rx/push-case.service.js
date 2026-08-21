@@ -15,7 +15,20 @@ export function payloadFromLines(caseRow, lines = [], { codeToId = {}, userId } 
 
   for (const l of lines) {
     if (l.noteOnly) {
-      if (l.sourceLabel || l.name) noteLines.push(l.sourceLabel || l.name);
+      // Same three-way fallback the codeless-line branch just below already
+      // uses (sourceLabel, then name, then mapKey) — a note-only line with
+      // neither a source label nor a display name can still carry the
+      // resolver's mapKey (e.g. an unmapped line seeded with `name: null,
+      // sourceLabel: mapKey`). If ALL THREE are empty there is truly nothing
+      // to name the instruction with — that must surface as a warning, not
+      // vanish silently: a build instruction the lab ruled on is something a
+      // human has to see, not something the push quietly drops.
+      const label = l.sourceLabel || l.name || l.mapKey;
+      if (label) {
+        noteLines.push(label);
+      } else {
+        warnings.push("a note-only line has no name, source label, or map key to record — refusing to drop it silently");
+      }
       continue;
     }
     if (!l.seazonaCode) {
@@ -73,17 +86,26 @@ function normalizeArch(arch) {
  * would risk leaving the case's seazonaPushStatus claim ("pushing") stuck
  * with no outcome recorded. Both are worse than an explicit `failed`.
  *
+ * `contactedSeazona` distinguishes WHY a failure happened: `false` means the
+ * push was refused before any network call (canPush gate, or the payload
+ * failed to build) — Seazona was never contacted, so nothing was created and
+ * a retry is unambiguously safe. `true` means `seazonaService.createOrder`
+ * was actually invoked, whatever it returned — including the ambiguous null
+ * case (network error vs. an order that landed despite the failure), where a
+ * blind retry risks a duplicate order. Callers use this to decide whether
+ * it's safe to release a push claim/lock for a retry.
+ *
  * @param {object} caseRow — DECRYPTED case row (see phi-crypto.js)
  * @param {Array}  lines   — the case's STORED rx_case_lines rows
  * @param {object} opts
  * @param {Record<string,string>} opts.codeToId — Seazona product code → catalog id
  * @param {string} [opts.userId] — lab-staff Seazona user id to attach to the order
- * @returns {Promise<{ status: "pushed"|"failed", seazonaOrderId: string|null, seazonaPushError: string|null, payload: object|null }>}
+ * @returns {Promise<{ status: "pushed"|"failed", seazonaOrderId: string|null, seazonaPushError: string|null, payload: object|null, contactedSeazona: boolean }>}
  */
 export async function pushCaseToSeazona(caseRow, lines = [], { codeToId = {}, userId } = {}) {
   const gate = canPush(lines);
   if (!gate.ok) {
-    return { status: "failed", seazonaOrderId: null, seazonaPushError: gate.reason, payload: null };
+    return { status: "failed", seazonaOrderId: null, seazonaPushError: gate.reason, payload: null, contactedSeazona: false };
   }
 
   const { payload, ok, warnings } = payloadFromLines(caseRow, lines, { codeToId, userId });
@@ -93,6 +115,7 @@ export async function pushCaseToSeazona(caseRow, lines = [], { codeToId = {}, us
       seazonaOrderId: null,
       seazonaPushError: warnings.join("; ") || "The order payload could not be built.",
       payload,
+      contactedSeazona: false,
     };
   }
 
@@ -112,8 +135,9 @@ export async function pushCaseToSeazona(caseRow, lines = [], { codeToId = {}, us
       seazonaOrderId: null,
       seazonaPushError: "Seazona did not return an order id for this push. Check Seazona before retrying — the order may have been created despite this failure.",
       payload,
+      contactedSeazona: true,
     };
   }
 
-  return { status: "pushed", seazonaOrderId: orderId, seazonaPushError: null, payload };
+  return { status: "pushed", seazonaOrderId: orderId, seazonaPushError: null, payload, contactedSeazona: true };
 }
