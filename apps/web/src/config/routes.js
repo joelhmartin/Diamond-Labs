@@ -22,6 +22,7 @@ export const ROUTES = {
   ADMIN_ORDERS: "/admin/orders",
   ADMIN_USERS: "/admin/users",
   ADMIN_RX_MAPPING: "/admin/rx-mapping",
+  ADMIN_RX_CASES: "/admin/rx-cases",
 
   // Doctor
   DOCTOR_INVOICES: "/doctor/invoices",

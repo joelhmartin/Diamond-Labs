@@ -34,6 +34,7 @@ import { AdminUsersPage } from "./pages/app/AdminUsersPage.jsx";
 import { AdminOrdersPage } from "./pages/app/AdminOrdersPage.jsx";
 import { AdminOrderDetailPage } from "./pages/app/AdminOrderDetailPage.jsx";
 import { AdminRxMappingPage } from "./pages/app/AdminRxMappingPage.jsx";
+import { AdminRxCasesPage } from "./pages/app/AdminRxCasesPage.jsx";
 import { RequireAdmin } from "./guards/RequireAdmin.jsx";
 
 // Marketing pages
@@ -217,6 +218,7 @@ function AppRoutes() {
           <Route path="/admin/orders/:id" element={<AdminOrderDetailPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />
           <Route path="/admin/rx-mapping" element={<AdminRxMappingPage />} />
+          <Route path="/admin/rx-cases" element={<AdminRxCasesPage />} />
         </Route>
       </Route>
 
