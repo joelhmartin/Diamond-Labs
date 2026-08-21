@@ -3,6 +3,8 @@ import { requireAdmin } from "../middleware/require-role.js";
 import { db } from "../config/database.js";
 import { rxCases, rxCaseLines, rxCaseFiles, rxCodeOverrides } from "../db/schema/index.js";
 import { decryptRxPhi } from "../services/rx/phi-crypto.js";
+import { reResolveLines } from "../services/rx/case-lines.service.js";
+import { loadOverrides } from "../services/rx/code-overrides.service.js";
 import * as auditService from "../services/audit.service.js";
 import { createId } from "../lib/id.js";
 import { ERROR_CODES } from "@my-app/shared";
@@ -14,6 +16,44 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm";
  * (already sent to Seazona) and `cancelled` (dead).
  */
 export const DEFAULT_QUEUE_STATUSES = ["new", "in_review", "awaiting_doctor", "failed"];
+
+/**
+ * The six states a case can be in. This is the third status vocabulary in
+ * this codebase, alongside SUBMISSION_STATUS (rx.routes.js — what a
+ * freshly-submitted case is written as) and DEFAULT_QUEUE_STATUSES above
+ * (what the admin queue shows by default). Vocabulary drift between the
+ * first two already produced this plan's worst defect — the admin queue
+ * silently returned zero rows forever because the status the submit route
+ * wrote was not one the queue selected. rx-status-vocabulary.test.js pins
+ * all three together; if you add or rename a status here, that test is
+ * where a drift will surface.
+ */
+export const CASE_STATUSES = [
+  "new", "in_review", "awaiting_doctor", "pushed", "failed", "cancelled",
+];
+
+/**
+ * Whether a case may move from `from` to `to`.
+ *
+ * `pushed` is terminal — the Seazona order already exists, so moving the
+ * case back would make the portal disagree with the lab's own system about
+ * what was ordered. A mistake after a push is corrected in Seazona, not
+ * here. (A later "marked manually added" resolution also lands on `pushed`
+ * for the same reason: it too commits the case to an order the lab
+ * considers placed.)
+ *
+ * Both `from` and `to` are validated against CASE_STATUSES. A `from` outside
+ * the known vocabulary is not a state anything should transition out of —
+ * checking only `to` would let an unknown or `undefined` origin (e.g. a
+ * caller that forgot to load the current status, or a status a future
+ * producer misspells) through as `true`.
+ */
+export function canTransition(from, to) {
+  if (!CASE_STATUSES.includes(from)) return false;
+  if (!CASE_STATUSES.includes(to)) return false;
+  if (from === "pushed") return false;
+  return true;
+}
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -558,5 +598,124 @@ export default async function adminRxCasesRoutes(fastify) {
     });
 
     return { data: { ok: true } };
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // PUT /admin/rx-cases/:id/status
+  // Move a case to a new status. Body: { status }.
+  //
+  // canTransition gates the move (see its docstring for the `pushed`-is-
+  // terminal rule). Audit metadata carries only status values and IDs — never
+  // any decrypted PHI — which is also why this doesn't decrypt the row at all.
+  // ───────────────────────────────────────────────────────────────────────────
+  fastify.put("/admin/rx-cases/:id/status", {
+    preHandler: [authenticate, requireAdmin],
+  }, async (request, reply) => {
+    const caseId = request.params.id;
+    const body = request.body || {};
+    const toStatus = body.status;
+
+    if (typeof toStatus !== "string" || !CASE_STATUSES.includes(toStatus)) {
+      return reply.code(422).send({
+        error: {
+          ...ERROR_CODES.VALIDATION_ERROR,
+          message: `status must be one of: ${CASE_STATUSES.join(", ")}.`,
+        },
+      });
+    }
+
+    const [existing] = await db
+      .select({ id: rxCases.id, status: rxCases.status })
+      .from(rxCases)
+      .where(eq(rxCases.id, caseId));
+
+    if (!existing) {
+      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    }
+
+    if (!canTransition(existing.status, toStatus)) {
+      return reply.code(409).send({
+        error: {
+          code: "INVALID_STATUS_TRANSITION",
+          status: 409,
+          message: `Cannot move a case from '${existing.status}' to '${toStatus}'.`,
+        },
+      });
+    }
+
+    const [updated] = await db
+      .update(rxCases)
+      .set({ status: toStatus, updatedAt: new Date() })
+      .where(eq(rxCases.id, caseId))
+      .returning({ id: rxCases.id, status: rxCases.status, updatedAt: rxCases.updatedAt });
+
+    auditService.logSafe({
+      userId: request.user.id,
+      action: "rx_case.status_changed",
+      targetType: "rx_case",
+      targetId: caseId,
+      metadata: { from: existing.status, to: toStatus },
+      ipAddress: request.ip,
+    });
+
+    return { data: updated };
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // POST /admin/rx-cases/:id/re-resolve
+  // Explicitly recompute the case's "auto" lines from its device selections,
+  // leaving any staff-corrected "manual" lines untouched — see
+  // case-lines.service.js's reResolveLines for the keep/renumber/append
+  // logic this route calls, not reimplements.
+  //
+  // deviceOptions is a PHI JSON blob (encrypted at rest), so the row must be
+  // decrypted to read deviceOptions.devices — but the response and audit
+  // metadata below only ever carry line/status data, never the decrypted PHI
+  // fields also sitting on this row.
+  // ───────────────────────────────────────────────────────────────────────────
+  fastify.post("/admin/rx-cases/:id/re-resolve", {
+    preHandler: [authenticate, requireAdmin],
+  }, async (request, reply) => {
+    const caseId = request.params.id;
+
+    const [caseRowRaw] = await db
+      .select()
+      .from(rxCases)
+      .where(eq(rxCases.id, caseId));
+
+    if (!caseRowRaw) {
+      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    }
+
+    let caseRow;
+    try {
+      caseRow = decryptRxPhi(caseRowRaw);
+    } catch (err) {
+      request.log.error({ caseId, err: err.message }, "rx PHI decrypt failed");
+      return reply.code(500).send({
+        error: { code: "INTERNAL_ERROR", status: 500, message: "Failed to load case." },
+      });
+    }
+
+    const devices = caseRow.deviceOptions?.devices || [];
+    const overrides = await loadOverrides();
+    const { replaced, kept } = await reResolveLines(caseId, devices, { overrides });
+
+    const lines = await db
+      .select()
+      .from(rxCaseLines)
+      .where(eq(rxCaseLines.caseId, caseId))
+      .orderBy(asc(rxCaseLines.position));
+
+    auditService.logSafe({
+      userId: request.user.id,
+      action: "rx_case.re_resolved",
+      targetType: "rx_case",
+      targetId: caseId,
+      metadata: { replaced, kept },
+      ipAddress: request.ip,
+    });
+
+    return { data: { lines, replaced, kept } };
   });
 }

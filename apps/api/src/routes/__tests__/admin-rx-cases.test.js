@@ -6,6 +6,8 @@ import {
   canPush,
   overrideRowFor,
   normalizeSeazonaCode,
+  CASE_STATUSES,
+  canTransition,
 } from "../admin-rx-cases.routes.js";
 
 test("the queue defaults to everything needing attention", () => {
@@ -137,4 +139,34 @@ test("normalizeSeazonaCode keeps the code when noteOnly is false", () => {
 
 test("normalizeSeazonaCode is null-safe when there's no code and no ruling", () => {
   assert.equal(normalizeSeazonaCode({ seazonaCode: null, noteOnly: false }), null);
+});
+
+test("the six agreed states exist and nothing else", () => {
+  assert.deepEqual([...CASE_STATUSES].sort(), [
+    "awaiting_doctor", "cancelled", "failed", "in_review", "new", "pushed",
+  ]);
+});
+
+test("a pushed case cannot be moved back — the Seazona order already exists", () => {
+  assert.equal(canTransition("pushed", "in_review"), false);
+  assert.equal(canTransition("pushed", "cancelled"), false);
+});
+
+test("a failed push can be retried or cancelled", () => {
+  assert.equal(canTransition("failed", "in_review"), true);
+  assert.equal(canTransition("failed", "cancelled"), true);
+});
+
+test("canTransition rejects a 'from' status the system does not recognise", () => {
+  // A status canTransition doesn't recognise isn't a state anything should be
+  // able to transition out of — the brief's version only checked `to` and the
+  // pushed-is-terminal rule, so an unknown or undefined origin fell through to
+  // `true`. That's the gap this pins closed.
+  assert.equal(canTransition("bogus_status", "in_review"), false);
+  assert.equal(canTransition(undefined, "in_review"), false);
+  assert.equal(canTransition(null, "cancelled"), false);
+});
+
+test("canTransition still rejects an unrecognised 'to' status", () => {
+  assert.equal(canTransition("new", "bogus_status"), false);
 });
