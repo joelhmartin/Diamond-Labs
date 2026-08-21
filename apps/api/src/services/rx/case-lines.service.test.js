@@ -127,3 +127,45 @@ test("re-resolve does not collide positions when a manual line sits at a non-zer
     `expected no two lines to share a position, got [${allPositions.join(", ")}]`
   );
 });
+
+test("an 'always' note-only ruling survives a resolve as a non-blocking, non-product line", async () => {
+  // Pins the whole path an admin's "always" + noteOnly resolution travels:
+  // overrideRowFor (admin-rx-cases.routes.js) -> the shape loadOverrides()
+  // would hand back from that DB row -> linesForDevices -> canPush. Each
+  // link is unit-tested elsewhere; this composes them the way production
+  // actually will.
+  const { overrideRowFor, canPush } = await import("../../routes/admin-rx-cases.routes.js");
+
+  const overrideRow = overrideRowFor({
+    mapKey: "mod:wrap-distal",
+    seazonaCode: null,
+    noteOnly: true,
+    confirmedBy: "u1",
+  });
+
+  // Simulate loadOverrides()'s row -> map shape without touching a real DB.
+  const overrides = {
+    [overrideRow.mapKey]: {
+      code: overrideRow.seazonaCode,
+      name: overrideRow.seazonaName,
+      seazonaProductId: null,
+      noteOnly: overrideRow.noteOnly,
+    },
+  };
+
+  const lines = linesForDevices(
+    [{ deviceKey: "ddso", deviceOptions: { baseMaterial: "NYLON", modifications: ["Wrap Distal"] } }],
+    { overrides }
+  );
+
+  const wrapLine = lines.find((l) => l.mapKey === "mod:wrap-distal");
+  assert.ok(wrapLine, "expected a line for the overridden modification");
+  assert.equal(wrapLine.noteOnly, true, "the ruling must survive into the persisted line");
+  assert.equal(wrapLine.seazonaCode, null, "a note-only ruling must never invent a code");
+
+  assert.equal(
+    canPush(lines).ok,
+    true,
+    "a note-only line must never block the push — it is a build instruction, not an unresolved product"
+  );
+});

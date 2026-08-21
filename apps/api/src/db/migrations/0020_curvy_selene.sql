@@ -1,0 +1,1 @@
+ALTER TABLE "rx_code_overrides" ADD COLUMN "note_only" boolean DEFAULT false NOT NULL;

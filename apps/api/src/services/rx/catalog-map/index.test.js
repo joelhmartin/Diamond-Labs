@@ -62,3 +62,30 @@ test("a 'none' attribute emits no line item and no unmapped flag", () => {
   assert.deepEqual(items.map((i) => i.code), ["2608"]);
   assert.equal(unmapped.length, 0);
 });
+
+test("a noteOnly override emits a non-product line, never a phantom confirmed code", () => {
+  // mod:wrap-distal is a real open row (code: null) — exactly the case an
+  // admin resolves permanently with scope: "always" + noteOnly: true.
+  const overrides = { "mod:wrap-distal": { code: null, name: null, noteOnly: true } };
+  const { items, unmapped } = resolveLineItems(
+    { deviceKey: "ddso", deviceOptions: { baseMaterial: "NYLON", modifications: ["Wrap Distal"] } },
+    { overrides }
+  );
+  assert.equal(unmapped.length, 0, "a resolved noteOnly ruling must not still read as unmapped");
+  const wrap = items.find((i) => i.mapKey === "mod:wrap-distal");
+  assert.ok(wrap, "expected a line for the noteOnly-overridden modification");
+  assert.equal(wrap.noteOnly, true);
+  assert.equal(wrap.code, null, "a noteOnly ruling must never invent a code");
+});
+
+test("a code-less override that is NOT noteOnly is incoherent and falls back to unmapped", () => {
+  // A confirmed mapping to nothing is not a valid state — it must not slip
+  // through as a phantom "confirmed" line with no product on it.
+  const overrides = { "mod:wrap-distal": { code: null, name: null, noteOnly: false } };
+  const { items, unmapped } = resolveLineItems(
+    { deviceKey: "ddso", deviceOptions: { baseMaterial: "NYLON", modifications: ["Wrap Distal"] } },
+    { overrides }
+  );
+  assert.ok(unmapped.includes("mod:wrap-distal"));
+  assert.ok(!items.some((i) => i.mapKey === "mod:wrap-distal"));
+});

@@ -22,13 +22,17 @@ export function linesForDevices(devices = [], { overrides = {} } = {}) {
     for (const it of items) {
       out.push({
         seazonaCode: it.code,
-        seazonaProductId: null,
+        seazonaProductId: it.seazonaProductId ?? null,
         name: it.name,
         arch: it.arch ?? null,
         mapKey: it.mapKey ?? null,
         status: it.status ?? "confirmed",
         origin: "auto",
-        noteOnly: false,
+        // A noteOnly override resolves to a line item carrying noteOnly:
+        // true (see catalog-map/index.js's itemFromOverride) — that ruling
+        // has to survive into the persisted line, not get flattened back to
+        // false, or every future case hits the same open question again.
+        noteOnly: it.noteOnly ?? false,
         sourceLabel: null,
       });
     }

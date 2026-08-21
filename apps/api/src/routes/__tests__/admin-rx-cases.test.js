@@ -63,6 +63,7 @@ test("an 'always' code assignment becomes an override row", () => {
   });
   assert.equal(row.mapKey, "mod:anterior-pad");
   assert.equal(row.seazonaCode, "2181");
+  assert.equal(row.noteOnly, false);
 });
 
 test("an 'always' note-only ruling is recorded without inventing a code", () => {
@@ -74,6 +75,10 @@ test("an 'always' note-only ruling is recorded without inventing a code", () => 
   });
   assert.equal(row.seazonaCode, null);
   assert.match(row.note, /note only/i);
+  // The ruling must be a real, queryable column — not only readable back out
+  // of the human-language `note` text — because the resolver has to branch
+  // on it later without parsing prose.
+  assert.equal(row.noteOnly, true);
 });
 
 test("an override cannot be written without a mapKey to key it on", () => {

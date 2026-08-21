@@ -316,6 +316,15 @@ export default async function adminRxMappingRoutes(fastify) {
         seazonaProductId: prod.id,
         seazonaName: prod.name,
         note: note || null,
+        // This route always requires a real, catalog-verified seazonaCode
+        // (guarded above), so it can never represent a noteOnly ruling.
+        // Explicit false — not just omitted — so re-assigning a real code to
+        // a mapKey that was previously ruled noteOnly (via
+        // admin-rx-cases.routes.js) actually clears that ruling instead of
+        // leaving a stale noteOnly: true next to a new code, which
+        // catalog-map/index.js's itemFromOverride would treat as noteOnly
+        // and silently drop the code.
+        noteOnly: false,
         confirmedBy: request.user.id,
       })
       .onConflictDoUpdate({
@@ -325,6 +334,7 @@ export default async function adminRxMappingRoutes(fastify) {
           seazonaProductId: prod.id,
           seazonaName: prod.name,
           note: note || null,
+          noteOnly: false,
           confirmedBy: request.user.id,
           updatedAt: new Date(),
         },

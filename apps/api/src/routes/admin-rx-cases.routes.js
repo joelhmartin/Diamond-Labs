@@ -83,6 +83,9 @@ export function overrideRowFor({ mapKey, seazonaCode, seazonaName, noteOnly, con
     mapKey,
     seazonaCode: seazonaCode ?? null,
     seazonaName: seazonaName ?? null,
+    // A real, queryable column — not just implied by `note`'s prose — so
+    // catalog-map/index.js can branch on it later without parsing text.
+    noteOnly: !!noteOnly,
     note: noteOnly ? "note only — instruction, not a charged product" : null,
     confirmedBy: confirmedBy ?? null,
   };
@@ -385,6 +388,7 @@ export default async function adminRxCasesRoutes(fastify) {
             seazonaCode: overrideRow.seazonaCode,
             seazonaName: overrideRow.seazonaName,
             note: overrideRow.note,
+            noteOnly: overrideRow.noteOnly,
             confirmedBy: overrideRow.confirmedBy,
             updatedAt: new Date(),
           },
