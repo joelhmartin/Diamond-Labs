@@ -1,19 +1,22 @@
 import { authenticate } from "../middleware/authenticate.js";
 import { requireApprovedDoctor } from "../middleware/require-role.js";
 import { db } from "../config/database.js";
-import { rxCases, rxCaseFiles } from "../db/schema/index.js";
+import { rxCases, rxCaseFiles, rxCaseLines } from "../db/schema/index.js";
 import { createId } from "../lib/id.js";
 import { env } from "../config/env.js";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, asc } from "drizzle-orm";
 import { ERROR_CODES, rxCaseSubmitSchema, rxFormSubmitSchema, buildDigitalDevices } from "@my-app/shared";
 import * as seazonaService from "../services/seazona.service.js";
 import { buildSeazonaOrderPayload } from "../services/rx/build-order-payload.js";
 import { seedLines } from "../services/rx/case-lines.service.js";
 import { loadOverrides } from "../services/rx/code-overrides.service.js";
+import { canPush, summariseLines } from "../services/rx/case-gates.js";
+import { pushCaseToSeazona } from "../services/rx/push-case.service.js";
 import { uploadCaseFile, deleteStoredFile, getSignedReadUrl } from "../services/storage.service.js";
 import { encryptRxPhi, decryptRxPhi } from "../services/rx/phi-crypto.js";
 import { encryptJson } from "../lib/crypto.js";
 import * as auditService from "../services/audit.service.js";
+import { sendRxSubmissionReceived } from "../services/email.service.js";
 
 // ─── Upload guards ────────────────────────────────────────────────────────────
 // 75 MB per file — intraoral STL / 3D-scan files are large.
@@ -34,6 +37,19 @@ const FILE_FIELD_KINDS = new Set(["scan", "photo", "prescription", "sleep_study"
 // 'pending_approval' at the schema level while nothing ever queried for that
 // value, so the queue could never return a row).
 export const SUBMISSION_STATUS = "new";
+
+/**
+ * Whether a freshly-submitted case should attempt its own Seazona push.
+ * Exact-match on "true" only — a truthy-but-wrong string ("1", "TRUE", any
+ * other value) must never enable it, and a missing/unparseable env var must
+ * always resolve to `false`. Seazona has no idempotency key, so an
+ * accidental auto-push is a real manufacturing order a human has to go find
+ * and delete — the off state is the one this ships in, and it must stay the
+ * default no matter how the env var is malformed.
+ */
+export function shouldAutoPush(flag) {
+  return flag === "true";
+}
 
 /**
  * Build the 422 response body for an approve attempt whose payload lost a
@@ -434,6 +450,9 @@ export default async function rxRoutes(fastify) {
     // ── Upload files + persist (shared try block → orphan-safe cleanup) ───────
     const uploadedFiles = [];
     let signatureUrl = data.signatureUrl || null;
+    // Hoisted out of the try block below so it's still in scope afterward,
+    // for the auto-push + arrival-email steps.
+    let devices = [];
     try {
       for (const pf of pendingFiles) {
         const { gcsUrl, size } = await uploadCaseFile({
@@ -472,7 +491,7 @@ export default async function rxRoutes(fastify) {
       // Resolve the doctor's selections into devices so the case is reviewable.
       // rx_cases carries one deviceKey for display; the full list lives in
       // deviceOptions.devices so a multi-device prescription loses nothing.
-      const devices = buildDigitalDevices(data.formData ?? {});
+      devices = buildDigitalDevices(data.formData ?? {});
 
       // Load admin-confirmed code overrides once, before the transaction opens
       // (not per-device) — same loader admin-rx-mapping.routes.js uses.
@@ -529,7 +548,148 @@ export default async function rxRoutes(fastify) {
       metadata: { caseNumber, formType: data.formType, fileCount: pendingFiles.length },
       ipAddress: request.ip,
     });
-    return reply.code(201).send({ data: { id: caseId, caseNumber, status: SUBMISSION_STATUS } });
+
+    // The case is fully persisted at this point (row + files + seeded
+    // lines) regardless of anything below — auto-push and the arrival email
+    // are additions on top of a submission that has already succeeded, and
+    // neither may fail the doctor's response.
+    const lines = await db
+      .select()
+      .from(rxCaseLines)
+      .where(eq(rxCaseLines.caseId, caseId))
+      .orderBy(asc(rxCaseLines.position));
+
+    // ── Auto-push under RX_LIVE_PUSH ───────────────────────────────────────
+    // Off by default (shouldAutoPush requires an exact "true"). Seazona has
+    // no idempotency key, so an accidental push here is a real order a human
+    // has to go find and delete — reuses pushCaseToSeazona, the SAME send
+    // path the admin queue's manual push button uses, rather than a second
+    // implementation of the send. Every branch below leaves the case
+    // visible: an unresolved line leaves it "new" for the queue (canPush
+    // gate — see push-case.service.js), and any push failure leaves it
+    // "failed" for the queue — it must never vanish or stay silently "new"
+    // with no explanation.
+    let finalStatus = SUBMISSION_STATUS;
+    if (shouldAutoPush(env.RX_LIVE_PUSH)) {
+      if (!env.SEAZONA_ORDER_USER_ID) {
+        // Same hard precondition the admin push route 503s on. No status
+        // written — the case just stays "new", waiting for a human to push
+        // it once the config is fixed, same as any other unresolved case.
+        request.log.error(
+          { caseId },
+          "[Seazona][RX_AUTO_PUSH_SKIPPED] RX_LIVE_PUSH is on but SEAZONA_ORDER_USER_ID is not configured"
+        );
+      } else {
+        const gate = canPush(lines);
+        if (!gate.ok) {
+          // status stays "new" — it is waiting for a person, not broken.
+          request.log.info(
+            { caseId, reason: gate.reason },
+            "rx auto-push skipped: case has unresolved lines"
+          );
+        } else {
+          try {
+            // codeToId from the live Seazona catalog — listProducts() never
+            // throws (returns [] if Seazona is unreachable), which then
+            // surfaces as "no catalog id for code …" warnings inside
+            // pushCaseToSeazona and resolves to a "failed" outcome, same as
+            // the admin push route.
+            const products = await seazonaService.listProducts();
+            const codeToId = {};
+            for (const p of products) {
+              if (p.code) codeToId[p.code] = String(p.id);
+            }
+            const caseForPush = {
+              id: caseId,
+              seazonaClientId: seazonaClientId || null,
+              patientFirst: data.patientFirst,
+              patientLast: data.patientLast,
+              dueDate: data.dueDate || null,
+              generalComments: null,
+            };
+            const outcome = await pushCaseToSeazona(caseForPush, lines, {
+              codeToId,
+              userId: env.SEAZONA_ORDER_USER_ID,
+            });
+
+            const updateValues = {
+              status: outcome.status,
+              seazonaPushStatus: outcome.status,
+              seazonaOrderId: outcome.seazonaOrderId,
+              seazonaPushError: outcome.seazonaPushError,
+              updatedAt: new Date(),
+            };
+            if (outcome.status === "pushed") {
+              // PHI (embeds patientName) — encrypt at rest, same as the
+              // admin push route's snapshot.
+              updateValues.payloadSnapshot = encryptJson(outcome.payload);
+            }
+            await db.update(rxCases).set(updateValues).where(eq(rxCases.id, caseId));
+            finalStatus = outcome.status;
+
+            if (outcome.status === "failed") {
+              request.log.error(
+                { caseId, error: outcome.seazonaPushError },
+                "[Seazona][RX_AUTO_PUSH_FAILED] auto-push failed on submission"
+              );
+            }
+            auditService.logSafe({
+              userId: request.user.id,
+              action: "rx_case.auto_pushed",
+              targetType: "rx_case",
+              targetId: caseId,
+              metadata: {
+                outcome: outcome.status,
+                seazonaOrderId: outcome.seazonaOrderId,
+                error: outcome.seazonaPushError,
+              },
+              ipAddress: request.ip,
+            });
+          } catch (err) {
+            // Defence in depth: pushCaseToSeazona itself never throws, but a
+            // DB write failure here must not let the case vanish either —
+            // mark it failed so a human finds it in the queue instead of
+            // wrongly assuming it's still "new" and unattempted.
+            request.log.error(
+              { caseId, err: err.message },
+              "[Seazona][RX_AUTO_PUSH_ERROR] auto-push threw unexpectedly"
+            );
+            try {
+              await db.update(rxCases).set({
+                status: "failed",
+                seazonaPushStatus: "failed",
+                seazonaPushError: err.message || "Auto-push failed unexpectedly.",
+                updatedAt: new Date(),
+              }).where(eq(rxCases.id, caseId));
+              finalStatus = "failed";
+            } catch (err2) {
+              request.log.error(
+                { caseId, err: err2.message },
+                "[Seazona][RX_AUTO_PUSH_ERROR] failed to persist failed status after auto-push error"
+              );
+            }
+          }
+        }
+      }
+    }
+
+    // ── Notify the lab a case arrived ──────────────────────────────────────
+    // Fires for EVERY successful submission, not just under RX_LIVE_PUSH — a
+    // case that auto-pushed above just left the admin queue entirely
+    // (DEFAULT_QUEUE_STATUSES excludes "pushed"), so this email may be the
+    // only signal staff get that it ever existed. Same non-critical-send
+    // pattern as sendAdminApprovalRequest et al.: send() inside
+    // email.service.js already catches its own errors and resolves to
+    // false rather than throwing, so this can't fail the doctor's response.
+    await sendRxSubmissionReceived({
+      caseNumber,
+      practiceName: request.user.name || null,
+      deviceSummary: devices.map((d) => d.label || d.deviceKey).join(", ") || "—",
+      unmappedCount: summariseLines(lines).unmappedCount,
+      caseUrl: `${env.APP_URL}/admin/rx-cases/${caseId}`,
+    });
+
+    return reply.code(201).send({ data: { id: caseId, caseNumber, status: finalStatus } });
   });
 
   // ─────────────────────────────────────────────────────────────────────────
