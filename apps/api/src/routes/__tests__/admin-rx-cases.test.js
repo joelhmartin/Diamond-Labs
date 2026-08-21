@@ -12,6 +12,7 @@ import {
   CASE_STATUSES,
   canTransition,
   isFrozen,
+  manualResolution,
 } from "../admin-rx-cases.routes.js";
 
 test("the queue defaults to everything needing attention", () => {
@@ -291,4 +292,82 @@ test("POST /admin/rx-cases/:id/push gates on canPush before claiming the case, a
 test("POST /admin/rx-cases/:id/push still calls pushCaseToSeazona, which re-runs canPush as defence in depth", () => {
   const body = handlerSource(PUSH_ROUTE_MARKER);
   assert.match(body, /pushCaseToSeazona\(/);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// manualResolution — Task 10b. "Staff typed this order into Seazona by hand"
+// resolves the case exactly like a push (terminal, leaves the queue) but
+// tags HOW it got there and preserves whatever was still unmapped at that
+// moment, rather than letting the gate's bypass quietly erase it.
+// ─────────────────────────────────────────────────────────────────────────
+
+test("a manual resolution ends the case and tags how it got there", () => {
+  const r = manualResolution([{ seazonaCode: "2608", noteOnly: false, status: "confirmed" }], { seazonaOrderId: "SZ-4471" });
+  assert.equal(r.status, "pushed");
+  assert.equal(r.seazonaPushStatus, "manual");
+  assert.equal(r.seazonaOrderId, "SZ-4471");
+});
+
+test("the Seazona order number is optional", () => {
+  const r = manualResolution([{ seazonaCode: "2608", noteOnly: false, status: "confirmed" }], {});
+  assert.equal(r.status, "pushed");
+  assert.equal(r.seazonaOrderId, null);
+});
+
+test("marking manual records what was still unmapped, rather than erasing it", () => {
+  const r = manualResolution([
+    { seazonaCode: "2608", noteOnly: false, status: "confirmed" },
+    { seazonaCode: null, noteOnly: false, status: "open", mapKey: "mod:anterior-pad" },
+  ], {});
+  assert.equal(r.status, "pushed");
+  assert.deepEqual(r.unresolvedAtManual, ["mod:anterior-pad"]);
+});
+
+test("a case with unmapped lines can still be marked manual — the gate does not apply", () => {
+  const lines = [{ seazonaCode: null, noteOnly: false, status: "open", mapKey: "mod:anterior-pad" }];
+  assert.equal(canPush(lines).ok, false, "precondition: this case cannot be pushed");
+  assert.equal(manualResolution(lines, {}).status, "pushed", "but it can be recorded as done by hand");
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// POST /admin/rx-cases/:id/mark-manual — static source checks, same
+// limitation as the push-route checks above (no Fastify-inject harness in
+// this module): these prove the claim predicate, the gate bypass, and the
+// audit shape exist at the right place in source. They do not prove the
+// handler behaves this way at runtime.
+// ─────────────────────────────────────────────────────────────────────────
+
+const MARK_MANUAL_ROUTE_MARKER = 'fastify.post("/admin/rx-cases/:id/mark-manual",';
+
+test("POST /admin/rx-cases/:id/mark-manual claims with the SAME full predicate as push — status AND the seazonaPushStatus pushing guard", () => {
+  const body = handlerSource(MARK_MANUAL_ROUTE_MARKER);
+  assert.match(body, /ne\(rxCases\.status, "pushed"\)/, "must not claim an already-pushed case");
+  assert.match(
+    body,
+    /or\(isNull\(rxCases\.seazonaPushStatus\), ne\(rxCases\.seazonaPushStatus, "pushing"\)\)/,
+    "must not claim a case whose push is genuinely in flight — a push in progress could still land in Seazona"
+  );
+});
+
+test("POST /admin/rx-cases/:id/mark-manual refuses 409 when the claim finds nothing, and points staff at clear-push-lock", () => {
+  const body = handlerSource(MARK_MANUAL_ROUTE_MARKER);
+  assert.match(body, /reply\.code\(409\)/);
+  assert.match(body, /clear-push-lock/, "the 409 message should point the operator at checking Seazona first, not just say no");
+});
+
+test("POST /admin/rx-cases/:id/mark-manual does NOT call canPush — a human already created the order", () => {
+  const body = handlerSource(MARK_MANUAL_ROUTE_MARKER);
+  assert.doesNotMatch(body, /canPush\(/);
+});
+
+test("POST /admin/rx-cases/:id/mark-manual is NOT gated by refusePushedCase/isFrozen — it does its own claim, like push", () => {
+  const body = handlerSource(MARK_MANUAL_ROUTE_MARKER);
+  assert.doesNotMatch(body, /refusePushedCase\(/);
+  assert.doesNotMatch(body, /isFrozen\(/);
+});
+
+test("POST /admin/rx-cases/:id/mark-manual audits with rx_case.marked_manual and calls manualResolution", () => {
+  const body = handlerSource(MARK_MANUAL_ROUTE_MARKER);
+  assert.match(body, /manualResolution\(/);
+  assert.match(body, /action:\s*"rx_case\.marked_manual"/);
 });

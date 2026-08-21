@@ -19,6 +19,7 @@ import {
   canPush,
   canTransition,
   isFrozen,
+  manualResolution,
   normalizeSeazonaCode,
   overrideRowFor,
   statusForLine,
@@ -35,6 +36,7 @@ export {
   canPush,
   canTransition,
   isFrozen,
+  manualResolution,
   normalizeSeazonaCode,
   overrideRowFor,
   statusForLine,
@@ -862,6 +864,130 @@ export default async function adminRxCasesRoutes(fastify) {
         data: updated,
       });
     }
+
+    return { data: updated };
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // POST /admin/rx-cases/:id/mark-manual
+  // "Staff typed this order into Seazona by hand." Without this, a case
+  // staff resolved outside the portal sits in the queue forever until
+  // someone eventually pushes a duplicate — Seazona has no idempotency key,
+  // so that duplicate is a real order a human has to go find and delete.
+  //
+  // Resolves the case exactly as a successful push does (manualResolution
+  // writes status: "pushed") so it leaves the queue and cannot be pushed or
+  // marked manual again, but tags seazonaPushStatus: "manual" so "we sent
+  // this" and "someone typed it in" stay distinguishable forever.
+  //
+  // Deliberately bypasses canPush — a human already created the order in
+  // Seazona, so an unresolved line here cannot stop them recording that.
+  // This is the one sanctioned way past the send gate. Precisely because it
+  // bypasses that gate, manualResolution captures which lines were still
+  // unresolved at this moment into unresolvedAtManual, which this route
+  // writes into audit metadata (never a new column) alongside the operator's
+  // note and the Seazona order number — no PHI, only mapKeys. Otherwise this
+  // button quietly becomes how mapping gaps disappear, and those gaps are
+  // the lab's open questions.
+  //
+  // Claim: the SAME full predicate the push route uses — status != 'pushed'
+  // AND (seazonaPushStatus is null OR != 'pushing') — not just the narrower
+  // status check the brief describes. The push route claims a case by
+  // setting seazonaPushStatus = "pushing" while leaving `status` alone, so a
+  // narrower predicate here would let mark-manual succeed while a push is
+  // genuinely in flight: whichever write lands second wins, either erasing
+  // a push that reached Seazona or getting overwritten by one that did —
+  // either way, two orders in Seazona for one case and a record showing
+  // one. Deliberately NOT gated by refusePushedCase/isFrozen (see that
+  // guard's docstring) — like push, this route performs its own claim and
+  // is allowed to move a case TO `pushed`.
+  //
+  // A claim that finds nothing is refused with 409 pointing at
+  // clear-push-lock rather than just saying no: if the case is stuck at
+  // "pushing" because a push was interrupted, papering over that with
+  // mark-manual would skip the deliberate "check Seazona before you act"
+  // step clear-push-lock exists to force.
+  // ───────────────────────────────────────────────────────────────────────────
+  fastify.post("/admin/rx-cases/:id/mark-manual", {
+    preHandler: [authenticate, requireAdmin],
+  }, async (request, reply) => {
+    const caseId = request.params.id;
+    const { seazonaOrderId, note } = request.body || {};
+
+    // Claims with the SAME "pushing" sentinel the push route uses — not the
+    // final "manual" value — so the lock is shared between the two routes.
+    // If this set the final value directly, a concurrent claim (by either
+    // route) would see seazonaPushStatus != "pushing" and slip through
+    // between this claim and the finalize write below, which is exactly the
+    // double-claim this predicate exists to prevent.
+    const claimed = await db.update(rxCases)
+      .set({ seazonaPushStatus: "pushing", updatedAt: new Date() })
+      .where(and(
+        eq(rxCases.id, caseId),
+        ne(rxCases.status, "pushed"),
+        or(isNull(rxCases.seazonaPushStatus), ne(rxCases.seazonaPushStatus, "pushing")),
+      ))
+      .returning({ id: rxCases.id });
+
+    if (claimed.length === 0) {
+      const [existing] = await db
+        .select({ id: rxCases.id })
+        .from(rxCases)
+        .where(eq(rxCases.id, caseId));
+      if (!existing) {
+        return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+      }
+      return reply.code(409).send({
+        error: {
+          code: "MARK_MANUAL_BLOCKED",
+          status: 409,
+          message: "This case has already been resolved, or a push is currently running. If a push looks stuck, check Seazona for an order before using clear-push-lock — do not mark this manual instead.",
+        },
+      });
+    }
+
+    // From here the row is claimed. Load the stored lines to know what was
+    // still unresolved at the moment staff recorded this — same "stored
+    // lines are the source of truth" reasoning the push route uses, not a
+    // fresh re-resolve.
+    const lines = await db
+      .select()
+      .from(rxCaseLines)
+      .where(eq(rxCaseLines.caseId, caseId))
+      .orderBy(asc(rxCaseLines.position));
+
+    const resolution = manualResolution(lines, { seazonaOrderId });
+
+    const [updated] = await db
+      .update(rxCases)
+      .set({
+        status: resolution.status,
+        seazonaPushStatus: resolution.seazonaPushStatus,
+        seazonaOrderId: resolution.seazonaOrderId,
+        updatedAt: new Date(),
+      })
+      .where(eq(rxCases.id, caseId))
+      .returning({
+        id: rxCases.id,
+        status: rxCases.status,
+        seazonaPushStatus: rxCases.seazonaPushStatus,
+        seazonaOrderId: rxCases.seazonaOrderId,
+        updatedAt: rxCases.updatedAt,
+      });
+
+    auditService.logSafe({
+      userId: request.user.id,
+      action: "rx_case.marked_manual",
+      targetType: "rx_case",
+      targetId: caseId,
+      // No PHI: mapKeys, the order number, and the operator's own note only.
+      metadata: {
+        unresolvedAtManual: resolution.unresolvedAtManual,
+        seazonaOrderId: resolution.seazonaOrderId,
+        note: note || null,
+      },
+      ipAddress: request.ip,
+    });
 
     return { data: updated };
   });
