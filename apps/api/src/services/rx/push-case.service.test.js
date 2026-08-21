@@ -11,7 +11,7 @@ vi.mock("../seazona.service.js", () => ({
 }));
 
 import { createOrder } from "../seazona.service.js";
-import { payloadFromLines, pushCaseToSeazona } from "./push-case.service.js";
+import { payloadFromLines, pushCaseToSeazona, shouldReleasePushLock } from "./push-case.service.js";
 import * as caseGates from "./case-gates.js";
 import * as routesModule from "../../routes/admin-rx-cases.routes.js";
 
@@ -232,4 +232,27 @@ describe("pushCaseToSeazona — one push attempt, decision logic only (Seazona m
     expect(createOrder).toHaveBeenCalledWith(outcome.payload);
     expect(outcome.contactedSeazona).toBe(true);
   });
+});
+
+// ─── shouldReleasePushLock — B1: the lock must not release on an ambiguous
+// failure ─────────────────────────────────────────────────────────────────
+//
+// Regression for a review finding: the push route used to release the
+// claim/lock (seazonaPushStatus back out of "pushing") on EVERY failed
+// outcome, including one where Seazona was actually contacted and the
+// result was lost — exactly the case where a retry risks creating a real
+// duplicate order (Seazona has no idempotency key). This is the pure
+// decision the route now defers to instead of writing the release logic
+// itself.
+
+test("a successful push releases the lock", () => {
+  assert.equal(shouldReleasePushLock({ status: "pushed", contactedSeazona: true }), true);
+});
+
+test("a failure where Seazona was never contacted releases the lock — a retry cannot duplicate anything", () => {
+  assert.equal(shouldReleasePushLock({ status: "failed", contactedSeazona: false }), true);
+});
+
+test("a failure where Seazona WAS contacted keeps the lock held — the response was ambiguous, a retry could duplicate a real order", () => {
+  assert.equal(shouldReleasePushLock({ status: "failed", contactedSeazona: true }), false);
 });

@@ -10,6 +10,7 @@ import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import multipart from "@fastify/multipart";
 import { env } from "./config/env.js";
+import { reqSerializer } from "./lib/log-serializers.js";
 import project from "../../../project.config.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import authRoutes from "./routes/auth.routes.js";
@@ -29,6 +30,15 @@ import themeRoutes from "./routes/theme.routes.js";
 const fastify = Fastify({
   logger: {
     level: env.NODE_ENV === "production" ? "info" : "debug",
+    // B3 fix: without this, Fastify's default req serializer logs req.url
+    // verbatim — query string included — at `info` in production. The admin
+    // rx-cases queue's `?q=` implements a patient-name search over decrypted
+    // rows (see admin-rx-cases.routes.js), so an unmodified default here
+    // would write patient names into Cloud Logging, outside the
+    // encrypted-at-rest boundary this system maintains everywhere else. See
+    // lib/log-serializers.js for what's kept vs. dropped — do not restore
+    // the query string.
+    serializers: { req: reqSerializer },
   },
   // Trust exactly ONE proxy hop — Google Cloud Run's front end (the only proxy
   // in front of this container). `true` would trust the entire X-Forwarded-For

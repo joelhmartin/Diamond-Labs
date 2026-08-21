@@ -10,7 +10,7 @@ import * as seazonaService from "../services/seazona.service.js";
 import { seedLines } from "../services/rx/case-lines.service.js";
 import { loadOverrides } from "../services/rx/code-overrides.service.js";
 import { canPush, summariseLines } from "../services/rx/case-gates.js";
-import { pushCaseToSeazona } from "../services/rx/push-case.service.js";
+import { pushCaseToSeazona, shouldReleasePushLock } from "../services/rx/push-case.service.js";
 import { uploadCaseFile, deleteStoredFile, getSignedReadUrl } from "../services/storage.service.js";
 import { encryptRxPhi, decryptRxPhi } from "../services/rx/phi-crypto.js";
 import { encryptJson } from "../lib/crypto.js";
@@ -633,9 +633,19 @@ export default async function rxRoutes(fastify) {
                 userId: env.SEAZONA_ORDER_USER_ID,
               });
 
+              // B1 (mirrored here — see admin-rx-cases.routes.js's push
+              // route for the full explanation): a failed outcome does NOT
+              // always release the claim/lock. When Seazona was actually
+              // contacted and the result was ambiguous (contactedSeazona
+              // true), seazonaPushStatus stays "pushing" so a human must run
+              // clear-push-lock — checking Seazona — before anything (this
+              // auto-push path or the admin queue's manual Push button) can
+              // retry and risk a real duplicate order.
+              const releaseLock = shouldReleasePushLock(outcome);
+
               const updateValues = {
                 status: outcome.status,
-                seazonaPushStatus: outcome.status,
+                seazonaPushStatus: releaseLock ? outcome.status : "pushing",
                 seazonaOrderId: outcome.seazonaOrderId,
                 seazonaPushError: outcome.seazonaPushError,
                 updatedAt: new Date(),

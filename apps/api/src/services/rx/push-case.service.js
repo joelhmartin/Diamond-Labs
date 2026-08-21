@@ -141,3 +141,31 @@ export async function pushCaseToSeazona(caseRow, lines = [], { codeToId = {}, us
 
   return { status: "pushed", seazonaOrderId: orderId, seazonaPushError: null, payload, contactedSeazona: true };
 }
+
+/**
+ * Whether a push OUTCOME (from pushCaseToSeazona) should release the
+ * claim/lock (seazonaPushStatus = "pushing") so the case can be retried.
+ *
+ * Round A's claim guards a case from being pushed twice by leaving
+ * seazonaPushStatus = "pushing" until a final outcome is written. Round B's
+ * finding: the route used to release that lock for EVERY failure, including
+ * ones where Seazona was actually contacted and the result was ambiguous —
+ * exactly the case a retry could duplicate a real order. This function is
+ * the fix, factored out as a pure decision so it's testable without a route:
+ *
+ * - "pushed" always releases — there's nothing left to protect.
+ * - "failed" releases ONLY when `contactedSeazona` is false: the push was
+ *   refused before any network call (the canPush gate or a payload-build
+ *   failure), so nothing could have been created and a retry is
+ *   unambiguously safe.
+ * - "failed" with `contactedSeazona: true` means createOrder actually ran
+ *   and the response was lost or unclear — the lock must stay HELD so a
+ *   human is forced through clear-push-lock (checking Seazona) before any
+ *   retry, rather than the queue's Push button silently re-enabling.
+ *
+ * @param {{ status: "pushed"|"failed", contactedSeazona: boolean }} outcome
+ * @returns {boolean}
+ */
+export function shouldReleasePushLock(outcome) {
+  return outcome.status !== "failed" || !outcome.contactedSeazona;
+}

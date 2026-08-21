@@ -5,11 +5,11 @@ import { rxCases, rxCaseLines, rxCaseFiles, rxCodeOverrides } from "../db/schema
 import { decryptRxPhi } from "../services/rx/phi-crypto.js";
 import { reResolveLines } from "../services/rx/case-lines.service.js";
 import { loadOverrides } from "../services/rx/code-overrides.service.js";
-import { pushCaseToSeazona } from "../services/rx/push-case.service.js";
+import { pushCaseToSeazona, shouldReleasePushLock } from "../services/rx/push-case.service.js";
 import * as seazonaService from "../services/seazona.service.js";
 import * as auditService from "../services/audit.service.js";
 import { createId } from "../lib/id.js";
-import { encryptJson } from "../lib/crypto.js";
+import { encryptJson, encryptField } from "../lib/crypto.js";
 import { env } from "../config/env.js";
 import { ERROR_CODES } from "@my-app/shared";
 import { and, asc, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
@@ -60,35 +60,75 @@ function pushedCaseRefusal() {
 }
 
 /**
+ * The 409 body for B2: a push is currently running for this case. Distinct
+ * from pushedCaseRefusal (CASE_ALREADY_PUSHED) on purpose — "wait or clear
+ * the lock" is a different next action for staff than "this is done,
+ * correct it in Seazona", and collapsing the two would send an operator
+ * hunting for the wrong fix.
+ */
+function pushInFlightRefusal() {
+  return {
+    error: {
+      code: "CASE_PUSH_IN_FLIGHT",
+      status: 409,
+      message: "A push to Seazona is currently running for this case. Wait for it to finish, or use clear-push-lock if it looks stuck — do not edit the lines it was built from.",
+    },
+  };
+}
+
+/**
  * Shared write guard for the routes that mutate a case's order lines: add a
  * line, edit a line, delete a line, re-resolve. None of those routes already
  * has the case's status in hand (they load a line row, or only `id`), so
- * this does the one lookup and, if frozen, sends the refusal and returns
- * true so the caller can stop immediately.
+ * this does the one lookup and, if frozen or mid-push, sends the refusal and
+ * returns true so the caller can stop immediately.
+ *
+ * Checks two things, in order:
+ *   1. isFrozen(status) — the case is terminally `pushed`. Same rule as
+ *      before (Task 9).
+ *   2. seazonaPushStatus === "pushing" — a push is CURRENTLY in flight (B2).
+ *      The order that lands was built from the pre-claim snapshot of these
+ *      lines; letting staff add/edit/delete a line while that request is
+ *      still running means the case can freeze as `pushed` showing lines
+ *      that were never actually sent, or a staffer's attempt to stop a bad
+ *      push by deleting a line does nothing to the request already in
+ *      flight. Uses a distinct code (CASE_PUSH_IN_FLIGHT, not
+ *      CASE_ALREADY_PUSHED) — the correct next step ("wait or clear the
+ *      lock") is not "correct it in Seazona".
  *
  * Returns false — and sends nothing — both when the case is editable AND
  * when it doesn't exist at all. A missing case is each route's own 404 to
  * report (via its existing lookup), not this guard's; conflating the two
- * would blur "refused because pushed" with "doesn't exist" behind the same
- * signal.
+ * would blur "refused because pushed/in flight" with "doesn't exist" behind
+ * the same signal.
  *
  * Deliberately NOT applied to: the push route itself and clear-push-lock
  * (Task 10 — they SET `pushed` / recover a case whose push was
- * interrupted), mark-manual (Task 10b — also lands on `pushed`), PUT
- * .../status (already gated by canTransition; do not double-gate or change
- * its 409 shape), or either GET route (a pushed case must stay fully
- * readable — this is a write guard only).
+ * interrupted), mark-manual (Task 10b — also lands on `pushed`, and claims
+ * the same "pushing" sentinel itself), PUT .../status (already gated by
+ * canTransition; do not double-gate or change its 409 shape), or either GET
+ * route (a pushed case must stay fully readable — this is a write guard
+ * only).
  */
 async function refusePushedCase(caseId, reply) {
   const [caseRow] = await db
-    .select({ status: rxCases.status })
+    .select({ status: rxCases.status, seazonaPushStatus: rxCases.seazonaPushStatus })
     .from(rxCases)
     .where(eq(rxCases.id, caseId));
 
-  if (!caseRow || !isFrozen(caseRow.status)) return false;
+  if (!caseRow) return false;
 
-  reply.code(409).send(pushedCaseRefusal());
-  return true;
+  if (isFrozen(caseRow.status)) {
+    reply.code(409).send(pushedCaseRefusal());
+    return true;
+  }
+
+  if (caseRow.seazonaPushStatus === "pushing") {
+    reply.code(409).send(pushInFlightRefusal());
+    return true;
+  }
+
+  return false;
 }
 
 const DEFAULT_LIMIT = 50;
@@ -624,10 +664,15 @@ export default async function adminRxCasesRoutes(fastify) {
       return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
     }
 
-    // Already have the row (status and all) from the select above — no need
-    // for a second refusePushedCase lookup, just the same predicate + body.
+    // Already have the row (status and seazonaPushStatus and all) from the
+    // select above — no need for a second refusePushedCase lookup, just the
+    // same two checks + bodies (B2: pushed is terminal, mid-push is also
+    // refused so a re-resolve can't touch lines a push is currently reading).
     if (isFrozen(caseRowRaw.status)) {
       return reply.code(409).send(pushedCaseRefusal());
+    }
+    if (caseRowRaw.seazonaPushStatus === "pushing") {
+      return reply.code(409).send(pushInFlightRefusal());
     }
 
     let caseRow;
@@ -801,8 +846,9 @@ export default async function adminRxCasesRoutes(fastify) {
 
     // codeToId from the live Seazona catalog — listProducts() returns [] if
     // Seazona is unreachable (soft-fail), which then surfaces as "no catalog
-    // id for code …" warnings on every line and a failed push, same as the
-    // legacy /rx/cases/:id/approve pattern.
+    // id for code …" warnings on every line and a failed push, same pattern
+    // the now-deleted /rx/cases/:id/approve route used before this route
+    // replaced it (see round A's commit message).
     const products = await seazonaService.listProducts();
     const codeToId = {};
     for (const p of products) {
@@ -814,16 +860,27 @@ export default async function adminRxCasesRoutes(fastify) {
       userId: env.SEAZONA_ORDER_USER_ID,
     });
 
+    // B1 fix: a failed push does NOT always release the claim/lock —
+    // shouldReleasePushLock (push-case.service.js) makes that call from
+    // outcome.contactedSeazona, exactly the distinction it was added for.
+    // When Seazona was actually contacted and the result was ambiguous, the
+    // lock stays HELD (seazonaPushStatus stays "pushing") so a human must
+    // run clear-push-lock — checking Seazona — before any retry, rather than
+    // the queue's Push button silently re-enabling on a possible duplicate.
+    // `status` still becomes outcome.status either way, so the case stays
+    // visible and actionable in the queue — only the LOCK differs.
+    const releaseLock = shouldReleasePushLock(outcome);
+
     const updateValues = {
       status: outcome.status,
-      seazonaPushStatus: outcome.status,
+      seazonaPushStatus: releaseLock ? outcome.status : "pushing",
       seazonaOrderId: outcome.seazonaOrderId,
       seazonaPushError: outcome.seazonaPushError,
       updatedAt: new Date(),
     };
     if (outcome.status === "pushed") {
-      // PHI (embeds patientName) — encrypt at rest, same treatment as the
-      // legacy /rx/cases/:id/approve dry-run snapshot.
+      // PHI (embeds patientName) — encrypt at rest, same treatment the
+      // now-deleted /rx/cases/:id/approve route gave its dry-run snapshot.
       updateValues.payloadSnapshot = encryptJson(outcome.payload);
     }
 
@@ -891,10 +948,15 @@ export default async function adminRxCasesRoutes(fastify) {
   // This is the one sanctioned way past the send gate. Precisely because it
   // bypasses that gate, manualResolution captures which lines were still
   // unresolved at this moment into unresolvedAtManual, which this route
-  // writes into audit metadata (never a new column) alongside the operator's
-  // note and the Seazona order number — no PHI, only mapKeys. Otherwise this
-  // button quietly becomes how mapping gaps disappear, and those gaps are
-  // the lab's open questions.
+  // writes into audit metadata alongside the Seazona order number — no PHI,
+  // only mapKeys. Otherwise this button quietly becomes how mapping gaps
+  // disappear, and those gaps are the lab's open questions.
+  //
+  // B4: the operator's free-text `note` is PHI-shaped (a natural note like
+  // "confirmed with Dr Lee re: Jane Doe's retainer" names the patient) and
+  // is persisted encrypted on rx_cases.manualNote (phi-crypto.js), NOT in
+  // audit metadata — audit_log.metadata is plaintext jsonb. The audit row
+  // records only notePresent: true/false, never the note text itself.
   //
   // Claim: the SAME full predicate the push route uses — status != 'pushed'
   // AND (seazonaPushStatus is null OR != 'pushing') — not just the narrower
@@ -970,6 +1032,11 @@ export default async function adminRxCasesRoutes(fastify) {
         status: resolution.status,
         seazonaPushStatus: resolution.seazonaPushStatus,
         seazonaOrderId: resolution.seazonaOrderId,
+        // B4: encrypted at rest (phi-crypto.js's TEXT_FIELDS includes
+        // manualNote) — this route encrypts the single column directly
+        // rather than routing through encryptRxPhi, same convention the
+        // push route above already uses for payloadSnapshot.
+        manualNote: note ? encryptField(note) : null,
         updatedAt: new Date(),
       })
       .where(eq(rxCases.id, caseId))
@@ -986,11 +1053,13 @@ export default async function adminRxCasesRoutes(fastify) {
       action: "rx_case.marked_manual",
       targetType: "rx_case",
       targetId: caseId,
-      // No PHI: mapKeys, the order number, and the operator's own note only.
+      // No PHI: mapKeys and the order number only. The operator's actual
+      // note text lives encrypted on rx_cases.manualNote (B4) — audit
+      // metadata (plaintext jsonb) records only whether one was given.
       metadata: {
         unresolvedAtManual: resolution.unresolvedAtManual,
         seazonaOrderId: resolution.seazonaOrderId,
-        note: note || null,
+        notePresent: !!note,
       },
       ipAddress: request.ip,
     });

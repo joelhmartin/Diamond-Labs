@@ -249,6 +249,66 @@ test("PUT /admin/rx-cases/:id/status is NOT double-gated by the new guard — ca
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// B2 — the four line-mutating routes must also refuse while a push is
+// currently in flight (seazonaPushStatus === "pushing"), not just once the
+// case is terminally `pushed`. refusePushedCase (and re-resolve's inline
+// check, which reuses the same row it already loaded) now check both.
+// ─────────────────────────────────────────────────────────────────────────
+
+test("refusePushedCase checks seazonaPushStatus === 'pushing' in addition to isFrozen(status), and sends a distinct CASE_PUSH_IN_FLIGHT 409", () => {
+  const start = routesSource.indexOf("async function refusePushedCase(caseId, reply) {");
+  assert.ok(start >= 0, "refusePushedCase not found in source");
+  const end = routesSource.indexOf("\n}\n", start);
+  const body = routesSource.slice(start, end);
+  assert.match(body, /seazonaPushStatus:\s*rxCases\.seazonaPushStatus/, "must select seazonaPushStatus, not just status");
+  assert.match(body, /seazonaPushStatus\s*===\s*"pushing"/);
+  assert.match(body, /pushInFlightRefusal\(\)/);
+});
+
+test("CASE_PUSH_IN_FLIGHT is a distinct code from CASE_ALREADY_PUSHED, not collapsed into it", () => {
+  const start = routesSource.indexOf("function pushInFlightRefusal() {");
+  assert.ok(start >= 0, "pushInFlightRefusal not found in source");
+  const end = routesSource.indexOf("\n}\n", start);
+  const body = routesSource.slice(start, end);
+  assert.match(body, /CASE_PUSH_IN_FLIGHT/);
+  assert.match(body, /409/);
+  assert.doesNotMatch(body, /CASE_ALREADY_PUSHED/);
+});
+
+test("POST /admin/rx-cases/:id/lines is wired to the in-flight guard", () => {
+  const body = handlerSource('fastify.post("/admin/rx-cases/:id/lines",');
+  assert.match(body, /refusePushedCase\(/);
+});
+
+test("PUT /admin/rx-cases/:id/lines/:lineId is wired to the in-flight guard", () => {
+  const body = handlerSource('fastify.put("/admin/rx-cases/:id/lines/:lineId",');
+  assert.match(body, /refusePushedCase\(/);
+});
+
+test("DELETE /admin/rx-cases/:id/lines/:lineId is wired to the in-flight guard", () => {
+  const body = handlerSource('fastify.delete("/admin/rx-cases/:id/lines/:lineId",');
+  assert.match(body, /refusePushedCase\(/);
+});
+
+test("POST /admin/rx-cases/:id/re-resolve checks seazonaPushStatus === 'pushing' inline and sends pushInFlightRefusal", () => {
+  const body = handlerSource('fastify.post("/admin/rx-cases/:id/re-resolve",');
+  assert.match(body, /caseRowRaw\.seazonaPushStatus\s*===\s*"pushing"/);
+  assert.match(body, /pushInFlightRefusal\(\)/);
+});
+
+test("the in-flight guard is NOT wired into the push route, mark-manual, or clear-push-lock — they own their own claim", () => {
+  for (const marker of [
+    PUSH_ROUTE_MARKER,
+    'fastify.post("/admin/rx-cases/:id/mark-manual",',
+    'fastify.put("/admin/rx-cases/:id/clear-push-lock",',
+  ]) {
+    const body = handlerSource(marker);
+    assert.doesNotMatch(body, /refusePushedCase\(/, `${marker} must not call refusePushedCase`);
+    assert.doesNotMatch(body, /pushInFlightRefusal\(/, `${marker} must not call pushInFlightRefusal`);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // POST /admin/rx-cases/:id/push — Task 10 fix round 1, findings 2 and 3.
 //
 // Same limitation as the wiring checks above: no Fastify-inject harness
@@ -292,6 +352,25 @@ test("POST /admin/rx-cases/:id/push gates on canPush before claiming the case, a
 test("POST /admin/rx-cases/:id/push still calls pushCaseToSeazona, which re-runs canPush as defence in depth", () => {
   const body = handlerSource(PUSH_ROUTE_MARKER);
   assert.match(body, /pushCaseToSeazona\(/);
+});
+
+// ─── B1: a failed push must not always release the claim/lock ─────────────
+//
+// See push-case.service.test.js's shouldReleasePushLock tests for the actual
+// decision logic (unit-tested there without a route). These are wiring
+// checks proving the route defers to that function rather than writing
+// outcome.status straight onto seazonaPushStatus (the bug: it released the
+// lock on every failure, including one where Seazona was actually contacted
+// and the result was ambiguous).
+
+test("POST /admin/rx-cases/:id/push decides seazonaPushStatus via shouldReleasePushLock, not outcome.status directly", () => {
+  const body = handlerSource(PUSH_ROUTE_MARKER);
+  assert.match(body, /shouldReleasePushLock\(outcome\)/);
+  assert.doesNotMatch(
+    body,
+    /seazonaPushStatus:\s*outcome\.status/,
+    "seazonaPushStatus must not be set unconditionally to outcome.status — a contacted-but-ambiguous failure must keep the lock held"
+  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -370,4 +449,31 @@ test("POST /admin/rx-cases/:id/mark-manual audits with rx_case.marked_manual and
   const body = handlerSource(MARK_MANUAL_ROUTE_MARKER);
   assert.match(body, /manualResolution\(/);
   assert.match(body, /action:\s*"rx_case\.marked_manual"/);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// B4 — the mark-manual operator note is PHI-shaped (can name a patient) and
+// must be encrypted at rest on rx_cases.manualNote, never written verbatim
+// into audit_log.metadata (plaintext jsonb).
+// ─────────────────────────────────────────────────────────────────────────
+
+test("POST /admin/rx-cases/:id/mark-manual encrypts the note onto manualNote before persisting", () => {
+  const body = handlerSource(MARK_MANUAL_ROUTE_MARKER);
+  assert.match(body, /manualNote:\s*note\s*\?\s*encryptField\(note\)\s*:\s*null/);
+});
+
+test("POST /admin/rx-cases/:id/mark-manual audit metadata records only notePresent, never the note text", () => {
+  const body = handlerSource(MARK_MANUAL_ROUTE_MARKER);
+  assert.match(body, /notePresent:\s*!!note/);
+  assert.doesNotMatch(
+    body,
+    /metadata:\s*\{[^}]*\bnote\s*:/s,
+    "audit metadata must not carry the raw note — only notePresent"
+  );
+});
+
+test("phi-crypto.js's TEXT_FIELDS includes manualNote — it is decrypted on every read path like every other free-text field", async () => {
+  const phiCryptoPath = join(dirname(fileURLToPath(import.meta.url)), "../../services/rx/phi-crypto.js");
+  const source = readFileSync(phiCryptoPath, "utf8");
+  assert.match(source, /TEXT_FIELDS\s*=\s*\[[^\]]*"manualNote"[^\]]*\]/);
 });

@@ -79,3 +79,29 @@ test("the legacy unconditional auto-push write is gone", () => {
       "this must be conditioned on the 'pushing' claim (see the test above)"
   );
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// B1's fix mirrored here too: this auto-push path is an independent write
+// site for the exact same outcome shape (status/contactedSeazona) the admin
+// push route interprets — if only the admin route deferred to
+// shouldReleasePushLock, this path would keep the original bug (a failed-
+// but-contacted outcome silently releasing the lock) even after B1 shipped.
+// See push-case.service.test.js's shouldReleasePushLock tests for the
+// decision logic itself.
+// ─────────────────────────────────────────────────────────────────────────
+
+test("rx.routes.js imports shouldReleasePushLock from push-case.service.js", () => {
+  assert.match(
+    rxRoutesSource,
+    /import\s*\{[^}]*shouldReleasePushLock[^}]*\}\s*from\s*["']\.\.\/services\/rx\/push-case\.service\.js["']/
+  );
+});
+
+test("rx.routes.js's auto-push outcome write decides seazonaPushStatus via shouldReleasePushLock, not outcome.status directly", () => {
+  assert.match(rxRoutesSource, /shouldReleasePushLock\(outcome\)/);
+  assert.doesNotMatch(
+    rxRoutesSource,
+    /seazonaPushStatus:\s*outcome\.status/,
+    "seazonaPushStatus must not be set unconditionally to outcome.status — a contacted-but-ambiguous failure must keep the lock held"
+  );
+});
