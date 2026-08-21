@@ -220,6 +220,12 @@ export default async function adminRxCasesRoutes(fastify) {
         practiceName: row.practiceName || null,
         deviceKey: row.deviceKey || null,
         status: row.status,
+        // How a resolved case got resolved: "pushed" (we sent it) vs "manual"
+        // (staff entered it in Seazona by hand). `status` collapses both to
+        // "pushed", so without this the queue cannot tell them apart when
+        // filtered to resolved work via ?status=pushed — and "added manually"
+        // is meant to be a visible tag, not a detail-page-only footnote.
+        seazonaPushStatus: row.seazonaPushStatus || null,
         lineCount,
         unmappedCount,
         createdAt: row.createdAt,
