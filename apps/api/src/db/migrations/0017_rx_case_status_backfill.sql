@@ -1,0 +1,1 @@
+UPDATE "rx_cases" SET "status" = 'new' WHERE "status" IN ('pending_approval', 'approved');

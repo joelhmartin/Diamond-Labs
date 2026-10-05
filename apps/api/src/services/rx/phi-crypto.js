@@ -16,7 +16,13 @@ import {
 // un-migrated rows and synthetic plaintext test fixtures round-trip unchanged.
 
 // Free-text PHI columns → encryptField / decryptField.
-const TEXT_FIELDS = ["patientFirst", "patientLast", "dob", "contactPhone", "generalComments"];
+// manualNote (B4): the mark-manual operator note. Was written verbatim into
+// audit_log.metadata (plaintext jsonb) on a prose claim that it carried no
+// PHI, which nothing enforced — a natural note ("confirmed with Dr Lee re:
+// Jane Doe's retainer") writes a patient name into a plaintext column.
+// Persisted on rx_cases and encrypted here instead, like every other
+// free-text field on that table.
+const TEXT_FIELDS = ["patientFirst", "patientLast", "dob", "contactPhone", "generalComments", "manualNote"];
 
 // JSON-blob PHI columns (now stored as encrypted text) → encryptJson / decryptJson.
 // payloadSnapshot is the Seazona order payload captured at approval — it embeds

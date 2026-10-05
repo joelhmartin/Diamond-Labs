@@ -1,15 +1,27 @@
-import { pgTable, varchar, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, varchar, text, boolean, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 // Admin-confirmed Seazona product code for a single mapping slot. A DB override
 // WINS over the table/resolver defaults in services/rx/catalog-map/. `mapKey` identifies the slot:
 //   primary:<deviceKey>:<material|"default">  |  mod:<label>  |  lab:<serviceKey>
+//
+// seazonaCode is nullable: a "noteOnly" ruling (the lab decided a selection is
+// a build instruction, not a charged product) is also confirmed permanently via
+// this table, and that confirmation has no product code — inventing one would
+// misrepresent the ruling. See admin-rx-cases.routes.js's overrideRowFor.
+//
+// noteOnly is a real column, not something inferred from `note` text or from
+// seazonaCode being null: catalog-map/index.js branches on it when replaying
+// this override into a future case's lines (a noteOnly ruling must emit a
+// noteOnly line, never a codeless "confirmed" product line), and it can't
+// parse prose to make that call.
 export const rxCodeOverrides = pgTable("rx_code_overrides", {
   id: varchar("id", { length: 128 }).primaryKey(),
   mapKey: varchar("map_key", { length: 200 }).notNull(),
-  seazonaCode: varchar("seazona_code", { length: 60 }).notNull(),
+  seazonaCode: varchar("seazona_code", { length: 60 }),
   seazonaProductId: varchar("seazona_product_id", { length: 128 }),
   seazonaName: varchar("seazona_name", { length: 255 }),
   note: text("note"),
+  noteOnly: boolean("note_only").notNull().default(false),
   confirmedBy: varchar("confirmed_by", { length: 128 }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

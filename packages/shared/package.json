@@ -9,7 +9,13 @@
     "./constants/*": "./src/constants/*",
     "./utils/*": "./src/utils/*"
   },
+  "scripts": {
+    "test": "vitest run"
+  },
   "dependencies": {
     "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.0"
   }
 }

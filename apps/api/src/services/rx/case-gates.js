@@ -1,0 +1,213 @@
+// Pure domain rules for a dental Rx case: status vocabulary, transition and
+// push gates, and the noteOnly <-> seazonaCode invariant. Deliberately
+// imports NOTHING from routes/ or the DB — services (push-case.service.js)
+// and their tests need these without pulling in Fastify, drizzle, or
+// config/database.js. admin-rx-cases.routes.js re-exports everything below
+// so every existing importer keeps working unchanged.
+
+/**
+ * Statuses the queue shows when the caller does not ask for specific ones —
+ * everything that still needs lab attention. Deliberately excludes `pushed`
+ * (already sent to Seazona) and `cancelled` (dead).
+ */
+export const DEFAULT_QUEUE_STATUSES = ["new", "in_review", "awaiting_doctor", "failed"];
+
+/**
+ * The six states a case can be in. This is the third status vocabulary in
+ * this codebase, alongside SUBMISSION_STATUS (rx.routes.js — what a
+ * freshly-submitted case is written as) and DEFAULT_QUEUE_STATUSES above
+ * (what the admin queue shows by default). Vocabulary drift between the
+ * first two already produced this plan's worst defect — the admin queue
+ * silently returned zero rows forever because the status the submit route
+ * wrote was not one the queue selected. rx-status-vocabulary.test.js pins
+ * all three together; if you add or rename a status here, that test is
+ * where a drift will surface.
+ */
+export const CASE_STATUSES = [
+  "new", "in_review", "awaiting_doctor", "pushed", "failed", "cancelled",
+];
+
+/**
+ * Whether a case may move from `from` to `to`.
+ *
+ * `pushed` is terminal — the Seazona order already exists, so moving the
+ * case back would make the portal disagree with the lab's own system about
+ * what was ordered. A mistake after a push is corrected in Seazona, not
+ * here. (A later "marked manually added" resolution also lands on `pushed`
+ * for the same reason: it too commits the case to an order the lab
+ * considers placed.)
+ *
+ * Both `from` and `to` are validated against CASE_STATUSES. A `from` outside
+ * the known vocabulary is not a state anything should transition out of —
+ * checking only `to` would let an unknown or `undefined` origin (e.g. a
+ * caller that forgot to load the current status, or a status a future
+ * producer misspells) through as `true`.
+ */
+export function canTransition(from, to) {
+  if (!CASE_STATUSES.includes(from)) return false;
+  if (!CASE_STATUSES.includes(to)) return false;
+  if (from === "pushed") return false;
+  return true;
+}
+
+/**
+ * Whether a case's ORDER LINES are frozen against further edits. Same rule
+ * canTransition already applies to the case's status label (see its
+ * docstring for the reasoning: once pushed, the Seazona order already
+ * exists, so a change here would make the portal disagree with the lab's
+ * own system about what was ordered) — this is that rule applied to the
+ * case's contents, which is the half that actually matters. Deliberately
+ * checks `status === "pushed"` only; `cancelled` is NOT frozen by this
+ * rule — widening that is a separate question nobody has ruled on.
+ *
+ * Pure and exported so it's directly testable without a database.
+ */
+export function isFrozen(status) {
+  return status === "pushed";
+}
+
+/**
+ * Count a case's order lines and, separately, the ones blocking a push.
+ *
+ * A `noteOnly` line is deliberately NOT unmapped: the lab has ruled it is a
+ * build instruction rather than a charged product, so it travels in the order
+ * notes and does not block the push. Counting it here would make a case with
+ * a noteOnly selection permanently unsendable (unmappedCount > 0 gates the
+ * push).
+ *
+ * Pure — no DB, no I/O — so it is testable on its own.
+ * @param {Array<{status: string, noteOnly?: boolean}>} lines
+ * @returns {{ lineCount: number, unmappedCount: number }}
+ */
+export function summariseLines(lines = []) {
+  return {
+    lineCount: lines.length,
+    unmappedCount: lines.filter((l) => l.status === "open" && !l.noteOnly).length,
+  };
+}
+
+/**
+ * Whether a case may be pushed. Exported and pure so the gate is testable
+ * without a database or a live Seazona client.
+ *
+ * The invariant this protects: never send Seazona a partial order.
+ *
+ * - A `noteOnly` line never blocks — it's a doctor selection the lab has
+ *   ruled is a build instruction rather than a charged product; it travels
+ *   in the order notes, not as a line. Counting it as blocking would make
+ *   such a case permanently unsendable.
+ * - A case with no sendable (non-noteOnly) lines is refused too — an order
+ *   with no lines is not a lesser order, it is a wrong one.
+ * - A sendable line blocks if it has no `seazonaCode`, regardless of what
+ *   its own `status` claims. This gate is the last check before a real
+ *   order reaches the lab, so it does not trust a line's self-reported
+ *   status — it independently confirms the one thing that actually makes a
+ *   line sendable: a product code is present. Nothing upstream produces a
+ *   codeless "confirmed" line today (statusForLine guards the write path,
+ *   the resolver routes codeless rows to unmapped), but this gate must hold
+ *   even if a future producer gets that wrong.
+ *
+ * @param {Array<{status: string, noteOnly?: boolean, seazonaCode?: string|null, mapKey?: string, sourceLabel?: string}>} lines
+ * @returns {{ ok: boolean, reason?: string, blocking?: Array<string|undefined> }}
+ */
+export function canPush(lines = []) {
+  const emitting = lines.filter((l) => !l.noteOnly);
+  if (emitting.length === 0) {
+    return { ok: false, reason: "This case has no lines to send." };
+  }
+  const blocking = emitting.filter((l) => l.status === "open" || !l.seazonaCode);
+  if (blocking.length > 0) {
+    return {
+      ok: false,
+      reason: `${blocking.length} selection(s) still need a product code.`,
+      blocking: blocking.map((l) => l.mapKey || l.sourceLabel),
+    };
+  }
+  return { ok: true };
+}
+
+/**
+ * The single source of truth for the noteOnly ⇄ seazonaCode invariant: a
+ * note-only ruling wins and the code is cleared. `noteOnly: true` is an
+ * explicit statement that the line is a build instruction, not a charged
+ * product — and both downstream readers already behave that way (canPush
+ * filters noteOnly lines out of the sendable set; itemFromOverride checks
+ * noteOnly first and emits `code: null`). Storing a code alongside
+ * noteOnly: true would just be a value neither reader will ever honour, so
+ * normalising here keeps the persisted row honest about what will actually
+ * happen. Exported and pure so both write paths (the PUT/POST line handlers
+ * and overrideRowFor below) can share and test it directly.
+ */
+export function normalizeSeazonaCode({ seazonaCode, noteOnly }) {
+  return noteOnly ? null : (seazonaCode ?? null);
+}
+
+/**
+ * Build the rx_code_overrides row for an "always" resolution.
+ *
+ * mapKey is the override table's unique key — an unmapped line carries the same
+ * mapKey the resolver would have used, which is what makes this possible. A
+ * line with no mapKey cannot be resolved permanently, only for this order.
+ *
+ * It never invents a code when none is given — and, as a second line of
+ * defence against the noteOnly ⇄ seazonaCode invariant above, it never
+ * leaks one through either: a noteOnly ruling clears whatever seazonaCode
+ * was passed in, regardless of what the caller already normalised.
+ */
+export function overrideRowFor({ mapKey, seazonaCode, seazonaName, noteOnly, confirmedBy }) {
+  if (!mapKey) throw new Error("cannot write an override without a mapKey");
+  return {
+    mapKey,
+    seazonaCode: normalizeSeazonaCode({ seazonaCode, noteOnly }),
+    seazonaName: seazonaName ?? null,
+    // A real, queryable column — not just implied by `note`'s prose — so
+    // catalog-map/index.js can branch on it later without parsing text.
+    noteOnly: !!noteOnly,
+    note: noteOnly ? "note only — instruction, not a charged product" : null,
+    confirmedBy: confirmedBy ?? null,
+  };
+}
+
+/**
+ * A line is "confirmed" once it has a real code or the lab has ruled it's a
+ * note-only instruction — either way staff resolved it. Otherwise it's still
+ * "open" and blocks a push (see canPush).
+ */
+export function statusForLine({ seazonaCode, noteOnly }) {
+  return noteOnly || seazonaCode ? "confirmed" : "open";
+}
+
+/**
+ * The column values for "a human already entered this in Seazona".
+ *
+ * Resolves the case exactly as a successful push does — same terminal
+ * status, so it leaves the queue and cannot be pushed again (see
+ * canTransition's docstring: `pushed` is terminal because the Seazona order
+ * already exists) — but tags HOW it got there via seazonaPushStatus, so "we
+ * sent this" and "someone typed it in" stay distinguishable forever.
+ *
+ * Deliberately ignores canPush: a human already created the order in
+ * Seazona by hand, so an unresolved line here cannot stop them recording
+ * that fact — this is the one sanctioned way past the send gate. Precisely
+ * because it bypasses that gate, it captures which lines were still
+ * unresolved at this moment (mapKey, or the raw sourceLabel when there is
+ * no mapKey to key an override on) instead of discarding them. Without
+ * this, "mark manual" quietly becomes the way mapping gaps disappear — and
+ * those gaps are the lab's open questions.
+ *
+ * @param {Array<{status: string, noteOnly?: boolean, seazonaCode?: string|null, mapKey?: string, sourceLabel?: string}>} lines
+ * @param {{ seazonaOrderId?: string|null }} [opts]
+ * @returns {{ status: string, seazonaPushStatus: string, seazonaOrderId: string|null, unresolvedAtManual: string[] }}
+ */
+export function manualResolution(lines = [], { seazonaOrderId } = {}) {
+  const unresolved = lines
+    .filter((l) => !l.noteOnly && (l.status === "open" || !l.seazonaCode))
+    .map((l) => l.mapKey || l.sourceLabel)
+    .filter(Boolean);
+  return {
+    status: "pushed",
+    seazonaPushStatus: "manual",
+    seazonaOrderId: seazonaOrderId || null,
+    unresolvedAtManual: unresolved,
+  };
+}

@@ -51,14 +51,28 @@ const envSchema = z.object({
   // Google Cloud Storage
   RX_GCS_BUCKET: z.string().optional(),
   // Digital Rx live Seazona push gate.
-  // NOTE: the live-push branch is currently a stub — even when set to "true",
-  // the /rx/cases/:id/approve route still dry-runs (seazonaPushStatus =
-  // "push_skipped_dryrun") and does NOT call seazonaService.createOrder.
-  // The createOrder call is commented-out pending lab confirmation of the
-  // staff userId and end-to-end payload validation. When unset or any other
-  // value the route also dry-runs. Matches the gated pattern used by the
-  // shop's createOrder path; the gate itself will activate once the TODO
-  // block in rx.routes.js is uncommented.
+  //
+  // NOTE — this is LIVE, not a stub. B5 (2026-08-21): an earlier version of
+  // this comment described a since-deleted route (POST /rx/cases/:id/approve)
+  // that dry-ran regardless of this flag. That route is gone. Today
+  // RX_LIVE_PUSH has exactly ONE consumer: POST /rx/form-submissions
+  // (rx.routes.js, shouldAutoPush — exact string match on "true", anything
+  // else including unset resolves to off). When it's "true", a cleanly-
+  // resolved incoming case is pushed to Seazona automatically, via the SAME
+  // send path (pushCaseToSeazona) the admin queue's manual Push button uses
+  // — it really does call seazonaService.createOrder and really does create
+  // a live order in the lab's system. There is no commented-out TODO gating
+  // it further.
+  //
+  // Also requires SEAZONA_ORDER_USER_ID to be set, or auto-push logs
+  // [Seazona][RX_AUTO_PUSH_SKIPPED] and leaves the case for a human. A case
+  // whose lines don't all resolve (canPush gate) is left "new" for the admin
+  // queue rather than being sent partial. Any push failure lands the case in
+  // "failed" for the queue, same as a manual push failure.
+  //
+  // Before flipping this to "true" in production: it will create real
+  // manufacturing orders on every clean submission, with no idempotency key
+  // on Seazona's side to catch a duplicate.
   RX_LIVE_PUSH: z.string().optional(),
 
   // Admin

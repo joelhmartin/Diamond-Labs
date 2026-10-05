@@ -264,6 +264,42 @@ export async function sendOrderReceipt({
 }
 
 /**
+ * Notify the lab that a new Rx case has arrived and is ready for review.
+ * Sent (soft-fail) after every successful POST /rx/form-submissions save —
+ * deliberately NOT gated by RX_LIVE_PUSH. A case that auto-pushes
+ * successfully leaves the admin queue immediately (DEFAULT_QUEUE_STATUSES
+ * excludes "pushed"), so this email may be the only signal staff get that
+ * the case exists at all — auto-push or not, the lab needs to know.
+ *
+ * No PHI: only the case number, the submitting doctor's identity, a plain
+ * device summary, and an unmapped-line count travel here. Patient name,
+ * DOB, phone, and prescription content stay behind the authenticated app —
+ * reachable only via caseUrl, never inline in the subject or body.
+ */
+export async function sendRxSubmissionReceived({ caseNumber, practiceName, deviceSummary, unmappedCount, caseUrl }) {
+  if (!env.ADMIN_NOTIFICATION_EMAIL) return false;
+  const unmappedNote = unmappedCount > 0
+    ? `<p style="margin:16px 0 0;color:#b45309;font-size:13px;">${esc(unmappedCount)} selection(s) still need a product code before this case can be sent.</p>`
+    : "";
+  return send({
+    to: env.ADMIN_NOTIFICATION_EMAIL,
+    subject: `New Rx case — ${esc(caseNumber)}`,
+    html: `
+      <h1>New Rx case submitted</h1>
+      <table style="border-collapse:collapse;margin:16px 0;">
+        <tr><td style="padding:6px 12px;font-weight:bold;">Case</td><td style="padding:6px 12px;">${esc(caseNumber)}</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:bold;">Submitted by</td><td style="padding:6px 12px;">${esc(practiceName || "—")}</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:bold;">Devices</td><td style="padding:6px 12px;">${esc(deviceSummary || "—")}</td></tr>
+      </table>
+      ${unmappedNote}
+      <p style="margin:24px 0;">
+        <a href="${caseUrl}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;">Review case</a>
+      </p>
+    `,
+  });
+}
+
+/**
  * Doctor invoice-payment receipt. Sent (soft-fail) after a successful invoice
  * payment is recorded — covers both the saved-card and hosted-card flows.
  * `invoices` are { number, amount } per invoice the charge was applied to.

@@ -35,13 +35,20 @@ export const rxCases = pgTable("rx_cases", {
   rushTier: varchar("rush_tier", { length: 40 }),
   signatureUrl: text("signature_url"),
   generalComments: text("general_comments"),
-  status: varchar("status", { length: 40 }).notNull().default("pending_approval"),
+  status: varchar("status", { length: 40 }).notNull().default("new"),
   seazonaPushStatus: varchar("seazona_push_status", { length: 40 }),
   seazonaOrderId: varchar("seazona_order_id", { length: 128 }),
   seazonaPushError: text("seazona_push_error"),
   // PHI — Seazona order payload captured at approval (embeds patientName).
   // Encrypted at rest via phi-crypto.js; stored as text (was jsonb).
   payloadSnapshot: text("payload_snapshot"),
+  // PHI (B4) — the free-text note an operator enters on POST .../mark-manual
+  // ("staff typed this order into Seazona by hand"). Previously written
+  // verbatim into audit_log.metadata (plaintext jsonb) on the strength of a
+  // comment claiming it carried no PHI; nothing enforced that. Encrypted at
+  // rest via phi-crypto.js like every other free-text field on this table —
+  // audit metadata now records only notePresent: true/false.
+  manualNote: text("manual_note"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [

@@ -1,0 +1,1 @@
+ALTER TABLE "rx_cases" ALTER COLUMN "status" SET DEFAULT 'new';

@@ -33,11 +33,58 @@ function findRow(rows, literal, device) {
   );
 }
 
+/**
+ * Turn a DB override into a line item, or signal that it can't be one.
+ *
+ * Two shapes an override can represent:
+ * - A confirmed product: `code` is set. Emits a normal, priced line.
+ * - A confirmed noteOnly ruling: the lab decided this selection is a build
+ *   instruction, not a charged product (see admin-rx-cases.routes.js's
+ *   overrideRowFor). Emits a line with `noteOnly: true` and no code — never
+ *   a phantom "confirmed" product line, because canPush and the order-payload
+ *   builder both key off `noteOnly` to keep this out of priced/sendable
+ *   items (see admin-rx-cases.routes.js's canPush and case-lines.service.js).
+ *
+ * A third, invalid shape — no code AND not noteOnly — claims a resolved
+ * mapping to nothing. Returns null so the caller falls back to `unmapped`
+ * instead of emitting a codeless "confirmed" line.
+ */
+function itemFromOverride(override, mapKey, arch) {
+  if (override.noteOnly) {
+    return {
+      code: null,
+      seazonaProductId: null,
+      name: override.name ?? null,
+      mapKey,
+      arch,
+      status: "confirmed",
+      noteOnly: true,
+      overridden: true,
+    };
+  }
+  if (!override.code) return null;
+  return {
+    code: override.code,
+    seazonaProductId: override.seazonaProductId ?? null,
+    name: override.name,
+    mapKey,
+    arch,
+    status: "confirmed",
+    noteOnly: false,
+    overridden: true,
+  };
+}
+
 /** Push a row as a line item, honouring an override and skipping `open`. */
 function emit(row, { items, unmapped }, overrides, arch = null) {
   const override = overrides[row.mapKey];
   if (override) {
-    items.push({ ...override, mapKey: row.mapKey, arch, status: "confirmed", overridden: true });
+    const item = itemFromOverride(override, row.mapKey, arch);
+    if (item) {
+      items.push(item);
+    } else {
+      unmapped.push(row.mapKey);
+    }
     return;
   }
   if (row.status === "none") return; // deliberately no line item — not a gap, don't flag it
@@ -57,8 +104,9 @@ function emit(row, { items, unmapped }, overrides, arch = null) {
  */
 function emitOverrideOrUnmapped(mapKey, { items, unmapped }, overrides, arch = null) {
   const override = overrides[mapKey];
-  if (override) {
-    items.push({ ...override, mapKey, arch, status: "confirmed", overridden: true });
+  const item = override ? itemFromOverride(override, mapKey, arch) : null;
+  if (item) {
+    items.push(item);
   } else {
     unmapped.push(mapKey);
   }
@@ -72,7 +120,18 @@ export function resolveLineItems({ deviceKey, deviceOptions = {} } = {}, { overr
     const { items, unmapped } = custom(deviceOptions);
     for (const it of items) {
       const override = overrides[it.mapKey];
-      acc.items.push(override ? { ...override, mapKey: it.mapKey, arch: it.arch, status: "confirmed", overridden: true } : { ...it, overridden: false });
+      if (!override) {
+        acc.items.push({ ...it, overridden: false });
+        continue;
+      }
+      const item = itemFromOverride(override, it.mapKey, it.arch);
+      if (item) {
+        acc.items.push(item);
+      } else {
+        // Incoherent override (no code, not noteOnly) — fall back to
+        // unmapped rather than emit a codeless "confirmed" line.
+        acc.unmapped.push(it.mapKey);
+      }
     }
     // Plain passthrough — NOT emitOverrideOrUnmapped. A resolver's unmapped
     // mapKey (e.g. a guard slider-type slot) can correspond to MULTIPLE

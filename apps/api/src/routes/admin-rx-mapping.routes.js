@@ -9,6 +9,7 @@ import * as seazonaService from "../services/seazona.service.js";
 import { DEVICE_LABELS, resolveLineItems } from "../services/rx/catalog-map/index.js";
 import { DEVICE_ROWS } from "../services/rx/catalog-map/devices.table.js";
 import { compileNotesMulti, buildSeazonaOrderPayloadMulti } from "../services/rx/build-order-payload.js";
+import { loadOverrides } from "../services/rx/code-overrides.service.js";
 
 // ─── Test-order target (Matt Rago, internal Diamond account) ──────────────────
 // "Send test order" ALWAYS targets this hardcoded client + lab user so a mapping
@@ -75,23 +76,6 @@ async function getCatalog() {
   _catalog = { list, byCode };
   _catAt = Date.now();
   return _catalog;
-}
-
-/**
- * Load all DB overrides and index by mapKey.
- * Returns { [mapKey]: { code: seazonaCode, name: seazonaName, seazonaProductId } }
- */
-async function loadOverrides() {
-  const rows = await db.select().from(rxCodeOverrides);
-  const map = {};
-  for (const row of rows) {
-    map[row.mapKey] = {
-      code: row.seazonaCode,
-      name: row.seazonaName,
-      seazonaProductId: row.seazonaProductId,
-    };
-  }
-  return map;
 }
 
 export default async function adminRxMappingRoutes(fastify) {
@@ -332,6 +316,15 @@ export default async function adminRxMappingRoutes(fastify) {
         seazonaProductId: prod.id,
         seazonaName: prod.name,
         note: note || null,
+        // This route always requires a real, catalog-verified seazonaCode
+        // (guarded above), so it can never represent a noteOnly ruling.
+        // Explicit false — not just omitted — so re-assigning a real code to
+        // a mapKey that was previously ruled noteOnly (via
+        // admin-rx-cases.routes.js) actually clears that ruling instead of
+        // leaving a stale noteOnly: true next to a new code, which
+        // catalog-map/index.js's itemFromOverride would treat as noteOnly
+        // and silently drop the code.
+        noteOnly: false,
         confirmedBy: request.user.id,
       })
       .onConflictDoUpdate({
@@ -341,6 +334,7 @@ export default async function adminRxMappingRoutes(fastify) {
           seazonaProductId: prod.id,
           seazonaName: prod.name,
           note: note || null,
+          noteOnly: false,
           confirmedBy: request.user.id,
           updatedAt: new Date(),
         },

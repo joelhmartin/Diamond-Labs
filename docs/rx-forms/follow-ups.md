@@ -93,3 +93,39 @@ decision about where that adapter should live, not just code.
   with a green suite.
 - `ROUTES.DOCTOR_NEW_CASE` is now referenced by nothing after the wizard
   retirement.
+
+## 8. The Seazona claim predicate is duplicated across two routes
+
+`POST /admin/rx-cases/:id/push` and `POST /admin/rx-cases/:id/mark-manual` each
+build the same conditional-update claim by hand:
+
+```js
+ne(rxCases.status, "pushed"),
+or(isNull(rxCases.seazonaPushStatus), ne(rxCases.seazonaPushStatus, "pushing")),
+```
+
+This is the guard that stops one case becoming two Seazona orders, and Seazona
+has no idempotency key — a duplicate is a real order someone has to find and
+delete. Editing one site and not the other reopens the race.
+
+Not urgent: the paired static-source tests in `admin-rx-cases.test.js` assert
+both sites, so a one-sided edit fails the suite today. **Fix when a real
+Fastify-inject harness lands** (follow-up 5) — at that point the static tests
+get replaced anyway, and the shared helper should land with them rather than
+being refactored in isolation now.
+
+## 9. `practiceName` on a case is the doctor's name, not the practice
+
+`POST /rx/form-submissions` stores `practiceName: request.user.name`, and the
+arrival email uses the same value, so the queue and the email agree. But the
+column means *practice*, and the real practice name is `accounts.name` — a
+doctor belongs to an account through a membership.
+
+Getting it right needs a memberships join in the submit path, which is why it
+was not done inline. Worth doing when someone is next in that route: the lab
+reads this column to know whose case they are looking at, and "Dr Alvarez"
+where they expect "Alvarez Family Dental" is a small daily papercut.
+
+Note `POST /rx/cases` (the other submit route) takes `practiceName` straight
+from its payload, so the two routes populate this column from different
+sources. Unify them at the same time.

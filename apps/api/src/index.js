@@ -10,6 +10,7 @@ import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import multipart from "@fastify/multipart";
 import { env } from "./config/env.js";
+import { reqSerializer } from "./lib/log-serializers.js";
 import project from "../../../project.config.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import authRoutes from "./routes/auth.routes.js";
@@ -23,11 +24,21 @@ import paymentRoutes from "./routes/payment.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import rxRoutes from "./routes/rx.routes.js";
 import rxMappingRoutes from "./routes/admin-rx-mapping.routes.js";
+import adminRxCasesRoutes from "./routes/admin-rx-cases.routes.js";
 import themeRoutes from "./routes/theme.routes.js";
 
 const fastify = Fastify({
   logger: {
     level: env.NODE_ENV === "production" ? "info" : "debug",
+    // B3 fix: without this, Fastify's default req serializer logs req.url
+    // verbatim — query string included — at `info` in production. The admin
+    // rx-cases queue's `?q=` implements a patient-name search over decrypted
+    // rows (see admin-rx-cases.routes.js), so an unmodified default here
+    // would write patient names into Cloud Logging, outside the
+    // encrypted-at-rest boundary this system maintains everywhere else. See
+    // lib/log-serializers.js for what's kept vs. dropped — do not restore
+    // the query string.
+    serializers: { req: reqSerializer },
   },
   // Trust exactly ONE proxy hop — Google Cloud Run's front end (the only proxy
   // in front of this container). `true` would trust the entire X-Forwarded-For
@@ -189,6 +200,7 @@ await fastify.register(paymentRoutes, { prefix: "/api/v1" });
 await fastify.register(adminRoutes,   { prefix: "/api/v1" });
 await fastify.register(rxRoutes,      { prefix: "/api/v1" });
 await fastify.register(rxMappingRoutes, { prefix: "/api/v1" });
+await fastify.register(adminRxCasesRoutes, { prefix: "/api/v1" });
 await fastify.register(themeRoutes,     { prefix: "/api/v1" });
 
 // Serve the built React frontend from this same service (single Cloud Run app:

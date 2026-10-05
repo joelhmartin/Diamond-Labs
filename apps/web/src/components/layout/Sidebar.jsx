@@ -10,6 +10,7 @@ import {
   UserCog,
   FlaskConical,
   ClipboardPlus,
+  ClipboardCheck,
   CreditCard,
   ArrowLeft,
 } from "lucide-react";
@@ -32,6 +33,7 @@ const adminItems = [
   { label: "Users",      to: ROUTES.ADMIN_USERS,       icon: UserCog },
   { label: "Products",   to: ROUTES.ADMIN_PRODUCTS,    icon: Package },
   { label: "Rx Mapping", to: ROUTES.ADMIN_RX_MAPPING,  icon: FlaskConical },
+  { label: "Rx Cases",   to: ROUTES.ADMIN_RX_CASES,    icon: ClipboardCheck },
 ];
 
 function NavItem({ to, icon: Icon, label }) {

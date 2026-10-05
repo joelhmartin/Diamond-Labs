@@ -1,0 +1,1 @@
+ALTER TABLE "rx_cases" ADD COLUMN "manual_note" text;

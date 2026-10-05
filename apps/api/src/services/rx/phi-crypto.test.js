@@ -25,6 +25,7 @@ const plaintextRow = {
   dob: "1990-01-01",
   contactPhone: "555-123-4567",
   generalComments: "cover 1st molar to 1st molar",
+  manualNote: "confirmed with Dr Lee re: Jane Doe's retainer, entered as Seazona order #4521",
   shipTo: { name: "Dr. Smith", address1: "1 Main St", city: "Austin" },
   formData: { q1: "yes", q2: ["a", "b"] },
   deviceOptions: { baseMaterial: "Nylon", occlusalContact: "Posterior" },
@@ -38,7 +39,7 @@ describe("rx phi-crypto helpers", () => {
   it("encryptRxPhi encrypts exactly the PHI fields and leaves others alone", () => {
     const enc = encryptRxPhi(plaintextRow);
     // PHI text fields
-    for (const f of ["patientFirst", "patientLast", "dob", "contactPhone", "generalComments"]) {
+    for (const f of ["patientFirst", "patientLast", "dob", "contactPhone", "generalComments", "manualNote"]) {
       expect(isEncrypted(enc[f])).toBe(true);
     }
     // PHI JSON blobs → encrypted strings
@@ -61,6 +62,7 @@ describe("rx phi-crypto helpers", () => {
     expect(dec.dob).toBe("1990-01-01");
     expect(dec.contactPhone).toBe("555-123-4567");
     expect(dec.generalComments).toBe("cover 1st molar to 1st molar");
+    expect(dec.manualNote).toBe("confirmed with Dr Lee re: Jane Doe's retainer, entered as Seazona order #4521");
     expect(dec.shipTo).toEqual({ name: "Dr. Smith", address1: "1 Main St", city: "Austin" });
     expect(dec.formData).toEqual({ q1: "yes", q2: ["a", "b"] });
     expect(dec.deviceOptions).toEqual({ baseMaterial: "Nylon", occlusalContact: "Posterior" });

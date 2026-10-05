@@ -1,0 +1,1 @@
+ALTER TABLE "rx_code_overrides" ALTER COLUMN "seazona_code" DROP NOT NULL;
