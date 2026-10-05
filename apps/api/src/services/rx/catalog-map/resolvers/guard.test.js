@@ -40,19 +40,11 @@ test("a row with no base material where one is required is flagged, never guesse
   assert.ok(unmapped.some((u) => u.includes("nightguard-full-occlusion")));
 });
 
-test("Slider Type is ambiguous and never guesses between NTI and FLATPLANE", () => {
-  const { items, unmapped } = resolveGuard({
-    standardGuards: { "Occlusal Guard - Slider Type": { "UPPER ARCH": true, "Base Material": "Nylon (Printed)" } },
-  });
-  assert.equal(items.length, 0);
-  assert.ok(unmapped.some((u) => u.includes("slider-type")));
-});
-
 test("unmapped entries are bare mapKeys the override layer can key on", () => {
   const { unmapped } = resolveGuard({
-    standardGuards: { "Occlusal Guard - Slider Type": { "UPPER ARCH": true, "Base Material": "Nylon (Printed)" } },
+    standardGuards: { "Nightguard - Full Occlusion": { "UPPER ARCH": true } },
   });
-  assert.deepEqual(unmapped, ["guard:occlusal-guard-slider-type"]);
+  assert.deepEqual(unmapped, ["guard:nightguard-full-occlusion:no-material"]);
 });
 
 test("a material-agnostic row keys on 'any' whatever material was submitted", () => {
@@ -88,15 +80,21 @@ test("a picker variant that names a matrix row resolves exactly like that row", 
   assert.equal(picked.items[0].mapKey, "guard:dual-arch-flatplane:nylon-printed");
 });
 
-test("a picker variant with no material is flagged, never guessed", () => {
+test("a picker variant with no material proposes the product real orders used", () => {
+  // FLATPLANE picker alone: 2163 on 77% of real orders (n=43).
   const { items, unmapped } = resolveGuard({ variant: "Dual Arch - FLATPLANE" });
-  assert.equal(items.length, 0);
-  assert.deepEqual(unmapped, ["guard:dual-arch-flatplane:no-material"]);
+  assert.deepEqual(unmapped, []);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].code, "2163");
+  assert.equal(items[0].status, "proposed");
+  assert.equal(items[0].mapKey, "guard:dual-arch-flatplane:no-material");
 });
 
-test("a picker variant with no catalog row at all lands in unmapped as a bare mapKey", () => {
-  assert.deepEqual(resolveGuard({ variant: "Dual Arch - SLIDER" }).unmapped, ["guard:dual-arch-slider"]);
-  assert.deepEqual(resolveGuard({ variant: "Single Arch - NIGHTGUARD" }).unmapped, ["guard:single-arch-nightguard"]);
+test("the single-arch picker alone stays open — real orders split three ways", () => {
+  // 2166 40% / 2164 24% / 2170 14% (n=105): nothing to propose.
+  const { items, unmapped } = resolveGuard({ variant: "Single Arch - NIGHTGUARD" });
+  assert.equal(items.length, 0);
+  assert.deepEqual(unmapped, ["guard:single-arch-nightguard"]);
 });
 
 test("an unrecognised wizard device literal is flagged rather than dropped", () => {
@@ -111,8 +109,9 @@ test("a wizard baseMaterial alone is treated as the appliance signal", () => {
 });
 
 test("every checked picker render is resolved, not just the first", () => {
-  const { unmapped } = resolveGuard({ variant: ["Dual Arch - SLIDER", "Single Arch - NIGHTGUARD"] });
-  assert.deepEqual(unmapped.sort(), ["guard:dual-arch-slider", "guard:single-arch-nightguard"]);
+  const { items, unmapped } = resolveGuard({ variant: ["Dual Arch - SLIDER", "Single Arch - NIGHTGUARD"] });
+  assert.deepEqual(items.map((i) => i.code), ["2176"]);
+  assert.deepEqual(unmapped, ["guard:single-arch-nightguard"]);
 });
 
 test("a picker choice duplicating an ordered matrix row does not double the order", () => {

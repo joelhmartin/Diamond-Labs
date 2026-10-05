@@ -4,35 +4,39 @@ Carried out of the whole-branch review of the Rx consolidation + catalog-map
 work (merged as `b056102`). Each was deliberately parked with a ruling rather
 than fixed, so none is a surprise. Ordered by what I'd do first.
 
-## 1. `DDSO design` reaches the lab through no channel at all
+## 1. ~~`DDSO design` reaches the lab through no channel at all~~ — fixed
 
-**The one worth fixing first.** `DDSO_OPTIONS.design` ("Anterior contact" /
-"Posterior full-arch") is a **required** field, but it is not a line item, not
-an `unmapped` flag, and not even a note — `deviceOptionLines()` in
-`build-order-payload.js` is an explicit allowlist that omits it. The same is
-true of guard `thickness`.
+Fixed on `feat/rx-history-backed-services`. Two halves:
 
-This is active data loss on a required field. It predates this work rather than
-being introduced by it.
+- The retired wizard's DDSO `design` and guard `thickness`, and the live
+  form's guard-matrix clearance / teeth / colour / "Other" cells, are now in
+  `deviceOptionLines()`.
+- More importantly, the REAL push (`payloadFromLines`, stored lines) never
+  called `deviceOptionLines()` at all — only the admin send-test builder did.
+  So occlusal contact, design preference, titration placement and device
+  comments reached a pushed order only as $0 line items or not at all. The
+  push now appends `compileNotesMulti(caseRow, devicesForCase(caseRow))`.
 
-**Fix:** add both to the `deviceOptionLines()` allowlist so they travel as
-notes. No product code needs guessing, so nothing is blocked on the lab.
+## 2. Nightguard picker selections hold every such order — mostly cleared
 
-## 2. Nightguard picker selections hold every such order
+Evidence from real orders now answers two of the three keys:
+`Dual Arch - FLATPLANE` alone proposes 2163 (77% of n=43) and
+`Dual Arch - SLIDER` alone proposes 2176 (84% of n=73). One is still held:
 
-By design — refusing beats sending an appliance-less order — but it needs
-saying out loud before `RX_LIVE_PUSH` is ever switched on. Three keys are
-waiting on a lab decision:
+- `guard:single-arch-nightguard` — picker-only orders split 2166 40% /
+  2164 24% / 2170 14% (n=105). When the doctor also fills the
+  Full Occlusion row, that row now decides and nothing is held.
 
-- `guard:dual-arch-flatplane:no-material`
-- `guard:dual-arch-slider`
-- `guard:single-arch-nightguard`
-
-They are questions 3–5 in the lab sign-off form
-(`docs/rx-forms/create-lab-signoff-form.gs`). Answering them, or seeding
-`rx_code_overrides` rows for them, clears the hold.
+The lab sign-off form (`docs/rx-forms/create-lab-signoff-form.gs`) still asks
+the Slider Type, SLIDER and Full Coverage questions the order history has now
+answered — trim it before it is sent.
 
 ## 3. `Dual Arch - FLATPLANE` lists as Confirmed but is unreachable
+
+**Largely superseded:** the FLATPLANE picker now takes its material from the
+Full Occlusion row (2162 / 2163 reachable), and alone proposes 2163. Only the
+BioFlex row (2531) still needs a doctor to type "BioFlex" into a matrix cell.
+The original note follows.
 
 Codes 2162 / 2163 / 2531 appear under **Confirmed** in
 `docs/rx-forms/mapping-status.md`, but no doctor-facing input can currently
@@ -45,17 +49,38 @@ independent reachability check. The current test iterates
 `Object.keys(GUARD_MATRIX)` — the same source `GUARD_ROWS` derives from — so it
 can no longer catch this class.
 
-## 4. Guard de-duplication is exact-label only
+## 4. ~~Guard de-duplication is exact-label only~~ — fixed
 
-`resolveGuard`'s `handled` set compares row labels literally, so it cannot see
-that the picker's `"Single Arch - NIGHTGUARD"` and the matrix's
-`"Nightguard - Full Occlusion"` are the same appliance (likewise
-`"Dual Arch - SLIDER"` vs `"Occlusal Guard - Slider Type"`).
+`resolveGuard` now knows which picker render is which matrix row (`PICKERS` in
+`resolvers/guard.js`): SLIDER is covered by the Slider Type / NTI Type rows,
+Single Arch NIGHTGUARD by Full Occlusion, and FLATPLANE takes its material
+from the Full Occlusion row. Dual-arch appliances (NTI Slider, FLATPLANE) are
+also one line however many arches are ticked — real orders carried 2176 as a
+single line on 70/70 orders.
 
-Not triggerable today — both picker rows are `open`, so neither emits. **The
-moment the lab maps them (follow-up 2), a doctor who ticks both the picker and
-the matrix row gets two lines for one appliance.** Revisit before acting on
-those answers.
+## 4a. The live form's guard matrix is free text, and was being dropped
+
+`MatrixField` stores cells flat (`"<row>__<column>": text`) with a text input
+in every cell, but `resolveGuard` read a nested `{ row: { col } }` shape — so
+every matrix row ordered on the live form resolved to nothing. Fixed in the
+resolver (`nestGuardMatrix` accepts both shapes; materials match the known
+literals exactly, ignoring case and the parenthetical). The form itself should
+still render the arch columns as checkboxes and Base Material as a dropdown,
+as JotForm did — a typo'd material is held for staff today, not guessed.
+
+## 4b. Open questions the order history raised
+
+- **Single-arch rows with both arches ticked.** Every real nightguard /
+  Michigan order (125 of them) carries its product once, with no arch. The
+  resolver still bills one line per ticked arch for single-arch rows. Is a
+  two-arch single-arch nightguard really two appliances?
+- **NTI Type in BIOMED** billed 2165 Nightguard-Single Arch Biomed on 3/3
+  orders, not the mapped 2175. Small n; left as is.
+- **Rush on the digital form** (`formData.rushCase`) never reaches the push —
+  `rush` is a column only `POST /rx/cases` fills, and the lab-service lines
+  do not add a rush product either.
+- **MORA** stays proposed: 2593 MORA - PMT and 2594 MORA - ClearSplint were
+  each billed exactly once in 3,600 orders.
 
 ## 5. The send-test `ok` gate has no route-level test
 
@@ -83,8 +108,8 @@ decision about where that adapter should live, not just code.
   That host was retired 2026-06-15 and 403s from everywhere; it should read
   `https://diamond.seazonaapi.net/`. Anyone setting up from that file today gets
   a dead API.
-- `LAB_SERVICE_CODES` has zero importers, and its `articulate` entry lost the
-  "(Per Arch)" suffix the retired map carried. Delete it or restore the suffix.
+- ~~`LAB_SERVICE_CODES` has zero importers~~ — replaced by
+  `catalog-map/lab-services.js`, which seed and re-resolve both use.
 - `tailwind.config.js`'s new colour tokens hardcode alpha instead of using
   `<alpha-value>`, so `text-secondary/50`-style modifiers silently do nothing.
   Inert today — no call site uses one.

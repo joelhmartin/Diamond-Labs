@@ -14,13 +14,14 @@ test("the older wizard's 'Nylon' resolves to the same row", () => {
   assert.equal(items[0].code, "2608");
 });
 
-test("modifications and design attributes both become line items", () => {
-  const { items } = resolveLineItems({
+test("modifications become line items; design attributes do not (they are notes)", () => {
+  const { items, unmapped } = resolveLineItems({
     deviceKey: "ddso",
     deviceOptions: { baseMaterial: "NYLON", modifications: ["Tongue Positioners"], occlusalContact: "Anterior Contact", designPreference: "Lingual-Free" },
   });
   const codes = items.map((i) => i.code).sort();
-  assert.deepEqual(codes, ["2289", "2314", "2330", "2608"]);
+  assert.deepEqual(codes, ["2330", "2608"]);
+  assert.deepEqual(unmapped, []);
 });
 
 test("an open row never emits and is always flagged", () => {
@@ -45,13 +46,15 @@ test("an unknown modification is flagged, never guessed", () => {
 });
 
 test("an override cannot collapse a two-arch guard order into one line", () => {
-  const overrides = { "guard:occlusal-guard-slider-type": { code: "9999", name: "Custom" } };
+  // A per-arch row with no material: the resolver reports one unmapped key
+  // for what is physically two appliances.
+  const overrides = { "guard:nightguard-full-occlusion:no-material": { code: "9999", name: "Custom" } };
   const { items, unmapped } = resolveLineItems(
-    { deviceKey: "guard", deviceOptions: { standardGuards: { "Occlusal Guard - Slider Type": { "UPPER ARCH": true, "LOWER ARCH": true, "Base Material": "Nylon (Printed)" } } } },
+    { deviceKey: "guard", deviceOptions: { standardGuards: { "Nightguard - Full Occlusion": { "UPPER ARCH": true, "LOWER ARCH": true } } } },
     { overrides }
   );
   assert.equal(items.length, 0);
-  assert.deepEqual(unmapped, ["guard:occlusal-guard-slider-type"]);
+  assert.deepEqual(unmapped, ["guard:nightguard-full-occlusion:no-material"]);
 });
 
 test("a 'none' attribute emits no line item and no unmapped flag", () => {

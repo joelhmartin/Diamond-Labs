@@ -256,3 +256,45 @@ test("a failure where Seazona was never contacted releases the lock — a retry 
 test("a failure where Seazona WAS contacted keeps the lock held — the response was ambiguous, a retry could duplicate a real order", () => {
   assert.equal(shouldReleasePushLock({ status: "failed", contactedSeazona: true }), false);
 });
+
+// ── design intent travels in the notes of the REAL push ─────────────────────
+// Occlusal contact / design preference stopped being $0 line items (the lab
+// never bills them), so the stored-lines push is now their only channel.
+
+test("the pushed order's notes carry each device's design intent", () => {
+  const { payload } = payloadFromLines(
+    {
+      ...caseRow,
+      deviceOptions: {
+        devices: [
+          { deviceKey: "ddso", label: "DDSO", deviceOptions: { occlusalContact: "TRIPOD Occlusion", designPreference: "Lingual-Free" } },
+          {
+            deviceKey: "guard",
+            label: "Nightguard",
+            deviceOptions: { standardGuards: { "Occlusal Guard - Slider Type__Increase for clearance": "2mm" } },
+          },
+        ],
+      },
+    },
+    [{ seazonaCode: "2608", status: "confirmed" }],
+    { codeToId: { 2608: "id-2608" } }
+  );
+  assert.match(payload.notes, /\[DDSO\] Occlusal Contact: TRIPOD Occlusion, Design Preference: Lingual-Free/);
+  assert.match(payload.notes, /\[Nightguard\] Occlusal Guard - Slider Type: Increase for clearance: 2mm/);
+});
+
+test("a case with no devices adds nothing to the notes", () => {
+  const { payload } = payloadFromLines(caseRow, [{ seazonaCode: "2608", status: "confirmed" }], { codeToId: { 2608: "id" } });
+  assert.equal(payload.notes, "");
+});
+
+test("note-only instructions survive a long free-text comment", () => {
+  const caseRow = { seazonaClientId: "c1", patientFirst: "A", patientLast: "B", generalComments: "x".repeat(2500), deviceOptions: { devices: [] } };
+  const lines = [
+    { mapKey: "primary:ddso:nylon", seazonaCode: "2608", status: "confirmed", noteOnly: false },
+    { mapKey: "mod:wrap-distal", noteOnly: true, sourceLabel: "Wrap distal of last molars" },
+  ];
+  const { payload } = payloadFromLines(caseRow, lines, { codeToId: { 2608: "id-2608" } });
+  assert.ok(payload.notes.startsWith("Wrap distal of last molars"));
+  assert.equal(payload.notes.length, 2000);
+});

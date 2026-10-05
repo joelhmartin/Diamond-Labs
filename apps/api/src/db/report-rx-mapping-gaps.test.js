@@ -4,11 +4,12 @@ import { DEVICE_ROWS } from "../services/rx/catalog-map/devices.table.js";
 import { MODIFICATION_ROWS } from "../services/rx/catalog-map/modifications.table.js";
 import { ATTRIBUTE_ROWS } from "../services/rx/catalog-map/attributes.table.js";
 import { GUARD_ROWS, GUARD_ROW_LABELS, resolveGuard } from "../services/rx/catalog-map/resolvers/guard.js";
+import { LAB_SERVICE_ROWS } from "../services/rx/catalog-map/lab-services.js";
 import { ALL, bucket, renderDoc } from "./report-rx-mapping-gaps.js";
 
-const ROWS = [...DEVICE_ROWS, ...MODIFICATION_ROWS, ...ATTRIBUTE_ROWS, ...GUARD_ROWS];
+const ROWS = [...DEVICE_ROWS, ...MODIFICATION_ROWS, ...ATTRIBUTE_ROWS, ...GUARD_ROWS, ...LAB_SERVICE_ROWS];
 
-test("the generator reports on exactly the four row sources", () => {
+test("the generator reports on exactly the five row sources", () => {
   assert.deepEqual([...ALL].sort(), [...ROWS].sort());
 });
 

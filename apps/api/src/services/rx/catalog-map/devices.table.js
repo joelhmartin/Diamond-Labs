@@ -56,9 +56,12 @@ export const DEVICE_ROWS = [
   { mapKey: "primary:sport-guard:pro",     device: "sport-guard", match: ["PRO - Light to Heavy Contact [Mx. or Md. Arch]"],  code: "2172", name: "Sportsguard Professional",       status: "confirmed" },
   { mapKey: "primary:sport-guard:cadcam",  device: "sport-guard", match: ["CAD/CAM - Light to Heavy Contact [Mx or Md Arch]"], code: "2174", name: "Sportsguard: CAD/CAM",          status: "confirmed" },
 
-  // ── Material not captured by the form; single most-likely SKU proposed ───
-  { mapKey: "primary:shirazi-hybrid:nylon", device: "shirazi-hybrid", match: ["default"], code: "2152", name: "Shirazi Hybrid Nylon", status: "proposed" },
+  // ── Material not captured by the form ───────────────────────────────────
+  // Shirazi: 2152 on 98% of real Shirazi orders (n=55) — the only Shirazi SKU billed.
+  { mapKey: "primary:shirazi-hybrid:nylon", device: "shirazi-hybrid", match: ["default"], code: "2152", name: "Shirazi Hybrid Nylon", status: "confirmed" },
   { mapKey: "primary:cadcam-d-pro:nylon",   device: "cadcam-d-pro",   match: ["D-Pro", "default"], code: "2539", name: "Dorsal Pro Nylon", status: "confirmed" },
   { mapKey: "primary:cadcam-d-pro:manta",   device: "cadcam-d-pro",   match: ["Manta"],            code: "2149", name: "Manta Nylon",      status: "confirmed" },
+  // MORA stays proposed: in 3,600 real orders MORA - PMT (2593) was billed once
+  // and MORA - ClearSplint (2594) once, and the form captures no material.
   { mapKey: "primary:mora:pmt",             device: "mora",           match: ["default"], code: "2593", name: "MORA - PMT",           status: "proposed" },
 ];

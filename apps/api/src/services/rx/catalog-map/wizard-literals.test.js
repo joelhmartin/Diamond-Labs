@@ -36,13 +36,10 @@ test("every wizard occlusal-contact literal resolves to an attribute row", () =>
 });
 
 test("every wizard design-preference literal resolves (or is a deliberate no-op)", () => {
+  // Design preference is note-only now (the lab never bills it), so even
+  // "Full Coverage" — once an open question against 2292 — is not flagged.
   for (const designPreference of wizardLiterals("designPreference")) {
     const { unmapped } = resolve({ designPreference });
-    // "Full Coverage" is a real open decision for the lab — it must stay flagged.
-    if (designPreference === "Full Coverage") {
-      assert.deepEqual(unmapped, ["attr:design:full-coverage"]);
-      continue;
-    }
     assert.deepEqual(unmapped, [], `wizard design preference "${designPreference}" is unmapped`);
   }
 });

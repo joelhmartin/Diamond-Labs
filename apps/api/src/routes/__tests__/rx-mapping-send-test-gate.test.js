@@ -15,13 +15,13 @@ const { buildSeazonaOrderPayloadMulti } = await import("../../services/rx/build-
  * today — it creates a REAL order on the lab's real account. It used to gate on
  * `payload.items.length`, discarding the `ok` the builder hands it.
  */
-test("a device that resolved only a $0 attribute is refused, not sent", () => {
-  // attr:occlusal:posterior → 2293 resolves on its own; the appliance line does
+test("a device that resolved only a modification is refused, not sent", () => {
+  // mod:tongue-positioners → 2330 resolves on its own; the appliance line does
   // not. items.length === 1, so the old items-length gate would have sent this.
   const built = buildSeazonaOrderPayloadMulti(
     { seazonaClientId: "test-client" },
-    [{ deviceKey: "guard", label: "Nightguard", deviceOptions: { occlusalContact: "Posterior Contact" } }],
-    { codeToId: { 2293: "id-2293" }, userId: "u1" }
+    [{ deviceKey: "guard", label: "Nightguard", deviceOptions: { modifications: ["Tongue Positioners"] } }],
+    { codeToId: { 2330: "id-2330" }, userId: "u1" }
   );
 
   assert.equal(built.payload.items.length, 1, "precondition: the old gate would have passed this");
