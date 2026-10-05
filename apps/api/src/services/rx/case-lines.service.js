@@ -3,6 +3,27 @@ import { db } from "../../config/database.js";
 import { rxCaseLines } from "../../db/schema/index.js";
 import { resolveLineItems } from "./catalog-map/index.js";
 import { createId } from "../../lib/id.js";
+import { buildDigitalDevices } from "@my-app/shared";
+
+/**
+ * Pure: a decrypted case row -> the device list its lines resolve from.
+ *
+ * Cases submitted since devices were resolved at submit carry them in
+ * deviceOptions.devices. Older rows don't: digital-form cases stored only the
+ * raw formData, and wizard cases stored a single deviceKey + its options.
+ * Deriving from those keeps re-resolve working for every case in the queue.
+ */
+export function devicesForCase(caseRow = {}) {
+  const stored = caseRow.deviceOptions?.devices;
+  if (Array.isArray(stored) && stored.length > 0) return stored;
+  if (caseRow.formType === "digital" && caseRow.formData) {
+    return buildDigitalDevices(caseRow.formData);
+  }
+  if (caseRow.deviceKey) {
+    return [{ deviceKey: caseRow.deviceKey, deviceOptions: caseRow.deviceOptions || {} }];
+  }
+  return [];
+}
 
 /**
  * Pure: devices -> line drafts. No database, so the interesting part is
