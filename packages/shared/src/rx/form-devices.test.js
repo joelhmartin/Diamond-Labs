@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { buildDigitalDevices } from "./form-devices.js";
+import { buildDigitalDevices, buildFormDevices } from "./form-devices.js";
 
 test("a DDSO selection becomes one device with its options", () => {
   const devices = buildDigitalDevices({
@@ -33,6 +33,7 @@ test("every devicesToOrder value produces the device keys it should", () => {
     [{ devicesToOrder: ["dpro"] }, ["cadcam-d-pro"]],
     [{ devicesToOrder: ["shirazi"] }, ["shirazi-hybrid"]],
     [{ devicesToOrder: ["nightguards"] }, ["guard"]],
+    // Legacy: ortho was a digital-form device Aug–Oct 2026.
     [{ devicesToOrder: ["ortho"] }, ["ortho-expander"]],
     [{ devicesToOrder: ["sportguards"] }, ["sport-guard"]],
     [{ devicesToOrder: ["snorehook"] }, ["snorehook"]],
@@ -101,4 +102,50 @@ test("D-Pro carries the D-Pro/Manta choice; additional options are instructions,
   assert.equal(dpro.deviceOptions.variant, "Manta");
   assert.deepEqual(dpro.deviceOptions.instructions, ["Wrap distal of last molars"]);
   assert.equal(dpro.deviceOptions.modifications, undefined);
+});
+
+test("the ortho form always yields exactly one ortho appliance, even unanswered", () => {
+  const devices = buildFormDevices("ortho", {});
+  assert.deepEqual(devices.map((d) => d.deviceKey), ["ortho-expander"]);
+});
+
+test("the ortho form ignores digital-form device picks", () => {
+  const devices = buildFormDevices("ortho", { devicesToOrder: ["ddso"], selectDevice: "Twin Block" });
+  assert.deepEqual(devices.map((d) => d.deviceKey), ["ortho-expander"]);
+  assert.equal(devices[0].deviceOptions.applianceType, "Twin Block");
+});
+
+test("the digital form type still routes through buildDigitalDevices", () => {
+  assert.deepEqual(buildFormDevices("digital", { devicesToOrder: ["ddso"] }).map((d) => d.deviceKey), ["ddso"]);
+});
+
+test("ortho answers survive the adapter, add-ons kept per arch and de-duplicated", () => {
+  const [device] = buildFormDevices("ortho", {
+    selectDevice: "Modified Tandem",
+    upperArchRetention: "Fixed (Banded)",
+    upperExpansionType: 'Slim-line "Variety-Click" (Fixed ONLY)',
+    lowerArchRetention: "Acrylic w/ clasp retention",
+    lowerExpansionType: 'Slim-line "Variety-Click"',
+    fixedMandibularExpansion: ["Mandibular E-Arch"],
+    requiredSelection: { "Maxillary__Place bands on:": "6's" },
+    tandemBowSetting: "3",
+    addToMaxillary: ["Buccal hooks for tandem elastics", "Buccal tubes to bands"],
+    maxillaryAdd: ["Buccal tubes to bands", "Palatal pads"],
+    addToMandibular: ["Sheaths for Tandem Bow (Removable)"],
+    digitalStudyModels: "Digital Models ONLY - ABO - Full Base",
+    dualArchComments: "a",
+    orthoDesignComments: "b",
+  });
+  const o = device.deviceOptions;
+  assert.equal(o.applianceType, "Modified Tandem");
+  assert.equal(o.upperArchRetention, "Fixed (Banded)");
+  assert.equal(o.lowerExpansionType, 'Slim-line "Variety-Click"');
+  assert.deepEqual(o.fixedMandibularExpansion, ["Mandibular E-Arch"]);
+  assert.deepEqual(o.requiredSelection, { "Maxillary__Place bands on:": "6's" });
+  assert.equal(o.tandemBowSetting, "3");
+  assert.deepEqual(o.upperAddOns, ["Buccal hooks for tandem elastics", "Buccal tubes to bands", "Palatal pads"]);
+  assert.deepEqual(o.lowerAddOns, ["Sheaths for Tandem Bow (Removable)"]);
+  assert.equal(o.digitalStudyModels, "Digital Models ONLY - ABO - Full Base");
+  assert.equal(o.comments, "a | b");
+  assert.equal(o.modifications, undefined, "ortho add-ons must not pool into arch-less modifications");
 });

@@ -15,10 +15,11 @@ import { DEVICE_ROWS } from "../services/rx/catalog-map/devices.table.js";
 import { MODIFICATION_ROWS } from "../services/rx/catalog-map/modifications.table.js";
 import { ATTRIBUTE_ROWS } from "../services/rx/catalog-map/attributes.table.js";
 import { GUARD_ROWS } from "../services/rx/catalog-map/resolvers/guard.js";
+import { ORTHO_ROWS } from "../services/rx/catalog-map/resolvers/ortho.js";
 import { LAB_SERVICE_ROWS } from "../services/rx/catalog-map/lab-services.js";
 import { DEVICE_LABELS } from "../services/rx/catalog-map/index.js";
 
-export const ALL = [...DEVICE_ROWS, ...MODIFICATION_ROWS, ...ATTRIBUTE_ROWS, ...GUARD_ROWS, ...LAB_SERVICE_ROWS];
+export const ALL = [...DEVICE_ROWS, ...MODIFICATION_ROWS, ...ATTRIBUTE_ROWS, ...GUARD_ROWS, ...LAB_SERVICE_ROWS, ...ORTHO_ROWS];
 
 /**
  * The rows in one document bucket. `none` rows are a deliberate no-op (the
@@ -35,7 +36,9 @@ const deviceOf = (r) =>
   r.device ? DEVICE_LABELS[r.device] || r.device : r.mapKey.startsWith("service:") ? "Whole case (lab service)" : "—";
 const selectionOf = (r) => (r.match[0] === "default" ? deviceOf(r) : r.match[0]);
 
-const line = (r) => `| ${deviceOf(r)} | ${selectionOf(r)} | ${r.code ?? "—"} | ${r.name} |`;
+// Rows derived from order history carry their evidence; show it to the lab.
+const line = (r) =>
+  `| ${deviceOf(r)} | ${selectionOf(r)} | ${r.code ?? "—"} | ${r.name}${r.evidence ? ` (${r.evidence})` : ""} |`;
 
 /** The full document, as written to docs/rx-forms/mapping-status.md. */
 export function renderDoc() {
@@ -65,17 +68,21 @@ Nothing here is sent to Seazona. Orders using these selections are held.
 |---|---|---|
 ${bucket("open").map((r) => `| ${deviceOf(r)} | ${selectionOf(r)} | ${r.reason ?? r.name} |`).join("\n")}
 
-## Orthodontic appliances — not yet mapped
+## How the orthodontic rows were derived
 
-This is the largest open decision on the list, and it is not a table because we
-have not been able to propose even a first guess.
+The Orthodontic Appliance rows above were read off your own order history: ortho
+prescriptions from January 2025 to October 2026, each matched to the Seazona
+order you built from it. An ortho order is several lines — the appliance for
+each arch (by retention and expansion screw), the bands on a fixed arch (2 per
+arch), the tandem bow and its tubes, and priced add-ons — and each row is one of
+those decisions. A row is Confirmed when at least 90% of 8 or more matched
+prescriptions carried that product; the figure after each product name is the
+evidence.
 
-Your catalog carries roughly 36 orthodontic products — expanders, tandems and
-twin blocks — that differ by retention, screw type, clasp and base material. The
-Rx form captures all of those selections from the doctor, but we need you to
-tell us which combination of answers corresponds to which product code. Until
-you do, **every orthodontic order is held**: nothing orthodontic is sent to
-Seazona, and no orthodontic product code is ever guessed.
+An orthodontic order is sent only when every one of its selections has a
+Confirmed or Proposed row. Anything else — an Open row, a combination the
+history never showed, or a typed "other" answer — holds the order for staff, and
+no orthodontic product code is ever guessed.
 `;
 }
 

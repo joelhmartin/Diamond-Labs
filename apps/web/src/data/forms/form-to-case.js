@@ -17,7 +17,7 @@
  */
 
 import { visibleFields } from "./form-logic.js";
-import { buildDigitalDevices } from "@my-app/shared";
+import { buildFormDevices } from "@my-app/shared";
 
 /**
  * formAnswersToCaseInput(slug, form, answers)
@@ -44,7 +44,7 @@ export function formAnswersToCaseInput(slug, form, answers = {}) {
   );
   const dueDate = dueField ? answers[dueField.key] : undefined;
 
-  const devices = buildDigitalDevices(answers);
+  const devices = buildFormDevices(slug, answers);
 
   const caseFields = {
     patientFirst,

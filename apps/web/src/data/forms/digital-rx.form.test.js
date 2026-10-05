@@ -42,7 +42,7 @@ test("ports a sensible number of fields", () => {
   );
 });
 
-test("has the devicesToOrder multi-select gate with all 9 device values", () => {
+test("has the devicesToOrder multi-select gate with all 8 device values", () => {
   const fields = allFields(digitalRxForm);
   const gate = fields.find((f) => f.key === "devicesToOrder");
   assert.ok(gate, "devicesToOrder field is missing");
@@ -58,7 +58,6 @@ test("has the devicesToOrder multi-select gate with all 9 device values", () => 
     "nightguards",
     "sportguards",
     "snorehook",
-    "ortho",
   ];
   for (const v of expected) {
     assert.ok(values.includes(v), `missing device value: ${v}`);
@@ -263,64 +262,29 @@ test("has a device-selection field", () => {
   );
 });
 
-const ORTHO_KEYS = [
-  "selectDevice", "upperArchRetention", "upperExpansionType", "lowerArchRetention",
-  "mxSelections", "lowerExpansionType", "requiredSelection", "tandemBowSetting",
-  "addToMaxillary", "addToMandibular", "occlusalOptionsTandem", "dualArchComments",
-  "dualArchDesignDraw", "dualArchArtboard", "upperExpansionSelection", "maxillaryAdd",
-  "maxillaryDesignDraw", "maxillaryArtboard", "maxillaryComments", "lowerExpansionSelection",
-  "removableMandibularExpansion", "fixedMandibularExpansion", "mandibularAdd",
-  "mandibularDesignDraw", "mandibularArtboard", "orthoDesignComments",
-];
-
-test("ortho is a selectable device", () => {
-  const gate = digitalRxForm.sections.find((s) => s.id === "select-device").fields[0];
-  assert.equal(gate.options.length, 9);
-  assert.ok(gate.options.some((o) => o.value === "ortho"));
-});
-
-test("every ortho field survived the merge", () => {
-  const keys = new Set(digitalRxForm.sections.flatMap((s) => (s.fields || []).map((f) => f.key)));
-  for (const k of ORTHO_KEYS) assert.ok(keys.has(k), `lost ortho field: ${k}`);
-});
-
-test("ortho sections are gated on the ortho device", () => {
-  for (const id of ["functionalDualArch", "maxillaryUpper", "mandibularLower"]) {
-    const s = digitalRxForm.sections.find((x) => x.id === id);
-    assert.ok(s, `missing section ${id}`);
-    assert.deepEqual(s.showIf, { key: "devicesToOrder", includes: "ortho" });
-  }
-});
-
-test("ortho's duplicate wrapper fields are gone", () => {
-  const keys = new Set(digitalRxForm.sections.flatMap((s) => (s.fields || []).map((f) => f.key)));
-  for (const dup of ["recordsType", "sendingPhysicalBite", "uploadFiles"]) assert.ok(!keys.has(dup), `duplicate wrapper field survived: ${dup}`);
-});
-
-test("ortho-only case-submission extras are hidden unless ortho is selected", () => {
-  const hidden = visibleFields(digitalRxForm, { devicesToOrder: ["ddso"] }).map((f) => f.key);
-  for (const k of ["nuveloDigitalSetup", "digitalStudyModels", "digitalSetupEmail"])
-    assert.ok(!hidden.includes(k), `${k} should be hidden without ortho`);
-  // digitalSetupEmail additionally requires nuveloDigitalSetup to carry an
-  // answer (see the dedicated rule test below) — nuveloDigitalSetup/
-  // digitalStudyModels have no such extra gate.
-  const shown = visibleFields(digitalRxForm, { devicesToOrder: ["ortho"] }).map((f) => f.key);
-  for (const k of ["nuveloDigitalSetup", "digitalStudyModels"])
-    assert.ok(shown.includes(k), `${k} should be visible with ortho`);
-});
-
 test("a DDSO-only doctor sees the shared rush checkbox but no rush-charge sliders when not rushing", () => {
   const shown = visibleFields(digitalRxForm, { devicesToOrder: ["ddso"] }).map((f) => f.key);
   assert.ok(shown.includes("rushCase"), "the shared rush checkbox must always show");
   for (const k of ["rushChargeBiomed", "rushChargeNylon"])
     assert.ok(!shown.includes(k), `${k} should be hidden until rushCase is ticked`);
+});
 
-  // Ortho alone (no rush requested) no longer surfaces the rush-charge sliders —
-  // that gate moved from devicesToOrder:includes("ortho") to rushCase itself.
-  const withOrtho = visibleFields(digitalRxForm, { devicesToOrder: ["ortho"] }).map((f) => f.key);
-  assert.ok(withOrtho.includes("rushCase"));
-  for (const k of ["rushChargeBiomed", "rushChargeNylon"])
-    assert.ok(!withOrtho.includes(k), `${k} should stay hidden without a rush request`);
+/* ── Orthodontics moved to its own form (ortho-rx.form.js) ── */
+
+const ORTHO_ONLY_KEYS = [
+  "selectDevice", "upperArchRetention", "upperExpansionType", "lowerArchRetention",
+  "lowerExpansionType", "addToMaxillary", "addToMandibular", "upperExpansionSelection",
+  "lowerExpansionSelection", "fixedMandibularExpansion", "removableMandibularExpansion",
+  "nuveloDigitalSetup", "digitalStudyModels", "digitalSetupEmail",
+];
+
+test("the digital form no longer offers orthodontics", () => {
+  const gate = allFields(digitalRxForm).find((f) => f.key === "devicesToOrder");
+  assert.ok(!gate.options.some((o) => o.value === "ortho"), "ortho must not be a devicesToOrder option");
+  const keys = new Set(allFields(digitalRxForm).map((f) => f.key));
+  for (const k of ORTHO_ONLY_KEYS) assert.ok(!keys.has(k), `ortho field ${k} is still in the digital form`);
+  for (const id of ["functionalDualArch", "maxillaryUpper", "mandibularLower"])
+    assert.ok(!digitalRxForm.sections.some((s) => s.id === id), `ortho section ${id} is still in the digital form`);
 });
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -328,41 +292,6 @@ test("a DDSO-only doctor sees the shared rush checkbox but no rush-charge slider
    directions: hidden when the trigger isn't met, visible when it is.
    All go through visibleFields(digitalRxForm, answers), the real predicate.
    ═══════════════════════════════════════════════════════════════════════ */
-
-/* ── Artboards: gated on their own "design (draw)" checkbox ── */
-
-test("dualArchArtboard is gated on dualArchDesignDraw", () => {
-  const base = { devicesToOrder: ["ortho"] };
-  const hidden = visibleFields(digitalRxForm, base).map((f) => f.key);
-  assert.ok(!hidden.includes("dualArchArtboard"));
-  const shown = visibleFields(digitalRxForm, {
-    ...base,
-    dualArchDesignDraw: ["Diamond ORTHO Artboard"],
-  }).map((f) => f.key);
-  assert.ok(shown.includes("dualArchArtboard"));
-});
-
-test("maxillaryArtboard is gated on maxillaryDesignDraw", () => {
-  const base = { devicesToOrder: ["ortho"] };
-  const hidden = visibleFields(digitalRxForm, base).map((f) => f.key);
-  assert.ok(!hidden.includes("maxillaryArtboard"));
-  const shown = visibleFields(digitalRxForm, {
-    ...base,
-    maxillaryDesignDraw: ["Diamond ORTHO Artboard"],
-  }).map((f) => f.key);
-  assert.ok(shown.includes("maxillaryArtboard"));
-});
-
-test("mandibularArtboard is gated on mandibularDesignDraw", () => {
-  const base = { devicesToOrder: ["ortho"] };
-  const hidden = visibleFields(digitalRxForm, base).map((f) => f.key);
-  assert.ok(!hidden.includes("mandibularArtboard"));
-  const shown = visibleFields(digitalRxForm, {
-    ...base,
-    mandibularDesignDraw: ["Diamond ORTHO Artboard"],
-  }).map((f) => f.key);
-  assert.ok(shown.includes("mandibularArtboard"));
-});
 
 /* ── Olmos Day expansion follow-ups ── */
 
@@ -391,34 +320,6 @@ test("odPonticTooth shows only when odExpansionOptions includes 'Add pontic(s):'
     odExpansionOptions: ["Add pontic(s):"],
   }).map((f) => f.key);
   assert.ok(shown.includes("odPonticTooth"));
-});
-
-/* ── Tandem-only fields ── */
-
-test("tandemBowSetting shows only for Modified Tandem, not Twin Block", () => {
-  const twinBlock = visibleFields(digitalRxForm, {
-    devicesToOrder: ["ortho"],
-    selectDevice: "Twin Block",
-  }).map((f) => f.key);
-  assert.ok(!twinBlock.includes("tandemBowSetting"));
-  const tandem = visibleFields(digitalRxForm, {
-    devicesToOrder: ["ortho"],
-    selectDevice: "Modified Tandem",
-  }).map((f) => f.key);
-  assert.ok(tandem.includes("tandemBowSetting"));
-});
-
-test("occlusalOptionsTandem shows only for Modified Tandem, not Twin Block", () => {
-  const twinBlock = visibleFields(digitalRxForm, {
-    devicesToOrder: ["ortho"],
-    selectDevice: "Twin Block",
-  }).map((f) => f.key);
-  assert.ok(!twinBlock.includes("occlusalOptionsTandem"));
-  const tandem = visibleFields(digitalRxForm, {
-    devicesToOrder: ["ortho"],
-    selectDevice: "Modified Tandem",
-  }).map((f) => f.key);
-  assert.ok(tandem.includes("occlusalOptionsTandem"));
 });
 
 /* ── Rush charges: gated on rushCase, for any device ── */
@@ -451,117 +352,6 @@ test("sportGuardLogoUpload is gated on the sportGuardSpecs 'Add logo' cell", () 
   assert.ok(shown.includes("sportGuardLogoUpload"));
 });
 
-/* ── Digital setup email: ortho AND nuveloDigitalSetup answered ── */
-
-test("digitalSetupEmail requires BOTH ortho selected AND nuveloDigitalSetup answered", () => {
-  // ortho alone, no nuveloDigitalSetup answer → hidden.
-  const orthoOnly = visibleFields(digitalRxForm, {
-    devicesToOrder: ["ortho"],
-  }).map((f) => f.key);
-  assert.ok(!orthoOnly.includes("digitalSetupEmail"));
-
-  // nuveloDigitalSetup answered but ortho not selected → hidden (field is
-  // unreachable in this state anyway, but the gate must not degrade to OR).
-  const noOrtho = visibleFields(digitalRxForm, {
-    devicesToOrder: ["ddso"],
-    nuveloDigitalSetup: { "__Orient to HIP": "yes" },
-  }).map((f) => f.key);
-  assert.ok(!noOrtho.includes("digitalSetupEmail"));
-
-  // Both hold → shown.
-  const both = visibleFields(digitalRxForm, {
-    devicesToOrder: ["ortho"],
-    nuveloDigitalSetup: { "__Orient to HIP": "yes" },
-  }).map((f) => f.key);
-  assert.ok(both.includes("digitalSetupEmail"));
-});
-
-/* ── Mandibular expansion split: removable vs fixed lowerArchRetention ── */
-
-test("removableMandibularExpansion shows only for removable lowerArchRetention", () => {
-  const base = { devicesToOrder: ["ortho"] };
-  const fixed = visibleFields(digitalRxForm, {
-    ...base,
-    lowerArchRetention: "Fixed (Banded)",
-  }).map((f) => f.key);
-  assert.ok(!fixed.includes("removableMandibularExpansion"));
-  const removable = visibleFields(digitalRxForm, {
-    ...base,
-    lowerArchRetention: "Acrylic w/ clasp retention",
-  }).map((f) => f.key);
-  assert.ok(removable.includes("removableMandibularExpansion"));
-  const removable2 = visibleFields(digitalRxForm, {
-    ...base,
-    lowerArchRetention: "Printed NYLON w/ composite retention",
-  }).map((f) => f.key);
-  assert.ok(removable2.includes("removableMandibularExpansion"));
-});
-
-test("fixedMandibularExpansion shows only for fixed lowerArchRetention", () => {
-  const base = { devicesToOrder: ["ortho"] };
-  const removable = visibleFields(digitalRxForm, {
-    ...base,
-    lowerArchRetention: "Acrylic w/ clasp retention",
-  }).map((f) => f.key);
-  assert.ok(!removable.includes("fixedMandibularExpansion"));
-  const fixed = visibleFields(digitalRxForm, {
-    ...base,
-    lowerArchRetention: "Fixed (Banded)",
-  }).map((f) => f.key);
-  assert.ok(fixed.includes("fixedMandibularExpansion"));
-  const fixed2 = visibleFields(digitalRxForm, {
-    ...base,
-    lowerArchRetention: "Fixed [3D Printed] Bands",
-  }).map((f) => f.key);
-  assert.ok(fixed2.includes("fixedMandibularExpansion"));
-});
-
-/* ── Contradictory expansion options: disableOptionsIf ── */
-
-test("upperExpansionType's Fixed ONLY options are disabled once upperArchRetention is removable", () => {
-  const fields = allFields(digitalRxForm);
-  const field = fields.find((f) => f.key === "upperExpansionType");
-  assert.ok(field, "upperExpansionType field missing");
-  const fixedOnlyOptions = field.options.filter((o) => /\(Fixed ONLY\)/.test(o));
-  assert.equal(fixedOnlyOptions.length, 4, "expected 4 Fixed ONLY options on upperExpansionType");
-
-  const withFixed = disabledOptions(field, { upperArchRetention: "Fixed (Banded)" });
-  assert.equal(withFixed.size, 0, "no options disabled while retention is fixed");
-
-  const withRemovable = disabledOptions(field, {
-    upperArchRetention: "Acrylic w/ clasp retention",
-  });
-  for (const o of fixedOnlyOptions) assert.ok(withRemovable.has(o), `${o} should be disabled`);
-
-  const withRemovable2 = disabledOptions(field, {
-    upperArchRetention: "Printed NYLON w/ composite retention",
-  });
-  for (const o of fixedOnlyOptions) assert.ok(withRemovable2.has(o), `${o} should be disabled`);
-});
-
-test("lowerExpansionType's Memory Screw (Removable Only) is disabled once lowerArchRetention is fixed", () => {
-  const fields = allFields(digitalRxForm);
-  const field = fields.find((f) => f.key === "lowerExpansionType");
-  assert.ok(field, "lowerExpansionType field missing");
-  assert.ok(
-    field.options.includes("Memory Screw (Removable Only)"),
-    "lowerExpansionType is missing its Removable Only option"
-  );
-
-  const withRemovable = disabledOptions(field, {
-    lowerArchRetention: "Acrylic w/ clasp retention",
-  });
-  assert.equal(withRemovable.size, 0, "no options disabled while retention is removable");
-
-  const withFixed = disabledOptions(field, { lowerArchRetention: "Fixed (Banded)" });
-  assert.ok(withFixed.has("Memory Screw (Removable Only)"));
-
-  const withFixed2 = disabledOptions(field, {
-    lowerArchRetention: "Fixed [3D Printed] Bands",
-  });
-  assert.ok(withFixed2.has("Memory Screw (Removable Only)"));
-});
-
 /* ── Trutaine contradiction: onSpecifications moved before opposingTrutaine,
       which hides once the contradictory option is selected ── */
 
@@ -592,45 +382,13 @@ test("opposingTrutaine hides once 'Upper arch ONLY (No opposing trutaine)' is se
   assert.ok(!contradictory.includes("opposingTrutaine"), "hidden once the contradictory option is picked");
 });
 
-/* ── Tandem reference image: only relevant for Modified Tandem ── */
-
-test("imgModifiedTandem is gated on selectDevice === 'Modified Tandem'", () => {
-  const twinBlock = visibleFields(digitalRxForm, {
-    devicesToOrder: ["ortho"],
-    selectDevice: "Twin Block",
-  }).map((f) => f.key);
-  assert.ok(!twinBlock.includes("imgModifiedTandem"));
-  const noSelection = visibleFields(digitalRxForm, {
-    devicesToOrder: ["ortho"],
-  }).map((f) => f.key);
-  assert.ok(!noSelection.includes("imgModifiedTandem"));
-  const tandem = visibleFields(digitalRxForm, {
-    devicesToOrder: ["ortho"],
-    selectDevice: "Modified Tandem",
-  }).map((f) => f.key);
-  assert.ok(tandem.includes("imgModifiedTandem"));
-});
-
-/* ── Rescued images no longer point at the retiring JotForm CDN ── */
-
-test("no ortho static image points at jotform.com any more", () => {
-  const keys = ["imgModifiedTandem", "imgTandemLength", "imgMaxillaryReference", "imgMandibularReference"];
-  const fields = allFields(digitalRxForm);
-  for (const k of keys) {
-    const field = fields.find((f) => f.key === k);
-    assert.ok(field, `${k} field missing`);
-    assert.ok(!/jotform\.com/i.test(field.src), `${k}.src still points at jotform.com: ${field.src}`);
-    assert.ok(field.src.startsWith("/images/rx/ortho/"), `${k}.src should be a local asset path, got ${field.src}`);
-  }
-});
-
 test("no two fields in the same section carry the same label", () => {
-  // The two ex-ortho rush sliders were both labelled "RUSH case request:" and
+  // The two rush sliders were both labelled "RUSH case request:" and
   // sat side by side in `submit-form` — indistinguishable to a doctor. The same
   // label under a different section heading (Maxillary vs Mandibular "Add:") is
   // disambiguated by that heading, so duplicates are only checked per section.
   const SKIP = new Set(["heading", "note", "static", "image", "divider"]);
-  for (const devices of [["ddso"], ["ortho"], ["ddso", "ortho", "nightguards"]]) {
+  for (const devices of [["ddso"], ["olmos"], ["ddso", "olmos", "nightguards"]]) {
     const answers = { devicesToOrder: devices };
     const visible = new Set(visibleFields(digitalRxForm, answers).map((f) => f.key));
     for (const section of digitalRxForm.sections) {

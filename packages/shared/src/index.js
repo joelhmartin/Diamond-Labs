@@ -17,4 +17,4 @@ export * from "./utils/permissions.js";
 export * from "./utils/validation.js";
 
 // Rx
-export { buildDigitalDevices, DEVICE_LABELS } from "./rx/form-devices.js";
+export { buildDigitalDevices, buildFormDevices, buildOrthoDevice, DEVICE_LABELS } from "./rx/form-devices.js";

@@ -7,6 +7,8 @@ import { ROUTES } from "../../config/routes.js";
 const DESCRIPTIONS = {
   digital:
     "The full digital prescription for Diamond-fabricated orthotic and dental devices. Pick a device, configure it, and upload scans.",
+  ortho:
+    "Orthodontic appliances — expanders, Modified Tandem and Twin Block, with upper/lower expansion, arch additions and digital study models.",
 };
 
 export function RxChooserPage() {
