@@ -15,9 +15,13 @@ export const MODIFICATION_ROWS = [
   { mapKey: "mod:tongue-positioners", match: ["Tongue Positioners"],                          code: "2330", name: "Removable Tongue Positioners (Nylon)", status: "confirmed" },
   { mapKey: "mod:hooks-elastics",     match: ["Hooks for Elastics"],                          code: "2319", name: "Hooks For Elastic Retention",          status: "confirmed" },
   { mapKey: "mod:vertical-shims",     match: ["Vertical Shims", "Vertical Shims (Printed Only)"], code: "2302", name: "Vertical Shims (Nylon)",          status: "confirmed" },
-  { mapKey: "mod:on-loop",            match: ["ON Loop"],                                     code: "2300", name: "ON LOOP",                              status: "confirmed" },
-  { mapKey: "mod:bab-loop",           match: ["BAB Loop"],                                    code: "2303", name: "BAB-LOOP",                             status: "confirmed" },
-  { mapKey: "mod:on-ramp",            match: ["ON Ramp"],                                     code: "2301", name: "ON-Ramp ONLY (ON-LOOP W/ Closed Hole)", status: "confirmed" },
+  // A loop or ramp is built on vertical shims, and the lab bills the shims
+  // with it: BAB Loop 97% (n=58), ON Loop 93% (n=44), ON Ramp 77% (n=26);
+  // replay 22 of 25. `implies` adds that row once per device — never twice
+  // when the doctor also ticked Vertical Shims, or ticked two loops.
+  { mapKey: "mod:on-loop",            match: ["ON Loop"],                                     code: "2300", name: "ON LOOP",                              status: "confirmed", implies: ["mod:vertical-shims"] },
+  { mapKey: "mod:bab-loop",           match: ["BAB Loop"],                                    code: "2303", name: "BAB-LOOP",                             status: "confirmed", implies: ["mod:vertical-shims"] },
+  { mapKey: "mod:on-ramp",            match: ["ON Ramp"],                                     code: "2301", name: "ON-Ramp ONLY (ON-LOOP W/ Closed Hole)", status: "confirmed", implies: ["mod:vertical-shims"] },
   { mapKey: "mod:labial-bow",         match: ["Labial bow"],                                  code: "2184", name: "Labial Bow",                           status: "confirmed" },
   { mapKey: "mod:hooks-lip-seal",     match: ["Hooks for lip-seal"],                          code: "2319", name: "Hooks For Elastic Retention",          status: "proposed" },
   // Carried over from the retired device-seazona-map, where it was the one

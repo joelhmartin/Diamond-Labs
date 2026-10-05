@@ -174,7 +174,11 @@ const ADDONS = [
   ["transfer tray ticked on both arches is one tray", ["Transfer tray for composite buttons"], ["Transfer tray for composite buttons"], ["2313"], []],
   ["palatal pads → 2181 (proposed, 86–89%)", ["Palatal pads"], [], ["2181"], []],
   ["tandem-bow sheaths → 2219", [], ["Sheaths for Tandem Bow (Removable)"], ["2219"], []],
-  ["lingual guide arm has no product of its own → held", ["Lingual guide arm (distal)"], [], [], ["ortho:upper:addon:lingual-guide-arm-distal"]],
+  // No product of its own recurs on 87 answers (2025–26): a note, never a line or a hold.
+  ["lingual guide arm (distal) is note-only", ["Lingual guide arm (distal)"], [], [], []],
+  ["lingual guide arm to canines is note-only", ["Lingual guide arm to canines"], [], [], []],
+  ["lingual guide arm (to canine) is note-only", ["Lingual guide arm (to canine)"], [], [], []],
+  ["lower lingual guide arm (distal) is note-only", [], ["Lingual guide arm (distal)"], [], []],
   ["lap springs: count not captured → held", [], ["Anterior lap springs"], [], ["ortho:lower:addon:anterior-lap-springs"]],
   ["buccal tubes on an un-banded arch → held", ["Buccal tubes to bands"], [], [], ["ortho:upper:addon:buccal-tubes-to-bands"]],
   ["an add-on the form never offered → held as typed", ["Extra spur, please"], [], [], ["ortho:typed:upperAddOns"]],
@@ -265,8 +269,9 @@ test("rows: stable mapKeys, unique, valid status, codes only where not open", ()
     assert.match(r.mapKey, /^ortho:[a-z0-9:-]+$/, `bad mapKey ${r.mapKey}`);
     assert.ok(!seen.has(r.mapKey), `duplicate mapKey ${r.mapKey}`);
     seen.add(r.mapKey);
-    assert.ok(["confirmed", "proposed", "open"].includes(r.status), `bad status on ${r.mapKey}`);
-    if (r.status === "open") assert.equal(r.code, null, `${r.mapKey} is open but carries ${r.code}`);
+    assert.ok(["confirmed", "proposed", "open", "none"].includes(r.status), `bad status on ${r.mapKey}`);
+    if (r.status === "none") assert.ok(r.code === null && r.evidence, `${r.mapKey} is note-only but carries a code or no evidence`);
+    else if (r.status === "open") assert.equal(r.code, null, `${r.mapKey} is open but carries ${r.code}`);
     else assert.ok(r.code && r.evidence, `${r.mapKey} is ${r.status} without a code and evidence`);
   }
 });

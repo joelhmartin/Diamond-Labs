@@ -10,7 +10,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { buildFormDevices } from "@my-app/shared";
-import { resolveOrtho, ORTHO_ROWS } from "./ortho.js";
+import { resolveOrtho, ORTHO_ROWS, orthoBuildNotes } from "./ortho.js";
 import { ORTHO_SECTIONS } from "../../../../../../web/src/data/forms/ortho.sections.js";
 
 const ROW_KEYS = new Set(ORTHO_ROWS.map((r) => r.mapKey));
@@ -135,5 +135,23 @@ test("every ORTHO_ROWS mapKey is one the live form can actually reach", () => {
     for (const row of f.rows) run({ [key]: { [`${row}__${f.columns[0]}`]: "x" } });
   }
 
-  for (const r of ORTHO_ROWS) assert.ok(emitted.has(r.mapKey), `ORTHO_ROWS ${r.mapKey} is never emitted from the live form`);
+  // Note-only rows emit nothing by design; they are checked against the notes below.
+  for (const r of ORTHO_ROWS.filter((x) => x.status !== "none"))
+    assert.ok(emitted.has(r.mapKey), `ORTHO_ROWS ${r.mapKey} is never emitted from the live form`);
+});
+
+test("every note-only add-on the form offers reaches the order notes", () => {
+  const addOnFields = { upper: ["addToMaxillary", "maxillaryAdd"], lower: ["addToMandibular", "mandibularAdd"] };
+  const noteOnly = ORTHO_ROWS.filter((r) => r.status === "none");
+  assert.ok(noteOnly.length > 0);
+  for (const r of noteOnly) {
+    const [, arch] = r.mapKey.split(":");
+    const literal = r.match[0].replace(/^Add to (Maxillary|Mandibular): /, "");
+    const fields = addOnFields[arch].filter((k) => optionValues(k).includes(literal));
+    assert.ok(fields.length, `${r.mapKey}: no ${arch} add-on field offers "${literal}"`);
+    for (const key of fields) {
+      const [device] = buildFormDevices("ortho", { selectDevice: "Modified Tandem", [key]: [literal] });
+      assert.ok(orthoBuildNotes(device.deviceOptions).some((n) => n.includes(literal)), `${key} "${literal}" is not in the notes`);
+    }
+  }
 });
