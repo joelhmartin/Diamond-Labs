@@ -2,7 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 
 import { digitalRxForm } from "./digital-rx.form.js";
-import { allFields, visibleFields, disabledOptions } from "./form-logic.js";
+import { allFields, visibleFields, disabledOptions, validateForm } from "./form-logic.js";
 
 // The complete set of field types this porting layer is allowed to emit.
 const SUPPORTED_TYPES = new Set([
@@ -643,4 +643,44 @@ test("no two fields in the same section carry the same label", () => {
       }
     }
   }
+});
+
+// ── Questions restored from JotForm's conditionally-revealed (hidden) fields ──
+
+const shownKeys = (answers) => visibleFields(digitalRxForm, answers).map((f) => f.key);
+const ONP = "POSITIONER (ON-P) - Anterior Occlusion";
+const ONT = "TITRATION (ON-T) - NYLON Only";
+
+test("Olmos Night asks for a base material once a D/P/R design is picked, with no default", () => {
+  assert.ok(!shownKeys({ devicesToOrder: ["olmos"] }).includes("onMaterial"), "hidden before a design is picked");
+  assert.ok(shownKeys({ devicesToOrder: ["olmos"], onDesign: ONP }).includes("onMaterial"));
+  const field = allFields(digitalRxForm).find((f) => f.key === "onMaterial");
+  assert.equal(field.required, true);
+  assert.equal(field.default, undefined);
+  assert.deepEqual(field.options, ["NYLON", "PMT (Diamoform)", "BIOMED", "DUAL-LAMINATE", "ACRYLIC W/CLASPS"]);
+  const { errors } = validateForm(digitalRxForm, { devicesToOrder: ["olmos"], onDesign: ONP });
+  assert.ok(errors.onMaterial, "a Positioner without a material is not submittable");
+});
+
+test("Titration (ON-T) is Nylon only, so it never asks for a material", () => {
+  assert.ok(!shownKeys({ devicesToOrder: ["olmos"], onDesign: ONT }).includes("onMaterial"));
+});
+
+test("Olmos Night offers its modifications once a design is picked", () => {
+  assert.ok(shownKeys({ devicesToOrder: ["olmos"], onDesign: ONP }).includes("onModifications"));
+  const field = allFields(digitalRxForm).find((f) => f.key === "onModifications");
+  assert.deepEqual(field.options.map((o) => o.value), ["Tongue Positioners", "Hooks for Elastics", "Vertical Shims", "BAB Loop"]);
+});
+
+test("D-Pro section asks D-Pro or Manta, required", () => {
+  const field = allFields(digitalRxForm).find((f) => f.key === "dproDevice");
+  assert.deepEqual(field.options, ["D-Pro", "Manta"]);
+  assert.equal(field.required, true);
+  assert.ok(shownKeys({ devicesToOrder: ["dpro"] }).includes("dproDevice"));
+});
+
+test("titration placement appears for Tripod occlusion only, on DDSO and D-Pro", () => {
+  assert.ok(!shownKeys({ devicesToOrder: ["ddso"], ddsoOcclusalContact: "Anterior Contact" }).includes("ddsoTitrationPlacement"));
+  assert.ok(shownKeys({ devicesToOrder: ["ddso"], ddsoOcclusalContact: "TRIPOD Occlusion" }).includes("ddsoTitrationPlacement"));
+  assert.ok(shownKeys({ devicesToOrder: ["dpro"], dproOcclusalContact: "TRIPOD Occlusion" }).includes("dproTitrationPlacement"));
 });

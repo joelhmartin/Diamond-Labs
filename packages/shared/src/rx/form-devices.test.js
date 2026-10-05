@@ -81,3 +81,24 @@ test("a device's label comes from the shared DEVICE_LABELS entry", () => {
   const [device] = buildDigitalDevices({ devicesToOrder: ["ddso"] });
   assert.equal(device.label, "DDSO");
 });
+
+test("Olmos Night carries design, material, modifications and instructions", () => {
+  const [night] = buildDigitalDevices({
+    devicesToOrder: ["olmos"],
+    onDesign: "POSITIONER (ON-P) - Anterior Occlusion",
+    onMaterial: "PMT (Diamoform)",
+    onModifications: ["Vertical Shims"],
+    onSpecifications: ["Upper arch ONLY (No opposing trutaine)"],
+  });
+  assert.equal(night.deviceKey, "olmos-night");
+  assert.equal(night.deviceOptions.baseMaterial, "PMT (Diamoform)");
+  assert.deepEqual(night.deviceOptions.modifications, ["Vertical Shims"]);
+  assert.deepEqual(night.deviceOptions.instructions, ["Upper arch ONLY (No opposing trutaine)"]);
+});
+
+test("D-Pro carries the D-Pro/Manta choice; additional options are instructions, not products", () => {
+  const [dpro] = buildDigitalDevices({ devicesToOrder: ["dpro"], dproDevice: "Manta", dproAdditionalOptions: ["Wrap distal of last molars"] });
+  assert.equal(dpro.deviceOptions.variant, "Manta");
+  assert.deepEqual(dpro.deviceOptions.instructions, ["Wrap distal of last molars"]);
+  assert.equal(dpro.deviceOptions.modifications, undefined);
+});

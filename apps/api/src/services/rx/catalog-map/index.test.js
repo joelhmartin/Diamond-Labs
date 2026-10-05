@@ -89,3 +89,48 @@ test("a code-less override that is NOT noteOnly is incoherent and falls back to 
   assert.ok(unmapped.includes("mod:wrap-distal"));
   assert.ok(!items.some((i) => i.mapKey === "mod:wrap-distal"));
 });
+
+// ── Olmos Night: design × material, one SKU per pair. Expected codes are the
+// products the lab actually billed for these JotForm answers (2025–26). ──
+const NIGHT = {
+  "DEPROGRAMMER (ON-D) - Anterior Occlusion": { NYLON: "2119", "PMT (Diamoform)": "2114", BIOMED: "2118", "DUAL-LAMINATE": "2117", "ACRYLIC W/CLASPS": "2115" },
+  "POSITIONER (ON-P) - Anterior Occlusion":   { NYLON: "2130", "PMT (Diamoform)": "2125", BIOMED: "2129", "DUAL-LAMINATE": "2128", "ACRYLIC W/CLASPS": "2126" },
+  "RAMP (ON-R) - Anterior Occlusion":         { NYLON: "2142", "PMT (Diamoform)": "2137", BIOMED: "2141", "DUAL-LAMINATE": "2140", "ACRYLIC W/CLASPS": "2138" },
+};
+
+test("every Olmos Night design + material resolves to its own product", () => {
+  for (const [variant, byMaterial] of Object.entries(NIGHT)) {
+    for (const [baseMaterial, code] of Object.entries(byMaterial)) {
+      const { items, unmapped } = resolveLineItems({ deviceKey: "olmos-night", deviceOptions: { variant, baseMaterial } });
+      assert.deepEqual(unmapped, [], `${variant} + ${baseMaterial}`);
+      assert.equal(items[0].code, code, `${variant} + ${baseMaterial}`);
+      assert.equal(items[0].status, "confirmed");
+    }
+  }
+});
+
+test("an Olmos Night design with no material is held, never guessed", () => {
+  const { items, unmapped } = resolveLineItems({ deviceKey: "olmos-night", deviceOptions: { variant: "POSITIONER (ON-P) - Anterior Occlusion" } });
+  assert.equal(items.length, 0);
+  assert.deepEqual(unmapped, ["primary:olmos-night:onp"]);
+});
+
+test("Titration resolves to ONT Nylon with or without a material answer", () => {
+  for (const baseMaterial of [undefined, "NYLON"]) {
+    const { items } = resolveLineItems({ deviceKey: "olmos-night", deviceOptions: { variant: "TITRATION (ON-T) - NYLON Only", baseMaterial } });
+    assert.equal(items[0].code, "2144");
+  }
+});
+
+test("D-Pro and Manta resolve to different products", () => {
+  assert.equal(resolveLineItems({ deviceKey: "cadcam-d-pro", deviceOptions: { variant: "D-Pro" } }).items[0].code, "2539");
+  assert.equal(resolveLineItems({ deviceKey: "cadcam-d-pro", deviceOptions: { variant: "Manta" } }).items[0].code, "2149");
+});
+
+test("Olmos Night modifications resolve like DDSO's", () => {
+  const { items } = resolveLineItems({
+    deviceKey: "olmos-night",
+    deviceOptions: { variant: "POSITIONER (ON-P) - Anterior Occlusion", baseMaterial: "NYLON", modifications: ["Vertical Shims", "BAB Loop"] },
+  });
+  assert.deepEqual(items.map((i) => i.code), ["2130", "2302", "2303"]);
+});
