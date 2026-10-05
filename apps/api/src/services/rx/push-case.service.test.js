@@ -287,3 +287,14 @@ test("a case with no devices adds nothing to the notes", () => {
   const { payload } = payloadFromLines(caseRow, [{ seazonaCode: "2608", status: "confirmed" }], { codeToId: { 2608: "id" } });
   assert.equal(payload.notes, "");
 });
+
+test("note-only instructions survive a long free-text comment", () => {
+  const caseRow = { seazonaClientId: "c1", patientFirst: "A", patientLast: "B", generalComments: "x".repeat(2500), deviceOptions: { devices: [] } };
+  const lines = [
+    { mapKey: "primary:ddso:nylon", seazonaCode: "2608", status: "confirmed", noteOnly: false },
+    { mapKey: "mod:wrap-distal", noteOnly: true, sourceLabel: "Wrap distal of last molars" },
+  ];
+  const { payload } = payloadFromLines(caseRow, lines, { codeToId: { 2608: "id-2608" } });
+  assert.ok(payload.notes.startsWith("Wrap distal of last molars"));
+  assert.equal(payload.notes.length, 2000);
+});

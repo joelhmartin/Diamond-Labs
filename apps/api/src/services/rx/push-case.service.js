@@ -49,9 +49,13 @@ export function payloadFromLines(caseRow, lines = [], { codeToId = {}, userId } 
     items.push({ id, arch: normalizeArch(l.arch) });
   }
 
-  const ok = warnings.length === 0 && items.length > 0;
   const deviceNotes = compileNotesMulti(caseRow, devicesForCase(caseRow));
-  const notes = [caseRow.generalComments, deviceNotes, ...noteLines].filter(Boolean).join(" | ").slice(0, 2000);
+  // Seazona caps notes at 2000 characters. Lab-ruled build instructions go
+  // first so a long free-text comment can never truncate them away.
+  const instructions = noteLines.join(" | ");
+  if (instructions.length > 2000) warnings.push("note-only instructions exceed Seazona's 2000-character notes limit");
+  const notes = [instructions, deviceNotes, caseRow.generalComments].filter(Boolean).join(" | ").slice(0, 2000);
+  const ok = warnings.length === 0 && items.length > 0;
 
   return {
     ok,

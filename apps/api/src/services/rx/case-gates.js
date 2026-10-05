@@ -115,6 +115,12 @@ export function canPush(lines = []) {
   if (emitting.length === 0) {
     return { ok: false, reason: "This case has no lines to send." };
   }
+  // Model and lab-service lines are added per case, not per device. A case
+  // whose only sendable lines are services has lost its appliance (an empty
+  // device list, or staff deleted the device line) — never send that.
+  if (emitting.every((l) => String(l.mapKey || "").startsWith("service:"))) {
+    return { ok: false, reason: "This case has no appliance line — only model and lab services." };
+  }
   const blocking = emitting.filter((l) => l.status === "open" || !l.seazonaCode);
   if (blocking.length > 0) {
     return {
