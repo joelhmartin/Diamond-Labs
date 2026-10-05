@@ -133,6 +133,7 @@ test("ortho answers survive the adapter, add-ons kept per arch and de-duplicated
     maxillaryAdd: ["Buccal tubes to bands", "Palatal pads"],
     addToMandibular: ["Sheaths for Tandem Bow (Removable)"],
     digitalStudyModels: "Digital Models ONLY - ABO - Full Base",
+    digitalSetupEmail: "setup@example.test",
     dualArchComments: "a",
     orthoDesignComments: "b",
   });
@@ -146,6 +147,7 @@ test("ortho answers survive the adapter, add-ons kept per arch and de-duplicated
   assert.deepEqual(o.upperAddOns, ["Buccal hooks for tandem elastics", "Buccal tubes to bands", "Palatal pads"]);
   assert.deepEqual(o.lowerAddOns, ["Sheaths for Tandem Bow (Removable)"]);
   assert.equal(o.digitalStudyModels, "Digital Models ONLY - ABO - Full Base");
+  assert.equal(o.digitalSetupEmail, "setup@example.test");
   assert.equal(o.comments, "a | b");
   assert.equal(o.modifications, undefined, "ortho add-ons must not pool into arch-less modifications");
 });

@@ -182,8 +182,10 @@ const ADDONS = [
 
 for (const [label, upperAddOns, lowerAddOns, expectCodes, expectUnmapped] of ADDONS)
   test(`add-ons: ${label}`, () => {
-    const out = resolveOrtho({ upperAddOns, lowerAddOns });
-    assert.deepEqual(out.items.map((i) => i.code), expectCodes);
+    // On a Modified Tandem: add-ons ride on an appliance (alone they hold the
+    // device as ortho:unspecified — see ortho.review-fixes.test.js).
+    const out = resolveOrtho({ applianceType: "Modified Tandem", upperAddOns, lowerAddOns });
+    assert.deepEqual(out.items.filter((i) => !i.mapKey.startsWith("ortho:tandem:")).map((i) => i.code), expectCodes);
     assert.deepEqual(out.unmapped, expectUnmapped);
   });
 

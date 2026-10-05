@@ -3,7 +3,10 @@
 // imports NOTHING from routes/ or the DB — services (push-case.service.js)
 // and their tests need these without pulling in Fastify, drizzle, or
 // config/database.js. admin-rx-cases.routes.js re-exports everything below
-// so every existing importer keeps working unchanged.
+// so every existing importer keeps working unchanged. The one import is the
+// pure catalog-map line classifier (no DB, no routes).
+
+import { isDeviceLine } from "./catalog-map/index.js";
 
 /**
  * Statuses the queue shows when the caller does not ask for specific ones —
@@ -115,12 +118,6 @@ export function canPush(lines = []) {
   if (emitting.length === 0) {
     return { ok: false, reason: "This case has no lines to send." };
   }
-  // Model and lab-service lines are added per case, not per device. A case
-  // whose only sendable lines are services has lost its appliance (an empty
-  // device list, or staff deleted the device line) — never send that.
-  if (emitting.every((l) => String(l.mapKey || "").startsWith("service:"))) {
-    return { ok: false, reason: "This case has no appliance line — only model and lab services." };
-  }
   const blocking = emitting.filter((l) => l.status === "open" || !l.seazonaCode);
   if (blocking.length > 0) {
     return {
@@ -128,6 +125,15 @@ export function canPush(lines = []) {
       reason: `${blocking.length} selection(s) still need a product code.`,
       blocking: blocking.map((l) => l.mapKey || l.sourceLabel),
     };
+  }
+  // Model and lab-service lines are added per case, not per device, and
+  // modifications, attributes and ortho bands/add-ons ride on an appliance.
+  // A case whose sendable lines are only those has lost its appliance (an
+  // empty device list, staff deleted the device line, an ortho Rx with only a
+  // transfer tray) — never send that. A staff-added line with no mapKey
+  // counts as an appliance: staff chose it by hand.
+  if (!emitting.some((l) => !l.mapKey || isDeviceLine(l.mapKey))) {
+    return { ok: false, reason: "This case has no appliance line — only services, add-ons or modifications." };
   }
   return { ok: true };
 }

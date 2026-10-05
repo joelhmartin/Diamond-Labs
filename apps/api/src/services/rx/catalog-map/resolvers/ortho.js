@@ -324,16 +324,29 @@ const ROW_BY_KEY = new Map(ORTHO_ROWS.map((r) => [r.mapKey, r]));
 
 // ── Resolver ────────────────────────────────────────────────────────────────
 
-function createOut() {
+function createOut(overrides = {}) {
   const out = { items: [], unmapped: [] };
   const seenCodes = new Set();
   const seenUnmapped = new Set();
   return {
     out,
-    /** Flag a selection for the lab, once. */
-    flag(mapKey) {
+    /**
+     * Hold a selection for the lab, once — unless an admin has saved an
+     * "always" ruling (rx_code_overrides) for exactly this key. Then emit a
+     * codeless placeholder line carrying the key and arch; resolveLineItems
+     * swaps it for the override (or a noteOnly line). Every ortho hold key
+     * already names its arch, so unlike guard's arch-less unmapped keys a
+     * placeholder never collapses a two-arch order into one line.
+     * `ortho:unspecified` is a data-quality hold, never overridable.
+     */
+    flag(mapKey, arch = null, qty = 1) {
       if (seenUnmapped.has(mapKey)) return;
       seenUnmapped.add(mapKey);
+      if (overrides[mapKey] && mapKey !== UNSPECIFIED) {
+        for (let i = 0; i < qty; i++)
+          out.items.push({ code: null, name: null, mapKey, arch, status: "open" });
+        return;
+      }
       out.unmapped.push(mapKey);
     },
     /**
@@ -343,7 +356,7 @@ function createOut() {
      */
     emit(mapKey, arch = null, { qty = 1, once = true } = {}) {
       const r = ROW_BY_KEY.get(mapKey);
-      if (!r || r.status === "open" || !r.code) return this.flag(mapKey);
+      if (!r || r.status === "open" || !r.code) return this.flag(mapKey, arch, qty);
       const dedupe = `${r.code}:${arch}`;
       if (once && seenCodes.has(dedupe)) return;
       seenCodes.add(dedupe);
@@ -368,13 +381,13 @@ function resolveArchAppliance(arch, o, acc) {
   const ret = retentionLiteral ? RETENTION[retentionLiteral] : null;
   const screw = screwLiteral ? screws[screwLiteral] : null;
 
-  if (retentionLiteral && !ret) acc.flag(`ortho:typed:${arch}ArchRetention`);
-  if (screwLiteral && !screw) acc.flag(`ortho:typed:${arch}ExpansionType`);
+  if (retentionLiteral && !ret) acc.flag(`ortho:typed:${arch}ArchRetention`, arch);
+  if (screwLiteral && !screw) acc.flag(`ortho:typed:${arch}ExpansionType`, arch);
   if ((retentionLiteral && !ret) || (screwLiteral && !screw)) return;
 
   if (ret && screw) return acc.emit(`ortho:${arch}:${ret}:${screw}`, arch);
-  if (ret) return acc.flag(`ortho:${arch}:${ret}:no-expansion-type`);
-  if (screw) return acc.flag(`ortho:${arch}:no-retention:${screw}`);
+  if (ret) return acc.flag(`ortho:${arch}:${ret}:no-expansion-type`, arch);
+  if (screw) return acc.flag(`ortho:${arch}:no-retention:${screw}`, arch);
 }
 
 function resolveBands(arch, o, addOns, acc) {
@@ -384,7 +397,7 @@ function resolveBands(arch, o, addOns, acc) {
   // "Required Selection" matrix, row Maxillary/Mandibular, column "Place bands on:".
   const placeBandsOn = o.requiredSelection?.[`${arch === "upper" ? "Maxillary" : "Mandibular"}__Place bands on:`];
   if (placeBandsOn != null && String(placeBandsOn).trim() !== "")
-    return acc.flag(`ortho:${arch}:bands:teeth-specified`);
+    return acc.flag(`ortho:${arch}:bands:teeth-specified`, arch);
 
   if (literal === "Fixed [3D Printed] Bands")
     return acc.emit(`ortho:${arch}:bands:printed`, arch, { qty: BAND_QTY, once: false });
@@ -408,13 +421,13 @@ function resolveAddOns(arch, o, addOns, acc) {
     }
     const key = `ortho:${arch}:addon:${slug(addOn)}`;
     if (ROW_BY_KEY.has(key)) acc.emit(key, arch);
-    else acc.flag(`ortho:typed:${arch}AddOns`);
+    else acc.flag(`ortho:typed:${arch}AddOns`, arch);
   }
 }
 
-export function resolveOrtho(deviceOptions = {}) {
+export function resolveOrtho(deviceOptions = {}, { overrides = {} } = {}) {
   const o = deviceOptions;
-  const acc = createOut();
+  const acc = createOut(overrides);
   const upperAddOns = asList(o.upperAddOns);
   const lowerAddOns = asList(o.lowerAddOns);
 
@@ -443,7 +456,7 @@ export function resolveOrtho(deviceOptions = {}) {
   if (mandibular.length) {
     for (const [kind, s, field] of mandibular)
       if (s) acc.emit(`ortho:lower:mandibular:${kind}:${s}`, "lower");
-      else acc.flag(`ortho:typed:${field}`);
+      else acc.flag(`ortho:typed:${field}`, "lower");
   } else {
     resolveArchAppliance("lower", o, acc);
   }
@@ -462,7 +475,65 @@ export function resolveOrtho(deviceOptions = {}) {
     for (const label of rows)
       if (matrixRowAnswered(matrix, label)) acc.emit(`ortho:${arch}-selection:${slug(label)}`, arch);
 
+  // Bands and add-ons are accessories: without an appliance (tandem, twin
+  // block, an arch expander, a mandibular pick, an arch-only selection) —
+  // resolved or held — there is nothing for them to attach to. Hold the device
+  // rather than let a transfer tray alone pass as a complete ortho order.
   const { out } = acc;
-  if (out.items.length === 0 && out.unmapped.length === 0) out.unmapped.push("ortho:unspecified");
+  const keys = [...out.items.map((i) => i.mapKey), ...out.unmapped];
+  if (!keys.some((k) => !isOrthoAccessoryKey(k))) out.unmapped.push(UNSPECIFIED);
   return out;
+}
+
+/**
+ * Lines that ride on an ortho appliance rather than being one: bands and
+ * add-ons (incl. a typed add-on hold). catalog-map/index.js's isDeviceLine
+ * excludes these, so an order carrying only accessories never counts as having
+ * an appliance — at resolve time, at line seeding, and at the push gate.
+ */
+export const isOrthoAccessoryKey = (mapKey) =>
+  typeof mapKey === "string" &&
+  (/^ortho:(?:(?:upper|lower):)?(?:bands|addon):/.test(mapKey) || /^ortho:typed:(?:upper|lower)AddOns$/.test(mapKey));
+
+const UNSPECIFIED = "ortho:unspecified";
+
+// ── Order notes ─────────────────────────────────────────────────────────────
+
+const filled = (v) => v != null && String(v).trim() !== "";
+
+/** A `${row}__${col}` matrix → "Row: Col: value; Col: value / Row: …" (answered cells only; " | " already separates note fragments). */
+function matrixNote(matrix) {
+  if (!matrix || typeof matrix !== "object") return "";
+  const rows = new Map();
+  for (const [key, value] of Object.entries(matrix)) {
+    if (!filled(value)) continue;
+    const [row, col = ""] = key.split("__");
+    if (!rows.has(row)) rows.set(row, []);
+    rows.get(row).push(`${col.replace(/:$/, "")}: ${String(value).trim()}`);
+  }
+  return [...rows].map(([row, cells]) => `${row}: ${cells.join("; ")}`).join(" / ");
+}
+
+/**
+ * The ortho build detail no product code carries — tandem bow setting, which
+ * teeth get bands / rests / build-ups, the arch-only expansion tables (typed
+ * text), digital setup and study models. One readable note fragment per
+ * answered question; build-order-payload.js appends them to the order notes.
+ */
+export function orthoBuildNotes(o = {}) {
+  const lines = [];
+  const add = (label, value) => {
+    if (filled(value)) lines.push(`${label}: ${String(value).trim()}`);
+  };
+  add("Mx. selection", o.mxSelections);
+  if (filled(o.tandemBowSetting))
+    lines.push(`Tandem bow: ${String(o.tandemBowSetting).trim()} mm from incisal edge of lower anteriors`);
+  add("Required selection", matrixNote(o.requiredSelection));
+  add("Tandem occlusal options", matrixNote(o.occlusalOptionsTandem));
+  add("UPPER expansion selection", matrixNote(o.upperExpansionSelection));
+  add("LOWER expansion selection", matrixNote(o.lowerExpansionSelection));
+  add("NUVELO digital setup", matrixNote(o.nuveloDigitalSetup));
+  add("Send digital setup to", o.digitalSetupEmail);
+  add("Digital study models", o.digitalStudyModels);
+  return lines;
 }

@@ -87,6 +87,7 @@ function buildOrthoDevice(answers = {}) {
     lowerAddOns: [...new Set([...asList(answers.addToMandibular), ...asList(answers.mandibularAdd)])],
     digitalStudyModels: answers.digitalStudyModels,
     nuveloDigitalSetup: answers.nuveloDigitalSetup,
+    digitalSetupEmail: answers.digitalSetupEmail,
     comments: [
       answers.dualArchComments,
       answers.maxillaryComments,

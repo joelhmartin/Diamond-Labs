@@ -2,7 +2,7 @@ import { DEVICE_ROWS } from "./devices.table.js";
 import { MODIFICATION_ROWS } from "./modifications.table.js";
 import { ATTRIBUTE_ROWS } from "./attributes.table.js";
 import { resolveGuard } from "./resolvers/guard.js";
-import { resolveOrtho } from "./resolvers/ortho.js";
+import { resolveOrtho, isOrthoAccessoryKey } from "./resolvers/ortho.js";
 import { resolveLabServices } from "./lab-services.js";
 
 /** Human-readable device names for admin tooling that cannot import the frontend. */
@@ -25,10 +25,11 @@ export const DEVICE_LABELS = {
  * attribute, or a case-level lab service. Detect it by EXCLUSION, not by a
  * "primary:" prefix — resolver devices emit their own prefixes (guard rows are
  * `guard:<row>:<material>`), so a prefix check would reject every valid
- * nightguard order.
+ * nightguard order. Ortho bands and add-ons are excluded too: they ride on an
+ * appliance, so a case carrying only those has no appliance.
  */
 export const isDeviceLine = (mapKey) =>
-  typeof mapKey === "string" && !/^(mod|attr|service):/.test(mapKey);
+  typeof mapKey === "string" && !/^(mod|attr|service):/.test(mapKey) && !isOrthoAccessoryKey(mapKey);
 
 const RESOLVERS = { guard: resolveGuard, "ortho-expander": resolveOrtho };
 
@@ -171,7 +172,10 @@ export function resolveLineItems({ deviceKey, deviceOptions = {} } = {}, { overr
 
   const custom = RESOLVERS[deviceKey];
   if (custom) {
-    const { items, unmapped } = custom(deviceOptions);
+    // Resolvers may consult overrides themselves: the ortho resolver turns an
+    // overridden hold into an arch-tagged placeholder item, which
+    // emitResolved below swaps for the override. Guard ignores the argument.
+    const { items, unmapped } = custom(deviceOptions, { overrides });
     for (const it of items) emitResolved(it, acc, overrides);
     // Plain passthrough — NOT emitOverrideOrUnmapped. A resolver's unmapped
     // mapKey (e.g. a guard slider-type slot) can correspond to MULTIPLE
