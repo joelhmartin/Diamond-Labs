@@ -1,14 +1,7 @@
-import { resolveLineItems } from "./catalog-map/index.js";
-
-/**
- * A "device line" is any emitted line that is not a modification or a design
- * attribute. Detect it by EXCLUSION, not by a "primary:" prefix — resolver
- * devices emit their own prefixes (guard rows are `guard:<row>:<material>`),
- * so a prefix check would reject every valid nightguard order. Shared by
- * both builders below so the `mod:`/`attr:` exclusion set can't drift.
- */
-const isDeviceLine = (mapKey) =>
-  typeof mapKey === "string" && !mapKey.startsWith("mod:") && !mapKey.startsWith("attr:");
+// isDeviceLine is shared with case-lines.service.js so the exclusion set
+// (mod:/attr:/service:) can't drift between the builders and the seeded lines.
+import { resolveLineItems, isDeviceLine } from "./catalog-map/index.js";
+import { guardMatrixNotes } from "./catalog-map/resolvers/guard.js";
 
 /**
  * A resolver can return NOTHING — no items and no unmapped keys (an empty
@@ -95,12 +88,19 @@ function normalizeArch(arch) {
  * PRODUCT LINE ITEMS (resolved by catalog-map/index.js), NOT notes. So material,
  * variant, and modifications are deliberately excluded here. Notes carry only
  * free-text clinical detail that has no product code — occlusal contact, design
- * preference, VDO/titration, and device-specific instructions.
+ * preference (the lab never bills their $0 catalog items; see
+ * attributes.table.js), VDO/titration, the guard matrix's clearance / teeth /
+ * colour cells, and device-specific instructions.
  */
 function deviceOptionLines(o = {}) {
   const lines = [];
   if (o.occlusalContact)  lines.push(`Occlusal Contact: ${o.occlusalContact}`);
   if (o.designPreference) lines.push(`Design Preference: ${o.designPreference}`);
+  // The retired wizard's DDSO `design` and guard `thickness` — both required
+  // there, and stored on its cases with no other channel (follow-up 1).
+  if (o.design)           lines.push(`Design: ${o.design}`);
+  if (o.thickness)        lines.push(`Thickness: ${o.thickness}`);
+  lines.push(...guardMatrixNotes(o.standardGuards));
   if (o.titration)        lines.push(`VDO/Titration: ${JSON.stringify(o.titration)}`);
   if (o.titrationPlacement?.length) lines.push(`Place vertical titration on: ${[].concat(o.titrationPlacement).join(", ")}`);
   // Build instructions the lab never bills (e.g. "Wrap distal of last molars").

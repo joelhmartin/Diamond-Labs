@@ -3,6 +3,7 @@ import { MODIFICATION_ROWS } from "./modifications.table.js";
 import { ATTRIBUTE_ROWS } from "./attributes.table.js";
 import { resolveGuard } from "./resolvers/guard.js";
 import { resolveOrtho } from "./resolvers/ortho.js";
+import { resolveLabServices } from "./lab-services.js";
 
 /** Human-readable device names for admin tooling that cannot import the frontend. */
 export const DEVICE_LABELS = {
@@ -19,10 +20,15 @@ export const DEVICE_LABELS = {
   "ortho-expander": "Orthodontic Appliance",
 };
 
-export const LAB_SERVICE_CODES = {
-  modelFabPerArch: { code: "2367", name: "Digital Model Fabrication (Per Arch)" },
-  articulate:      { code: "2368", name: "Articulate Models" },
-};
+/**
+ * A "device line" is any emitted line that is not a modification, a design
+ * attribute, or a case-level lab service. Detect it by EXCLUSION, not by a
+ * "primary:" prefix — resolver devices emit their own prefixes (guard rows are
+ * `guard:<row>:<material>`), so a prefix check would reject every valid
+ * nightguard order.
+ */
+export const isDeviceLine = (mapKey) =>
+  typeof mapKey === "string" && !/^(mod|attr|service):/.test(mapKey);
 
 const RESOLVERS = { guard: resolveGuard, "ortho-expander": resolveOrtho };
 
@@ -130,27 +136,43 @@ function emitOverrideOrUnmapped(mapKey, { items, unmapped }, overrides, arch = n
   }
 }
 
+/**
+ * Push one resolver-produced item (guard, ortho, lab service), honouring an
+ * override on its mapKey while keeping the item's own arch.
+ */
+function emitResolved(it, acc, overrides) {
+  const override = overrides[it.mapKey];
+  if (!override) {
+    acc.items.push({ ...it, overridden: false });
+    return;
+  }
+  const item = itemFromOverride(override, it.mapKey, it.arch);
+  if (item) {
+    acc.items.push(item);
+  } else {
+    // Incoherent override (no code, not noteOnly) — fall back to
+    // unmapped rather than emit a codeless "confirmed" line.
+    acc.unmapped.push(it.mapKey);
+  }
+}
+
+/**
+ * The case-level lab-service lines (model fabrication, duplication, …) — see
+ * lab-services.js. Case-level, so called once per case, never per device.
+ */
+export function resolveCaseServices(formData, devices = [], { overrides = {} } = {}) {
+  const acc = { items: [], unmapped: [] };
+  for (const it of resolveLabServices(formData, devices)) emitResolved(it, acc, overrides);
+  return acc;
+}
+
 export function resolveLineItems({ deviceKey, deviceOptions = {} } = {}, { overrides = {} } = {}) {
   const acc = { items: [], unmapped: [] };
 
   const custom = RESOLVERS[deviceKey];
   if (custom) {
     const { items, unmapped } = custom(deviceOptions);
-    for (const it of items) {
-      const override = overrides[it.mapKey];
-      if (!override) {
-        acc.items.push({ ...it, overridden: false });
-        continue;
-      }
-      const item = itemFromOverride(override, it.mapKey, it.arch);
-      if (item) {
-        acc.items.push(item);
-      } else {
-        // Incoherent override (no code, not noteOnly) — fall back to
-        // unmapped rather than emit a codeless "confirmed" line.
-        acc.unmapped.push(it.mapKey);
-      }
-    }
+    for (const it of items) emitResolved(it, acc, overrides);
     // Plain passthrough — NOT emitOverrideOrUnmapped. A resolver's unmapped
     // mapKey (e.g. a guard slider-type slot) can correspond to MULTIPLE
     // physical line items when several arches were ordered on that row, but
@@ -174,7 +196,8 @@ export function resolveLineItems({ deviceKey, deviceOptions = {} } = {}, { overr
     else emitOverrideOrUnmapped(`mod:${mod}`, acc, overrides);
   }
 
-  // Design attributes → $0 line items.
+  // Design attributes (occlusal contact, design preference). Every known row
+  // is status "none" — the lab never bills them; they travel as notes.
   for (const literal of [deviceOptions.occlusalContact, deviceOptions.designPreference]) {
     if (!literal) continue;
     const row = findRow(ATTRIBUTE_ROWS, literal);

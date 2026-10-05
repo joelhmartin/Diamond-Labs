@@ -201,3 +201,61 @@ test("devicesForCase returns nothing rather than inventing a device", () => {
   assert.deepEqual(devicesForCase({}), []);
   assert.deepEqual(devicesForCase({ formType: "digital", formData: {}, deviceOptions: {} }), []);
 });
+
+// ── case-level lab services (catalog-map/lab-services.js) ───────────────────
+
+const SCAN = { records: ["ITERO"], firstDevice: "Yes" };
+
+test("seeding with formData adds the case's lab-service lines once, after the devices", () => {
+  const lines = linesForDevices(
+    [
+      { deviceKey: "olmos-day", deviceOptions: { baseMaterial: "OD (PMT)" } },
+      { deviceKey: "olmos-night", deviceOptions: { variant: "POSITIONER (ON-P) - Anterior Occlusion", baseMaterial: "NYLON" } },
+    ],
+    { formData: SCAN }
+  );
+  assert.deepEqual(
+    lines.map((l) => [l.seazonaCode, l.arch]),
+    [
+      ["2102", null], ["2130", null],
+      ["2367", "upper"], ["2367", "lower"],
+      ["2372", "upper"], ["2372", "lower"],
+      ["2368", "upper"], ["2368", "lower"],
+    ]
+  );
+  const service = lines.filter((l) => l.mapKey?.startsWith("service:"));
+  assert.ok(service.every((l) => l.status === "confirmed" && l.origin === "auto"));
+});
+
+test("without formData (the retired wizard) no lab-service lines are added", () => {
+  const lines = linesForDevices([{ deviceKey: "ddso", deviceOptions: { baseMaterial: "NYLON" } }]);
+  assert.ok(!lines.some((l) => l.mapKey?.startsWith("service:")));
+});
+
+test("re-resolve recomputes the same lab-service lines as seeding", async () => {
+  const devices = [{ deviceKey: "ddso", deviceOptions: { baseMaterial: "NYLON" } }];
+  const seeded = linesForDevices(devices, { formData: SCAN });
+  const { tx, inserted } = makeFakeTx([]);
+  await reResolveLines("c1", devices, { tx, formData: SCAN });
+  assert.deepEqual(
+    inserted.map((l) => [l.mapKey, l.seazonaCode, l.arch]),
+    seeded.map((l) => [l.mapKey, l.seazonaCode, l.arch])
+  );
+});
+
+test("a device with no appliance line cannot ride a lab-service-only order past the gate", () => {
+  // A nightguard section with nothing ordered resolves to no lines at all; the
+  // model-fabrication lines alone must not make the case look sendable.
+  const lines = linesForDevices([{ deviceKey: "guard", label: "Nightguard", deviceOptions: {} }], { formData: SCAN });
+  const open = lines.filter((l) => l.status === "open");
+  assert.equal(open.length, 1);
+  assert.match(open[0].sourceLabel, /no device line resolved for Nightguard/);
+  assert.equal(open[0].seazonaCode, null);
+});
+
+test("occlusal contact and design preference seed no line at all", () => {
+  const lines = linesForDevices([
+    { deviceKey: "ddso", deviceOptions: { baseMaterial: "NYLON", occlusalContact: "TRIPOD Occlusion", designPreference: "Full Coverage" } },
+  ]);
+  assert.deepEqual(lines.map((l) => l.seazonaCode), ["2608"]);
+});

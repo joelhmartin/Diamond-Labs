@@ -256,3 +256,34 @@ test("a failure where Seazona was never contacted releases the lock — a retry 
 test("a failure where Seazona WAS contacted keeps the lock held — the response was ambiguous, a retry could duplicate a real order", () => {
   assert.equal(shouldReleasePushLock({ status: "failed", contactedSeazona: true }), false);
 });
+
+// ── design intent travels in the notes of the REAL push ─────────────────────
+// Occlusal contact / design preference stopped being $0 line items (the lab
+// never bills them), so the stored-lines push is now their only channel.
+
+test("the pushed order's notes carry each device's design intent", () => {
+  const { payload } = payloadFromLines(
+    {
+      ...caseRow,
+      deviceOptions: {
+        devices: [
+          { deviceKey: "ddso", label: "DDSO", deviceOptions: { occlusalContact: "TRIPOD Occlusion", designPreference: "Lingual-Free" } },
+          {
+            deviceKey: "guard",
+            label: "Nightguard",
+            deviceOptions: { standardGuards: { "Occlusal Guard - Slider Type__Increase for clearance": "2mm" } },
+          },
+        ],
+      },
+    },
+    [{ seazonaCode: "2608", status: "confirmed" }],
+    { codeToId: { 2608: "id-2608" } }
+  );
+  assert.match(payload.notes, /\[DDSO\] Occlusal Contact: TRIPOD Occlusion, Design Preference: Lingual-Free/);
+  assert.match(payload.notes, /\[Nightguard\] Occlusal Guard - Slider Type: Increase for clearance: 2mm/);
+});
+
+test("a case with no devices adds nothing to the notes", () => {
+  const { payload } = payloadFromLines(caseRow, [{ seazonaCode: "2608", status: "confirmed" }], { codeToId: { 2608: "id" } });
+  assert.equal(payload.notes, "");
+});

@@ -20,19 +20,18 @@ test("DDSO's six form modifications all resolve", () => {
   }
 });
 
-test("occlusal contact and design preference map to the $0 catalog items", () => {
-  const expected = {
-    "Posterior Contact": "2293",
-    "Anterior Contact": "2289",
-    "FULL Occlusal Contact": "2292",
-    "TRIPOD Occlusion": "2291",
-    "Lingual-Free": "2314",
-    "Buccal-Free": "2308",
-  };
-  for (const [literal, code] of Object.entries(expected)) {
+// Every occlusal-contact / design-preference answer on the live Rx form, as
+// worded in the JotForm evidence (pleaseSelect466/485/131, designPreference*).
+// None of 2289/2291/2292/2293/2308/2314 appears on any of 3,600 real orders.
+test("occlusal contact and design preference are note-only — never a line, never flagged", () => {
+  for (const literal of [
+    "Posterior Contact", "Anterior Contact", "FULL Occlusal Contact", "TRIPOD Occlusion",
+    "Lingual-Free", "Buccal-Free", "Standard", "Full Coverage",
+  ]) {
     const row = ATTRIBUTE_ROWS.find((r) => r.match.includes(literal));
     assert.ok(row, `no row matches ${literal}`);
-    assert.equal(row.code, code);
+    assert.equal(row.status, "none", `${literal} should be note-only`);
+    assert.equal(row.code, null);
   }
 });
 

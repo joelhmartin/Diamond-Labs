@@ -1,5 +1,7 @@
 import * as seazonaService from "../seazona.service.js";
 import { canPush } from "./case-gates.js";
+import { devicesForCase } from "./case-devices.js";
+import { compileNotesMulti } from "./build-order-payload.js";
 
 /**
  * Build a Seazona order payload from the case's STORED lines.
@@ -7,6 +9,10 @@ import { canPush } from "./case-gates.js";
  * Deliberately does not call resolveLineItems: by this point staff may have
  * corrected the lines, and re-resolving would discard those corrections at the
  * one moment they matter.
+ *
+ * The notes DO read the case's devices: design intent with no product code
+ * (occlusal contact, design preference, guard clearance, device comments)
+ * has no other way onto the order. Line items are never derived from them.
  */
 export function payloadFromLines(caseRow, lines = [], { codeToId = {}, userId } = {}) {
   const items = [];
@@ -44,7 +50,8 @@ export function payloadFromLines(caseRow, lines = [], { codeToId = {}, userId } 
   }
 
   const ok = warnings.length === 0 && items.length > 0;
-  const notes = [caseRow.generalComments, ...noteLines].filter(Boolean).join(" | ").slice(0, 2000);
+  const deviceNotes = compileNotesMulti(caseRow, devicesForCase(caseRow));
+  const notes = [caseRow.generalComments, deviceNotes, ...noteLines].filter(Boolean).join(" | ").slice(0, 2000);
 
   return {
     ok,

@@ -15,9 +15,10 @@ import { DEVICE_ROWS } from "../services/rx/catalog-map/devices.table.js";
 import { MODIFICATION_ROWS } from "../services/rx/catalog-map/modifications.table.js";
 import { ATTRIBUTE_ROWS } from "../services/rx/catalog-map/attributes.table.js";
 import { GUARD_ROWS } from "../services/rx/catalog-map/resolvers/guard.js";
+import { LAB_SERVICE_ROWS } from "../services/rx/catalog-map/lab-services.js";
 import { DEVICE_LABELS } from "../services/rx/catalog-map/index.js";
 
-export const ALL = [...DEVICE_ROWS, ...MODIFICATION_ROWS, ...ATTRIBUTE_ROWS, ...GUARD_ROWS];
+export const ALL = [...DEVICE_ROWS, ...MODIFICATION_ROWS, ...ATTRIBUTE_ROWS, ...GUARD_ROWS, ...LAB_SERVICE_ROWS];
 
 /**
  * The rows in one document bucket. `none` rows are a deliberate no-op (the
@@ -29,7 +30,9 @@ export const bucket = (status) => ALL.filter((r) => r.status === status);
 // "default" is an internal placeholder, not something a lab owner can act on —
 // show the device name instead. Only match[0] (the current form's wording) is
 // shown; match[1]+ is legacy wizard wording that would just confuse the lab.
-const deviceOf = (r) => (r.device ? DEVICE_LABELS[r.device] || r.device : "—");
+// Lab-service rows belong to the whole case, not to one device.
+const deviceOf = (r) =>
+  r.device ? DEVICE_LABELS[r.device] || r.device : r.mapKey.startsWith("service:") ? "Whole case (lab service)" : "—";
 const selectionOf = (r) => (r.match[0] === "default" ? deviceOf(r) : r.match[0]);
 
 const line = (r) => `| ${deviceOf(r)} | ${selectionOf(r)} | ${r.code ?? "—"} | ${r.name} |`;

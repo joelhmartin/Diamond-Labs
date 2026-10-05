@@ -22,8 +22,8 @@ const TEST_ORDER_USER_ID = "9cae86a4-809e-4879-8ffb-b76d39b95978";   // Matt Rag
  *
  * This route is the ONLY live Seazona write in the feature — it creates a REAL
  * order on the lab's real account. It used to gate on `payload.items.length`
- * alone, which a device that lost its appliance line can still satisfy: a $0
- * design attribute (attr:occlusal:posterior → 2293) resolves on its own, giving
+ * alone, which a device that lost its appliance line can still satisfy: a
+ * modification (mod:tongue-positioners → 2330) resolves on its own, giving
  * items.length === 1 and pushing an order with no appliance to the lab. Gate on
  * `ok`, exactly as the doctor path does.
  *

@@ -747,7 +747,7 @@ export default async function adminRxCasesRoutes(fastify) {
 
     const devices = devicesForCase(caseRow);
     const overrides = await loadOverrides();
-    const { replaced, kept } = await reResolveLines(caseId, devices, { overrides });
+    const { replaced, kept } = await reResolveLines(caseId, devices, { overrides, formData: caseRow.formData });
 
     const lines = await db
       .select()

@@ -154,15 +154,15 @@ test("per device, multi names the device whose appliance line is missing", () =>
   assert.ok(warnings.some((w) => w.includes("Nightguard")), JSON.stringify(warnings));
 });
 
-test("an attribute-only device (a $0 line, no appliance) is refused AND explained", () => {
-  // attr:occlusal:posterior → 2293 resolves, so items.length === 1 while the
+test("a modification-only device (no appliance) is refused AND explained", () => {
+  // mod:tongue-positioners → 2330 resolves, so items.length === 1 while the
   // appliance line is gone. Gating on items.length would push this to the lab.
   const { ok, payload, warnings } = buildSeazonaOrderPayloadMulti(
     { seazonaClientId: "c1" },
-    [{ deviceKey: "guard", label: "Nightguard", deviceOptions: { occlusalContact: "Posterior Contact" } }],
-    { codeToId: { 2293: "id-2293" }, userId: "u1" }
+    [{ deviceKey: "guard", label: "Nightguard", deviceOptions: { modifications: ["Tongue Positioners"] } }],
+    { codeToId: { 2330: "id-2330" }, userId: "u1" }
   );
-  assert.equal(payload.items.length, 1, "the $0 attribute line alone");
+  assert.equal(payload.items.length, 1, "the modification line alone");
   assert.equal(ok, false);
   assert.ok(warnings.length > 0);
 });

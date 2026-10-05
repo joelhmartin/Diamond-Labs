@@ -509,7 +509,9 @@ export default async function rxRoutes(fastify) {
 
         // Materialise the order now so the queue can show "4 lines · 1 unmapped"
         // without recomputing, and so staff have something to edit.
-        await seedLines(caseId, devices, { overrides, tx });
+        // formData adds the case-level lab-service lines (model fabrication,
+        // duplication, …) — re-resolve passes the same, so both agree.
+        await seedLines(caseId, devices, { overrides, formData: data.formData ?? {}, tx });
       });
     } catch (err) {
       await Promise.allSettled(uploadedFiles.map((f) => deleteStoredFile(f.gcsUrl)));
@@ -627,6 +629,9 @@ export default async function rxRoutes(fastify) {
                 patientLast: data.patientLast,
                 dueDate: data.dueDate || null,
                 generalComments: null,
+                // Carries each device's design notes (occlusal contact,
+                // design preference, guard clearance …) into the order notes.
+                deviceOptions: { devices },
               };
               const outcome = await pushCaseToSeazona(caseForPush, lines, {
                 codeToId,
