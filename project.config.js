@@ -105,7 +105,9 @@ const project = {
     prefix: "/api/v1",
     rateLimit: {
       window: "15m",
-      maxRequests: 100,
+      // Per client IP, API requests only. A lab office shares one IP and an
+      // admin page fans out to several calls, so 100 locked staff out.
+      maxRequests: 1000,
       authRoutes: 20,
     },
     pagination: {

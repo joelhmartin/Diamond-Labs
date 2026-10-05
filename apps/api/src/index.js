@@ -180,8 +180,13 @@ await fastify.register(helmet, {
 await fastify.register(rateLimit, {
   max: env.NODE_ENV === "production" ? project.api.rateLimit.maxRequests : 10000,
   timeWindow: env.NODE_ENV === "production" ? project.api.rateLimit.window : "1 minute",
-  // Skip rate limiting entirely for requests from localhost in dev
-  allowList: env.NODE_ENV === "production" ? [] : ["127.0.0.1", "::1"],
+  // Only the API is limited. Static files (JS chunks, Rx option images, models)
+  // are served by this same process; counting them let a few SPA page loads
+  // exhaust the window for a whole office behind one IP. Localhost is exempt
+  // in dev.
+  allowList: (request) =>
+    !request.url.startsWith(project.api.prefix) ||
+    (env.NODE_ENV !== "production" && ["127.0.0.1", "::1"].includes(request.ip)),
 });
 
 // Global error handler
