@@ -19,13 +19,29 @@ export const DEVICE_ROWS = [
   { mapKey: "primary:olmos-day:dual-laminate",  device: "olmos-day", match: ["Dual-Laminate"],                  code: "2105", name: "OD Dual Laminate",     status: "confirmed" },
   { mapKey: "primary:olmos-day:milled",         device: "olmos-day", match: ["Milled (↑ wear)", "Milled"], code: "2106", name: "OD MILLED",            status: "confirmed" },
 
-  // ── Olmos Night — onDesign picks the family; MATERIAL IS NOT CAPTURED.
-  // ONT exists only in Nylon, so it alone resolves. OND/ONP/ONR need the
-  // base-material question restored (JotForm qid 270) — see Task 12.
-  { mapKey: "primary:olmos-night:ont-nylon", device: "olmos-night", match: ["TITRATION (ON-T) - NYLON Only", "Titration ON-T (Nylon only)"],           code: "2144", name: "ONT Nylon", status: "confirmed" },
-  { mapKey: "primary:olmos-night:ond",       device: "olmos-night", match: ["DEPROGRAMMER (ON-D) - Anterior Occlusion", "Deprogrammer ON-D (Anterior)"], code: null,   name: "OND (material not captured)", status: "open", reason: "The form does not ask which base material. Each of these exists in 6–7 materials, so we cannot pick a code." },
-  { mapKey: "primary:olmos-night:onp",       device: "olmos-night", match: ["POSITIONER (ON-P) - Anterior Occlusion", "Positioner ON-P (Anterior)"],   code: null,   name: "ONP (material not captured)", status: "open", reason: "The form does not ask which base material. Each of these exists in 6–7 materials, so we cannot pick a code." },
-  { mapKey: "primary:olmos-night:onr",       device: "olmos-night", match: ["RAMP (ON-R) - Anterior Occlusion", "Ramp ON-R (Anterior)"],         code: null,   name: "ONR (material not captured)", status: "open", reason: "The form does not ask which base material. Each of these exists in 6–7 materials, so we cannot pick a code." },
+  // ── Olmos Night — onDesign × onMaterial (JotForm qid 197 × 270). One SKU per
+  // pair; confirmed against 1,400+ JotForm prescriptions matched to the orders
+  // the lab built from them (2025–26). ONT exists only in Nylon, so it needs
+  // no material. A design with no material answered stays open (held).
+  { mapKey: "primary:olmos-night:ont-nylon", device: "olmos-night", match: ["TITRATION (ON-T) - NYLON Only", "Titration ON-T (Nylon only)"], code: "2144", name: "ONT Nylon", status: "confirmed" },
+  { mapKey: "primary:olmos-night:ond-nylon", device: "olmos-night", match: ["DEPROGRAMMER (ON-D) - Anterior Occlusion", "Deprogrammer ON-D (Anterior)"], material: ["NYLON", "Nylon"], code: "2119", name: "OND Nylon", status: "confirmed" },
+  { mapKey: "primary:olmos-night:ond-pmt", device: "olmos-night", match: ["DEPROGRAMMER (ON-D) - Anterior Occlusion", "Deprogrammer ON-D (Anterior)"], material: ["PMT (Diamoform)", "PMT"], code: "2114", name: "OND PMT", status: "confirmed" },
+  { mapKey: "primary:olmos-night:ond-biomed", device: "olmos-night", match: ["DEPROGRAMMER (ON-D) - Anterior Occlusion", "Deprogrammer ON-D (Anterior)"], material: ["BIOMED", "Biomed"], code: "2118", name: "OND Biomed", status: "confirmed" },
+  { mapKey: "primary:olmos-night:ond-dual-laminate", device: "olmos-night", match: ["DEPROGRAMMER (ON-D) - Anterior Occlusion", "Deprogrammer ON-D (Anterior)"], material: ["DUAL-LAMINATE", "Dual-Laminate"], code: "2117", name: "OND Dual Laminate", status: "confirmed" },
+  { mapKey: "primary:olmos-night:ond-acrylic-clasps", device: "olmos-night", match: ["DEPROGRAMMER (ON-D) - Anterior Occlusion", "Deprogrammer ON-D (Anterior)"], material: ["ACRYLIC W/CLASPS", "Acrylic w/clasps"], code: "2115", name: "OND Acrylic W/Clasps", status: "confirmed" },
+  { mapKey: "primary:olmos-night:onp-nylon", device: "olmos-night", match: ["POSITIONER (ON-P) - Anterior Occlusion", "Positioner ON-P (Anterior)"], material: ["NYLON", "Nylon"], code: "2130", name: "ONP Nylon", status: "confirmed" },
+  { mapKey: "primary:olmos-night:onp-pmt", device: "olmos-night", match: ["POSITIONER (ON-P) - Anterior Occlusion", "Positioner ON-P (Anterior)"], material: ["PMT (Diamoform)", "PMT"], code: "2125", name: "ONP PMT", status: "confirmed" },
+  { mapKey: "primary:olmos-night:onp-biomed", device: "olmos-night", match: ["POSITIONER (ON-P) - Anterior Occlusion", "Positioner ON-P (Anterior)"], material: ["BIOMED", "Biomed"], code: "2129", name: "ONP Biomed", status: "confirmed" },
+  { mapKey: "primary:olmos-night:onp-dual-laminate", device: "olmos-night", match: ["POSITIONER (ON-P) - Anterior Occlusion", "Positioner ON-P (Anterior)"], material: ["DUAL-LAMINATE", "Dual-Laminate"], code: "2128", name: "ONP Dual Laminate", status: "confirmed" },
+  { mapKey: "primary:olmos-night:onp-acrylic-clasps", device: "olmos-night", match: ["POSITIONER (ON-P) - Anterior Occlusion", "Positioner ON-P (Anterior)"], material: ["ACRYLIC W/CLASPS", "Acrylic w/clasps"], code: "2126", name: "ONP Acrylic W/Clasps", status: "confirmed" },
+  { mapKey: "primary:olmos-night:onr-nylon", device: "olmos-night", match: ["RAMP (ON-R) - Anterior Occlusion", "Ramp ON-R (Anterior)"], material: ["NYLON", "Nylon"], code: "2142", name: "ONR Nylon", status: "confirmed" },
+  { mapKey: "primary:olmos-night:onr-pmt", device: "olmos-night", match: ["RAMP (ON-R) - Anterior Occlusion", "Ramp ON-R (Anterior)"], material: ["PMT (Diamoform)", "PMT"], code: "2137", name: "ONR PMT", status: "confirmed" },
+  { mapKey: "primary:olmos-night:onr-biomed", device: "olmos-night", match: ["RAMP (ON-R) - Anterior Occlusion", "Ramp ON-R (Anterior)"], material: ["BIOMED", "Biomed"], code: "2141", name: "ONR Biomed", status: "confirmed" },
+  { mapKey: "primary:olmos-night:onr-dual-laminate", device: "olmos-night", match: ["RAMP (ON-R) - Anterior Occlusion", "Ramp ON-R (Anterior)"], material: ["DUAL-LAMINATE", "Dual-Laminate"], code: "2140", name: "ONR Dual Laminate", status: "confirmed" },
+  { mapKey: "primary:olmos-night:onr-acrylic-clasps", device: "olmos-night", match: ["RAMP (ON-R) - Anterior Occlusion", "Ramp ON-R (Anterior)"], material: ["ACRYLIC W/CLASPS", "Acrylic w/clasps"], code: "2138", name: "ONR Acrylic W/Clasps", status: "confirmed" },
+  { mapKey: "primary:olmos-night:ond", device: "olmos-night", match: ["DEPROGRAMMER (ON-D) - Anterior Occlusion", "Deprogrammer ON-D (Anterior)"], code: null, name: "OND (no material)", status: "open", reason: "No base material answered. Each Night design is a different product per material." },
+  { mapKey: "primary:olmos-night:onp", device: "olmos-night", match: ["POSITIONER (ON-P) - Anterior Occlusion", "Positioner ON-P (Anterior)"], code: null, name: "ONP (no material)", status: "open", reason: "No base material answered. Each Night design is a different product per material." },
+  { mapKey: "primary:olmos-night:onr", device: "olmos-night", match: ["RAMP (ON-R) - Anterior Occlusion", "Ramp ON-R (Anterior)"], code: null, name: "ONR (no material)", status: "open", reason: "No base material answered. Each Night design is a different product per material." },
 
   // ── DDSO — ddsoMaterial. Catalog also has BioFlex (2532); form omits it.
   { mapKey: "primary:ddso:nylon",  device: "ddso", match: ["NYLON", "Nylon"],   code: "2608", name: "DDSO Nylon",  status: "confirmed" },
@@ -42,6 +58,7 @@ export const DEVICE_ROWS = [
 
   // ── Material not captured by the form; single most-likely SKU proposed ───
   { mapKey: "primary:shirazi-hybrid:nylon", device: "shirazi-hybrid", match: ["default"], code: "2152", name: "Shirazi Hybrid Nylon", status: "proposed" },
-  { mapKey: "primary:cadcam-d-pro:nylon",   device: "cadcam-d-pro",   match: ["default"], code: "2539", name: "Dorsal Pro Nylon",     status: "proposed" },
+  { mapKey: "primary:cadcam-d-pro:nylon",   device: "cadcam-d-pro",   match: ["D-Pro", "default"], code: "2539", name: "Dorsal Pro Nylon", status: "confirmed" },
+  { mapKey: "primary:cadcam-d-pro:manta",   device: "cadcam-d-pro",   match: ["Manta"],            code: "2149", name: "Manta Nylon",      status: "confirmed" },
   { mapKey: "primary:mora:pmt",             device: "mora",           match: ["default"], code: "2593", name: "MORA - PMT",           status: "proposed" },
 ];

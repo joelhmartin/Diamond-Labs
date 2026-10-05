@@ -26,6 +26,24 @@ export const LAB_SERVICE_CODES = {
 
 const RESOLVERS = { guard: resolveGuard, "ortho-expander": resolveOrtho };
 
+/**
+ * The device's primary product row. A row with a `material` list is keyed on
+ * BOTH the design (`variant`) and `baseMaterial` — Olmos Night, where the
+ * design alone names six products. Other rows match whichever of
+ * baseMaterial / variant / "default" the form supplied.
+ */
+function findPrimaryRow(deviceKey, o) {
+  const rows = DEVICE_ROWS.filter((r) => r.device === deviceKey);
+  const paired = rows.find((r) => r.material && r.match.includes(o.variant) && r.material.includes(o.baseMaterial));
+  if (paired) return paired;
+  // Most specific answer first, so "Manta" beats D-Pro's "default" fallback.
+  for (const key of [o.baseMaterial, o.variant, "default"].filter(Boolean)) {
+    const row = rows.find((r) => !r.material && r.match.includes(key));
+    if (row) return row;
+  }
+  return undefined;
+}
+
 /** First row whose match[] contains `literal`. */
 function findRow(rows, literal, device) {
   return rows.find(
@@ -144,7 +162,7 @@ export function resolveLineItems({ deviceKey, deviceOptions = {} } = {}, { overr
   } else {
     // Primary line: keyed by baseMaterial, variant, or the literal "default".
     const literal = deviceOptions.baseMaterial || deviceOptions.variant || "default";
-    const row = findRow(DEVICE_ROWS, literal, deviceKey);
+    const row = findPrimaryRow(deviceKey, deviceOptions);
     if (row) emit(row, acc, overrides, deviceOptions.arch ?? null);
     else emitOverrideOrUnmapped(`primary:${deviceKey}:${literal}`, acc, overrides, deviceOptions.arch ?? null);
   }

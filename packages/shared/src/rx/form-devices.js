@@ -69,7 +69,10 @@ function buildDigitalDevices(answers) {
           answered(answers.odExpansionOptions) ||
           answered(answers.odComments);
         const onAnswered =
-          answered(answers.onDesign) || answered(answers.onSpecifications);
+          answered(answers.onDesign) ||
+          answered(answers.onMaterial) ||
+          answered(answers.onSpecifications) ||
+          answered(answers.onModifications);
         if (odAnswered) {
           devices.push(
             makeDevice("olmos-day", {
@@ -83,7 +86,14 @@ function buildDigitalDevices(answers) {
           devices.push(
             makeDevice("olmos-night", {
               variant: answers.onDesign,
-              modifications: answers.onSpecifications,
+              baseMaterial: answers.onMaterial,
+              modifications: answers.onModifications,
+              // Build instructions, not products — they travel as order notes.
+              instructions: [
+                ...(answers.onSpecifications || []),
+                ...(answers.opposingTrutaine ? [`Opposing trutaine: ${answers.opposingTrutaine}`] : []),
+              ],
+              comments: answers.onComments,
             })
           );
         }
@@ -103,10 +113,9 @@ function buildDigitalDevices(answers) {
             baseMaterial: answers.ddsoMaterial,
             occlusalContact: answers.ddsoOcclusalContact,
             designPreference: answers.ddsoDesignPreference,
-            modifications: [
-              ...(answers.ddsoAdditionalOptions || []),
-              ...(answers.ddsoModifications || []),
-            ],
+            titrationPlacement: answers.ddsoTitrationPlacement,
+            modifications: answers.ddsoModifications,
+            instructions: answers.ddsoAdditionalOptions,
             comments: answers.ddsoComments,
           })
         );
@@ -114,12 +123,12 @@ function buildDigitalDevices(answers) {
       case "dpro":
         devices.push(
           makeDevice("cadcam-d-pro", {
+            variant: answers.dproDevice,
             occlusalContact: answers.dproOcclusalContact,
             designPreference: answers.dproDesignPreference,
-            modifications: [
-              ...(answers.dproAdditionalOptions || []),
-              ...(answers.dproModifications || []),
-            ],
+            titrationPlacement: answers.dproTitrationPlacement,
+            modifications: answers.dproModifications,
+            instructions: answers.dproAdditionalOptions,
             comments: answers.dproComments,
           })
         );

@@ -96,6 +96,19 @@ const ON_DESIGN_OPTIONS = [
   { value: "RAMP (ON-R) - Anterior Occlusion", label: "RAMP (ON-R) - Anterior Occlusion", image: `${IMG}/on_ramp.png` },
 ];
 
+// The JotForm questions below are `hidden` in the form definition and only
+// revealed by conditional logic once a device is picked. The original port
+// skipped every hidden question, which silently dropped these four — the
+// Night material alone was answered on 3,570 JotForm prescriptions in 2025–26.
+
+// qid 270 "Select Base Material (NIGHT DEVICE ONLY)".
+const ON_MATERIAL_OPTIONS = ["NYLON", "PMT (Diamoform)", "BIOMED", "DUAL-LAMINATE", "ACRYLIC W/CLASPS"];
+
+// qid 470 / 488 — shown for Tripod occlusion.
+const TITRATION_PLACEMENT_OPTIONS = ["Anterior Only", "Posterior Only", "Anterior & Posterior"];
+const TITRATION_PLACEMENT_LABEL =
+  "Place vertical titration on (these selections are for Tripod occlusion only):";
+
 // qid 131 / 466 / 485 "Occlusal Contact:" widget — shared DDSO-render images.
 const OCCLUSAL_CONTACT_OPTIONS = [
   imgOpt("Posterior Contact", `${IMG}/ddso_post.png`),
@@ -363,6 +376,21 @@ export const digitalRxForm = {
           "(ON) Olmos Night Orthotics - PLEASE SELECT ONE DESIGN:",
           ON_DESIGN_OPTIONS
         ),
+        // qid 270 — the material picks the product (ONP Nylon and ONP PMT are
+        // different SKUs at different prices). ON-T is Nylon only, so it isn't
+        // asked there. Required with no default, as on JotForm in practice.
+        radio(
+          "onMaterial",
+          "Select Base Material (NIGHT DEVICE ONLY)",
+          ON_MATERIAL_OPTIONS,
+          {
+            required: true,
+            showIf: {
+              key: "onDesign",
+              oneOf: ON_DESIGN_OPTIONS.map((o) => o.value).filter((v) => !v.startsWith("TITRATION")),
+            },
+          }
+        ),
         // qid 221
         matrix(
           "onVertical",
@@ -390,6 +418,14 @@ export const digitalRxForm = {
             not: { key: "onSpecifications", includes: "Upper arch ONLY (No opposing trutaine)" },
           },
         }),
+        // qid 414 + 220 — ON modifications (two JotForm widgets, one shown per
+        // design; merged here since their options overlap).
+        checkbox(
+          "onModifications",
+          "Select modifications",
+          [...MODIFICATIONS_A_OPTIONS, ...MODIFICATIONS_B_OPTIONS.filter((o) => o.value === "BAB Loop")],
+          { showIf: { key: "onDesign", answered: true } }
+        ),
         // qid 497
         textarea("onComments", "ON Device- Additional Comments/Instructions:", {
           rows: 3,
@@ -450,6 +486,10 @@ export const digitalRxForm = {
           ...MODIFICATIONS_A_OPTIONS,
           ...MODIFICATIONS_B_OPTIONS,
         ]),
+        // qid 470
+        checkbox("ddsoTitrationPlacement", TITRATION_PLACEMENT_LABEL, TITRATION_PLACEMENT_OPTIONS, {
+          showIf: { key: "ddsoOcclusalContact", equals: "TRIPOD Occlusion" },
+        }),
         // qid 378
         checkbox("ddsoAdditionalOptions", "Additional Options", ADDITIONAL_OPTIONS),
         // qid 483
@@ -473,6 +513,8 @@ export const digitalRxForm = {
       showIf: { key: "devicesToOrder", includes: "dpro" },
       fields: [
         heading("CAD/CAM D-Pro", { key: "hdrDpro" }),
+        // qid 454 — D-Pro and Manta are different products (2539 / 2149).
+        radio("dproDevice", "Please select a device:", ["D-Pro", "Manta"], { required: true }),
         // qid 416
         checkbox("dproArticulation", "Changes to Articulation", [
           "As Needed (Lab Decision)",
@@ -494,6 +536,10 @@ export const digitalRxForm = {
         ),
         // qid 487: "Digital Device Modifications" (image picker) → checkbox
         checkbox("dproModifications", "Select modifications", MODIFICATIONS_A_OPTIONS),
+        // qid 488
+        checkbox("dproTitrationPlacement", TITRATION_PLACEMENT_LABEL, TITRATION_PLACEMENT_OPTIONS, {
+          showIf: { key: "dproOcclusalContact", equals: "TRIPOD Occlusion" },
+        }),
         // qid 465
         checkbox("dproAdditionalOptions", "Additional Options", ADDITIONAL_OPTIONS),
         // qid 484

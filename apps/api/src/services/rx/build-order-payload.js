@@ -102,6 +102,9 @@ function deviceOptionLines(o = {}) {
   if (o.occlusalContact)  lines.push(`Occlusal Contact: ${o.occlusalContact}`);
   if (o.designPreference) lines.push(`Design Preference: ${o.designPreference}`);
   if (o.titration)        lines.push(`VDO/Titration: ${JSON.stringify(o.titration)}`);
+  if (o.titrationPlacement?.length) lines.push(`Place vertical titration on: ${[].concat(o.titrationPlacement).join(", ")}`);
+  // Build instructions the lab never bills (e.g. "Wrap distal of last molars").
+  if (o.instructions?.length) lines.push(`Instructions: ${[].concat(o.instructions).join("; ")}`);
   if (o.comments)         lines.push(`Device notes: ${o.comments}`);
   return lines;
 }
