@@ -46,15 +46,18 @@ test("an unknown modification is flagged, never guessed", () => {
 });
 
 test("an override cannot collapse a two-arch guard order into one line", () => {
-  // A per-arch row with no material: the resolver reports one unmapped key
-  // for what is physically two appliances.
-  const overrides = { "guard:nightguard-full-occlusion:no-material": { code: "9999", name: "Custom" } };
+  // A per-arch row with a material the matrix has no product for: the
+  // resolver reports one unmapped key for what is physically two appliances.
+  const overrides = { "guard:nightguard-full-occlusion:lab-decision": { code: "9999", name: "Custom" } };
   const { items, unmapped } = resolveLineItems(
-    { deviceKey: "guard", deviceOptions: { standardGuards: { "Nightguard - Full Occlusion": { "UPPER ARCH": true, "LOWER ARCH": true } } } },
+    {
+      deviceKey: "guard",
+      deviceOptions: { standardGuards: { "Nightguard - Full Occlusion": { "UPPER ARCH": true, "LOWER ARCH": true, "Base Material": "Lab Decision" } } },
+    },
     { overrides }
   );
   assert.equal(items.length, 0);
-  assert.deepEqual(unmapped, ["guard:nightguard-full-occlusion:no-material"]);
+  assert.deepEqual(unmapped, ["guard:nightguard-full-occlusion:lab-decision"]);
 });
 
 test("a 'none' attribute emits no line item and no unmapped flag", () => {
@@ -137,3 +140,25 @@ test("Olmos Night modifications resolve like DDSO's", () => {
   });
   assert.deepEqual(items.map((i) => i.code), ["2130", "2302", "2303"]);
 });
+
+// A loop or ramp is built on vertical shims, and the lab bills the shims with
+// it: BAB Loop 2302 97% (n=58), ON Loop 93% (n=44), ON Ramp 77% (n=26); Night
+// device BAB Loop 2 of 3; replay 22 of 25. [device, modifications, codes]
+const LOOP_SHIMS = [
+  ["ddso", ["BAB Loop"], ["2608", "2303", "2302"]],
+  ["ddso", ["ON Loop"], ["2608", "2300", "2302"]],
+  ["ddso", ["ON Ramp"], ["2608", "2301", "2302"]],
+  ["ddso", ["Vertical Shims", "BAB Loop"], ["2608", "2302", "2303"]],
+  ["ddso", ["BAB Loop", "Vertical Shims"], ["2608", "2303", "2302"]],
+  ["ddso", ["ON Loop", "BAB Loop"], ["2608", "2300", "2303", "2302"]],
+  ["ddso", ["Tongue Positioners"], ["2608", "2330"]],
+  ["olmos-night", ["BAB Loop"], ["2119", "2303", "2302"]],
+];
+for (const [deviceKey, modifications, codes] of LOOP_SHIMS)
+  test(`loops imply vertical shims, billed once: ${deviceKey} ${modifications.join(" + ")}`, () => {
+    const deviceOptions = { baseMaterial: "NYLON", modifications };
+    if (deviceKey === "olmos-night") deviceOptions.variant = "DEPROGRAMMER (ON-D) - Anterior Occlusion";
+    const { items, unmapped } = resolveLineItems({ deviceKey, deviceOptions });
+    assert.deepEqual(unmapped, []);
+    assert.deepEqual(items.map((i) => i.code), codes);
+  });

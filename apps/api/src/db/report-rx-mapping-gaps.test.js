@@ -46,8 +46,10 @@ test("the document carries the ortho rulings, with their evidence", () => {
   const doc = renderDoc();
   assert.match(doc, /## How the orthodontic rows were derived/);
   assert.doesNotMatch(doc, /every orthodontic order is held/i);
-  for (const r of ORTHO_ROWS) assert.ok(doc.includes(r.match[0]), `ortho row ${r.mapKey} is missing from the document`);
-  for (const r of ORTHO_ROWS.filter((x) => x.status !== "open"))
+  // Note-only rows are a deliberate no-op and never reach the document (see bucket()).
+  const ruled = ORTHO_ROWS.filter((x) => x.status !== "none");
+  for (const r of ruled) assert.ok(doc.includes(r.match[0]), `ortho row ${r.mapKey} is missing from the document`);
+  for (const r of ruled.filter((x) => x.status !== "open"))
     assert.ok(doc.includes(r.evidence), `ortho row ${r.mapKey}'s evidence is missing from the document`);
 });
 

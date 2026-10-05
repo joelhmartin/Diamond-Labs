@@ -208,9 +208,6 @@ const ADDON_OPEN_REASON =
 const ADDON_OPEN = {
   upper: [
     "Anterior lap springs",
-    "Lingual guide arm to canines",
-    "Lingual guide arm (distal)",
-    "Lingual guide arm (to canine)",
     "Labial bow",
     "Acrylic labial bow",
     "Occlusal Rest(s)",
@@ -218,7 +215,6 @@ const ADDON_OPEN = {
   ],
   lower: [
     "Anterior lap springs",
-    "Lingual guide arm (distal)",
     "Labial bow",
     "Acrylic labial bow",
     "Occlusal Rest(s)",
@@ -227,6 +223,21 @@ const ADDON_OPEN = {
     "Headgear tubes for tandem to bands",
   ],
 };
+// Build details the lab never bills on their own: they travel in the order
+// notes (orthoBuildNotes) and emit no line. Lingual guide arms: no product of
+// their own recurs on the orders that asked for one — upper distal n=12/18,
+// to canines n=30, to canine n=5/3, lower distal n=7/12 — the arm is part of
+// the expander it is soldered to.
+const ADDON_NOTE = {
+  upper: ["Lingual guide arm to canines", "Lingual guide arm (distal)", "Lingual guide arm (to canine)"],
+  lower: ["Lingual guide arm (distal)"],
+};
+const NOTE_ONLY = {
+  code: null,
+  status: "none",
+  evidence: "no product of its own recurs across 87 answers (2025–26); built into the expander",
+};
+
 const ADDON_REASONS = {
   "Anterior lap springs":
     "2185 Lap Spring (Each) appears on these orders, but the form does not capture how many springs. How should the count be set?",
@@ -305,6 +316,11 @@ export const ORTHO_ROWS = [
   row("ortho:lower:addon:tandem-sheaths", "Add to Mandibular: Sheaths for Tandem Bow / buccal sheath for tandem bow", ADDON["lower:tandem-sheaths"]),
   row("ortho:addon:transfer-tray", "Transfer tray for composite buttons (either arch)", ADDON["any:transfer-tray"]),
   ...["upper", "lower"].flatMap((arch) =>
+    ADDON_NOTE[arch].map((label) =>
+      row(`ortho:${arch}:addon:${slug(label)}`, `Add to ${arch === "upper" ? "Maxillary" : "Mandibular"}: ${label}`, { ...NOTE_ONLY, name: `${label} (note only)` })
+    )
+  ),
+  ...["upper", "lower"].flatMap((arch) =>
     ADDON_OPEN[arch].map((label) =>
       row(`ortho:${arch}:addon:${slug(label)}`, `Add to ${arch === "upper" ? "Maxillary" : "Mandibular"}: ${label}`, open(ADDON_REASONS[label] || ADDON_OPEN_REASON))
     )
@@ -356,6 +372,7 @@ function createOut(overrides = {}) {
      */
     emit(mapKey, arch = null, { qty = 1, once = true } = {}) {
       const r = ROW_BY_KEY.get(mapKey);
+      if (r?.status === "none") return; // a build detail: travels as a note, never a line or a hold
       if (!r || r.status === "open" || !r.code) return this.flag(mapKey, arch, qty);
       const dedupe = `${r.code}:${arch}`;
       if (once && seenCodes.has(dedupe)) return;
@@ -535,5 +552,10 @@ export function orthoBuildNotes(o = {}) {
   add("NUVELO digital setup", matrixNote(o.nuveloDigitalSetup));
   add("Send digital setup to", o.digitalSetupEmail);
   add("Digital study models", o.digitalStudyModels);
+  // Note-only add-ons emit no line, so this is the only place the lab sees them.
+  for (const [arch, label] of [["upper", "Maxillary"], ["lower", "Mandibular"]]) {
+    const notes = asList(o[`${arch}AddOns`]).filter((a) => ADDON_NOTE[arch].includes(a));
+    if (notes.length) lines.push(`${label} add-ons: ${notes.join(", ")}`);
+  }
   return lines;
 }

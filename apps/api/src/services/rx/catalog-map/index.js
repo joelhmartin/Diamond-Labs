@@ -193,12 +193,17 @@ export function resolveLineItems({ deviceKey, deviceOptions = {} } = {}, { overr
     else emitOverrideOrUnmapped(`primary:${deviceKey}:${literal}`, acc, overrides, deviceOptions.arch ?? null);
   }
 
-  // Modifications — shared across devices.
+  // Modifications — shared across devices. A row may imply others (a loop
+  // is built on vertical shims); each modification row bills once per device,
+  // whether the doctor ticked it, or it came with another one, or both.
+  const modRows = [];
   for (const mod of deviceOptions.modifications || []) {
     const row = findRow(MODIFICATION_ROWS, mod);
-    if (row) emit(row, acc, overrides);
+    if (row) modRows.push(row);
     else emitOverrideOrUnmapped(`mod:${mod}`, acc, overrides);
   }
+  const implied = modRows.flatMap((r) => r.implies || []).map((k) => MODIFICATION_ROWS.find((r) => r.mapKey === k));
+  for (const row of new Set([...modRows, ...implied])) emit(row, acc, overrides);
 
   // Design attributes (occlusal contact, design preference). Every known row
   // is status "none" — the lab never bills them; they travel as notes.

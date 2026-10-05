@@ -88,13 +88,14 @@ test("overrides on open ortho rows apply per arch — upper and lower stay separ
 });
 
 test("a noteOnly override clears an open ortho add-on; a codeless incoherent one stays held", () => {
-  const base = { deviceKey: "ortho-expander", deviceOptions: { applianceType: "Modified Tandem", upperAddOns: ["Lingual guide arm (distal)"] } };
-  const noteOnly = resolveLineItems(base, { overrides: { "ortho:upper:addon:lingual-guide-arm-distal": { noteOnly: true } } });
+  const key = "ortho:upper:addon:occlusal-rest-s";
+  const base = { deviceKey: "ortho-expander", deviceOptions: { applianceType: "Modified Tandem", upperAddOns: ["Occlusal Rest(s)"] } };
+  const noteOnly = resolveLineItems(base, { overrides: { [key]: { noteOnly: true } } });
   assert.deepEqual(noteOnly.unmapped, []);
-  assert.ok(noteOnly.items.some((i) => i.noteOnly && i.mapKey === "ortho:upper:addon:lingual-guide-arm-distal" && i.arch === "upper"));
+  assert.ok(noteOnly.items.some((i) => i.noteOnly && i.mapKey === key && i.arch === "upper"));
 
-  const incoherent = resolveLineItems(base, { overrides: { "ortho:upper:addon:lingual-guide-arm-distal": { name: "?" } } });
-  assert.deepEqual(incoherent.unmapped, ["ortho:upper:addon:lingual-guide-arm-distal"]);
+  const incoherent = resolveLineItems(base, { overrides: { [key]: { name: "?" } } });
+  assert.deepEqual(incoherent.unmapped, [key]);
 });
 
 test("ortho:unspecified can never be overridden into a passing order", () => {
@@ -106,7 +107,7 @@ test("ortho:unspecified can never be overridden into a passing order", () => {
 });
 
 test("guard's arch-less unmapped keys still skip overrides (no two-arch collapse)", () => {
-  const opts = { standardGuards: { "Occlusal Guard - Slider Type": { "UPPER ARCH": true, "LOWER ARCH": true } } };
+  const opts = { standardGuards: { "Nightguard - Full Occlusion": { "UPPER ARCH": true, "LOWER ARCH": true, "Base Material": "Lab Decision" } } };
   const key = resolveGuard(opts).unmapped[0];
   const { items, unmapped } = resolveLineItems({ deviceKey: "guard", deviceOptions: opts }, { overrides: { [key]: { code: "2176", name: "x" } } });
   assert.deepEqual(items, []);

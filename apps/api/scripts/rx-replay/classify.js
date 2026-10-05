@@ -12,7 +12,9 @@
  *
  * The rules below were written from the Aug–Oct 2026 replay (437 cases); each
  * cites the evidence that justified it. They classify — they never change what
- * the portal generates.
+ * the portal generates. They describe the mapping as it stands after
+ * fix/rx-replay-mapping: a difference a mapping rule already covers by its
+ * majority evidence is the leftover minority, i.e. lab variance.
  */
 
 // Accessories and retail items the form has no question for.
@@ -28,8 +30,7 @@ const LAB_ONLY = {
 const REMAKE = (name = "") => /remake|warranty reprint/i.test(name);
 const LOOP_CODES = new Set(["2300", "2301", "2303"]);
 const MODEL_SERVICES = new Set(["2368", "2372", "2371"]);
-const STONE_OD = new Set(["OD (PMT)", "Acrylic w/clasps", "Dual-Laminate"]);
-const PHYSICAL_RECORDS = new Set(["PVS Impressions", "Stone/Resin Models"]);
+const GUARD_CODES = new Set(["2176", "2163", "2166", "2165", "2170"]);
 const ORTHO_HOLD_CONSEQUENCE =
   "Consequence of a held ortho selection: the appliance/bands sit behind an open ruling, so the portal held the case instead of guessing.";
 
@@ -68,44 +69,24 @@ export function classify(a, r) {
   if (r.open?.includes("ortho:unspecified"))
     return result("lab variance", "Appliance described only in free text; nothing on the form names it.");
 
-  // Model services. Articulation (2368) tracks a stone-model OD (PMT or
-  // acrylic) and a Modified Tandem; duplication (2372) tracks a stone-model OD
-  // plus a second device; neither tracks the device count as such.
-  if (MODEL_SERVICES.has(code)) {
-    const stoneOd = STONE_OD.has(r.odMaterial);
-    const printedOd = Boolean(r.odMaterial) && !stoneOd;
-    const physical = (r.records || []).some((x) => PHYSICAL_RECORDS.has(x));
-    const tandem = r.orthoDevice === "Modified Tandem";
-    if (code === "2371" && a.kind === "extra")
-      return result("mapping bug", "Scan/Digitize Models (proposed) is generated for every PVS/model case; the lab billed it only on two-device cases, where it replaced Model Duplication 2372.");
-    if (code === "2368" && a.kind === "missing" && (stoneOd || tandem))
-      return result("mapping bug", "Articulate Models is billed whenever the case has an OD in PMT/acrylic (OD alone: 17 of 19) or a Modified Tandem (10 of 17); the portal bills it only for two or more devices.");
-    if ((code === "2368" || code === "2372") && a.kind === "extra" && printedOd)
-      return result("mapping bug", "An OD in BioFlex / Milled / Printed Nylon with a second device was billed without duplication or articulation (5 of 6); the portal bills both for any two devices.");
-    if (code === "2372" && a.kind === "extra" && physical)
-      return result("mapping bug", "PVS/model records on a two-device case: the lab billed Scan/Digitize 2371 instead of Model Duplication 2372 (6 of 6).");
-    return result("lab variance", "Model service billed differently by staff on this case (no consistent rule behind it).");
-  }
+  // Model services, model fabrication, loop shims and guard defaults now follow
+  // the lab's majority rule (catalog-map/lab-services.js, modifications.table.js,
+  // resolvers/guard.js). What still differs is the minority the rule's own
+  // evidence share leaves over — an exception, not a rule to change.
+  if (MODEL_SERVICES.has(code))
+    return result("lab variance", "Exception to the stone-model rule (articulation 83–98% by material; duplication with a second device; scan instead of duplicate for printed devices).");
   if (code === "2367") {
-    if (a.kind === "extra" && r.form === "ortho" && lab.filter((l) => l.code === "2367").length === 1)
-      return result("mapping bug", "Ortho on one arch: the lab fabricates only that arch's model; the portal always bills two.");
     if (lab.length === 0) return result("lab variance", "The lab's order carries no lines at all.");
+    if (r.form === "ortho")
+      return result("lab variance", "Ortho model arches entered differently (single-arch rule: the appliance's arch only; a free-text or removable appliance can need both).");
     return result("lab variance", "Model fabrication arch/count entered differently by staff (duplicate arch, or not billed).");
   }
-
-  // Vertical shims ride on every loop / ramp.
-  if (code === "2302" && a.kind === "missing")
-    return generated.some((l) => LOOP_CODES.has(l.code))
-      ? result("mapping bug", "A loop/ramp (ON Loop, BAB Loop, ON Ramp) was billed with Vertical Shims 2302 on 22 of 25 Rx; the portal emits the loop alone.")
-      : result("lab variance", "Shims added by staff without a shim/loop answer.");
-
-  // Guard: dual-arch rows double-billed / no-material rows held.
-  if (r.deviceKeys?.includes("guard") && ["2176", "2163", "2166", "2165", "2170"].includes(code)) {
-    if (a.kind === "extra")
-      return result("mapping bug", "Two matrix rows that resolve to the same dual-arch appliance were billed twice.");
-    if (r.open.some((k) => k.startsWith("guard:")))
-      return result("mapping bug", "Consequence of a held guard row (no material); the lab billed this product.");
-  }
+  if (code === "2302")
+    return result("lab variance", generated.some((l) => LOOP_CODES.has(l.code))
+      ? "Exception to loops-imply-shims (billed together on 77–97%)."
+      : "Shims added by staff without a shim/loop answer.");
+  if (r.deviceKeys?.includes("guard") && GUARD_CODES.has(code) && r.open.some((k) => k.startsWith("guard:")))
+    return result("mapping bug", "Consequence of a held guard row; the lab billed this product.");
 
   // Ortho.
   if (r.form === "ortho") {

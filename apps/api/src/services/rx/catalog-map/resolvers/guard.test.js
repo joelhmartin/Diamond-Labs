@@ -32,19 +32,68 @@ test("Essix and Bleaching ignore base material", () => {
   assert.deepEqual(items.map((i) => i.code).sort(), ["2155", "2161"]);
 });
 
-test("a row with no base material where one is required is flagged, never guessed", () => {
+test("a row with no base material and no ruling for that is flagged, never guessed", () => {
+  // NTI Type has no no-material ruling (one replayed order with it billed a
+  // single-arch nightguard instead), so it still holds.
   const { items, unmapped } = resolveGuard({
-    standardGuards: { "Nightguard - Full Occlusion": { "UPPER ARCH": true } },
+    standardGuards: { "Occlusal Guard - NTI Type": { "UPPER ARCH": true } },
   });
   assert.equal(items.length, 0);
-  assert.ok(unmapped.some((u) => u.includes("nightguard-full-occlusion")));
+  assert.deepEqual(unmapped, ["guard:occlusal-guard-nti-type:no-material"]);
 });
 
 test("unmapped entries are bare mapKeys the override layer can key on", () => {
   const { unmapped } = resolveGuard({
-    standardGuards: { "Nightguard - Full Occlusion": { "UPPER ARCH": true } },
+    standardGuards: { "Nightguard - Full Occlusion": { "UPPER ARCH": true, "Base Material": "Lab Decision" } },
   });
-  assert.deepEqual(unmapped, ["guard:nightguard-full-occlusion:no-material"]);
+  assert.deepEqual(unmapped, ["guard:nightguard-full-occlusion:lab-decision"]);
+});
+
+// No material written in → the lab's printed default, Nylon (proposed).
+// [row, arches, expected codes, evidence]
+const NO_MATERIAL_EVIDENCE = [
+  ["Nightguard - Full Occlusion", { "UPPER ARCH": true }, ["2166"], "'Lab Decision' 2166 75% (n=4); replay 5 of 5"],
+  ["Nightguard - Full Occlusion", { "UPPER ARCH": true, "LOWER ARCH": true }, ["2166", "2166"], "per arch, as with any material"],
+  ["Occlusal Guard - Slider Type", { "UPPER ARCH": true }, ["2176"], "Slider rows 2176 83–89% (n=47/55)"],
+  ["Michigan Splint - Anterior Guidance", { "UPPER ARCH": true }, ["2170"], "Michigan row 2170 80% (n=20)"],
+];
+for (const [row, cells, codes, why] of NO_MATERIAL_EVIDENCE)
+  test(`no material: ${row} → ${codes.join(" + ")} (${why})`, () => {
+    const { items, unmapped } = resolveGuard({ standardGuards: { [row]: cells } });
+    assert.deepEqual(unmapped, []);
+    assert.deepEqual(items.map((i) => i.code), codes);
+    assert.ok(items.every((i) => i.status === "proposed" && i.mapKey.endsWith(":no-material")));
+  });
+
+test("one dual-arch appliance described on two rows is one line (NTI upper + Slider lower)", () => {
+  const { items, unmapped } = resolveGuard({
+    variant: ["Dual Arch - SLIDER"],
+    standardGuards: {
+      "Occlusal Guard - NTI Type": { "UPPER ARCH": true, "Base Material": "Nylon (Printed)" },
+      "Occlusal Guard - Slider Type": { "LOWER ARCH": true, "Base Material": "Nylon (Printed)" },
+    },
+  });
+  assert.deepEqual(unmapped, []);
+  assert.deepEqual(items.map((i) => i.code), ["2176"]);
+});
+
+test("two different dual-arch appliances still bill one line each", () => {
+  const { items } = resolveGuard({
+    standardGuards: {
+      "Occlusal Guard - NTI Type": { "UPPER ARCH": true, "Base Material": "BIOMED (Printed)" },
+      "Occlusal Guard - Slider Type": { "LOWER ARCH": true, "Base Material": "Nylon (Printed)" },
+    },
+  });
+  assert.deepEqual(items.map((i) => i.code), ["2175", "2176"]);
+});
+
+test("a Michigan row with the single-arch picker is one appliance, one line", () => {
+  const { items, unmapped } = resolveGuard({
+    variant: ["Single Arch - NIGHTGUARD"],
+    standardGuards: { "Michigan Splint - Anterior Guidance": { "UPPER ARCH": true } },
+  });
+  assert.deepEqual(unmapped, []);
+  assert.deepEqual(items.map((i) => [i.code, i.arch]), [["2170", "upper"]]);
 });
 
 test("a material-agnostic row keys on 'any' whatever material was submitted", () => {

@@ -29,6 +29,9 @@ const GUARD_MATRIX = {
     "Dual-Laminate":    { code: "2167", name: "Nightguard Dual Laminate",      status: "confirmed" },
     // 3/3 real orders billed PMT 2164 — never the All-Acrylic 2428.
     "Acrylic w/clasps": { code: "2164", name: "Nightguard-Single Arch PMT",    status: "confirmed" },
+    // No material given → the lab's printed default, Nylon: "Lab Decision"
+    // billed 2166 on 75% (n=4); replay, the row with no material 5 of 5.
+    [NO_MATERIAL]:      { code: "2166", name: "Nightguard-Single Arch Nylon",  status: "proposed"  },
   },
   "Occlusal Guard - NTI Type": {
     "BIOMED (Printed)": { code: "2175", name: "NTI Slider-Type (Dual Arch) Biomed", status: "confirmed" },
@@ -39,10 +42,16 @@ const GUARD_MATRIX = {
   "Occlusal Guard - Slider Type": {
     "BIOMED (Printed)": { code: "2175", name: "NTI Slider-Type (Dual Arch) Biomed", status: "confirmed" },
     "Nylon (Printed)":  { code: "2176", name: "NTI Slider-Type (Dual Arch) Nylon",  status: "confirmed" },
+    // No material → Nylon, as the picker-only SLIDER already resolves: the
+    // Slider rows billed 2176 on 83–89% (n=47 upper, 55 lower).
+    [NO_MATERIAL]:      { code: "2176", name: "NTI Slider-Type (Dual Arch) Nylon",  status: "proposed" },
   },
   "Michigan Splint - Anterior Guidance": {
     "BIOMED (Printed)": { code: "2169", name: "Michigan Splint Biomed", status: "confirmed" },
     "Nylon (Printed)":  { code: "2170", name: "Michigan Splint Nylon",  status: "confirmed" },
+    // No material → Nylon: the Michigan row billed 2170 on 80% (n=20), 2169
+    // Biomed only where Biomed was written in.
+    [NO_MATERIAL]:      { code: "2170", name: "Michigan Splint Nylon",  status: "proposed" },
   },
   "Essix Tray":          { "*": { code: "2161", name: "Essix Tray Non Printed (per arch)", status: "confirmed" } },
   "Bleaching Trays":     { "*": { code: "2155", name: "Bleaching Tray (per arch)",         status: "confirmed" } },
@@ -88,7 +97,9 @@ const DUAL_ARCH_ROWS = new Set([
  *     and a single-arch nightguard appear on the same order once in 3,600.
  */
 const PICKERS = {
-  "Single Arch - NIGHTGUARD": { covers: ["Nightguard - Full Occlusion"] },
+  // A Michigan splint is a single-arch splint too: a doctor who picks the
+  // single-arch render and fills the Michigan row ordered one appliance.
+  "Single Arch - NIGHTGUARD": { covers: ["Nightguard - Full Occlusion", "Michigan Splint - Anterior Guidance"] },
   "Dual Arch - SLIDER": { covers: ["Occlusal Guard - Slider Type", "Occlusal Guard - NTI Type"] },
   "Dual Arch - FLATPLANE": { materialFrom: ["Nightguard - Full Occlusion"] },
 };
@@ -217,7 +228,7 @@ export function guardMatrixNotes(standardGuards) {
  * @param {Array<string|null>} arches — one entry per line to emit
  * @param {{items: Array, unmapped: string[]}} out
  */
-function resolveRow(rowLabel, rawMaterial, arches, out) {
+function resolveRow(rowLabel, rawMaterial, arches, out, billedDual = new Set()) {
   const options = GUARD_MATRIX[rowLabel];
   if (!options || Object.keys(options).length === 0) {
     out.unmapped.push(`guard:${slug(rowLabel)}`);
@@ -232,7 +243,13 @@ function resolveRow(rowLabel, rawMaterial, arches, out) {
     return;
   }
 
-  // A dual-arch appliance is one line whatever arches were ticked.
+  // A dual-arch appliance is one line whatever arches were ticked — and one
+  // line however many rows describe it (an NTI row on the upper and a Slider
+  // row on the lower are the same 2176 appliance).
+  if (DUAL_ARCH_ROWS.has(rowLabel)) {
+    if (billedDual.has(chosen.code)) return;
+    billedDual.add(chosen.code);
+  }
   const lines = DUAL_ARCH_ROWS.has(rowLabel) ? [null] : arches.length ? arches : [null];
   for (const arch of lines)
     out.items.push({
@@ -252,6 +269,7 @@ export function resolveGuard(deviceOptions = {}) {
   const answeredRows = Object.keys(matrix).filter((row) => Object.values(matrix[row]).some(filled));
   const handled = new Set();
   const consumed = new Set();
+  const billedDual = new Set();
 
   // The "Select Device:" picker (and the older wizard's device choice) arrives
   // as `variant`; the wizard may instead send only `baseMaterial`. Either way it
@@ -274,7 +292,7 @@ export function resolveGuard(deviceOptions = {}) {
     if (!from || handled.has(label)) continue;
     consumed.add(from);
     handled.add(label);
-    resolveRow(label, matrix[from]["Base Material"], archesOf(matrix[from]), out);
+    resolveRow(label, matrix[from]["Base Material"], archesOf(matrix[from]), out, billedDual);
   }
 
   // 2. The matrix rows.
@@ -288,7 +306,7 @@ export function resolveGuard(deviceOptions = {}) {
       out.unmapped.push(`guard:${slug(row)}:no-arch`);
       continue;
     }
-    resolveRow(row, matrix[row]["Base Material"], arches, out);
+    resolveRow(row, matrix[row]["Base Material"], arches, out, billedDual);
   }
 
   // 3. The remaining picker choices. One that duplicates (or is covered by) a
@@ -298,7 +316,7 @@ export function resolveGuard(deviceOptions = {}) {
     if (!label || handled.has(label)) continue;
     handled.add(label);
     if (PICKERS[label]?.covers?.some((r) => handled.has(r))) continue;
-    resolveRow(label, material, [deviceOptions.arch ?? null], out);
+    resolveRow(label, material, [deviceOptions.arch ?? null], out, billedDual);
   }
 
   return out;
