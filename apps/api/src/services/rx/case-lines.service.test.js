@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { linesForDevices, reResolveLines } from "./case-lines.service.js";
+import { linesForDevices, reResolveLines, devicesForCase } from "./case-lines.service.js";
 
 test("a resolvable device produces coded lines", () => {
   const lines = linesForDevices([
@@ -168,4 +168,36 @@ test("an 'always' note-only ruling survives a resolve as a non-blocking, non-pro
     true,
     "a note-only line must never block the push — it is a build instruction, not an unresolved product"
   );
+});
+
+test("devicesForCase prefers devices resolved at submit", () => {
+  const stored = [{ deviceKey: "snorehook", deviceOptions: {} }];
+  const devices = devicesForCase({
+    formType: "digital",
+    formData: { devicesToOrder: ["ddso"], ddsoMaterial: "NYLON" },
+    deviceOptions: { devices: stored },
+  });
+  assert.deepEqual(devices, stored);
+});
+
+test("devicesForCase derives devices from formData on a pre-resolution digital case", () => {
+  const devices = devicesForCase({
+    formType: "digital",
+    formData: { devicesToOrder: ["ddso"], ddsoMaterial: "NYLON" },
+    deviceKey: null,
+    deviceOptions: {},
+  });
+  assert.equal(devices.length, 1);
+  assert.equal(devices[0].deviceKey, "ddso");
+  assert.equal(devices[0].deviceOptions.baseMaterial, "NYLON");
+});
+
+test("devicesForCase wraps a wizard case's single device", () => {
+  const devices = devicesForCase({ formType: null, deviceKey: "ddso", deviceOptions: { baseMaterial: "Nylon" } });
+  assert.deepEqual(devices, [{ deviceKey: "ddso", deviceOptions: { baseMaterial: "Nylon" } }]);
+});
+
+test("devicesForCase returns nothing rather than inventing a device", () => {
+  assert.deepEqual(devicesForCase({}), []);
+  assert.deepEqual(devicesForCase({ formType: "digital", formData: {}, deviceOptions: {} }), []);
 });

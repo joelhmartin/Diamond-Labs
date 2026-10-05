@@ -3,7 +3,7 @@ import { requireAdmin } from "../middleware/require-role.js";
 import { db } from "../config/database.js";
 import { rxCases, rxCaseLines, rxCaseFiles, rxCodeOverrides } from "../db/schema/index.js";
 import { decryptRxPhi } from "../services/rx/phi-crypto.js";
-import { reResolveLines } from "../services/rx/case-lines.service.js";
+import { reResolveLines, devicesForCase } from "../services/rx/case-lines.service.js";
 import { loadOverrides } from "../services/rx/code-overrides.service.js";
 import { pushCaseToSeazona, shouldReleasePushLock } from "../services/rx/push-case.service.js";
 import { getSignedReadUrl } from "../services/storage.service.js";
@@ -745,7 +745,7 @@ export default async function adminRxCasesRoutes(fastify) {
       });
     }
 
-    const devices = caseRow.deviceOptions?.devices || [];
+    const devices = devicesForCase(caseRow);
     const overrides = await loadOverrides();
     const { replaced, kept } = await reResolveLines(caseId, devices, { overrides });
 
