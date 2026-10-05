@@ -52,6 +52,50 @@ function makeDevice(deviceKey, deviceOptions) {
   };
 }
 
+const asList = (v) => (Array.isArray(v) ? v : v ? [v] : []);
+
+/**
+ * Orthodontic answers → the one ortho-expander device. The ONLY ortho adapter:
+ * the ortho form, legacy digital-form ortho cases, the admin preview and the
+ * submit route all come through here.
+ *
+ * Every appliance answer is carried, keyed as the resolver
+ * (apps/api/src/services/rx/catalog-map/resolvers/ortho.js) reads it. Add-ons
+ * stay PER ARCH (upperAddOns / lowerAddOns) instead of being pooled into
+ * `modifications`, because the same literal ("Buccal tubes to bands") bills
+ * differently depending on which arch it was ticked for. An earlier
+ * buildOrthoDevices dropped every retention / screw / clasp answer; nothing may
+ * be dropped here — a field the resolver does not price still travels in
+ * deviceOptions for the lab to read.
+ */
+function buildOrthoDevice(answers = {}) {
+  return makeDevice("ortho-expander", {
+    applianceType: answers.selectDevice,
+    upperArchRetention: answers.upperArchRetention,
+    upperExpansionType: answers.upperExpansionType,
+    lowerArchRetention: answers.lowerArchRetention,
+    lowerExpansionType: answers.lowerExpansionType,
+    upperExpansionSelection: answers.upperExpansionSelection,
+    lowerExpansionSelection: answers.lowerExpansionSelection,
+    removableMandibularExpansion: answers.removableMandibularExpansion,
+    fixedMandibularExpansion: answers.fixedMandibularExpansion,
+    mxSelections: answers.mxSelections,
+    requiredSelection: answers.requiredSelection,
+    occlusalOptionsTandem: answers.occlusalOptionsTandem,
+    tandemBowSetting: answers.tandemBowSetting,
+    upperAddOns: [...new Set([...asList(answers.addToMaxillary), ...asList(answers.maxillaryAdd)])],
+    lowerAddOns: [...new Set([...asList(answers.addToMandibular), ...asList(answers.mandibularAdd)])],
+    digitalStudyModels: answers.digitalStudyModels,
+    nuveloDigitalSetup: answers.nuveloDigitalSetup,
+    digitalSetupEmail: answers.digitalSetupEmail,
+    comments: [
+      answers.dualArchComments,
+      answers.maxillaryComments,
+      answers.orthoDesignComments,
+    ].filter(Boolean).join(" | "),
+  });
+}
+
 /**
  * Digital form → one or more devices, one per selected `devicesToOrder` value.
  * Only emits devices for explicitly-selected values — never invents a device.
@@ -160,34 +204,10 @@ function buildDigitalDevices(answers) {
         );
         break;
       case "ortho":
-        devices.push(
-          makeDevice("ortho-expander", {
-            applianceType: answers.selectDevice,
-            upperArchRetention: answers.upperArchRetention,
-            upperExpansionType: answers.upperExpansionType,
-            lowerArchRetention: answers.lowerArchRetention,
-            lowerExpansionType: answers.lowerExpansionType,
-            upperExpansionSelection: answers.upperExpansionSelection,
-            lowerExpansionSelection: answers.lowerExpansionSelection,
-            removableMandibularExpansion: answers.removableMandibularExpansion,
-            fixedMandibularExpansion: answers.fixedMandibularExpansion,
-            mxSelections: answers.mxSelections,
-            requiredSelection: answers.requiredSelection,
-            occlusalOptionsTandem: answers.occlusalOptionsTandem,
-            tandemBowSetting: answers.tandemBowSetting,
-            modifications: [
-              ...(answers.addToMaxillary || []),
-              ...(answers.addToMandibular || []),
-              ...(answers.maxillaryAdd || []),
-              ...(answers.mandibularAdd || []),
-            ],
-            comments: [
-              answers.dualArchComments,
-              answers.maxillaryComments,
-              answers.orthoDesignComments,
-            ].filter(Boolean).join(" | "),
-          })
-        );
+        // Legacy: ortho was a gated device of this form Aug–Oct 2026. New
+        // ortho prescriptions arrive as their own formType (buildFormDevices);
+        // digital cases from that window still rebuild through here.
+        devices.push(buildOrthoDevice(answers));
         break;
       case "sportguards":
         devices.push(
@@ -210,4 +230,15 @@ function buildDigitalDevices(answers) {
   return devices;
 }
 
-export { buildDigitalDevices, DEVICE_LABELS };
+/**
+ * Any Rx form's answers → its devices, by the form type stored on the case
+ * (rx_cases.form_type). The ortho form always orders exactly one ortho
+ * appliance — even unanswered, so the case reaches the lab flagged
+ * ("ortho:unspecified") rather than arriving with no device at all.
+ */
+function buildFormDevices(formType, answers = {}) {
+  if (formType === "ortho") return [buildOrthoDevice(answers)];
+  return buildDigitalDevices(answers);
+}
+
+export { buildDigitalDevices, buildFormDevices, buildOrthoDevice, DEVICE_LABELS };

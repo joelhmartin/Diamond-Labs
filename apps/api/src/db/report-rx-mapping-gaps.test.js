@@ -4,12 +4,13 @@ import { DEVICE_ROWS } from "../services/rx/catalog-map/devices.table.js";
 import { MODIFICATION_ROWS } from "../services/rx/catalog-map/modifications.table.js";
 import { ATTRIBUTE_ROWS } from "../services/rx/catalog-map/attributes.table.js";
 import { GUARD_ROWS, GUARD_ROW_LABELS, resolveGuard } from "../services/rx/catalog-map/resolvers/guard.js";
+import { ORTHO_ROWS } from "../services/rx/catalog-map/resolvers/ortho.js";
 import { LAB_SERVICE_ROWS } from "../services/rx/catalog-map/lab-services.js";
 import { ALL, bucket, renderDoc } from "./report-rx-mapping-gaps.js";
 
-const ROWS = [...DEVICE_ROWS, ...MODIFICATION_ROWS, ...ATTRIBUTE_ROWS, ...GUARD_ROWS, ...LAB_SERVICE_ROWS];
+const ROWS = [...DEVICE_ROWS, ...MODIFICATION_ROWS, ...ATTRIBUTE_ROWS, ...GUARD_ROWS, ...LAB_SERVICE_ROWS, ...ORTHO_ROWS];
 
-test("the generator reports on exactly the five row sources", () => {
+test("the generator reports on exactly the six row sources", () => {
   assert.deepEqual([...ALL].sort(), [...ROWS].sort());
 });
 
@@ -38,14 +39,16 @@ test("a 'none' row is never bucketed into the lab document", () => {
     assert.ok(!doc.includes(r.name), `none row ${r.mapKey} ("${r.name}") reached the lab document`);
 });
 
-test("the document tells the lab about the unmapped ortho taxonomy", () => {
-  // resolveOrtho contributes no rows, so ~36 SKUs — the largest open decision,
-  // and the reason every ortho order is held — were invisible in the document
-  // the lab owner is asked to sign off, while resolvers/ortho.js points here.
+test("the document carries the ortho rulings, with their evidence", () => {
+  // The ortho taxonomy used to be a prose paragraph saying every ortho order
+  // is held. It is now rows derived from order history — each must reach the
+  // lab, and a mapped one must show the evidence it rests on.
   const doc = renderDoc();
-  assert.match(doc, /## Orthodontic appliances — not yet mapped/);
-  assert.match(doc, /36 orthodontic products/);
-  assert.match(doc, /every orthodontic order is held/i);
+  assert.match(doc, /## How the orthodontic rows were derived/);
+  assert.doesNotMatch(doc, /every orthodontic order is held/i);
+  for (const r of ORTHO_ROWS) assert.ok(doc.includes(r.match[0]), `ortho row ${r.mapKey} is missing from the document`);
+  for (const r of ORTHO_ROWS.filter((x) => x.status !== "open"))
+    assert.ok(doc.includes(r.evidence), `ortho row ${r.mapKey}'s evidence is missing from the document`);
 });
 
 test("the document never claims a code for an open row", () => {

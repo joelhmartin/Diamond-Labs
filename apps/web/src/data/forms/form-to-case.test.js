@@ -59,9 +59,10 @@ test("digital: olmos with NO OD/ON fields → single olmos-day with empty option
   assert.deepEqual(devices[0].deviceOptions, {});
 });
 
-test("ortho gated device → single ortho-expander device + shared caseFields (no whole-form dump)", () => {
-  const { devices, caseFields } = formAnswersToCaseInput("digital", digital, {
-    devicesToOrder: ["ortho"],
+const ortho = getForm("ortho");
+
+test("ortho form → single ortho-expander device + shared caseFields (no whole-form dump)", () => {
+  const { devices, caseFields } = formAnswersToCaseInput("ortho", ortho, {
     orthoDesignComments: "please rush",
   });
   assert.equal(devices.length, 1);
@@ -72,24 +73,22 @@ test("ortho gated device → single ortho-expander device + shared caseFields (n
   assert.equal(caseFields.generalComments, undefined);
 });
 
-test("olmos and ortho forms are retired (ortho folds into digital as a gated device)", () => {
-  assert.equal(FORM_LIST.length, 1);
-  assert.deepEqual(FORM_LIST.map((f) => f.slug), ["digital"]);
+test("the chooser offers the digital and ortho forms; olmos stays retired", () => {
+  assert.deepEqual(FORM_LIST.map((f) => f.slug), ["digital", "ortho"]);
+  assert.equal(getForm("ortho").route, "/app/rx/ortho");
   assert.equal(getForm("olmos"), null);
-  assert.equal(getForm("ortho"), null);
 });
 
 test("ortho selections are carried through, not discarded", () => {
-  const { devices } = formAnswersToCaseInput("digital", getForm("digital"), {
-    devicesToOrder: ["ortho"],
+  const { devices } = formAnswersToCaseInput("ortho", ortho, {
     upperArchRetention: "Fixed (Banded)",
-    upperExpansionType: "Standard Hyrax RPE",
+    upperExpansionType: "Standard Hyrax RPE (Fixed ONLY)",
     orthoDesignComments: "note",
   });
-  const ortho = devices.find((d) => d.deviceKey === "ortho-expander");
-  assert.ok(ortho, "no ortho device emitted");
-  assert.equal(ortho.deviceOptions.upperArchRetention, "Fixed (Banded)");
-  assert.equal(ortho.deviceOptions.upperExpansionType, "Standard Hyrax RPE");
+  const device = devices.find((d) => d.deviceKey === "ortho-expander");
+  assert.ok(device, "no ortho device emitted");
+  assert.equal(device.deviceOptions.upperArchRetention, "Fixed (Banded)");
+  assert.equal(device.deviceOptions.upperExpansionType, "Standard Hyrax RPE (Fixed ONLY)");
 });
 
 test("guard carries the standardGuards matrix through to the resolver", () => {
@@ -102,13 +101,21 @@ test("guard carries the standardGuards matrix through to the resolver", () => {
   assert.deepEqual(guard.deviceOptions.standardGuards, matrix);
 });
 
-test("a mandible-only ortho order keeps its appliance selection", () => {
-  const { devices } = formAnswersToCaseInput("digital", getForm("digital"), {
-    devicesToOrder: ["ortho"],
+test("a mandible-only ortho order keeps its appliance selection and per-arch add-ons", () => {
+  const { devices } = formAnswersToCaseInput("ortho", ortho, {
     removableMandibularExpansion: ["Mandibular Schwarz"],
     mandibularAdd: ["Occlusal Rest(s)"],
   });
-  const ortho = devices.find((d) => d.deviceKey === "ortho-expander");
-  assert.deepEqual(ortho.deviceOptions.removableMandibularExpansion, ["Mandibular Schwarz"]);
-  assert.deepEqual(ortho.deviceOptions.modifications, ["Occlusal Rest(s)"]);
+  const device = devices.find((d) => d.deviceKey === "ortho-expander");
+  assert.deepEqual(device.deviceOptions.removableMandibularExpansion, ["Mandibular Schwarz"]);
+  assert.deepEqual(device.deviceOptions.lowerAddOns, ["Occlusal Rest(s)"]);
+  assert.equal(device.deviceOptions.upperAddOns, undefined);
+});
+
+test("the digital form never yields an ortho device for its own answers", () => {
+  const { devices } = formAnswersToCaseInput("digital", digital, {
+    devicesToOrder: ["ddso"],
+    upperArchRetention: "Fixed (Banded)",
+  });
+  assert.deepEqual(devices.map((d) => d.deviceKey), ["ddso"]);
 });

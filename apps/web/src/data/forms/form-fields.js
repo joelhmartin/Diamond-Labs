@@ -71,6 +71,25 @@ export function signature(key, label, opts = {}) {
   return { type: "signature", key, label, ...opts };
 }
 
+/** Static reference image. Carries a `key` so every field in a form is addressable. */
+export function image(key, src, alt = "", opts = {}) {
+  return { type: "image", key, src, alt, ...opts };
+}
+
+/** Draw-on-image artboard (the JotForm drawOnImage widget). */
+export function artboard(key, label, opts = {}) {
+  return { type: "artboard", key, label, ...opts };
+}
+
+/**
+ * Image-bearing option: `value` stays the canonical option string (downstream
+ * mapping keys on it) and `image` pairs the picture card. `label` defaults to
+ * `value`.
+ */
+export function imgOpt(value, image, label) {
+  return { value, label: label ?? value, image };
+}
+
 export function matrix(key, label, rows, columns, opts = {}) {
   return { type: "matrix", key, label, rows, columns, ...opts };
 }

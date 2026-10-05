@@ -2,6 +2,7 @@
 // (mod:/attr:/service:) can't drift between the builders and the seeded lines.
 import { resolveLineItems, isDeviceLine } from "./catalog-map/index.js";
 import { guardMatrixNotes } from "./catalog-map/resolvers/guard.js";
+import { orthoBuildNotes } from "./catalog-map/resolvers/ortho.js";
 
 /**
  * A resolver can return NOTHING — no items and no unmapped keys (an empty
@@ -101,6 +102,7 @@ function deviceOptionLines(o = {}) {
   if (o.design)           lines.push(`Design: ${o.design}`);
   if (o.thickness)        lines.push(`Thickness: ${o.thickness}`);
   lines.push(...guardMatrixNotes(o.standardGuards));
+  lines.push(...orthoBuildNotes(o));
   if (o.titration)        lines.push(`VDO/Titration: ${JSON.stringify(o.titration)}`);
   if (o.titrationPlacement?.length) lines.push(`Place vertical titration on: ${[].concat(o.titrationPlacement).join(", ")}`);
   // Build instructions the lab never bills (e.g. "Wrap distal of last molars").

@@ -5,7 +5,7 @@ import { rxCases, rxCaseFiles, rxCaseLines } from "../db/schema/index.js";
 import { createId } from "../lib/id.js";
 import { env } from "../config/env.js";
 import { eq, desc, and, ne, or, isNull, asc } from "drizzle-orm";
-import { ERROR_CODES, rxCaseSubmitSchema, rxFormSubmitSchema, buildDigitalDevices } from "@my-app/shared";
+import { ERROR_CODES, rxCaseSubmitSchema, rxFormSubmitSchema, buildFormDevices } from "@my-app/shared";
 import * as seazonaService from "../services/seazona.service.js";
 import { seedLines } from "../services/rx/case-lines.service.js";
 import { loadOverrides } from "../services/rx/code-overrides.service.js";
@@ -282,15 +282,15 @@ export default async function rxRoutes(fastify) {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // POST /rx/form-submissions — generic intake for the faithful 1:1 form.
-  // There is ONE form now: ortho folded into the digital Rx as a gated device
-  // rather than a separate formType, so the schema is z.enum(["digital"]).
+  // POST /rx/form-submissions — generic intake for the Rx forms. Two form
+  // types: "digital" (devicesToOrder-gated devices) and "ortho" (one ortho
+  // appliance); buildFormDevices turns either into devices server-side.
   // Multipart/form-data, mirroring /rx/cases for auth, file limits, upload,
   // and atomic insert.
   //
   // Frontend (buildSubmitFormData in apps/web/src/data/forms/form-logic.js)
   // emits these parts:
-  //   text   formType         — "digital" (the only accepted value)
+  //   text   formType         — "digital" | "ortho" (the form's slug)
   //   text   patientFirst     — extracted from the patient fullname field
   //   text   patientLast
   //   text   formData         — JSON string of ALL non-file answers
@@ -471,7 +471,7 @@ export default async function rxRoutes(fastify) {
       // Resolve the doctor's selections into devices so the case is reviewable.
       // rx_cases carries one deviceKey for display; the full list lives in
       // deviceOptions.devices so a multi-device prescription loses nothing.
-      devices = buildDigitalDevices(data.formData ?? {});
+      devices = buildFormDevices(data.formType, data.formData ?? {});
 
       // Load admin-confirmed code overrides once, before the transaction opens
       // (not per-device) — same loader admin-rx-mapping.routes.js uses.

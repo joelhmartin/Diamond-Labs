@@ -34,6 +34,7 @@ export const ROUTES = {
   // Rx forms (faithful 1:1 JotForm ports)
   RX_CHOOSER: "/app/rx",
   RX_DIGITAL: "/app/rx/digital",
+  RX_ORTHO: "/app/rx/ortho",
 
   // Commerce
   CHECKOUT: "/checkout",
