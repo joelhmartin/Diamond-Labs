@@ -13,6 +13,7 @@ import {
   XCircle,
   CreditCard,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import api from "../../config/api.js";
 import { DoctorPaymentDrawer } from "../../components/admin/DoctorPaymentDrawer.jsx";
 
@@ -380,6 +381,15 @@ export function AdminUsersPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-1">
+                          {u.role === "doctor" && (
+                            <Link
+                              to={`/admin/users/${u.id}/pricing`}
+                              title="Negotiated prices for this client"
+                              className="flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-surface-100 text-navy/60 hover:bg-surface-200"
+                            >
+                              Pricing
+                            </Link>
+                          )}
                           {u.role === "doctor" && (
                             <button
                               type="button"
