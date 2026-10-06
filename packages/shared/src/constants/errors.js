@@ -49,6 +49,7 @@ export const ERROR_CODES = {
   PAYMENT_UNDER_REVIEW: { code: "PAYMENT_UNDER_REVIEW", status: 409, message: "This payment is on hold for review by our card processor. Please do not retry — the lab will contact you to confirm whether it went through." },
   ALREADY_REFUNDED: { code: "ALREADY_REFUNDED", status: 409, message: "This transaction has already been refunded or voided." },
   REFUND_FAILED: { code: "REFUND_FAILED", status: 502, message: "The refund could not be completed. Please try again." },
+  PRICE_CHANGED: { code: "PRICE_CHANGED", status: 409, message: "Prices changed — please review your order." },
   REFUND_UNCERTAIN: { code: "REFUND_UNCERTAIN", status: 409, message: "The reversal's outcome could not be confirmed — it may have already gone through. Do NOT retry; verify the transaction in Authorize.net and reconcile manually." },
 
   // General

@@ -1,6 +1,9 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { currentQuote, familyToProduct, variantFor, variantLabel, cartItemFor, migrateCart } from "./catalog.js";
+import {
+  currentQuote, familyToProduct, variantFor, variantLabel, cartItemFor, migrateCart,
+  shopperIdentity, quoteKey, quoteLineFor,
+} from "./catalog.js";
 
 const family = {
   id: "f1", slug: "mute", name: "Mute", description: "Anti-snoring", category: "Sleep", imageUrl: "/catalog/mute.webp",
@@ -32,7 +35,7 @@ test("a cart line is keyed by variant and labelled with its options", () => {
   assert.equal(item.id, "v-l");
   assert.equal(item.variantId, "v-l");
   assert.equal(item.name, "Mute — Large");
-  assert.equal(item.price, 24.99);
+  assert.equal("price" in item, false); // no add-time price copy; the quote prices the cart
   assert.equal(variantLabel(single, single.variants[0]), "Mute");
 });
 
@@ -52,4 +55,30 @@ test("a quote only counts for the cart it was priced from", () => {
   assert.equal(currentQuote(state, state.key).totalCents, 100);
   assert.equal(currentQuote(state, "[[\"v-s\",2]]"), null);
   assert.equal(currentQuote(null, state.key), null);
+});
+
+test("no shopper identity until auth has resolved, then the user id or guest", () => {
+  assert.equal(shopperIdentity({ isLoading: true, user: null }), null);
+  assert.equal(shopperIdentity({ isLoading: true, user: { id: "u1" } }), null);
+  assert.equal(shopperIdentity({ isLoading: false, user: null }), "guest");
+  assert.equal(shopperIdentity({ isLoading: false, user: { id: "u1" } }), "u1");
+});
+
+test("the quote key changes with the shopper, so a login or lost session re-prices", () => {
+  const items = [{ variantId: "v-s", qty: 1 }];
+  assert.notEqual(quoteKey(items, "guest"), quoteKey(items, "u1"));
+  assert.notEqual(quoteKey(items, "u1"), quoteKey([{ variantId: "v-s", qty: 2 }], "u1"));
+  assert.equal(quoteKey(items, "u1"), quoteKey([{ variantId: "v-s", qty: 1, name: "x" }], "u1"));
+  // A doctor's quote never answers for the guest cart (and vice versa).
+  const state = { key: quoteKey(items, "u1"), quote: { totalCents: 100 } };
+  assert.equal(currentQuote(state, quoteKey(items, "guest")), null);
+  // requote() bumps the nonce: the old quote stops counting until the new one lands.
+  assert.notEqual(quoteKey(items, "u1", 1), quoteKey(items, "u1", 0));
+});
+
+test("cart lines read their prices from the matching quote line", () => {
+  const quote = { lines: [{ variantId: "v-s", unitCents: 1999, lineCents: 3998 }] };
+  assert.equal(quoteLineFor(quote, "v-s").lineCents, 3998);
+  assert.equal(quoteLineFor(quote, "v-l"), null);
+  assert.equal(quoteLineFor(null, "v-s"), null);
 });

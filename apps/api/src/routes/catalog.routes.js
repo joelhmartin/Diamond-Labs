@@ -7,6 +7,9 @@ import { pricingClientFor, loadClientPrices, priceShopCart } from "../services/p
 import { PricingError } from "../lib/pricing.js";
 
 export function pricingErrorReply(err) {
+  if (err.code === "PRICE_CHANGED") {
+    return { status: 409, body: { error: { ...ERROR_CODES.PRICE_CHANGED, message: err.message } } };
+  }
   return {
     status: 422,
     body: { error: { ...ERROR_CODES.VALIDATION_ERROR, message: err.message, reason: err.code, variantId: err.variantId } },

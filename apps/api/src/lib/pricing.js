@@ -1,4 +1,4 @@
-import { mulCents, pctOfCents, sumCents } from "./money.js";
+import { mulCents, pctOfCents, sumCents, toCents } from "./money.js";
 
 // The one place a price is decided. Pure: callers load variants and client
 // prices (services/pricing.service.js) and pass them in.
@@ -66,4 +66,18 @@ export function priceLines({ lines, variants, clientPrices = new Map(), config }
   const taxCents = pctOfCents(sumCents(out.filter((l) => l.taxable).map((l) => l.lineCents)), config.taxRateBps);
   const shippingCents = subtotalCents > 0 ? config.shippingFlatCents : 0;
   return { lines: out, subtotalCents, taxCents, shippingCents, totalCents: subtotalCents + taxCents + shippingCents };
+}
+
+/**
+ * Checkout charges only the total the shopper was shown. `clientAmount` is the
+ * quote total the browser sent (dollars); any difference — a client price that
+ * arrived or vanished with the session, an admin price change — is refused
+ * before the card is touched, never charged silently.
+ */
+export function assertQuotedTotal(clientAmount, quote) {
+  let cents;
+  try { cents = toCents(clientAmount); } catch { cents = null; }
+  if (cents !== quote.totalCents) {
+    throw new PricingError("PRICE_CHANGED", "Prices changed — please review your order.");
+  }
 }

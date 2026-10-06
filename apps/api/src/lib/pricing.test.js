@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { priceLines, unitPriceFor, PricingError } from "./pricing.js";
+import { priceLines, unitPriceFor, assertQuotedTotal, PricingError } from "./pricing.js";
 
 const config = { taxRateBps: 800, shippingFlatCents: 1200, maxQty: 999 };
 const v = (id, over = {}) => ({
@@ -64,4 +64,35 @@ test("bad quantities and empty carts are refused", () => {
   assert.equal(code(() => priceLines({ lines: [], variants, config })), "EMPTY");
   assert.equal(code(() => priceLines({ lines: [{ variantId: "a", qty: 0 }], variants, config })), "BAD_QTY");
   assert.equal(code(() => priceLines({ lines: [{ variantId: "a", qty: 1.5 }], variants, config })), "BAD_QTY");
+});
+
+test("a client price makes an unpriced (null base) variant billable to that client only", () => {
+  assert.deepEqual(unitPriceFor(variants.get("nop"), 750), { cents: 750, source: "client" });
+  const q = priceLines({ lines: [{ variantId: "nop", qty: 2 }], variants, clientPrices: new Map([["nop", 750]]), config });
+  assert.equal(q.lines[0].lineCents, 1500);
+  assert.equal(q.lines[0].priceSource, "client");
+  assert.equal(code(() => priceLines({ lines: [{ variantId: "nop", qty: 1 }], variants, config })), "UNPRICED");
+});
+
+test("a mixed free + paid cart ships and taxes on the paid part only", () => {
+  const q = priceLines({
+    lines: [{ variantId: "a", qty: 1 }, { variantId: "b", qty: 1 }],
+    variants, clientPrices: new Map([["a", 0]]), config,
+  });
+  assert.equal(q.lines.find((l) => l.variantId === "a").lineCents, 0);
+  assert.equal(q.subtotalCents, 500);
+  assert.equal(q.taxCents, 0);            // the taxable line is the free one
+  assert.equal(q.shippingCents, 1200);
+  assert.equal(q.totalCents, 1700);
+});
+
+test("checkout refuses any total other than the one the shopper was quoted", () => {
+  const quote = { totalCents: 4360 };
+  assert.doesNotThrow(() => assertQuotedTotal(43.6, quote));
+  assert.doesNotThrow(() => assertQuotedTotal("43.60", quote));
+  assert.equal(code(() => assertQuotedTotal(43.59, quote)), "PRICE_CHANGED");
+  assert.equal(code(() => assertQuotedTotal(43.61, quote)), "PRICE_CHANGED");
+  assert.equal(code(() => assertQuotedTotal(undefined, quote)), "PRICE_CHANGED");
+  assert.equal(code(() => assertQuotedTotal("abc", quote)), "PRICE_CHANGED");
+  assert.doesNotThrow(() => assertQuotedTotal(0, { totalCents: 0 }));
 });

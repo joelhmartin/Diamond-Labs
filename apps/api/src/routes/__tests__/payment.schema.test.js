@@ -112,6 +112,7 @@ describe("refundSchema", () => {
 describe("checkoutSchema", () => {
   const base = {
     opaqueData: { dataDescriptor: "d", dataValue: "v" },
+    amount: 50,
     items: [{ variantId: "SKU1", qty: 2 }],
     email: "buyer@example.com",
     shipping: { name: "A B", address1: "1 St", city: "Town", state: "TX", postalCode: "75001" },
@@ -132,6 +133,14 @@ describe("checkoutSchema", () => {
     expect(checkoutSchema.safeParse({ ...base, email: "not-an-email" }).success).toBe(false);
     expect(checkoutSchema.safeParse({ ...base, items: [] }).success).toBe(false);
     expect(checkoutSchema.safeParse({ ...base, shipping: { name: "A" } }).success).toBe(false);
+  });
+  it("requires the quoted amount the shopper agreed to, cent-precise", () => {
+    const { amount, ...noAmount } = base;
+    expect(checkoutSchema.safeParse(noAmount).success).toBe(false);
+    expect(checkoutSchema.safeParse({ ...base, amount: 10.001 }).success).toBe(false);
+    expect(checkoutSchema.safeParse({ ...base, amount: -1 }).success).toBe(false);
+    expect(checkoutSchema.safeParse({ ...base, amount: 0 }).success).toBe(true);
+    expect(checkoutSchema.safeParse({ ...base, amount: "43.60" }).data.amount).toBe(43.6);
   });
   it("rejects non-positive or non-integer item quantities", () => {
     expect(checkoutSchema.safeParse({ ...base, items: [{ variantId: "x", qty: 0 }] }).success).toBe(false);

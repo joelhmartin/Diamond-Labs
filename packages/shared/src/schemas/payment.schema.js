@@ -88,10 +88,11 @@ export const hostedCompleteSchema = z.object({
 });
 
 /**
- * POST /payments/checkout — guest catalog checkout. Top-level + nested objects
- * use passthrough so the route keeps every field it reads (it recomputes the
- * authoritative price from the products table). `amount` is accepted for
- * display/back-compat only; it is never charged.
+ * POST /payments/checkout — catalog checkout. Top-level + nested objects use
+ * passthrough so the route keeps every field it reads. `amount` is the quote
+ * total the shopper was shown: the server re-prices the cart and refuses
+ * (409 PRICE_CHANGED) instead of charging a different number. It is never
+ * itself charged.
  */
 export const checkoutSchema = z
   .object({
@@ -99,9 +100,10 @@ export const checkoutSchema = z
       dataDescriptor: z.string().min(1),
       dataValue: z.string().min(1),
     }),
-    // Display/back-compat only — never charged; coerced to match the route's
-    // historical leniency (it ran Number(clientAmount) for a warning compare).
-    amount: z.coerce.number().positive().max(100000).optional(),
+    // The total the shopper agreed to. Compared, never charged. min(0) so a
+    // $0.00 cart reaches the route's own "contact the lab" refusal.
+    amount: z.coerce.number().min(0).max(100000)
+      .refine(hasAtMost2Decimals, { message: "amount must have at most 2 decimal places" }),
     items: cartLinesSchema,
     email: z.string().email(),
     shipping: z

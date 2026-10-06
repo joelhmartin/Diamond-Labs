@@ -41,7 +41,7 @@ import {
 } from "../services/payment-recording.service.js";
 import { round2 } from "../lib/money.js";
 import { priceShopCart, pricingClientFor } from "../services/pricing.service.js";
-import { PricingError } from "../lib/pricing.js";
+import { PricingError, assertQuotedTotal } from "../lib/pricing.js";
 import { pricingErrorReply } from "./catalog.routes.js";
 
 // Per-route strict rate limit for the charge-producing endpoints (M3). Layered
@@ -345,9 +345,9 @@ export default async function paymentRoutes(fastify) {
   // Intentionally does NOT store a CIM profile (guest checkout).
   // ───────────────────────────────────────────────────────────────
   fastify.post("/payments/checkout", { ...CHARGE_RATE_LIMIT, preHandler: [optionalAuthenticate, validate(checkoutSchema)] }, async (request, reply) => {
-    // `amount` from the client is accepted for back-compat/logging ONLY — it is
-    // NEVER used to charge. The charged total is recomputed server-side from the
-    // pricing service. This closes a price-tampering hole (pay $0.01 for $450).
+    // `amount` from the client is the quote total the shopper saw. It is NEVER
+    // charged: the total is recomputed server-side from the pricing service, and
+    // a mismatch is refused before the charge (assertQuotedTotal).
     const { opaqueData, amount: clientAmount, items, email, shipping, phone, idempotencyKey: bodyKey } =
       request.body || {};
     const idempotencyKey = request.headers["idempotency-key"] || bodyKey || null;
@@ -373,12 +373,20 @@ export default async function paymentRoutes(fastify) {
 
     // ── Server-side price authority: the same pricing service the cart quote
     // uses (client price for approved doctors, else base). Client-sent prices
-    // and amount are ignored entirely.
+    // are ignored; the client amount is only compared, never charged.
     let quote;
     try {
       quote = await priceShopCart({ lines: items, clientUserId: pricingClientFor(request.user) });
+      // Refuse (409 PRICE_CHANGED) rather than charge a total the shopper wasn't shown.
+      assertQuotedTotal(clientAmount, quote);
     } catch (err) {
       if (err instanceof PricingError) {
+        if (err.code === "PRICE_CHANGED") {
+          fastify.log.warn(
+            { idempotencyKey, clientAmount, serverTotalCents: quote?.totalCents },
+            "checkout refused — client total differs from the server quote; nothing charged"
+          );
+        }
         const r = pricingErrorReply(err);
         return reply.code(r.status).send(r.body);
       }
@@ -397,13 +405,6 @@ export default async function paymentRoutes(fastify) {
           message: "This order totals $0.00 and cannot be processed online. Please contact the lab.",
         },
       });
-    }
-    if (clientAmount != null && Math.abs(Number(clientAmount) - total) > 0.01) {
-      // Signal only — the server total is authoritative regardless.
-      fastify.log.warn(
-        { idempotencyKey, clientAmount: Number(clientAmount), serverTotal: total },
-        "checkout client amount differs from server-computed total — charging server total"
-      );
     }
 
     // ── Charge + record under an idempotency lock (H1/L5). withIdempotency:

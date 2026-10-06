@@ -45,6 +45,7 @@ test("checkout items are cart lines", () => {
   const base = {
     opaqueData: { dataDescriptor: "d", dataValue: "v" },
     email: "a@b.co",
+    amount: 12,
     shipping: { name: "A", address1: "1 St", city: "C", state: "TX", postalCode: "75001" },
   };
   assert.equal(checkoutSchema.safeParse({ ...base, items: [{ variantId: "v1", qty: 1 }] }).success, true);

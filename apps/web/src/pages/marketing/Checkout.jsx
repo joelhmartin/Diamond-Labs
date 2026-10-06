@@ -9,15 +9,18 @@ import {
   ShoppingBag,
   Image as ImageIcon,
 } from "lucide-react";
+import api from "../../config/api.js";
 import { useCartStore } from "../../stores/cart.store";
-import { formatUSD, formatCents } from "../../lib/money.js";
+import { formatCents } from "../../lib/money.js";
+import { quoteLineFor } from "../../lib/catalog.js";
 import { useCartQuote } from "../../hooks/useCartQuote.js";
 
 const INPUT =
   "w-full px-4 py-3 rounded-xl bg-white border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-navy/25";
 
 /* ─── SUMMARY LINE ITEM ─── */
-function SummaryItem({ item }) {
+// Prices come from the server quote line (`line`), never the cart item.
+function SummaryItem({ item, line }) {
   return (
     <div className="flex gap-3 py-3 border-b border-surface-300/40">
       <div className="relative w-14 h-14 flex-shrink-0 rounded-xl bg-surface-50 border border-surface-300/30 overflow-hidden">
@@ -41,11 +44,11 @@ function SummaryItem({ item }) {
           {item.name}
         </div>
         <div className="text-xs text-navy/45 mt-0.5">
-          {item.price === 0 ? "Included" : formatUSD(item.price)} each
+          {!line ? "Pricing…" : line.unitCents === 0 ? "Included" : `${formatCents(line.unitCents)} each`}
         </div>
       </div>
       <div className="font-heading font-bold text-sm text-navy whitespace-nowrap">
-        {item.price === 0 ? "—" : formatUSD(item.price * item.qty)}
+        {!line || line.lineCents === 0 ? "—" : formatCents(line.lineCents)}
       </div>
     </div>
   );
@@ -79,7 +82,7 @@ export function CheckoutPage() {
   const [success, setSuccess] = useState(null);
 
   // The server's priced cart — the same numbers the charge will use.
-  const { quote, loading: quoting, error: quoteError } = useCartQuote(items);
+  const { quote, loading: quoting, error: quoteError, requote } = useCartQuote(items);
   const total = quote ? quote.totalCents / 100 : 0;
 
   function validate() {
@@ -122,8 +125,8 @@ export function CheckoutPage() {
 
     try {
       const payload = {
-        // amount is sent for back-compat/display only — the server ignores it
-        // and charges the total it recomputes from variant prices.
+        // The total the shopper is looking at. The server re-prices the cart and
+        // refuses (409 PRICE_CHANGED) rather than charge anything different.
         amount: total,
         items: items.map((i) => ({ variantId: i.variantId, qty: i.qty })),
         email: contact.email,
@@ -166,24 +169,22 @@ export function CheckoutPage() {
         }
 
         try {
-          const res = await fetch("/api/v1/payments/checkout", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Idempotency-Key": idempotencyKey,
-            },
-            body: JSON.stringify({ ...payload, opaqueData: response.opaqueData }),
-          });
-          const data = await res.json();
-          if (!res.ok) {
-            setError(data?.error?.message || "Payment failed.");
-            setProcessing(false);
-            return;
-          }
-          setSuccess(data.data);
+          // Through the shared client so a signed-in doctor's token rides along
+          // (and refreshes) — the same identity the quote was priced for.
+          const res = await api.post(
+            "/payments/checkout",
+            { ...payload, opaqueData: response.opaqueData },
+            { headers: { "Idempotency-Key": idempotencyKey } },
+          );
+          setSuccess(res.data.data);
           clear();
         } catch (e) {
-          setError(e.message || "Payment failed.");
+          const apiError = e.response?.data?.error;
+          if (apiError?.code === "PRICE_CHANGED") {
+            // Nothing was charged. Show the new prices; the shopper decides whether to pay again.
+            requote();
+          }
+          setError(apiError?.message || e.message || "Payment failed.");
         } finally {
           setProcessing(false);
         }
@@ -471,7 +472,7 @@ export function CheckoutPage() {
               </h2>
               <div className="max-h-80 overflow-y-auto -mx-1 px-1">
                 {items.map((i) => (
-                  <SummaryItem key={i.id} item={i} />
+                  <SummaryItem key={i.id} item={i} line={quoteLineFor(quote, i.variantId)} />
                 ))}
               </div>
               <dl className="mt-4 space-y-2 text-sm">

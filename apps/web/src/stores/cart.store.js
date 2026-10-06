@@ -43,9 +43,7 @@ export const useCartStore = create(
       clear: () => set({ items: [] }),
 
       count: () => get().items.reduce((n, i) => n + i.qty, 0),
-
-      subtotal: () =>
-        get().items.reduce((n, i) => n + i.qty * i.price, 0),
+      // No subtotal here: prices are the server quote's (hooks/useCartQuote.js).
     }),
     { name: "diamond-cart", version: 2, migrate: migrateCart }
   )

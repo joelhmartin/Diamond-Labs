@@ -10,9 +10,12 @@ import {
   Image as ImageIcon,
 } from "lucide-react";
 import { useCartStore } from "../../stores/cart.store";
-import { formatUSD } from "../../lib/money.js";
+import { formatCents } from "../../lib/money.js";
+import { quoteLineFor } from "../../lib/catalog.js";
+import { useCartQuote } from "../../hooks/useCartQuote.js";
 
-function LineItem({ item }) {
+// Prices come from the server quote line (`line`), never the cart item.
+function LineItem({ item, line }) {
   const setQty = useCartStore((s) => s.setQty);
   const remove = useCartStore((s) => s.remove);
 
@@ -49,7 +52,7 @@ function LineItem({ item }) {
           </button>
         </div>
         <div className="mt-1 text-xs text-navy/45">
-          {item.price === 0 ? "Included" : formatUSD(item.price)} each
+          {!line ? "Pricing…" : line.unitCents === 0 ? "Included" : `${formatCents(line.unitCents)} each`}
         </div>
 
         <div className="mt-3 flex items-center justify-between">
@@ -73,7 +76,7 @@ function LineItem({ item }) {
             </button>
           </div>
           <div className="font-heading font-bold text-sm tracking-tight">
-            {item.price === 0 ? "Included" : formatUSD(item.qty * item.price)}
+            {!line ? "—" : line.lineCents === 0 ? "Included" : formatCents(line.lineCents)}
           </div>
         </div>
       </div>
@@ -85,7 +88,8 @@ export function CartDrawer() {
   const isOpen = useCartStore((s) => s.isOpen);
   const close = useCartStore((s) => s.close);
   const items = useCartStore((s) => s.items);
-  const subtotal = useCartStore((s) => s.subtotal());
+  // Priced only while open, so a closed drawer doesn't re-quote on every cart change.
+  const { quote, error: quoteError } = useCartQuote(isOpen ? items : []);
   const count = useCartStore((s) => s.count());
   const clear = useCartStore((s) => s.clear);
 
@@ -151,7 +155,7 @@ export function CartDrawer() {
               </div>
             </div>
           ) : (
-            items.map((i) => <LineItem key={i.id} item={i} />)
+            items.map((i) => <LineItem key={i.id} item={i} line={quoteLineFor(quote, i.variantId)} />)
           )}
         </div>
 
@@ -163,9 +167,12 @@ export function CartDrawer() {
                 Subtotal
               </span>
               <span className="font-heading font-bold text-2xl tracking-tight">
-                {formatUSD(subtotal)}
+                {quote ? formatCents(quote.subtotalCents) : "—"}
               </span>
             </div>
+            {quoteError && (
+              <p className="-mt-3 mb-4 text-xs text-red-600">{quoteError}</p>
+            )}
 
             <Link
               to="/checkout"
