@@ -56,4 +56,45 @@ describe("token type confusion", () => {
 
     await expect(verifyAccessToken(legacy)).rejects.toThrow(/access token type/i);
   });
+
+  it("a caller-supplied type cannot override the access type", async () => {
+    const token = await signAccessToken({ sub: "user_1", type: "mfa" });
+    await expect(verifyAccessToken(token)).resolves.toMatchObject({ type: "access" });
+  });
+});
+
+/**
+ * End to end through the real `authenticate` preHandler: the MFA token and a
+ * legacy (untyped) access token must both get a 401 — the status the web
+ * client's interceptor (apps/web/src/config/api.js) answers with a
+ * POST /auth/refresh, which mints a conforming typed token via
+ * authService.refresh → signAccessToken. Rejection happens before any DB read.
+ */
+describe("authenticate middleware", () => {
+  async function run(token) {
+    const { authenticate } = await import("../middleware/authenticate.js");
+    const reply = { statusCode: null, body: null };
+    reply.code = (c) => { reply.statusCode = c; return reply; };
+    reply.send = (b) => { reply.body = b; return reply; };
+    const request = { headers: { authorization: `Bearer ${token}` } };
+    await authenticate(request, reply);
+    return { reply, request };
+  }
+
+  it("401s an MFA token presented as a bearer token", async () => {
+    const { reply, request } = await run(await signMfaToken("user_victim_123"));
+    expect(reply.statusCode).toBe(401);
+    expect(request.user).toBeUndefined();
+  });
+
+  it("401s a legacy access token with no type claim (client refreshes and retries)", async () => {
+    const { SignJWT } = await import("jose");
+    const legacy = await new SignJWT({ sub: "user_1" })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("15m")
+      .sign(new TextEncoder().encode(process.env.JWT_SECRET));
+    const { reply } = await run(legacy);
+    expect(reply.statusCode).toBe(401);
+  });
 });
