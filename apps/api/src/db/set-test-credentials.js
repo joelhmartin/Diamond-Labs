@@ -3,26 +3,30 @@
  * test account linked to the Matt Rago Seazona client (#1324) so the doctor
  * invoice-payment / card-on-file flow can be exercised end-to-end.
  *
- *   TEST_PASSWORD=admin123! node --env-file=.env apps/api/src/db/set-test-credentials.js
+ *   NODE_ENV=development ALLOW_TEST_CREDENTIALS=1 TEST_PASSWORD=<pw> \
+ *     node --env-file=.env apps/api/src/db/set-test-credentials.js
  *
- * Idempotent. These are TESTING credentials — rotate them before real go-live.
+ * LOCAL DATABASES ONLY. Refuses unless NODE_ENV is development/test, the opt-in
+ * flag is set, DATABASE_URL is loopback with no production markers, AND the
+ * connected server is not a Cloud SQL instance (catches a proxy tunnel to prod).
+ * See test-credentials-guard.js.
+ *
+ * Idempotent.
  */
 import { eq } from "drizzle-orm";
-import { db, queryClient } from "../config/database.js";
-import { users, accounts, memberships } from "./schema/index.js";
-import { createId } from "../lib/id.js";
-import { hashPassword } from "../lib/passwords.js";
+import { assertTestCredentialsAllowed, assertNotCloudSql } from "./test-credentials-guard.js";
 
-// HARD STOP in production. This script writes a known password onto a real
-// doctor identity wired to a real Seazona client, and it reads the same
-// DATABASE_URL as everything else — pointed at prod it opens a live account
-// with a password that is committed to this repository.
-if (process.env.NODE_ENV === "production") {
-  throw new Error(
-    "set-test-credentials refuses to run with NODE_ENV=production. " +
-      "It provisions a known-password test login and must never touch a production database."
-  );
-}
+// HARD STOP before anything connects. This script writes a known password onto a
+// real doctor identity wired to a real Seazona client, and it reads the same
+// DATABASE_URL as everything else — pointed at prod it opens a live account.
+assertTestCredentialsAllowed(process.env);
+
+// Imported only after the static guard passes, so a refused run never opens a
+// connection pool.
+const { db, queryClient } = await import("../config/database.js");
+const { users, accounts, memberships } = await import("./schema/index.js");
+const { createId } = await import("../lib/id.js");
+const { hashPassword } = await import("../lib/passwords.js");
 
 // No default. A test password that lives in version control is a credential
 // anyone who can read the repo already knows.
@@ -57,6 +61,10 @@ async function ensureMembership(userId, accountId, role) {
 }
 
 async function run() {
+  // Runtime check before the first write: a loopback URL can still be a
+  // cloud-sql-proxy tunnel into production.
+  await assertNotCloudSql(queryClient);
+
   const passwordHash = await hashPassword(PASSWORD);
 
   // ── 1. Admin: ONLY when explicitly opted in (RESET_ADMIN=1). Off by default so
