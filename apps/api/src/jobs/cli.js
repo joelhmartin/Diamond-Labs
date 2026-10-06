@@ -10,20 +10,20 @@
 import { registerAllJobs } from "./definitions/index.js";
 import { runJob } from "./runner.js";
 import { listJobs } from "./registry.js";
+import { parseCliArgs } from "./cli-args.js";
 
 registerAllJobs();
 
-const args = process.argv.slice(2);
+const parsed = parseCliArgs(process.argv.slice(2));
 
-if (args.includes("--list") || args.length === 0) {
+if (parsed.list) {
   for (const job of listJobs()) console.log(`${job.name}\t${job.description}`);
   process.exit(0);
 }
 
-const name = args[0];
 // Dry run is the default. Charging requires BOTH --live here and
 // AUTOPAY_LIVE_RUN=true in the environment — two independent switches.
-const dryRun = !args.includes("--live");
+const { name, dryRun } = parsed;
 
 // runJob throws (rather than recording a run) for an unknown job name and for a
 // run already holding the job lock. Report both as the same JSON shape, and let
