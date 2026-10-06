@@ -103,17 +103,12 @@ created inactive with no price, so nothing becomes buyable by accident).
 4. Shop presentation fields (`imageUrl`, `description`, `category`,
    `purchasable`) come from `products` + `data/catalog.js`.
 
-## Client price import (`pnpm db:import-client-prices`, `DRY_RUN=1`)
+## Client prices
 
-Seazona exposes no price-list API, so prices are inferred from what was
-actually billed: for each client × product, the **most recent billed unit
-price**, written only when it differs from base, `source = "inferred"`,
-`reviewedAt = null`. Read-only against Seazona, serial with ~110 ms spacing
-(host rate limit), uses `getAllInvoicesResult()` (10k cap workaround).
-
-Inferred prices are **used** (they're what the client was last charged) but
-flagged in the admin UI until someone marks them reviewed. If a portal export
-of Clients > Pricing turns up, it imports as `source = "imported"` and wins.
+Entered by staff on the per-client Pricing page (`source = "manual"`).
+Inferring them from billed invoice history is **deferred to piece 5**
+(migration) — this piece makes no Seazona API calls. The `inferred` /
+`imported` sources and the review flag stay in the schema for that.
 
 ## API
 
