@@ -8,7 +8,31 @@ import { env } from "../config/env.js";
  * callers are unaffected and the receipt flow can report honestly whether an
  * email actually went out.
  */
+const MAX_SUBJECT_LENGTH = 200;
+
+/**
+ * Make a value safe for an email header (subject, recipient): control
+ * characters — CR/LF above all, which split headers — and Unicode line/paragraph
+ * separators become spaces, runs of whitespace collapse, and the result is capped
+ * at `max` characters (with an ellipsis when cut).
+ */
+export function headerSafe(value, max = MAX_SUBJECT_LENGTH) {
+  const clean = String(value ?? "")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001F\u007F-\u009F\u2028\u2029]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+}
+
 async function send({ to, subject, html, text }) {
+  // Header values: several subjects interpolate user input (doctor name, account
+  // name, ...) and `to` can be a registrant-typed address. Strip control
+  // characters (CR/LF header injection) and cap length centrally so no caller
+  // has to remember. Done first so the dev log line below is sanitized too.
+  to = headerSafe(to, 320);
+  subject = headerSafe(subject, MAX_SUBJECT_LENGTH);
+
   if (!mailgun) {
     console.log(`[EMAIL] To: ${to} | Subject: ${subject}`);
     if (env.NODE_ENV === "development") {
@@ -45,15 +69,17 @@ async function send({ to, subject, html, text }) {
   }
 }
 
-export async function sendWelcome({ email, name, verifyUrl }) {
-  await send({
+// `name` is escaped: on public doctor registration it is registrant-supplied and
+// this email goes to whatever address they typed — which may be someone else's.
+export async function sendWelcome({ email, name, verifyUrl, expiresIn = "24 hours" }) {
+  return send({
     to: email,
     subject: "Welcome! Please verify your email",
     html: `
-      <h1>Welcome, ${name}!</h1>
+      <h1>Welcome, ${esc(name)}!</h1>
       <p>Thanks for signing up. Please verify your email address by clicking the link below:</p>
       <p><a href="${verifyUrl}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;">Verify Email</a></p>
-      <p>This link expires in 24 hours.</p>
+      <p>This link expires in ${esc(expiresIn)}. If you didn't sign up, you can ignore this email.</p>
     `,
   });
 }
@@ -99,21 +125,64 @@ export async function sendPortalInvitation({ email, name, activateUrl }) {
   });
 }
 
-export async function sendAdminApprovalRequest({ doctorName, doctorEmail, npiNumber, companyName, approveUrl, rejectUrl }) {
+export async function sendAdminApprovalRequest({
+  doctorName,
+  doctorEmail,
+  npiNumber,
+  companyName,
+  approveUrl,
+  approveUnlinkedUrl,
+  rejectUrl,
+  seazonaEmailMatch,
+  suggestedSeazonaClient,
+}) {
+  // Approving grants a doctor account; the Seazona client link is what grants
+  // that client's invoices — which carry patient names (PHI). Nothing is linked
+  // at registration. An email match is a PENDING link to the exact client named
+  // here; it is written only if the admin approves confirming that client AND
+  // the registrant verifies the address (auth.service completePendingSeazonaLink).
+  // Inbox access alone (e.g. a shared front-desk inbox) is not authority over the
+  // practice, which is why the admin's explicit confirmation is required. The
+  // company/account shown comes from Seazona's own record, never from the form.
+  const matchRow = seazonaEmailMatch
+    ? `<tr><td style="padding:6px 12px;font-weight:bold;">Seazona account</td><td style="padding:6px 12px;">NOT linked — email matches Seazona client <strong>${esc(seazonaEmailMatch.company || "—")}</strong> (acct ${esc(seazonaEmailMatch.accountNumber || "—")}). The review page asks you to approve <em>and link this client</em>, or approve without linking. A confirmed link takes effect only once the registrant also verifies their email address.</td></tr>`
+    : `<tr><td style="padding:6px 12px;font-weight:bold;">Seazona account</td><td style="padding:6px 12px;">Not linked</td></tr>`;
+  const approveUnlinkedButton = seazonaEmailMatch && approveUnlinkedUrl
+    ? `<a href="${approveUnlinkedUrl}" style="display:inline-block;padding:12px 24px;background:#475569;color:#fff;text-decoration:none;border-radius:6px;margin-right:12px;">Approve without linking</a>`
+    : "";
+  const approveLabel = seazonaEmailMatch
+    ? `Approve &amp; link ${esc(seazonaEmailMatch.company || "client")} (acct ${esc(seazonaEmailMatch.accountNumber || "—")})`
+    : "Approve";
+
+  const suggestionBlock = suggestedSeazonaClient
+    ? `<p style="margin:16px 0;padding:12px;border-left:4px solid #f59e0b;background:#fffbeb;">
+         <strong>Possible match, NOT linked.</strong> This registration's phone number matches
+         Seazona client ${esc(suggestedSeazonaClient.company || "—")}
+         (acct ${esc(suggestedSeazonaClient.accountNumber || "—")}).
+         A phone number is public information, so we do not link on it automatically.
+         If this is the same practice, it has to be linked manually.
+       </p>`
+    : "";
+
   await send({
     to: env.ADMIN_NOTIFICATION_EMAIL,
-    subject: `New Doctor Registration — ${doctorName}`,
+    // doctorName is public-registration input; send() also sanitizes, but cap it
+    // tighter here so a long name can't crowd out the subject.
+    subject: `New Doctor Registration — ${headerSafe(doctorName, 80)}`,
     html: `
       <h1>New Doctor Registration Request</h1>
       <p>A new doctor has requested access to Diamond Labs:</p>
       <table style="border-collapse:collapse;margin:16px 0;">
-        <tr><td style="padding:6px 12px;font-weight:bold;">Name</td><td style="padding:6px 12px;">${doctorName}</td></tr>
-        <tr><td style="padding:6px 12px;font-weight:bold;">Email</td><td style="padding:6px 12px;">${doctorEmail}</td></tr>
-        <tr><td style="padding:6px 12px;font-weight:bold;">NPI Number</td><td style="padding:6px 12px;">${npiNumber}</td></tr>
-        <tr><td style="padding:6px 12px;font-weight:bold;">Company</td><td style="padding:6px 12px;">${companyName}</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:bold;">Name</td><td style="padding:6px 12px;">${esc(doctorName)}</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:bold;">Email</td><td style="padding:6px 12px;">${esc(doctorEmail)}</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:bold;">NPI Number</td><td style="padding:6px 12px;">${esc(npiNumber)}</td></tr>
+        <tr><td style="padding:6px 12px;font-weight:bold;">Company (as entered)</td><td style="padding:6px 12px;">${esc(companyName)}</td></tr>
+        ${matchRow}
       </table>
+      ${suggestionBlock}
       <p style="margin:24px 0;">
-        <a href="${approveUrl}" style="display:inline-block;padding:12px 24px;background:#16a34a;color:#fff;text-decoration:none;border-radius:6px;margin-right:12px;">Approve</a>
+        <a href="${approveUrl}" style="display:inline-block;padding:12px 24px;background:#16a34a;color:#fff;text-decoration:none;border-radius:6px;margin-right:12px;">${approveLabel}</a>
+        ${approveUnlinkedButton}
         <a href="${rejectUrl}" style="display:inline-block;padding:12px 24px;background:#dc2626;color:#fff;text-decoration:none;border-radius:6px;">Reject</a>
       </p>
       <p style="color:#666;font-size:13px;">This link expires in 7 days.</p>
@@ -145,13 +214,21 @@ export async function sendDoctorRejected({ email, name }) {
   });
 }
 
-/** Escape user-supplied strings before interpolating into the receipt HTML. */
+/**
+ * Escape user-supplied strings before interpolating into email HTML.
+ *
+ * Used by the receipts AND by the admin approval request, whose name/NPI/company
+ * come straight from the PUBLIC doctor-registration body and render next to
+ * one-click Approve/Reject links — unescaped, a registrant could inject a decoy
+ * "Approve" anchor pointing at their own URL, or hide the real Reject button.
+ */
 function esc(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function money(n) {

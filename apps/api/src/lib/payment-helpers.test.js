@@ -6,6 +6,8 @@ import {
   withInvoiceLocks,
   InvoiceLockedError,
   invoiceLockKey,
+  isGatewayOutcomePending,
+  PENDING_OUTCOME_TTL,
 } from "./payment-helpers.js";
 
 describe("extractDeclineMessage", () => {
@@ -204,5 +206,81 @@ describe("withInvoiceLocks", () => {
     expect(await first).toBe("first");
     // Lock freed after the winner finished.
     expect(redis.store.size).toBe(0);
+  });
+});
+
+// A fraud-review hold the service could NOT decline: the gateway may still
+// capture it, so neither lock may be released (Codex P1 on PR #36).
+describe("pending gateway outcome (undeclinable fraud hold)", () => {
+  function pendingError() {
+    return Object.assign(new Error("held for review"), {
+      heldForReview: true,
+      gatewayOutcomePending: true,
+      transactionId: "T-HELD",
+    });
+  }
+
+  function makeTtlRecordingRedis() {
+    const redis = makeFakeRedis();
+    const ttls = new Map();
+    const baseSet = redis.set.bind(redis);
+    redis.set = async (key, value, ...flags) => {
+      const ex = flags.findIndex((f) => String(f).toUpperCase() === "EX");
+      if (ex >= 0) ttls.set(key, Number(flags[ex + 1]));
+      return baseSet(key, value, ...flags);
+    };
+    return { redis, ttls };
+  }
+
+  it("isGatewayOutcomePending only flags the pending case", () => {
+    expect(isGatewayOutcomePending(pendingError())).toBe(true);
+    expect(isGatewayOutcomePending(Object.assign(new Error("x"), { heldForReview: true }))).toBe(false);
+    expect(isGatewayOutcomePending(new Error("declined"))).toBe(false);
+    expect(isGatewayOutcomePending(null)).toBe(false);
+  });
+
+  it("withIdempotency keeps the key locked for the pending window, so a retry cannot charge again", async () => {
+    const { redis, ttls } = makeTtlRecordingRedis();
+    const err = pendingError();
+    await expect(withIdempotency(redis, "held-1", async () => { throw err; })).rejects.toBe(err);
+
+    expect(redis.store.get("idem:lock:held-1")).toBe("pending");
+    expect(ttls.get("idem:lock:held-1")).toBe(PENDING_OUTCOME_TTL);
+    expect(redis.store.has("idem:result:held-1")).toBe(false);
+
+    const retry = vi.fn(async () => ({ transactionId: "SECOND" }));
+    await expect(withIdempotency(redis, "held-1", retry)).rejects.toBeInstanceOf(ChargeInProgressError);
+    expect(retry).not.toHaveBeenCalled();
+  });
+
+  it("withIdempotency still releases the key for a definitive failure (declined hold)", async () => {
+    const redis = makeFakeRedis();
+    const declinedHold = Object.assign(new Error("held, then declined"), { heldForReview: true });
+    await expect(withIdempotency(redis, "held-2", async () => { throw declinedHold; })).rejects.toBe(declinedHold);
+    expect(redis.store.has("idem:lock:held-2")).toBe(false);
+  });
+
+  it("withInvoiceLocks keeps every invoice locked, so a different key cannot pay against the same balance", async () => {
+    const { redis, ttls } = makeTtlRecordingRedis();
+    const err = pendingError();
+    await expect(withInvoiceLocks(redis, ["inv-B", "inv-A"], async () => { throw err; })).rejects.toBe(err);
+
+    for (const id of ["inv-A", "inv-B"]) {
+      expect(redis.store.get(invoiceLockKey(id))).toBe("pending");
+      expect(ttls.get(invoiceLockKey(id))).toBe(PENDING_OUTCOME_TTL);
+    }
+    const other = vi.fn(async () => "charged");
+    await expect(withInvoiceLocks(redis, ["inv-A"], other)).rejects.toBeInstanceOf(InvoiceLockedError);
+    expect(other).not.toHaveBeenCalled();
+  });
+
+  it("nested like charge-saved (idempotency around invoice locks): both stay held", async () => {
+    const redis = makeFakeRedis();
+    const err = pendingError();
+    await expect(
+      withIdempotency(redis, "held-3", () => withInvoiceLocks(redis, ["inv-C"], async () => { throw err; }))
+    ).rejects.toBe(err);
+    expect(redis.store.get("idem:lock:held-3")).toBe("pending");
+    expect(redis.store.get(invoiceLockKey("inv-C"))).toBe("pending");
   });
 });

@@ -4,7 +4,7 @@ import { validate } from "../middleware/validate.js";
 import * as authorizenetService from "../services/authorizenet.service.js";
 import * as seazonaService from "../services/seazona.service.js";
 import {
-  getInvoicePortalPaid,
+  getInvoicePaidStrict,
   listPaymentsForUser,
   listAllPayments,
 } from "../services/invoice-ledger.service.js";
@@ -66,8 +66,19 @@ function round2(n) {
  * gateway's own (user-safe) decline text. Anything else (network, parse, config)
  * is a system failure → 502 PAYMENT_GATEWAY_ERROR with a generic message. We
  * never leak internals or stack traces to the client.
+ *
+ * Fraud-review holds get their own answers: a hold we declined at the gateway
+ * is a definitive "not charged" (402), but a hold we could NOT decline may still
+ * be captured, so the client is told not to retry (409) — the lock helpers have
+ * kept the idempotency key and invoice locks for the same reason.
  */
-function chargeErrorReply(reply, err) {
+export function chargeErrorReply(reply, err) {
+  if (err?.gatewayOutcomePending) {
+    return reply.code(409).send({ error: ERROR_CODES.PAYMENT_UNDER_REVIEW });
+  }
+  if (err?.heldForReview) {
+    return reply.code(402).send({ error: ERROR_CODES.PAYMENT_HELD_DECLINED });
+  }
   if (err?.authNetResponse) {
     const message = extractDeclineMessage(err.authNetResponse) || ERROR_CODES.CARD_DECLINED.message;
     return reply.code(402).send({ error: { ...ERROR_CODES.CARD_DECLINED, message } });
@@ -273,9 +284,16 @@ async function verifyAllocations(allocations, user, { enforceCap = false } = {})
     }
     if (enforceCap) {
       // C1 — remaining = invoice total minus what's already been applied through
-      // the portal ledger for this doctor. The +0.005 tolerance absorbs cent
-      // rounding; a fully-paid invoice has remaining ~0 and is therefore blocked.
-      const paid = await getInvoicePortalPaid(user.id, a.invoiceId);
+      // the portal ledger for this Seazona CLIENT (every login of the practice —
+      // keying on user.id let a second login pay an already-paid invoice again).
+      // The +0.005 tolerance absorbs cent rounding; a fully-paid invoice has
+      // remaining ~0 and is therefore blocked.
+      // STRICT read on purpose: a DB error here must abort the charge, not
+      // silently report "paid so far = 0" and re-open the full balance.
+      const paid = await getInvoicePaidStrict({
+        seazonaClientId: user.seazonaClientId,
+        seazonaInvoiceId: a.invoiceId,
+      });
       const remaining = round2(Number(inv.total || 0) - paid);
       if (Number(a.amount) > remaining + 0.005) {
         return {
@@ -1643,8 +1661,12 @@ export default async function paymentRoutes(fastify) {
   // the Authorize.net pipeline. `mode` defaults to sandbox; production is allowed
   // for a small real-charge smoke test (void it in the Authorize.net dashboard).
   // ───────────────────────────────────────────────────────────────
+  // ADMIN-ONLY. These mint real production hosted-payment tokens for up to
+  // $100,000 and read arbitrary transaction details, so `authenticate` alone is
+  // not a guard — it would let any registered user (role "user") charge against
+  // the live merchant account and enumerate other people's transactions.
   fastify.post("/payments/test/hosted-token", {
-    preHandler: [authenticate],
+    preHandler: [authenticate, requireAdmin],
   }, async (request, reply) => {
     const { amount, mode = "sandbox", iframeCommunicatorUrl } = request.body || {};
 
@@ -1674,8 +1696,12 @@ export default async function paymentRoutes(fastify) {
     return { data: { token: result.token, formUrl: result.formUrl, refId, mode } };
   });
 
+  // ADMIN-ONLY — see the note on /payments/test/hosted-token. There is no
+  // ownership check on `transId`, so without this guard any authenticated user
+  // could read production transaction details (amount, card last-4, expiry) for
+  // an arbitrary transaction id.
   fastify.post("/payments/test/hosted-complete", {
-    preHandler: [authenticate],
+    preHandler: [authenticate, requireAdmin],
   }, async (request, reply) => {
     const { transId, mode = "sandbox" } = request.body || {};
 

@@ -69,6 +69,103 @@ async function apiRequest(payload, mode) {
 }
 
 /**
+ * Assert that a createTransactionRequest actually captured funds.
+ *
+ * The envelope `messages.resultCode` can be "Ok" while the transaction itself
+ * was declined (2), errored (3), or HELD FOR REVIEW by the Fraud Detection
+ * Suite (4). Only responseCode "1" means approved-and-captured. Returning a
+ * held transaction as success is how you credit a ledger, write a payment to
+ * the lab system, and email a receipt for money that never moved — so every
+ * money-moving call funnels through this.
+ */
+function assertApproved(data, action) {
+  // apiRequest returns null when credentials are unconfigured. Treat that as a
+  // failed charge with a legible message rather than a TypeError.
+  if (!data) {
+    throw new Error(`Authorize.net ${action} failed: gateway credentials are not configured`);
+  }
+  const tr = data.transactionResponse;
+  if (String(tr?.responseCode) !== "1") {
+    const reason = tr?.errors?.[0]?.errorText || tr?.messages?.[0]?.description;
+    const err = new Error(
+      `Authorize.net ${action} not approved (responseCode ${tr?.responseCode ?? "?"})` +
+        (reason ? `: ${reason}` : "")
+    );
+    err.authNetResponse = data;
+    throw err;
+  }
+  return tr;
+}
+
+/**
+ * Release a transaction the Fraud Detection Suite HELD FOR REVIEW (responseCode 4).
+ *
+ * A held transaction is not a decline: it sits in the merchant's review queue
+ * and a human can still approve it days later, at which point the card IS
+ * charged. If we report it to the caller as a plain failure, the idempotency
+ * lock is released and the client's retry (or a fresh submit — the web client
+ * mints a new Idempotency-Key per click) creates a SECOND transaction while the
+ * first is still live. Declining the hold at the gateway makes our "failed"
+ * answer true, so retrying is safe again.
+ *
+ * Tries `updateHeldTransactionRequest` (action "decline" — the API for FDS
+ * holds) first, then a plain void as a fallback. Returns true only when one of
+ * them was accepted; false means the hold is still live and the caller must
+ * treat the outcome as PENDING, not failed. Never throws.
+ */
+export async function releaseHeldTransaction(transId, mode) {
+  try {
+    const data = await apiRequest({
+      updateHeldTransactionRequest: {
+        merchantAuthentication: merchantAuth(mode),
+        heldTransactionRequest: { action: "decline", refTransId: String(transId) },
+      },
+    }, mode);
+    if (data && !data.transactionResponse?.errors?.length) return true;
+  } catch (err) {
+    console.warn(`[Authorize.net] decline of held transaction ${transId} failed: ${String(err?.message || err)}`);
+  }
+  try {
+    await voidTransaction(transId, mode);
+    return true;
+  } catch (err) {
+    console.warn(`[Authorize.net] void of held transaction ${transId} failed: ${String(err?.message || err)}`);
+  }
+  return false;
+}
+
+/**
+ * assertApproved for a CHARGE: same rejection, plus a held-for-review (4)
+ * transaction is released at the gateway before the error reaches the caller.
+ *
+ * The thrown error carries `heldForReview` and `transactionId`. When the hold
+ * could NOT be released it also carries `gatewayOutcomePending` — the charge may
+ * still be approved later, so withIdempotency / withInvoiceLocks keep their
+ * locks instead of inviting a retry, and the route answers PAYMENT_UNDER_REVIEW.
+ */
+async function assertChargeApproved(data, action) {
+  try {
+    return assertApproved(data, action);
+  } catch (err) {
+    const tr = data?.transactionResponse;
+    if (String(tr?.responseCode) === "4" && tr?.transId) {
+      err.heldForReview = true;
+      err.transactionId = String(tr.transId);
+      const released = await releaseHeldTransaction(tr.transId);
+      if (released) {
+        console.warn(`[Authorize.net][HELD_TXN_DECLINED] ${action} ${tr.transId} was held for review and has been declined — no funds captured`);
+      } else {
+        err.gatewayOutcomePending = true;
+        // Alertable: a live held transaction we could not cancel. Someone must
+        // decline or reconcile it in the merchant interface.
+        console.error(`[Authorize.net][HELD_TXN_UNRESOLVED] ${action} ${tr.transId} is held for review and could NOT be declined — it may still be approved and captured. Reconcile manually.`);
+      }
+    }
+    throw err;
+  }
+}
+
+/**
  * Charge using an Accept.js opaque nonce (one-time payment).
  *
  * Optional `billTo`/`shipTo` enable AVS (address verification). They are plain
@@ -106,10 +203,11 @@ export async function chargeWithNonce({ amount, opaqueData, description, invoice
     },
   });
 
+  const tr = await assertChargeApproved(data, "charge");
   return {
-    transactionId: data.transactionResponse?.transId,
-    responseCode: data.transactionResponse?.responseCode,
-    authCode: data.transactionResponse?.authCode,
+    transactionId: tr.transId,
+    responseCode: tr.responseCode,
+    authCode: tr.authCode,
   };
 }
 
@@ -172,10 +270,11 @@ export async function chargeCustomerProfile({ customerProfileId, paymentProfileI
     },
   });
 
+  const tr = await assertChargeApproved(data, "saved-card charge");
   return {
-    transactionId: data.transactionResponse?.transId,
-    responseCode: data.transactionResponse?.responseCode,
-    authCode: data.transactionResponse?.authCode,
+    transactionId: tr.transId,
+    responseCode: tr.responseCode,
+    authCode: tr.authCode,
   };
 }
 

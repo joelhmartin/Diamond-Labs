@@ -69,6 +69,7 @@ export async function withInvoiceLocks(redis, invoiceIds, fn, opts = {}) {
   // Dedupe + sort → one stable global acquisition order → deadlock-free.
   const ids = [...new Set((invoiceIds || []).map((id) => String(id)))].sort();
   const acquired = [];
+  let pending = false;
   try {
     for (const id of ids) {
       const key = invoiceLockKey(id);
@@ -77,12 +78,44 @@ export async function withInvoiceLocks(redis, invoiceIds, fn, opts = {}) {
       acquired.push(key);
     }
     return await fn();
+  } catch (err) {
+    pending = isGatewayOutcomePending(err);
+    throw err;
   } finally {
     // Release only what we actually took (a failed acquire was never pushed).
+    // Exception: the gateway may still capture this charge (a fraud hold we
+    // could not cancel). The ledger doesn't know about it, so releasing would
+    // let another charge pass the cap against the same balance — keep the
+    // invoices locked for the pending window instead.
     for (const key of acquired) {
-      await redis.del(key).catch((delErr) => log?.warn?.({ delErr, key }, "invoice lock release failed"));
+      await holdOrRelease(redis, key, pending).catch((relErr) =>
+        log?.warn?.({ relErr, key, pending }, "invoice lock release failed")
+      );
     }
   }
+}
+
+/**
+ * How long a lock is kept when a charge's outcome is still pending at the
+ * gateway (see isGatewayOutcomePending). Long enough for staff to act on the
+ * alert; it self-heals after that.
+ */
+export const PENDING_OUTCOME_TTL = 24 * 60 * 60; // 24h
+
+/**
+ * True when a charge error means "the gateway may still capture this" rather
+ * than "this definitively failed" — currently a fraud-review hold that could
+ * not be declined (authorizenet.service assertChargeApproved). Both lock
+ * helpers keep their locks for such errors instead of inviting a retry.
+ */
+export function isGatewayOutcomePending(err) {
+  return Boolean(err?.gatewayOutcomePending);
+}
+
+/** Release a lock, or — when the outcome is pending — re-arm it for PENDING_OUTCOME_TTL. */
+async function holdOrRelease(redis, key, pending) {
+  if (pending) return redis.set(key, "pending", "EX", PENDING_OUTCOME_TTL);
+  return redis.del(key);
 }
 
 export function safeParse(json) {
@@ -107,7 +140,8 @@ export const idemLockKey = (key) => `idem:lock:${key}`;
  *   2. Lock: acquire `SET lockKey 1 EX <ttl> NX`. On contention (another request
  *      holds the lock and there's no cached result yet) throw ChargeInProgressError.
  *   3. Run: await `fn()`. On rejection, release the lock (best-effort) so a
- *      legitimate retry can proceed, and rethrow the original error.
+ *      legitimate retry can proceed, and rethrow the original error — unless
+ *      the error says the gateway outcome is still pending (kept, see below).
  *   4. Cache: persist `fn`'s resolved value under resultKey (guarded — the charge
  *      already succeeded, so a cache-write failure must NEVER surface as an error).
  *
@@ -153,11 +187,17 @@ export async function withIdempotency(redis, key, fn, opts = {}) {
 
   // 3. Run the charge-producing fn. Release the lock on failure so the caller
   //    can legitimately retry; a kv failure here must not mask the real error.
+  //    Exception: when the gateway outcome is still PENDING (a fraud hold we
+  //    could not cancel) the charge may yet be captured, so this key must not
+  //    run again. The lock is kept for PENDING_OUTCOME_TTL; a retry of the same
+  //    key gets ChargeInProgressError instead of creating a second transaction.
   let result;
   try {
     result = await fn();
   } catch (err) {
-    await redis.del(lockKey).catch((delErr) => log?.warn?.({ delErr, key }, "idempotency lock release failed"));
+    await holdOrRelease(redis, lockKey, isGatewayOutcomePending(err)).catch((relErr) =>
+      log?.warn?.({ relErr, key }, "idempotency lock release failed")
+    );
     throw err;
   }
 

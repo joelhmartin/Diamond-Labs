@@ -19,6 +19,15 @@ export const users = pgTable("users", {
   approvalStatus: approvalStatusEnum("approval_status").notNull().default("not_required"),
   seazonaClientId: varchar("seazona_client_id", { length: 100 }),
   seazonaAccountNumber: varchar("seazona_account_number", { length: 100 }),
+  // PENDING Seazona link from a public doctor registration whose email matched a
+  // Seazona client login. A suggestion only — it becomes seazonaClientId/
+  // seazonaAccountNumber when BOTH the email is verified (emailVerifiedAt) AND an
+  // admin approved the registration confirming this exact client
+  // (pendingSeazonaLinkApprovedAt), in either order. See
+  // auth.service completePendingSeazonaLink.
+  pendingSeazonaClientId: varchar("pending_seazona_client_id", { length: 100 }),
+  pendingSeazonaAccountNumber: varchar("pending_seazona_account_number", { length: 100 }),
+  pendingSeazonaLinkApprovedAt: timestamp("pending_seazona_link_approved_at", { withTimezone: true }),
   authorizeNetCustomerProfileId: varchar("authorize_net_customer_profile_id", { length: 100 }),
   // Doctor's preferred saved-card payment profile (Authorize.net CIM
   // customerPaymentProfileId). Pre-selected in the pay-invoice modal; cleared
