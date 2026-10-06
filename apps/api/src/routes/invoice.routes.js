@@ -17,11 +17,7 @@ import * as auditService from "../services/audit.service.js";
 import { redis } from "../config/redis.js";
 import { withInvoiceLocks, InvoiceLockedError } from "../lib/payment-helpers.js";
 import { recordPaymentAndAllocations } from "../services/payment-recording.service.js";
-
-/** Round to cents consistently (avoids FP drift). */
-function round2(n) {
-  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-}
+import { round2 } from "../lib/money.js";
 
 // Doctor-shaped column set the offline-payment route needs to pass a full
 // `user` into recordPaymentAndAllocations (receipt email + optional Seazona

@@ -39,6 +39,7 @@ import {
   verifyAllocations,
   recordPaymentAndAllocations,
 } from "../services/payment-recording.service.js";
+import { round2 } from "../lib/money.js";
 
 // Per-route strict rate limit for the charge-producing endpoints (M3). Layered
 // ON TOP of the global limiter; the global localhost allowList still applies in
@@ -59,11 +60,6 @@ const TAX_RATE = 0.08; // applied only to products.taxable line items
 const SHIPPING_FLAT = 12; // flat per-order, charged when subtotal > 0
 const MAX_QTY = 999; // per-line quantity ceiling — guards against an absurd qty
 // inflating the total past anything real and reaching the gateway as a 500.
-
-/** Round to cents consistently (avoids FP drift like 0.1+0.2). */
-function round2(n) {
-  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-}
 
 /**
  * Map a charge error to a user-safe reply (H2). An error carrying an
