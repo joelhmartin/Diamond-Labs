@@ -43,7 +43,7 @@ integrity via transactions), ids are cuid2 `varchar(128)`.
 
 **`product_variants`** — the sellable SKU. Every family has ≥1 variant; a
 family with no options has exactly one.
-`id, familyId, code (unique — the lab's product code, e.g. "2119", kept so
+`id, familyId, code (unique, nullable — the lab's product code, e.g. "2119", kept so
 history and technicians' vocabulary carry over), name, basePriceCents,
 taxable, active, catalogId (unique, nullable — legacy shop SKU link),
 legacySeazonaProductId (unique, nullable — retired in piece 5)`
@@ -68,8 +68,10 @@ drops it.
 **`lib/money.js`** — `toCents`, `fromCents`, `formatCents`, `sumCents`,
 `mulCents(cents, qty)`, `pctOfCents(cents, rateBps)` (integer math, rate in
 basis points; percentages round half-up to the cent, applied once to the
-taxable subtotal, not per line). Replaces all three `round2` copies; those call
-sites switch to it in this piece.
+taxable subtotal, not per line). It also exports the one `round2` (dollar
+float helper) — the three local copies import it instead. Converting the
+Seazona-invoice paths themselves to cents is piece 3's job, since piece 3
+replaces them.
 
 **`services/catalog.service.js`** — family/option/variant CRUD;
 `findVariant({ familyId, optionValueIds })`; `variantByCode(code)`;
@@ -91,10 +93,11 @@ created inactive with no price, so nothing becomes buyable by accident).
 1. Every `products` row → a variant (`code`, `name`, `basePriceCents`,
    `taxable`, `catalogId`, `legacySeazonaProductId`), each in its own
    single-variant family.
-2. **Rx device families are grouped automatically** from `DEVICE_ROWS`: rows
-   sharing a `device` become one family, `material` becomes the option axis.
-   These groupings are lab-confirmed data already (status `confirmed`);
-   `proposed`/`open` rows stay single-variant.
+2. **Rx device families come from an explicit seed table**
+   (`db/catalog-import/family-seed.js`): Olmos Day (Material), Olmos Night
+   (Design × Material), DDSO (Material), Sport-Guard (Tier) — every code in
+   it is a `confirmed` row of `DEVICE_ROWS`, enforced by a test. Written out
+   by hand rather than parsed from product names.
 3. Everything else is grouped by an admin in the UI (merge families, add an
    axis). The import never guesses a grouping from product names.
 4. Shop presentation fields (`imageUrl`, `description`, `category`,
@@ -137,14 +140,21 @@ Zod schemas in `packages/shared/src/schemas/catalog.schema.js`.
   the seed file stays only as the import's presentation source.
 - **Checkout** (`POST /payments/checkout`) accepts `variantId` lines and
   prices through `pricing.service.priceLines`; `order_items` gains
-  `variantId` and stores cents.
+  `variantId` (its numeric dollar columns stay — they are written from cents
+  at the boundary; piece 2 reshapes orders). `order_items.catalogId` becomes
+  nullable, since a variant need not have a legacy shop SKU.
+- `POST /api/v1/catalog/quote` returns the server's priced cart; Checkout
+  displays it instead of its own mirrored tax/shipping constants (which
+  already disagree with the server: the page taxes the whole subtotal, the
+  server taxes only taxable lines).
 
 ## Rx
 
 Rx resolution keeps resolving by **code** (unchanged tables, unchanged
-tests). `rx_case_lines` gains `variantId`, set by `variantByCode` when a line
-resolves. Moving `DEVICE_ROWS` itself into DB-driven options is a later
-refactor, not this piece.
+tests). Lines keep only their code; whoever prices a line (pieces 2–3)
+resolves it with `variantByCode`. No `variantId` column on `rx_case_lines` —
+staff edit a line's code in place, and a stored id would silently drift from
+it. Moving `DEVICE_ROWS` itself into DB-driven options is a later refactor.
 
 ## Errors & safety
 
