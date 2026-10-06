@@ -10,7 +10,13 @@ import { getClientPaidMapStrict } from "./invoice-ledger.service.js";
 import { verifyAllocations, recordPaymentAndAllocations } from "./payment-recording.service.js";
 import { allocateOldestFirst, resolveChargeAmount } from "../lib/autopay-allocation.js";
 import { isDueOn, isRetryDay, cycleKeyFor } from "../lib/autopay-schedule.js";
-import { withInvoiceLocks, withIdempotency } from "../lib/payment-helpers.js";
+import {
+  withInvoiceLocks,
+  withIdempotency,
+  isGatewayOutcomePending,
+  ChargeInProgressError,
+  InvoiceLockedError,
+} from "../lib/payment-helpers.js";
 import * as emailService from "./email.service.js";
 
 /**
@@ -343,6 +349,60 @@ export async function processEnrollment({ enrollment, doctor, invoices, dryRun, 
             amountAttempted: totalAllocated.toFixed(2),
             allocations,
             failureReason,
+          },
+          log
+        );
+      }
+
+      // The gateway may STILL capture this charge: a fraud-review hold that
+      // could not be released (authorizenet.service assertChargeApproved).
+      // This is not a decline and must never be retried — a retry-day charge
+      // on top of a hold that staff later approve takes the money twice, and
+      // the ledger knows about neither. So: no consecutive-failure count, no
+      // "card declined" email, and the attempt is recorded as `skipped` (the
+      // retry-day gate only re-fires on `failed`). The enrollment is paused
+      // so no later sweep touches it until a human has reconciled the held
+      // transaction (authorizenet.service already logged the alertable line)
+      // and resumed it. The lock helpers keep the idempotency and invoice
+      // locks for the pending window on their own.
+      if (isGatewayOutcomePending(err)) {
+        await updateEnrollment(
+          enrollment.id,
+          { lastRunAt: now, status: "paused", pausedReason: "gateway_outcome_pending", updatedAt: now },
+          log
+        );
+        log?.error?.(
+          { enrollmentId: enrollment.id, userId: doctor.id, transactionId: err.transactionId || null },
+          "[AutoPay][GATEWAY_OUTCOME_PENDING] charge held for review and could not be released — enrollment paused, not retried"
+        );
+        return writeAttempt(
+          {
+            ...base,
+            status: "skipped",
+            amountAttempted: totalAllocated.toFixed(2),
+            transactionId: err.transactionId ? String(err.transactionId) : null,
+            allocations,
+            failureReason:
+              "charge held for fraud review and could not be released — outcome pending at the gateway; not retried, enrollment paused until reconciled",
+          },
+          log
+        );
+      }
+
+      // Another charge holds this enrollment's idempotency key or one of the
+      // invoices' locks (a doctor paying by hand right now, or a lock kept for
+      // a pending outcome). Nothing was sent to the card, so this is not a
+      // decline: record `failed` so the retry-day gate can try again, but do
+      // not count it toward the pause threshold or email a decline notice.
+      if (err instanceof ChargeInProgressError || err instanceof InvoiceLockedError) {
+        await updateEnrollment(enrollment.id, { lastRunAt: now, updatedAt: now }, log);
+        return writeAttempt(
+          {
+            ...base,
+            status: "failed",
+            amountAttempted: totalAllocated.toFixed(2),
+            allocations,
+            failureReason: `not charged — another charge is in progress for these invoices: ${String(err.message).slice(0, 400)}`,
           },
           log
         );

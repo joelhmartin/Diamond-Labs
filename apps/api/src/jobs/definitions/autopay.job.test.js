@@ -138,6 +138,11 @@ vi.mock("../../config/redis.js", () => ({
   },
 }));
 
+const sendAutopayFailure = vi.fn(async () => true);
+vi.mock("../../services/email.service.js", () => ({
+  sendAutopayFailure: (...args) => sendAutopayFailure(...args),
+}));
+
 const { processEnrollment, runAutopaySweep } = await import("../../services/autopay-runner.service.js");
 
 const doctor = {
@@ -179,6 +184,7 @@ beforeEach(() => {
   ledgerGetClientPaidMapStrict.mockImplementation(async () => ({}));
   paymentRecordingVerifyAllocations.mockClear();
   paymentRecordingVerifyAllocations.mockImplementation(async () => null);
+  sendAutopayFailure.mockClear();
 });
 
 describe("processEnrollment", () => {
@@ -307,6 +313,70 @@ describe("processEnrollment", () => {
       // Still not a card decline — no consecutiveFailures bump/pause.
       expect(enrollmentUpdates.some((u) => u.consecutiveFailures !== undefined)).toBe(false);
     });
+  });
+
+  // #36: chargeCustomerProfile throws with `gatewayOutcomePending` when a
+  // fraud-review hold could not be released — the gateway may still capture
+  // the money. The sweep must treat that as "do not retry", never as a decline.
+  describe("held transaction with a pending gateway outcome", () => {
+    function pendingHoldError() {
+      return Object.assign(new Error("Transaction held for review"), {
+        heldForReview: true,
+        gatewayOutcomePending: true,
+        transactionId: "held-tx-9",
+      });
+    }
+
+    it("records skipped (not failed), pauses the enrollment, and sends no decline email", async () => {
+      const authnet = await import("../../services/authorizenet.service.js");
+      authnet.chargeCustomerProfile.mockRejectedValueOnce(pendingHoldError());
+
+      const attempt = await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r1" });
+
+      expect(recorded).toHaveLength(0);
+      // `skipped`, so the retry-day gate (which only re-fires on `failed`) never retries it.
+      expect(attempt.status).toBe("skipped");
+      expect(attempt.transactionId).toBe("held-tx-9");
+      expect(attempt.failureReason).toMatch(/pending/i);
+      expect(enrollmentUpdates).toContainEqual(
+        expect.objectContaining({ status: "paused", pausedReason: "gateway_outcome_pending" })
+      );
+      expect(enrollmentUpdates.some((u) => u.consecutiveFailures !== undefined)).toBe(false);
+      expect(sendAutopayFailure).not.toHaveBeenCalled();
+    });
+
+    it("keeps the idempotency and invoice locks, so an immediate re-run cannot charge again", async () => {
+      const authnet = await import("../../services/authorizenet.service.js");
+      authnet.chargeCustomerProfile.mockRejectedValueOnce(pendingHoldError());
+      await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r1" });
+      const gatewayCallsAfterHold = authnet.chargeCustomerProfile.mock.calls.length;
+
+      const rerun = await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r2" });
+
+      expect(authnet.chargeCustomerProfile.mock.calls.length).toBe(gatewayCallsAfterHold);
+      expect(rerun.status).toBe("failed");
+      expect(rerun.failureReason).toMatch(/in progress/i);
+      expect(enrollmentUpdates.some((u) => u.consecutiveFailures !== undefined)).toBe(false);
+      expect(sendAutopayFailure).not.toHaveBeenCalled();
+    });
+  });
+
+  it("treats invoice-lock contention as not-a-decline: no charge, no failure count, no email", async () => {
+    lockStore.set("chargeguard:inv:i1", "1"); // a doctor's own charge is mid-flight on i1
+    const attempt = await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r1" });
+    expect(charged).toHaveLength(0);
+    expect(attempt.status).toBe("failed");
+    expect(attempt.failureReason).toMatch(/in progress/i);
+    expect(enrollmentUpdates.some((u) => u.consecutiveFailures !== undefined)).toBe(false);
+    expect(sendAutopayFailure).not.toHaveBeenCalled();
+  });
+
+  it("still counts and emails a genuine decline", async () => {
+    const authnet = await import("../../services/authorizenet.service.js");
+    authnet.chargeCustomerProfile.mockRejectedValueOnce(Object.assign(new Error("declined"), { authNetResponse: {} }));
+    await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r1" });
+    expect(enrollmentUpdates).toContainEqual(expect.objectContaining({ consecutiveFailures: 1 }));
+    expect(sendAutopayFailure).toHaveBeenCalledTimes(1);
   });
 });
 
