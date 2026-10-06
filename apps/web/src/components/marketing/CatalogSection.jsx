@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import gsap from "gsap";
 import { Search, SlidersHorizontal, X } from "lucide-react";
-import { useCatalogStore } from "../../stores/catalog.store";
+import { useCatalog } from "../../hooks/useCatalog.js";
 import { CatalogCard } from "./CatalogCard";
 import { CatalogDetail } from "./CatalogDetail";
 import { usePagination } from "../../hooks/usePagination.js";
@@ -39,7 +39,7 @@ export function CatalogSection() {
     };
   }, []);
 
-  const products = useCatalogStore((s) => s.products);
+  const { products, loading, error } = useCatalog();
   const categories = useMemo(
     () => Array.from(new Set(products.flatMap((p) => p.categories))).sort(),
     [products]
@@ -55,7 +55,7 @@ export function CatalogSection() {
         p.name.toLowerCase().includes(q) ||
         p.description.toLowerCase().includes(q) ||
         p.categories.join(" ").toLowerCase().includes(q) ||
-        p.id.toString().includes(q)
+        p.family.variants.some((v) => (v.code ?? "").toLowerCase().includes(q))
       );
     });
   }, [query, active, products]);
@@ -151,7 +151,11 @@ export function CatalogSection() {
         </div>
 
         {/* Grid */}
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="py-16 text-center text-navy/40 text-sm font-mono">Loading catalog…</div>
+        ) : error ? (
+          <div className="py-16 text-center text-red-600 text-sm">{error}</div>
+        ) : filtered.length === 0 ? (
           <div className="py-16 text-center">
             <p className="text-navy/40 text-sm">
               No products match your search. Try different keywords or clear

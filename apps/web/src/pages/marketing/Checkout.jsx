@@ -10,16 +10,11 @@ import {
   Image as ImageIcon,
 } from "lucide-react";
 import { useCartStore } from "../../stores/cart.store";
+import { formatUSD, formatCents } from "../../lib/money.js";
+import { useCartQuote } from "../../hooks/useCartQuote.js";
 
 const INPUT =
   "w-full px-4 py-3 rounded-xl bg-white border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-navy/25";
-
-function formatUSD(n) {
-  return Number(n).toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-  });
-}
 
 /* ─── SUMMARY LINE ITEM ─── */
 function SummaryItem({ item }) {
@@ -59,7 +54,6 @@ function SummaryItem({ item }) {
 /* ─── PAGE ─── */
 export function CheckoutPage() {
   const items = useCartStore((s) => s.items);
-  const subtotal = useCartStore((s) => s.subtotal());
   const clear = useCartStore((s) => s.clear);
   const navigate = useNavigate();
 
@@ -84,17 +78,9 @@ export function CheckoutPage() {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
-  // Display estimate only. The SERVER recomputes the authoritative total from
-  // the products table and charges that — the client amount is never trusted.
-  // These constants MUST stay in sync with the backend (TAX_RATE / SHIPPING_FLAT
-  // in apps/api/src/routes/payment.routes.js). Note: the server applies tax only
-  // to taxable products, so this estimate can differ slightly from the charge;
-  // a future server "quote" endpoint should make this exact.
-  const TAX_RATE = 0.08;
-  const SHIPPING_FLAT = 12;
-  const SHIPPING = subtotal > 0 ? SHIPPING_FLAT : 0;
-  const TAX = Math.round(subtotal * TAX_RATE * 100) / 100;
-  const total = subtotal + SHIPPING + TAX;
+  // The server's priced cart — the same numbers the charge will use.
+  const { quote, loading: quoting, error: quoteError } = useCartQuote(items);
+  const total = quote ? quote.totalCents / 100 : 0;
 
   function validate() {
     setError(null);
@@ -102,6 +88,8 @@ export function CheckoutPage() {
       setError("Your cart is empty.");
       return false;
     }
+    if (quoteError) { setError(quoteError); return false; }
+    if (!quote || quoting) { setError("Still pricing your order — one moment."); return false; }
     if (total <= 0) {
       setError(
         "This order totals $0.00 and cannot be processed online. Please contact the lab to place your order."
@@ -135,9 +123,9 @@ export function CheckoutPage() {
     try {
       const payload = {
         // amount is sent for back-compat/display only — the server ignores it
-        // and charges the total it recomputes from product prices.
+        // and charges the total it recomputes from variant prices.
         amount: total,
-        items: items.map((i) => ({ id: i.id, name: i.name, price: i.price, qty: i.qty })),
+        items: items.map((i) => ({ variantId: i.variantId, qty: i.qty })),
         email: contact.email,
         phone: contact.phone || undefined,
         shipping: ship,
@@ -487,25 +475,25 @@ export function CheckoutPage() {
                 ))}
               </div>
               <dl className="mt-4 space-y-2 text-sm">
-                <Row label="Subtotal" value={formatUSD(subtotal)} />
+                <Row label="Subtotal" value={quote ? formatCents(quote.subtotalCents) : "—"} />
                 <Row
                   label="Shipping"
-                  value={SHIPPING === 0 ? "Free" : formatUSD(SHIPPING)}
+                  value={!quote ? "—" : quote.shippingCents === 0 ? "Free" : formatCents(quote.shippingCents)}
                 />
-                <Row label="Tax (est.)" value={formatUSD(TAX)} />
+                <Row label="Tax" value={quote ? formatCents(quote.taxCents) : "—"} />
               </dl>
               <div className="mt-4 pt-4 border-t border-surface-300/40 flex items-center justify-between">
                 <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
                   Total
                 </span>
                 <span className="font-heading font-bold text-2xl text-navy tracking-tight">
-                  {formatUSD(total)}
+                  {quote ? formatCents(quote.totalCents) : "—"}
                 </span>
               </div>
 
-              {error && (
+              {(error || quoteError) && (
                 <div className="mt-4 p-3 rounded-xl bg-red-50 text-red-600 text-xs">
-                  {error}
+                  {error || quoteError}
                 </div>
               )}
 
@@ -525,7 +513,7 @@ export function CheckoutPage() {
                   ) : (
                     <>
                       <Lock size={13} />
-                      Pay {formatUSD(total)}
+                      Pay {quote ? formatCents(quote.totalCents) : "—"}
                     </>
                   )}
                 </span>

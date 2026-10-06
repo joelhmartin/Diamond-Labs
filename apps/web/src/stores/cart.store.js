@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { migrateCart } from "../lib/catalog.js";
 
 export const useCartStore = create(
   persist(
@@ -22,16 +23,7 @@ export const useCartStore = create(
             };
           }
           return {
-            items: [
-              ...s.items,
-              {
-                id: product.id,
-                name: product.name,
-                price: product.price,
-                image: product.thumbnail || product.image || null,
-                qty,
-              },
-            ],
+            items: [...s.items, { ...product, qty }],
           };
         }),
 
@@ -55,6 +47,6 @@ export const useCartStore = create(
       subtotal: () =>
         get().items.reduce((n, i) => n + i.qty * i.price, 0),
     }),
-    { name: "diamond-cart" }
+    { name: "diamond-cart", version: 2, migrate: migrateCart }
   )
 );

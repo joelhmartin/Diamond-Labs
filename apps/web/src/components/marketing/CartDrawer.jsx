@@ -10,13 +10,7 @@ import {
   Image as ImageIcon,
 } from "lucide-react";
 import { useCartStore } from "../../stores/cart.store";
-
-function formatUSD(n) {
-  return n.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-  });
-}
+import { formatUSD } from "../../lib/money.js";
 
 function LineItem({ item }) {
   const setQty = useCartStore((s) => s.setQty);
