@@ -13,8 +13,8 @@ test("only a blank placeholder variant may be deleted", () => {
 });
 
 test("a variant with client prices or order history is never deleted (no FKs to catch it)", () => {
-  assert.match(canDeleteVariant({ variant: blank, clientPriceCount: 2 }).reason, /2 client prices/);
-  assert.match(canDeleteVariant({ variant: blank, clientPriceCount: 1 }).reason, /1 client price use/);
+  assert.match(canDeleteVariant({ variant: blank, clientPriceCount: 2 }).reason, /2 client prices use it/);
+  assert.match(canDeleteVariant({ variant: blank, clientPriceCount: 1 }).reason, /1 client price uses it/);
   assert.match(canDeleteVariant({ variant: blank, orderItemCount: 1 }).reason, /past orders/);
 });
 

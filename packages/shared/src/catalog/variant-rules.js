@@ -13,7 +13,7 @@ export function canDeleteVariant({ variant, clientPriceCount = 0, orderItemCount
   if (variant.active) return { ok: false, reason: "It is active. Deactivate it first." };
   if (variant.basePriceCents != null) return { ok: false, reason: "It has a base price. Clear the price first." };
   if (variant.code != null && variant.code !== "") return { ok: false, reason: "It has a lab code, so invoices may refer to it." };
-  if (clientPriceCount > 0) return { ok: false, reason: `${clientPriceCount} client price${clientPriceCount === 1 ? "" : "s"} use it.` };
+  if (clientPriceCount > 0) return { ok: false, reason: `${clientPriceCount} client price${clientPriceCount === 1 ? " uses" : "s use"} it.` };
   if (orderItemCount > 0) return { ok: false, reason: "It appears on past orders." };
   if (familyVariantCount === 1) return { ok: false, reason: "It is the product's only variant. Deactivate the product instead." };
   return { ok: true };
