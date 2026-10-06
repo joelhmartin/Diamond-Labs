@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { autopayEnrollSchema } from "@my-app/shared";
@@ -69,6 +69,14 @@ function ChargePanel({ invoices, cards, cardsUnavailable, doctorUserId, onSucces
     () => (cards.find((c) => c.isDefault) || cards[0])?.paymentProfileId || ""
   );
   const [processing, setProcessing] = useState(false);
+
+  // Card actions reload `cards` without remounting this panel. If the selected
+  // card was deleted, the <select> would show another card while state still
+  // holds the old id — the admin sees one card and the request charges another.
+  useEffect(() => {
+    if (cards.some((c) => c.paymentProfileId === selectedCard)) return;
+    setSelectedCard((cards.find((c) => c.isDefault) || cards[0])?.paymentProfileId || "");
+  }, [cards, selectedCard]);
 
   const { ordered, alloc, targetStr, totalBalance, handleTargetChange, setRow, payTotal, allocations, canPay } =
     useInvoiceAllocation(invoices);
@@ -189,7 +197,26 @@ function ChargePanel({ invoices, cards, cardsUnavailable, doctorUserId, onSucces
  * always known by callers (e.g. the AutoPay list doesn't select it), so we
  * match on the Seazona account number instead, which every caller has.
  */
-export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount }) {
+export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount: minAmountProp }) {
+  // Floor shown in the AutoPay form: the caller's value when it has one (the
+  // AutoPay list page), else the one the per-doctor read returns (Users page).
+  const [serverMinAmount, setServerMinAmount] = useState(null);
+  const minAmount = minAmountProp ?? serverMinAmount;
+  const panelRef = useRef(null);
+
+  // Keyboard access: Escape closes, and focus moves into the dialog on open.
+  // Runs once per mount (onClose read through a ref) — callers pass an inline
+  // onClose, and re-running on every render would yank focus out of inputs.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") onCloseRef.current?.();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    panelRef.current?.focus();
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
   const { addToast } = useToast();
 
   const [loading, setLoading] = useState(true);
@@ -239,6 +266,7 @@ export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount }) {
       setCards(data.data.cards || []);
       setCardsUnavailable(Boolean(data.data.cardsUnavailable));
       setEnrollment(data.data.enrollment || null);
+      if (data.data.minAmount != null) setServerMinAmount(Number(data.data.minAmount));
       setLoadError(null);
     } catch (err) {
       setLoadError(errMsg(err, "Could not load this doctor's payment setup."));
@@ -415,7 +443,12 @@ export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="flex h-full w-full max-w-lg flex-col overflow-y-auto bg-surface-50 shadow-2xl"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Payments for ${doctor.name || doctor.email || "doctor"}`}
+        tabIndex={-1}
+        className="flex h-full w-full max-w-lg flex-col overflow-y-auto bg-surface-50 shadow-2xl focus:outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="sticky top-0 z-10 flex items-start justify-between border-b border-surface-300/50 bg-white px-6 py-5">
@@ -742,6 +775,7 @@ export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount }) {
       {offlineModalInvoice && (
         <OfflinePaymentModal
           invoice={offlineModalInvoice}
+          userId={doctor.userId}
           onClose={() => setOfflineModalInvoice(null)}
           onRecorded={() => {
             notifyChanged();

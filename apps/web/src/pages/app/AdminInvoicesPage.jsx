@@ -103,12 +103,18 @@ function remainingOf(inv) {
 // is accurate. No Seazona write is made (the payment already exists there).
 // Exported so DoctorPaymentDrawer.jsx (admin per-doctor payment parity panel)
 // can reuse the identical flow instead of duplicating it.
-export function OfflinePaymentModal({ invoice, onClose, onRecorded }) {
+// `userId` (optional): the portal user the payment is attributed to. The
+// per-doctor drawer passes the doctor it was opened for; without it the API
+// picks a user linked to the invoice's Seazona client.
+export function OfflinePaymentModal({ invoice, userId, onClose, onRecorded }) {
   const remaining = remainingOf(invoice);
   const [amountStr, setAmountStr] = useState(String(remaining.toFixed(2)));
   const [recordInSeazona, setRecordInSeazona] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState(null);
+  // Set once the server reports the payment was recorded but its ledger write
+  // failed — the submit button stays locked so it can't be recorded twice.
+  const [needsReconcile, setNeedsReconcile] = useState(false);
   const { addToast } = useToast();
 
   const amount = parseFloat(amountStr);
@@ -119,12 +125,25 @@ export function OfflinePaymentModal({ invoice, onClose, onRecorded }) {
     setSubmitting(true);
     setErr(null);
     try {
-      await api.post(`/admin/invoices/${invoice.id}/offline-payment`, {
+      const res = await api.post(`/admin/invoices/${invoice.id}/offline-payment`, {
         amount: Number(amount.toFixed(2)),
         invoiceNumber: invoice.invoiceNumber,
         seazonaClientId: invoice.clientId,
+        ...(userId ? { userId } : {}),
         recordInSeazona,
       });
+      // 200 with ledgerWriteFailed: the payment was NOT written to the portal
+      // ledger. Don't report success or close — a staff member who thinks it
+      // failed silently would record it again.
+      const result = res.data?.data;
+      if (result?.ledgerWriteFailed) {
+        setNeedsReconcile(true);
+        setErr(
+          `This payment needs manual reconciliation — it was not saved to the portal ledger. ` +
+            `Do not record it again. Reference: ${result.transactionId || "unknown"}.`
+        );
+        return;
+      }
       addToast({
         message: `Recorded ${formatUSD(amount)} offline payment on #${invoice.invoiceNumber}.`,
         type: "success",
@@ -239,7 +258,7 @@ export function OfflinePaymentModal({ invoice, onClose, onRecorded }) {
           <button
             type="button"
             onClick={submit}
-            disabled={!valid || submitting}
+            disabled={!valid || submitting || needsReconcile}
             className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold bg-brand-500 text-white hover:bg-brand-600 transition-all disabled:opacity-50"
           >
             {submitting && <Loader2 size={12} className="animate-spin" />}

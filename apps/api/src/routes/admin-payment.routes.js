@@ -140,6 +140,9 @@ export default async function adminPaymentRoutes(fastify) {
           cards,
           cardsUnavailable,
           canEnroll: !cardsUnavailable && cards.length > 0,
+          // The drawer can be opened from pages that don't load the AutoPay
+          // list (Users), so the floor travels with the per-doctor read too.
+          minAmount: Number(env.AUTOPAY_MIN_AMOUNT),
         },
       };
     } catch (err) {

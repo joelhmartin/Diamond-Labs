@@ -133,6 +133,23 @@ export default function AutoPayPage() {
     );
   }
 
+  // GET /autopay itself failed — there is no state to render. Offer a retry
+  // rather than dereferencing null below.
+  if (!state) {
+    return (
+      <div className="mx-auto max-w-2xl px-6 py-8">
+        <h1 className="text-2xl font-bold text-gray-900">AutoPay</h1>
+        <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-8 text-center">
+          <AlertTriangle className="mx-auto mb-3 h-8 w-8 text-red-500" />
+          <p className="font-medium text-red-900">We couldn't load your AutoPay settings</p>
+          <Button variant="secondary" className="mt-4" onClick={load}>
+            Try again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   // Authorize.net was unreachable when we tried to list cards — this is not
   // the same as "no cards on file" and must not send a doctor with a good
   // card into the add-a-card flow. Offer a retry instead.
