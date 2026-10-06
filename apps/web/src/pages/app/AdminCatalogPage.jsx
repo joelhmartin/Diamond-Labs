@@ -24,11 +24,22 @@ export function familyBadge(family) {
   return `${n} variant${n === 1 ? "" : "s"}${unpriced ? ` · ${unpriced} unpriced` : ""}`;
 }
 
+/** Whether a variant may be saved as active. Shop items need a base price; lab-billed (rx) items
+ * can be billed from a client's negotiated price alone. Returns { ok, note }. */
+export function canActivate(family, variant, priceCents) {
+  if (priceCents != null) return { ok: true, note: null };
+  if (family.channel === "rx") {
+    return { ok: true, note: "No base price — only clients with a negotiated price can be billed." };
+  }
+  return { ok: false, note: "A variant needs a price before it can be active." };
+}
+
 const errorText = (err) => err.response?.data?.error?.message || "Something went wrong.";
 
 function VariantRow({ family, variant, onSaved }) {
   const labelOf = new Map(family.options.flatMap((o) => o.values.map((v) => [v.id, v.value])));
   const [draft, setDraft] = useState({
+    name: variant.name ?? "",
     code: variant.code ?? "",
     price: variant.basePriceCents == null ? "" : (variant.basePriceCents / 100).toFixed(2),
     taxable: variant.taxable,
@@ -40,12 +51,16 @@ function VariantRow({ family, variant, onSaved }) {
   async function save() {
     const basePriceCents = parsePriceInput(draft.price);
     if (basePriceCents === undefined) { setError("Price must be dollars and cents, e.g. 199.00"); return; }
-    if (draft.active && basePriceCents == null) { setError("A variant needs a price before it can be active."); return; }
+    if (!draft.name.trim()) { setError("A variant needs a name."); return; }
+    if (draft.active) {
+      const gate = canActivate(family, variant, basePriceCents);
+      if (!gate.ok) { setError(gate.note); return; }
+    }
     setSaving(true);
     setError(null);
     try {
       const res = await api.patch(`/admin/catalog/variants/${variant.id}`, {
-        code: draft.code.trim() || null, basePriceCents, taxable: draft.taxable, active: draft.active,
+        name: draft.name.trim(), code: draft.code.trim() || null, basePriceCents, taxable: draft.taxable, active: draft.active,
       });
       onSaved(res.data.data.family);
     } catch (err) {
@@ -58,7 +73,9 @@ function VariantRow({ family, variant, onSaved }) {
   return (
     <tr className="border-t border-surface-300/40 align-top">
       <td className="px-3 py-2 text-sm">
-        {variant.optionValueIds.map((id) => labelOf.get(id)).filter(Boolean).join(" · ") || variant.name}
+        <span className="block text-xs text-navy/50 mb-1">{variant.optionValueIds.map((id) => labelOf.get(id)).filter(Boolean).join(" · ") || "Default"}</span>
+        <input className={INPUT} aria-label="Variant name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+        {variant.active && variant.basePriceCents == null && canActivate(family, variant, null).note && family.channel === "rx" && <p className="text-xs text-amber-700 mt-1">{canActivate(family, variant, null).note}</p>}
         {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
       </td>
       <td className="px-3 py-2 w-28"><input className={INPUT} value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} /></td>
@@ -71,6 +88,41 @@ function VariantRow({ family, variant, onSaved }) {
         </button>
       </td>
     </tr>
+  );
+}
+
+const CHANNEL_OPTIONS = [["shop", "Shop"], ["rx", "Lab-billed"], ["both", "Both"]];
+
+function DetailsForm({ family, busy, act }) {
+  const [d, setD] = useState({
+    name: family.name ?? "", category: family.category ?? "", description: family.description ?? "",
+    imageUrl: family.imageUrl ?? "", channel: family.channel,
+  });
+  const [localError, setLocalError] = useState(null);
+  const set = (k) => (e) => setD({ ...d, [k]: e.target.value });
+  function save() {
+    if (!d.name.trim()) { setLocalError("A product needs a name."); return; }
+    setLocalError(null);
+    act(() => api.patch(`/admin/catalog/families/${family.id}`, {
+      name: d.name.trim(), category: d.category.trim() || null, description: d.description.trim() || null,
+      imageUrl: d.imageUrl.trim() || null, channel: d.channel,
+    }));
+  }
+  return (
+    <details className="rounded-xl border border-surface-300/50 p-3">
+      <summary className="cursor-pointer text-sm font-semibold text-navy">Details</summary>
+      <div className="grid sm:grid-cols-2 gap-3 mt-3">
+        <input className={INPUT} aria-label="Name" placeholder="Name" value={d.name} onChange={set("name")} />
+        <input className={INPUT} aria-label="Category" placeholder="Category" value={d.category} onChange={set("category")} />
+        <input className={INPUT} aria-label="Image URL" placeholder="Image URL" value={d.imageUrl} onChange={set("imageUrl")} />
+        <select className={INPUT} aria-label="Channel" value={d.channel} onChange={set("channel")}>
+          {CHANNEL_OPTIONS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+        </select>
+        <textarea className={`${INPUT} sm:col-span-2`} aria-label="Description" placeholder="Description" rows={3} value={d.description} onChange={set("description")} />
+      </div>
+      {localError && <p className="text-xs text-red-600 mt-2">{localError}</p>}
+      <button type="button" disabled={busy} onClick={save} className="mt-3 px-3 py-2 rounded-lg bg-navy text-white text-sm disabled:opacity-40">Save details</button>
+    </details>
   );
 }
 
@@ -92,7 +144,10 @@ function FamilyDetail({ family, families, onChange }) {
     finally { setBusy(false); }
   }
 
-  const mergeable = families.filter((f) => f.id !== family.id && f.options.length === 0 && f.variants.length === 1);
+  const [mergeFilter, setMergeFilter] = useState("");
+  const mf = mergeFilter.trim().toLowerCase();
+  const mergeable = families.filter((f) => f.id !== family.id && f.options.length === 0 && f.variants.length === 1
+    && (!mf || f.name.toLowerCase().includes(mf) || (f.variants[0].code ?? "").toLowerCase().includes(mf)));
 
   return (
     <div className="space-y-6">
@@ -106,6 +161,8 @@ function FamilyDetail({ family, families, onChange }) {
       </div>
 
       {error && <div className="p-3 rounded-lg bg-red-50 text-red-600 text-sm flex gap-2"><AlertCircle size={16} />{error}</div>}
+
+      <DetailsForm family={family} busy={busy} act={act} />
 
       <div className="rounded-xl border border-surface-300/50 overflow-x-auto">
         <table className="w-full text-left">
@@ -149,9 +206,13 @@ function FamilyDetail({ family, families, onChange }) {
         <p className="text-xs text-navy/50">Adding an option gives existing variants its first value and creates every other combination unpriced and inactive.</p>
       </section>
 
+      {family.options.length === 0 && (
+        <p className="text-xs text-navy/50">Add an option first to merge other products in as variants.</p>
+      )}
       {family.options.length > 0 && (
         <section className="space-y-3">
           <h3 className="font-semibold text-sm text-navy flex items-center gap-2"><Layers size={16} /> Merge another product in as a variant</h3>
+          <input className={INPUT} placeholder="Filter products to merge" value={mergeFilter} onChange={(e) => setMergeFilter(e.target.value)} />
           <select className={INPUT} value={mergeSource} onChange={(e) => setMergeSource(e.target.value)}>
             <option value="">Choose a single-variant product…</option>
             {mergeable.map((f) => <option key={f.id} value={f.id}>{f.name}{f.variants[0].code ? ` (#${f.variants[0].code})` : ""}</option>)}
@@ -182,6 +243,7 @@ function FamilyDetail({ family, families, onChange }) {
 
 function NewFamilyForm({ onCreated }) {
   const [name, setName] = useState("");
+  const [channel, setChannel] = useState("shop");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   async function create() {
@@ -189,7 +251,7 @@ function NewFamilyForm({ onCreated }) {
     setError(null);
     try {
       const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-      const res = await api.post("/admin/catalog/families", { name: name.trim(), slug, channel: "shop" });
+      const res = await api.post("/admin/catalog/families", { name: name.trim(), slug, channel });
       onCreated(res.data.data.family);
       setName("");
     } catch (err) {
@@ -204,6 +266,9 @@ function NewFamilyForm({ onCreated }) {
         <input className={INPUT} placeholder="New product name" value={name} onChange={(e) => setName(e.target.value)} />
         <button type="button" aria-label="Create product" disabled={busy || !name.trim()} onClick={create} className="px-3 rounded-lg bg-navy text-white disabled:opacity-40"><Plus size={16} /></button>
       </div>
+      <select className={`${INPUT} mt-2`} aria-label="New product channel" value={channel} onChange={(e) => setChannel(e.target.value)}>
+        {CHANNEL_OPTIONS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+      </select>
       {error && <p className="text-xs text-red-600 mt-1">{error}</p>}
     </div>
   );
@@ -282,7 +347,7 @@ export function AdminCatalogPage() {
             </>
           )}
         </div>
-        <div>{selected ? <FamilyDetail family={selected} families={families} onChange={onFamilyChange} /> : <p className="text-sm text-navy/40">Select a product.</p>}</div>
+        <div>{selected ? <FamilyDetail key={selected.id} family={selected} families={families} onChange={onFamilyChange} /> : <p className="text-sm text-navy/40">Select a product.</p>}</div>
       </div>
     </div>
   );
