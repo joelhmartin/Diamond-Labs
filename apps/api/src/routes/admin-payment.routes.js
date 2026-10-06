@@ -346,13 +346,9 @@ export default async function adminPaymentRoutes(fastify) {
 
       // Deleting the card an enrollment points at would make every future cycle
       // fail silently. Block it and make the admin change the card first.
-      const enrollment = await autopayService.getEnrollment(doctor.id);
-      if (enrollment?.enabled && String(enrollment.paymentProfileId) === profileId) {
+      if (await autopayService.isCardUsedByAutopay(doctor.id, profileId)) {
         return reply.code(409).send({
-          error: {
-            ...ERROR_CODES.VALIDATION_ERROR,
-            message: "This card is used by an active AutoPay enrollment. Change the AutoPay card or cancel AutoPay first.",
-          },
+          error: { ...ERROR_CODES.VALIDATION_ERROR, message: autopayService.CARD_IN_USE_BY_AUTOPAY_MESSAGE },
         });
       }
 
@@ -490,7 +486,8 @@ export default async function adminPaymentRoutes(fastify) {
     // but a negative or zero value (e.g. `?limit=-5`) must not reach Postgres
     // as a negative LIMIT.
     const requested = Number(request.query?.limit);
-    const limit = Math.min(Math.max(Number.isFinite(requested) && requested > 0 ? requested : 50, 1), 200);
+    // Floored too: `?limit=10.5` would otherwise reach Postgres as a fractional LIMIT.
+    const limit = Math.min(Math.max(Number.isFinite(requested) && requested > 0 ? Math.floor(requested) : 50, 1), 200);
     const rows = await db.select().from(jobRuns).orderBy(desc(jobRuns.startedAt)).limit(limit);
     return { data: { runs: rows } };
   });

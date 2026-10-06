@@ -9,7 +9,7 @@ import * as authorizenetService from "./authorizenet.service.js";
 import { getClientPaidMapStrict } from "./invoice-ledger.service.js";
 import { verifyAllocations, recordPaymentAndAllocations } from "./payment-recording.service.js";
 import { allocateOldestFirst, resolveChargeAmount } from "../lib/autopay-allocation.js";
-import { isDueOn, isRetryDay, cycleKeyFor } from "../lib/autopay-schedule.js";
+import { isDueOn, isRetryDay, cycleKeyFor, labDateFor } from "../lib/autopay-schedule.js";
 import {
   withInvoiceLocks,
   withIdempotency,
@@ -115,7 +115,9 @@ function attemptBase({ enrollment, doctor, runId, now, dryRun, cycleKey }) {
     userId: doctor.id,
     jobRunId: runId || null,
     cycleKey: cycleKey || cycleKeyFor(now, env.AUTOPAY_TIMEZONE),
-    scheduledFor: now.toISOString().slice(0, 10),
+    // Lab-local date, like cycleKey and the due/retry decisions — a UTC date
+    // here disagrees by a day for any run after ~19:00 Chicago.
+    scheduledFor: labDateFor(now, env.AUTOPAY_TIMEZONE),
     dryRun: Boolean(dryRun),
   };
 }
@@ -205,8 +207,11 @@ export async function processEnrollment({ enrollment, doctor, invoices, dryRun, 
 
     if (chargeAmount <= 0) {
       // Nothing owed — the doctor has paid off. Stop charging them. `completed`
-      // is not permanent: see the reactivation branch below.
-      await updateEnrollment(enrollment.id, { status: "completed", lastRunAt: now, updatedAt: now }, log);
+      // is not permanent: see the reactivation branch below. A dry run only
+      // records what it WOULD do — it never changes an enrollment's lifecycle.
+      if (!dryRun) {
+        await updateEnrollment(enrollment.id, { status: "completed", lastRunAt: now, updatedAt: now }, log);
+      }
       return writeAttempt({ ...base, status: "skipped", failureReason: "no outstanding balance" }, log);
     }
 
@@ -217,7 +222,7 @@ export async function processEnrollment({ enrollment, doctor, invoices, dryRun, 
     // disabled forever. Flip the status regardless of whether THIS charge
     // attempt goes on to succeed or fail — the enrollment is genuinely
     // active again either way.
-    if (enrollment.status === "completed") {
+    if (enrollment.status === "completed" && !dryRun) {
       await updateEnrollment(enrollment.id, { status: "active", updatedAt: now }, log);
     }
 
@@ -272,6 +277,16 @@ export async function processEnrollment({ enrollment, doctor, invoices, dryRun, 
                 throw new AlreadyChargedThisCycleError();
               }
 
+              // TODO(autopay go-live precondition — NOT BUILT, blocks AUTOPAY_LIVE_RUN=true):
+              // cap `totalAllocated` at the client's CURRENT Seazona balance before
+              // this call. The portal ledger cannot see payments staff take directly
+              // in Seazona, so the ledger-derived balance above can include money
+              // that was already collected out-of-band. Seazona's JSON API exposes
+              // no balance; the only source is the statements "Export to Excel" in
+              // Seazona's admin web app (needs a staff web login). A Seazona balance
+              // that dropped with no matching portal payment means someone paid
+              // out-of-band — charge min(totalAllocated, seazonaBalance) and flag it.
+              // See docs/autopay-operations.md, "Go-live precondition".
               const charge = await authorizenetService.chargeCustomerProfile({
                 customerProfileId: doctor.authorizeNetCustomerProfileId,
                 paymentProfileId: enrollment.paymentProfileId,
@@ -423,21 +438,17 @@ export async function processEnrollment({ enrollment, doctor, invoices, dryRun, 
       );
 
       // Notify, soft-fail — an email problem must not mask the payment failure.
-      // sendAutopayFailure does not exist yet (Task 13 adds it); guard so this
-      // module doesn't crash at call time in the meantime — importing * as
-      // emailService never throws on a missing named export, only calling one
-      // would.
-      if (typeof emailService.sendAutopayFailure === "function") {
-        await emailService
-          .sendAutopayFailure({
+      await Promise.resolve()
+        .then(() =>
+          emailService.sendAutopayFailure({
             email: doctor.email,
             name: doctor.name,
             amount: totalAllocated,
             reason: err?.message || "Card declined",
             paused: shouldPause,
           })
-          .catch(() => {});
-      }
+        )
+        .catch(() => {});
 
       return writeAttempt(
         {

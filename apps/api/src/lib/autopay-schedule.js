@@ -22,6 +22,12 @@ export function zonedParts(date, timeZone) {
   };
 }
 
+/** Lab-local calendar date of an instant, as "YYYY-MM-DD". */
+export function labDateFor(date, timeZone) {
+  const { year, month, day } = zonedParts(date, timeZone);
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 /** Days in a 1-based month. Day 0 of the next month is the last of this one. */
 function daysInMonth(year, month) {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();

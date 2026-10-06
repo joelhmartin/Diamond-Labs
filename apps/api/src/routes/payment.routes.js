@@ -4,6 +4,7 @@ import { validate } from "../middleware/validate.js";
 import * as authorizenetService from "../services/authorizenet.service.js";
 import * as seazonaService from "../services/seazona.service.js";
 import { ensureCustomerProfile } from "../services/card.service.js";
+import { isCardUsedByAutopay, CARD_IN_USE_BY_AUTOPAY_MESSAGE } from "../services/autopay.service.js";
 import {
   listPaymentsForUser,
   listAllPayments,
@@ -684,6 +685,14 @@ export default async function paymentRoutes(fastify) {
     const customerProfileId = request.user.authorizeNetCustomerProfileId;
     if (!customerProfileId) {
       return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    }
+
+    // Same guard as the admin card-delete route: the card an enabled AutoPay
+    // enrollment charges can't be removed out from under it.
+    if (await isCardUsedByAutopay(request.user.id, request.params.profileId)) {
+      return reply.code(409).send({
+        error: { ...ERROR_CODES.VALIDATION_ERROR, message: CARD_IN_USE_BY_AUTOPAY_MESSAGE },
+      });
     }
 
     await authorizenetService.deletePaymentProfile({

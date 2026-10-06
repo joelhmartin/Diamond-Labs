@@ -147,7 +147,21 @@ async function requestRaw(path, options = {}) {
       return { ok: false, status: res.status, data: null };
     }
 
-    return { ok: true, status: res.status, data: await res.json() };
+    // A 2xx with an empty or malformed body must not reject: requestRaw's
+    // contract is "never throws", and a payment write that rejected here after
+    // the card was charged would skip the local ledger write. Resolve with
+    // data:null (callers already treat that as "no usable result") and log it
+    // with the alertable [Seazona] token — for a write, it may have landed.
+    let data = null;
+    try {
+      data = await res.json();
+    } catch (err) {
+      console.error(
+        `[Seazona] ${method} ${path} → ${res.status} with an unparseable body (${err?.message || err}); ` +
+          (method === "GET" ? "treating as no result" : "the write may have landed — check Seazona before re-entering")
+      );
+    }
+    return { ok: true, status: res.status, data };
   }
 
   // Both attempts rate limited.

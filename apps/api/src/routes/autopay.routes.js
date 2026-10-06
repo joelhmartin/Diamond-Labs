@@ -7,7 +7,7 @@ import { listCardsForUser } from "../services/card.service.js";
 import * as auditService from "../services/audit.service.js";
 import { db } from "../config/database.js";
 import { autopayAttempts } from "../db/schema/index.js";
-import { eq, desc } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import { env } from "../config/env.js";
 import { resolveChargeDay, zonedParts, cycleKeyFor } from "../lib/autopay-schedule.js";
 
@@ -70,11 +70,19 @@ function serialize(enrollment) {
 // Drizzle returns numeric columns as strings; the enrollment endpoint already
 // converts `amount` to a Number (see `serialize` above) — do the same here so
 // the frontend doesn't need to special-case one endpoint vs. the other.
+// Doctor-facing attempt shape — an explicit whitelist, not the raw row. The
+// row also carries internal fields (jobRunId, the dry-run flag, internal
+// failure detail) that are lab operations data, not the doctor's.
 function serializeAttempt(row) {
   return {
-    ...row,
+    id: row.id,
+    status: row.status,
+    cycleKey: row.cycleKey,
+    scheduledFor: row.scheduledFor,
     amountAttempted: row.amountAttempted != null ? Number(row.amountAttempted) : null,
     amountCharged: row.amountCharged != null ? Number(row.amountCharged) : null,
+    transactionId: row.transactionId ?? null,
+    createdAt: row.createdAt,
   };
 }
 
@@ -184,7 +192,9 @@ export default async function autopayRoutes(fastify) {
     const rows = await db
       .select()
       .from(autopayAttempts)
-      .where(eq(autopayAttempts.userId, request.user.id))
+      // Real attempts only. While AutoPay is dark every sweep writes dry-run
+      // `would_charge` rows; a doctor must never see a simulated charge.
+      .where(and(eq(autopayAttempts.userId, request.user.id), eq(autopayAttempts.dryRun, false)))
       .orderBy(desc(autopayAttempts.createdAt))
       .limit(50);
     return { data: { attempts: rows.map(serializeAttempt) } };

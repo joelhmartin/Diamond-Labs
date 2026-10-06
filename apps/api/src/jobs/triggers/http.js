@@ -30,9 +30,19 @@ function secretMatches(presented, secret) {
  * may proceed. Centralized so the routes below cannot drift out of sync on
  * which ones are actually guarded.
  */
+// The secret is the only guard on an internet-reachable route, so a weak one is
+// treated as no secret at all: the trigger stays disabled (fail closed) rather
+// than the whole API refusing to boot over a job-trigger misconfiguration.
+const MIN_TRIGGER_SECRET_LENGTH = 32;
+
 function requireTriggerSecret(request, reply) {
   const secret = env.JOBS_TRIGGER_SECRET;
-  if (!secret) {
+  if (!secret || secret.length < MIN_TRIGGER_SECRET_LENGTH) {
+    if (secret) {
+      request.log?.warn?.(
+        `[jobs] JOBS_TRIGGER_SECRET is shorter than ${MIN_TRIGGER_SECRET_LENGTH} characters — HTTP job trigger disabled`
+      );
+    }
     reply.code(503).send({ error: { code: "TRIGGER_DISABLED", message: "Job trigger is not configured." } });
     return false;
   }

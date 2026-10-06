@@ -42,7 +42,9 @@ vi.mock("../config/database.js", () => ({
   },
 }));
 
-const { upsertEnrollment, effectiveFloor, AutopayValidationError } = await import("./autopay.service.js");
+const { upsertEnrollment, effectiveFloor, AutopayValidationError, isCardUsedByAutopay } = await import(
+  "./autopay.service.js"
+);
 
 const user = { id: "u1", email: "d@x.com", name: "Doc", authorizeNetCustomerProfileId: "cp1" };
 
@@ -175,5 +177,19 @@ describe("effectiveFloor", () => {
 
   it("uses the override when present", () => {
     expect(effectiveFloor({ minAmountOverride: "75.00" })).toBe(75);
+  });
+});
+
+describe("isCardUsedByAutopay (both card-delete routes refuse this card)", () => {
+  it("is true only for the card an ENABLED enrollment charges", async () => {
+    rows.push({ userId: "u1", enabled: true, paymentProfileId: "pp1" });
+    await expect(isCardUsedByAutopay("u1", "pp1")).resolves.toBe(true);
+    await expect(isCardUsedByAutopay("u1", "pp2")).resolves.toBe(false);
+  });
+
+  it("is false for a disabled enrollment, and when there is no enrollment at all", async () => {
+    await expect(isCardUsedByAutopay("u1", "pp1")).resolves.toBe(false);
+    rows.push({ userId: "u1", enabled: false, paymentProfileId: "pp1" });
+    await expect(isCardUsedByAutopay("u1", "pp1")).resolves.toBe(false);
   });
 });

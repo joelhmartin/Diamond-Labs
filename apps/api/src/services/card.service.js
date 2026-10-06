@@ -1,6 +1,6 @@
 import { db } from "../config/database.js";
 import { users } from "../db/schema/index.js";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import * as authorizenetService from "./authorizenet.service.js";
 
 export class CardNotFoundError extends Error {
@@ -22,14 +22,31 @@ export class CardNotFoundError extends Error {
 export async function ensureCustomerProfile(user) {
   let customerProfileId = user.authorizeNetCustomerProfileId;
   if (!customerProfileId) {
-    customerProfileId = await authorizenetService.createCustomerProfile({
+    const created = await authorizenetService.createCustomerProfile({
       email: user.email,
       description: `Doctor: ${user.name}`,
     });
-    await db
+    // First writer wins. Two concurrent first-card requests (the doctor in one
+    // tab, an admin on their behalf in another) can both see no profile and
+    // both create one; an unconditional write let the second overwrite the
+    // first, orphaning any card already added to it. Persist only while the
+    // column is still empty, and otherwise adopt the profile that won, so every
+    // card lands on the one profile the user row points at.
+    const won = await db
       .update(users)
-      .set({ authorizeNetCustomerProfileId: customerProfileId, updatedAt: new Date() })
-      .where(eq(users.id, user.id));
+      .set({ authorizeNetCustomerProfileId: created, updatedAt: new Date() })
+      .where(and(eq(users.id, user.id), isNull(users.authorizeNetCustomerProfileId)))
+      .returning({ id: users.id });
+    if (won.length) {
+      customerProfileId = created;
+    } else {
+      const [row] = await db
+        .select({ authorizeNetCustomerProfileId: users.authorizeNetCustomerProfileId })
+        .from(users)
+        .where(eq(users.id, user.id))
+        .limit(1);
+      customerProfileId = row?.authorizeNetCustomerProfileId || created;
+    }
     user.authorizeNetCustomerProfileId = customerProfileId;
   }
   return customerProfileId;

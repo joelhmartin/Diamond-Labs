@@ -77,9 +77,25 @@ vi.mock("drizzle-orm", async () => {
   return {
     ...actual,
     eq: (column, value) => ({ __op: "eq", column, value }),
+    and: (...conds) => ({ __op: "and", conds }),
     desc: (column) => ({ __op: "desc", column }),
   };
 });
+
+// Evaluate the eq/and markers against an in-memory row. Column names are the
+// SQL (snake_case) names; rows are keyed camelCase like drizzle's results. A
+// seeded row without `dryRun` is a real attempt (the column defaults matter
+// only for the dry-run filter test, which sets it explicitly).
+function matches(row, cond) {
+  if (!cond) return true;
+  if (cond.__op === "and") return cond.conds.every((c) => matches(row, c));
+  if (cond.__op === "eq") {
+    const key = cond.column.name.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
+    const value = row[key] ?? (key === "dryRun" ? false : undefined);
+    return value === cond.value;
+  }
+  throw new Error(`unhandled condition ${cond.__op}`);
+}
 
 // In-memory stand-in for the autopay_attempts table. `where`/`orderBy`/`limit`
 // apply the eq/desc markers above against `attemptRows` — this is what lets
@@ -93,7 +109,7 @@ vi.mock("../../config/database.js", () => ({
         where: (cond) => ({
           orderBy: (sortCond) => ({
             limit: async (n) => {
-              const filtered = attemptRows.filter((r) => r.userId === cond.value);
+              const filtered = attemptRows.filter((r) => matches(r, cond));
               const sorted = sortCond?.__op === "desc"
                 ? [...filtered].sort((a, b) => b.createdAt - a.createdAt)
                 : filtered;
@@ -308,8 +324,8 @@ describe("GET /api/v1/autopay/attempts", () => {
     const res = await fastify.inject({ method: "GET", url: "/api/v1/autopay/attempts" });
     expect(res.statusCode).toBe(200);
     const { attempts } = res.json().data;
+    // a2 belongs to doc-2 and must not appear.
     expect(attempts.map((a) => a.id).sort()).toEqual(["a1", "a3"]);
-    expect(attempts.every((a) => a.userId === "doc-1")).toBe(true);
   });
 
   it("orders newest-first and caps at 50", async () => {
@@ -341,5 +357,21 @@ describe("GET /api/v1/autopay/attempts", () => {
     expect(a1.amountAttempted).toBe(12.5);
     expect(a1.amountCharged).toBe(12.5);
     expect(a2.amountCharged).toBeNull();
+  });
+
+  // While AutoPay is dark every sweep writes would_charge dry-run rows. A doctor
+  // must never see a simulated charge, nor internal run/operations fields.
+  it("hides dry-run attempts and returns only the whitelisted fields", async () => {
+    attemptRows = [
+      { id: "dry", userId: "doc-1", createdAt: new Date(), status: "would_charge", dryRun: true, amountAttempted: "500.00", jobRunId: "run-1" },
+      { id: "real", userId: "doc-1", createdAt: new Date(), status: "failed", dryRun: false, amountAttempted: "500.00", jobRunId: "run-2", failureReason: "internal detail" },
+    ];
+    const res = await fastify.inject({ method: "GET", url: "/api/v1/autopay/attempts" });
+    const { attempts } = res.json().data;
+    expect(attempts.map((a) => a.id)).toEqual(["real"]);
+    expect(attempts[0]).not.toHaveProperty("jobRunId");
+    expect(attempts[0]).not.toHaveProperty("dryRun");
+    expect(attempts[0]).not.toHaveProperty("failureReason");
+    expect(attempts[0]).not.toHaveProperty("userId");
   });
 });

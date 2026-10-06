@@ -61,6 +61,23 @@ beforeEach(() => {
   auditEntries.length = 0;
 });
 
+describe("recordPaymentAndAllocations — never throws after a charge", () => {
+  it("still writes the local ledger when the Seazona write rejects", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    seazonaCreatePayment.mockRejectedValueOnce(new SyntaxError("Unexpected end of JSON input"));
+    const result = await recordPaymentAndAllocations({
+      user: doctor,
+      amount: 100,
+      transactionId: "tx1",
+      allocations,
+      source: "autopay",
+    });
+    expect(result).toEqual({ seazonaPaymentId: null, ledgerWriteFailed: false });
+    expect(insertedRows).toHaveLength(1);
+    expect(insertedRows[0]).toMatchObject({ transactionId: "tx1", source: "autopay" });
+  });
+});
+
 describe("recordPaymentAndAllocations — existing callers unaffected", () => {
   it("defaults write to Seazona in production with a clientId (unchanged existing behavior)", async () => {
     const result = await recordPaymentAndAllocations({

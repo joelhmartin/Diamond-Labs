@@ -25,13 +25,13 @@ export function headerSafe(value, max = MAX_SUBJECT_LENGTH) {
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
-async function send({ to, cc, subject, html, text }) {
+async function send({ to, bcc, subject, html, text }) {
   // Header values: several subjects interpolate user input (doctor name, account
   // name, ...) and `to` can be a registrant-typed address. Strip control
   // characters (CR/LF header injection) and cap length centrally so no caller
   // has to remember. Done first so the dev log line below is sanitized too.
   to = headerSafe(to, 320);
-  if (cc) cc = headerSafe(cc, 320);
+  if (bcc) bcc = headerSafe(bcc, 320);
   subject = headerSafe(subject, MAX_SUBJECT_LENGTH);
 
   if (!mailgun) {
@@ -45,7 +45,7 @@ async function send({ to, cc, subject, html, text }) {
   const form = new URLSearchParams();
   form.set("from", env.EMAIL_FROM);
   form.set("to", to);
-  if (cc) form.set("cc", cc);
+  if (bcc) form.set("bcc", bcc);
   form.set("subject", subject);
   if (html) form.set("html", html);
   if (text) form.set("text", text);
@@ -217,13 +217,13 @@ export async function sendDoctorRejected({ email, name }) {
 }
 
 /**
- * AutoPay charge failed. Sent to the doctor; the lab is copied via
+ * AutoPay charge failed. Sent to the doctor; the lab gets a blind copy via
  * ADMIN_NOTIFICATION_EMAIL so a paused enrollment does not go unnoticed.
  */
 export async function sendAutopayFailure({ email, name, amount, reason, paused }) {
   return send({
     to: email,
-    cc: env.ADMIN_NOTIFICATION_EMAIL,
+    bcc: env.ADMIN_NOTIFICATION_EMAIL,
     subject: paused ? "AutoPay paused — payment failed" : "AutoPay payment failed",
     html: `
       <h1>We couldn't process your AutoPay payment</h1>

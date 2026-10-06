@@ -162,6 +162,21 @@ export async function upsertEnrollment({
   return getEnrollment(user.id);
 }
 
+/**
+ * True when `paymentProfileId` is the card an ENABLED AutoPay enrollment for
+ * this user charges. Deleting that card would make every later cycle fail (and
+ * eventually pause the doctor), so both card-delete paths — the doctor's own
+ * and the admin's — refuse it and ask for the AutoPay card to change first.
+ */
+export async function isCardUsedByAutopay(userId, paymentProfileId) {
+  const enrollment = await getEnrollment(userId);
+  return Boolean(enrollment?.enabled) && String(enrollment.paymentProfileId) === String(paymentProfileId);
+}
+
+/** Error body both card-delete routes return (409) for a card AutoPay uses. */
+export const CARD_IN_USE_BY_AUTOPAY_MESSAGE =
+  "This card is used by an active AutoPay enrollment. Change the AutoPay card or cancel AutoPay first.";
+
 export async function deleteEnrollment(userId) {
   await db.delete(autopayEnrollments).where(eq(autopayEnrollments.userId, String(userId)));
 }

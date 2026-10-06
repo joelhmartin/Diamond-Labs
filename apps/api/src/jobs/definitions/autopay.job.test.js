@@ -222,6 +222,28 @@ describe("processEnrollment", () => {
     expect(attempt.status).toBe("would_charge");
     expect(attempt.amountAttempted).toBe("500.00");
     expect(attempt.allocations).toHaveLength(2);
+    expect(enrollmentUpdates).toHaveLength(0);
+  });
+
+  // A dry run is a record of intent only — it must not move an enrollment's
+  // lifecycle (active <-> completed) any more than it moves money.
+  it("leaves enrollment status untouched on a dry run, for a zero balance and for a completed enrollment that owes again", async () => {
+    const zero = await processEnrollment({ enrollment, doctor, invoices: [], dryRun: true, now, runId: "r1" });
+    expect(zero.status).toBe("skipped");
+    const reopened = await processEnrollment({
+      enrollment: { ...enrollment, status: "completed" }, doctor, invoices, dryRun: true, now, runId: "r1",
+    });
+    expect(reopened.status).toBe("would_charge");
+    expect(enrollmentUpdates).toHaveLength(0);
+    expect(charged).toHaveLength(0);
+  });
+
+  it("stamps scheduledFor with the lab-local date, not the UTC date", async () => {
+    // 2026-08-16T02:00Z is still Aug 15 in Chicago.
+    const lateEvening = new Date("2026-08-16T02:00:00Z");
+    const attempt = await processEnrollment({ enrollment, doctor, invoices, dryRun: true, now: lateEvening, runId: "r1" });
+    expect(attempt.scheduledFor).toBe("2026-08-15");
+    expect(attempt.cycleKey).toBe("2026-08");
   });
 
   it("records a failure when the gateway declines", async () => {

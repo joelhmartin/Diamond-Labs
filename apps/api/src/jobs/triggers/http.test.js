@@ -3,7 +3,7 @@ import Fastify from "fastify";
 
 process.env.DATABASE_URL ||= "postgres://u:p@localhost:5432/test";
 process.env.JWT_SECRET ||= "test-jwt-secret-that-is-at-least-32-chars";
-process.env.JOBS_TRIGGER_SECRET = "test-secret";
+process.env.JOBS_TRIGGER_SECRET = "test-secret-0123456789-abcdefghijklmnop";
 
 // Same db/redis mocking pattern as runner.test.js — runJob is the real
 // function; only its storage/lock dependencies are faked.
@@ -80,7 +80,7 @@ describe("registerJobTriggerRoutes", () => {
     const res = await fastify.inject({
       method: "POST",
       url: "/internal/jobs/autopay/run",
-      headers: { "x-jobs-trigger-secret": "test-secret" },
+      headers: { "x-jobs-trigger-secret": "test-secret-0123456789-abcdefghijklmnop" },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
@@ -92,19 +92,37 @@ describe("registerJobTriggerRoutes", () => {
     const res = await fastify.inject({
       method: "POST",
       url: "/internal/jobs/nope/run",
-      headers: { "x-jobs-trigger-secret": "test-secret" },
+      headers: { "x-jobs-trigger-secret": "test-secret-0123456789-abcdefghijklmnop" },
     });
     expect(res.statusCode).toBe(404);
   });
 
-  // Same length as "test-secret" (11 chars) but wrong content. This is the
+  // A configured secret too short to resist guessing is treated as no secret:
+  // the trigger stays disabled (503) rather than accepting it.
+  it("refuses to run with a configured secret shorter than 32 characters", async () => {
+    const { env } = await import("../../config/env.js");
+    const original = env.JOBS_TRIGGER_SECRET;
+    env.JOBS_TRIGGER_SECRET = "short-secret";
+    try {
+      const res = await fastify.inject({
+        method: "POST",
+        url: "/internal/jobs/autopay/run",
+        headers: { "x-jobs-trigger-secret": "short-secret" },
+      });
+      expect(res.statusCode).toBe(503);
+    } finally {
+      env.JOBS_TRIGGER_SECRET = original;
+    }
+  });
+
+  // Same length as the configured secret but wrong content. This is the
   // case that would slip past a timingSafeEqual implementation whose
   // length-mismatch guard is the only thing preventing a throw — if the
   // guard were accidentally short-circuiting equality itself instead of
   // just length, this would wrongly pass.
   it("rejects a same-length-but-wrong secret on POST", async () => {
-    const wrongSameLength = "aaaaaaaaaaa";
-    expect(wrongSameLength.length).toBe("test-secret".length);
+    const wrongSameLength = "a".repeat("test-secret-0123456789-abcdefghijklmnop".length);
+    expect(wrongSameLength.length).toBe("test-secret-0123456789-abcdefghijklmnop".length);
     const res = await fastify.inject({
       method: "POST",
       url: "/internal/jobs/autopay/run",
@@ -131,7 +149,7 @@ describe("registerJobTriggerRoutes", () => {
     const res = await fastify.inject({
       method: "GET",
       url: "/internal/jobs",
-      headers: { "x-jobs-trigger-secret": "test-secret" },
+      headers: { "x-jobs-trigger-secret": "test-secret-0123456789-abcdefghijklmnop" },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().data.jobs).toEqual([{ name: "autopay", description: "d" }]);

@@ -87,16 +87,24 @@ export async function recordPaymentAndAllocations({
   // the flow is fully testable without polluting Seazona's production data.
   // `writeToSeazona` is ANDed on top — see the doc comment above.
   if (writeToSeazona && user.seazonaClientId && env.AUTHORIZE_NET_ENV === "production") {
-    const res = await seazonaService.createPayment({
-      clientId: user.seazonaClientId,
-      accountNumber: user.seazonaAccountNumber,
-      // `Invoices <num>` token is what Seazona's report matches on to attribute
-      // this payment to the invoice(s); the gateway txn id lives in notes. Fall
-      // back to the txn id only if no allocation carried an invoice number.
-      referenceNumber: buildInvoiceReference(allocations) || transactionId,
-      notes: buildAllocationNotes(allocations, transactionId),
-      amount,
-    });
+    // Guarded: this function promises never to throw (the card is already
+    // charged). A rejection here would skip the local ledger write below and
+    // let the caller treat a captured charge as a failure.
+    let res = null;
+    try {
+      res = await seazonaService.createPayment({
+        clientId: user.seazonaClientId,
+        accountNumber: user.seazonaAccountNumber,
+        // `Invoices <num>` token is what Seazona's report matches on to attribute
+        // this payment to the invoice(s); the gateway txn id lives in notes. Fall
+        // back to the txn id only if no allocation carried an invoice number.
+        referenceNumber: buildInvoiceReference(allocations) || transactionId,
+        notes: buildAllocationNotes(allocations, transactionId),
+        amount,
+      });
+    } catch (err) {
+      console.error(`[Seazona] createPayment threw for charge ${transactionId}: ${String(err?.message || err).slice(0, 300)}`);
+    }
     // H3 — Seazona's payment-id field name is not firmly known. Accept the
     // plausible shapes; if the call returned a body but no id resolves, log the
     // KEYS ONLY (never values — avoid PHI) so the real field can be learned.
@@ -209,8 +217,13 @@ export async function recordPaymentAndAllocations({
  * fetched for ownership to compute the remaining balance — no extra fetch.
  */
 export async function verifyAllocations(allocations, user, { enforceCap = false } = {}) {
-  for (const a of allocations) {
-    const inv = await seazonaService.getInvoice(a.invoiceId);
+  // Fetch every invoice up front, concurrently: callers run this INSIDE the
+  // per-invoice locks (INVOICE_LOCK_TTL is short), so N sequential round trips
+  // would spend the lock's lifetime before the charge is even attempted. The
+  // Seazona wrapper still paces the requests; validation below stays ordered.
+  const fetched = await Promise.all(allocations.map((a) => seazonaService.getInvoice(a.invoiceId)));
+  for (const [i, a] of allocations.entries()) {
+    const inv = fetched[i];
     if (!inv) return { kind: "forbidden", message: `Invoice ${a.invoiceNumber || a.invoiceId} not found.` };
     if (!a.invoiceNumber && inv.invoiceNumber != null) a.invoiceNumber = inv.invoiceNumber;
     if (String(inv.clientId) !== String(user.seazonaClientId)) {
