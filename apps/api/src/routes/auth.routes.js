@@ -225,7 +225,31 @@ export default async function authRoutes(fastify) {
       const safeName = escapeHtml(preview.doctorName);
       const safeToken = encodeURIComponent(token);
       const approveUrl = `/api/v1/auth/approve/${safeToken}?action=approve`;
+      const approveUnlinkedUrl = `/api/v1/auth/approve/${safeToken}?action=approve_unlinked`;
       const rejectUrl = `/api/v1/auth/approve/${safeToken}?action=reject`;
+      const btn = "cursor:pointer;border:none;border-radius:10px;padding:12px 24px;font-size:15px;color:white;";
+
+      // With an email-matched Seazona client bound to this token, approval is an
+      // explicit choice about THAT client: approve and link it, or approve
+      // without it. Without one, it's the plain one-click Approve as before.
+      const client = preview.seazonaClient;
+      const clientBlock = client
+        ? `<p style="margin:0 0 16px;padding:12px;border-left:4px solid #f59e0b;background:#fffbeb;text-align:left;font-size:14px;">
+             This registration's email matches Seazona client <strong>${escapeHtml(client.label)}</strong>.
+             Linking gives this account that practice's invoices. It links only if you confirm it here
+             <em>and</em> the registrant verifies their email.
+           </p>`
+        : "";
+      const approveButtons = client
+        ? `<form method="POST" action="${approveUrl}" style="margin:0;">
+             <button type="submit" style="${btn}background:#16a34a;">Approve &amp; link ${escapeHtml(client.label)}</button>
+           </form>
+           <form method="POST" action="${approveUnlinkedUrl}" style="margin:0;">
+             <button type="submit" style="${btn}background:#475569;">Approve without linking</button>
+           </form>`
+        : `<form method="POST" action="${approveUrl}" style="margin:0;">
+             <button type="submit" style="${btn}background:#16a34a;">Approve</button>
+           </form>`;
 
       reply
         .type("text/html")
@@ -235,15 +259,14 @@ export default async function authRoutes(fastify) {
           <html>
           <head><title>Review doctor</title><meta name="viewport" content="width=device-width,initial-scale=1"></head>
           <body style="font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;">
-            <div style="text-align:center;padding:40px;background:white;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:400px;">
+            <div style="text-align:center;padding:40px;background:white;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,0.08);max-width:440px;">
               <h1 style="margin:0 0 8px;font-size:20px;">Review registration</h1>
               <p style="color:#64748b;margin:0 0 24px;">Approve or reject Dr. ${safeName}'s account?</p>
-              <div style="display:flex;gap:12px;justify-content:center;">
-                <form method="POST" action="${approveUrl}" style="margin:0;">
-                  <button type="submit" style="cursor:pointer;border:none;border-radius:10px;padding:12px 24px;font-size:15px;color:white;background:#16a34a;">Approve</button>
-                </form>
+              ${clientBlock}
+              <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;">
+                ${approveButtons}
                 <form method="POST" action="${rejectUrl}" style="margin:0;">
-                  <button type="submit" style="cursor:pointer;border:none;border-radius:10px;padding:12px 24px;font-size:15px;color:white;background:#dc2626;">Reject</button>
+                  <button type="submit" style="${btn}background:#dc2626;">Reject</button>
                 </form>
               </div>
             </div>
@@ -266,6 +289,13 @@ export default async function authRoutes(fastify) {
       const status = result.approved ? "approved" : "rejected";
       const color = result.approved ? "#16a34a" : "#dc2626";
       const safeName = escapeHtml(result.doctorName);
+      const linkNote = !result.approved
+        ? ""
+        : result.seazonaLinked
+          ? " Their Seazona account is now linked."
+          : result.seazonaClientConfirmed
+            ? " Their Seazona account will link once they verify their email."
+            : "";
 
       reply
         .type("text/html")
@@ -280,7 +310,7 @@ export default async function authRoutes(fastify) {
                 <span style="color:white;font-size:24px;">${result.approved ? "✓" : "✕"}</span>
               </div>
               <h1 style="margin:0 0 8px;font-size:20px;">Doctor ${status}</h1>
-              <p style="color:#64748b;margin:0;">Dr. ${safeName}'s account has been ${status}.</p>
+              <p style="color:#64748b;margin:0;">Dr. ${safeName}'s account has been ${status}.${linkNote}</p>
             </div>
           </body>
           </html>
