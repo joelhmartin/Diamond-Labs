@@ -80,7 +80,7 @@ Generic and provider-agnostic. AutoPay is its first consumer; `sync-seazona-prod
 ```
 apps/api/src/jobs/
   registry.js        defineJob({ name, description, handler }), getJob, listJobs
-  runner.js          runJob(name, { dryRun, trigger, actorId }) -> job_runs row
+  runner.js          runJob(name, { dryRun, trigger, actorUserId }) -> job_runs row
   cli.js             CLI entrypoint — what the Cloud Run Job executes
   triggers/
     http.js          POST /internal/jobs/:name/run  (Cloud Scheduler OIDC / shared secret)
@@ -146,7 +146,7 @@ One row per doctor per run — the audit trail, and what makes a dry run useful.
 
 ### `job_runs` (new)
 
-`id`, `jobName`, `trigger` (`schedule`\|`manual`\|`interval`), `status`
+`id`, `jobName`, `trigger` (`schedule`\|`manual`\|`interval`\|`cli`), `status`
 (`running`\|`succeeded`\|`failed`), `dryRun`, `startedAt`, `finishedAt`,
 `summary` (jsonb), `error`, `actorUserId`.
 
@@ -173,7 +173,7 @@ doctors up by it on every offline payment, and the AutoPay sweep will too.
   `paymentProfileId` exists at the gateway under the doctor's
   `authorizeNetCustomerProfileId`. No card, no enrollment — enforced server-side
   on both the doctor and admin routes, not just in the UI.
-- `amount >= minAmountOverride ?? AUTOPAY_MIN_AMOUNT`. Doctors cannot go below
+- `amount >= (minAmountOverride ?? AUTOPAY_MIN_AMOUNT)`. Doctors cannot go below
   the floor; an admin can set a per-doctor override (grandfathered accounts,
   hardship), recorded in `audit_log`.
 - `dayOfMonth` 1–31, **clamped** to the last day of shorter months — the 31st
@@ -307,8 +307,13 @@ module-private and untested. This feature does not inherit that.
 - **Enrollment validation** — floor enforcement, admin override, card-on-file
   requirement, deleted-card handling.
 - **Run semantics** — dry run charges nothing but records `would_charge`;
-  idempotency prevents a double charge within a cycle; a decline increments
-  failures and pauses at the threshold.
+  on the normal path, idempotency plus the durable per-cycle guard prevent a
+  double charge within a cycle; a decline increments failures and pauses at
+  the threshold. This is not an absolute guarantee: if the process dies after
+  the gateway captures a charge but before it is recorded, a later manual
+  re-run can charge again (see the crash-window caveat in
+  `docs/autopay-operations.md`). Reconcile `autopay_attempts` against the
+  gateway before any manual re-run of a sweep that did not finish.
 - **Admin authorization** — every new admin route rejects doctor and plain-user
   roles. Given that `/payments/test/*` shipped guard-less, this gets an explicit
   test per route rather than trust.

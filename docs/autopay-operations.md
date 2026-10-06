@@ -22,8 +22,12 @@ section 3, "Scheduler subsystem".
 `diamond-labs-jobs` is a second Cloud Run Job, same image as the API
 (`diamond-labs-api`), same Cloud SQL connection and mostly the same secrets.
 Its command is `node apps/api/src/jobs/cli.js autopay --live`. Deploys
-(`cloudbuild.yaml`'s `update-jobs` step) only ever `gcloud run jobs update`
-it — point it at the new image — **never** `--execute-now`. Cloud Scheduler
+(`cloudbuild.yaml`'s `update-jobs` step, which runs after the service deploy
+succeeds and is skipped while the Job does not exist yet) only ever
+`gcloud run jobs update` it — point it at the new image — **never**
+`--execute-now`. As of 2026-10-05 the Job does not exist in
+`diamond-labs-prod` (only `diamond-labs-migrate` does), so merging AutoPay
+creates nothing that can run. Cloud Scheduler
 is the only thing that runs it, once a day. Whether a run actually charges
 anyone is controlled by a single Secret Manager value, `AUTOPAY_LIVE_RUN`,
 read by `apps/api/src/config/env.js` and checked in
@@ -44,7 +48,7 @@ All commands assume:
 PROJECT_ID=diamond-labs-prod
 REGION=us-central1
 JOB_NAME=diamond-labs-jobs
-IMAGE=us-central1-docker.pkg.dev/diamond-labs-prod/diamond-labs/api:latest   # pin to a SHA tag if you have one
+IMAGE=us-central1-docker.pkg.dev/diamond-labs-prod/diamond-labs/api:<SHORT_SHA>   # the SHA tag the service currently runs, never :latest
 SQL_INSTANCE=diamond-labs-prod:us-central1:diamond-labs-db
 RUNTIME_SA=565921059210-compute@developer.gserviceaccount.com   # same runtime SA the API service and diamond-labs-migrate already use
 ```
@@ -129,6 +133,12 @@ gcloud run jobs create $JOB_NAME \
 
 Notes on the non-obvious flags:
 
+- **`--service-account`** — reusing `$RUNTIME_SA` is the simplest setup, but
+  it also holds `jobs-trigger-secret` (granted in 1.2 for the API service),
+  which the Job never needs. The least-privilege setup is a dedicated Job
+  service account granted only Cloud SQL client plus the database, Seazona,
+  Authorize.net, email and `autopay-*` secrets, with `JOBS_TRIGGER_SECRET`
+  left out of `$EXISTING_SECRETS` for the Job.
 - **`--args=...,autopay,--live`** — see section 0. This is permanent; the
   live/dry-run switch is `AUTOPAY_LIVE_RUN`, not this flag.
 - **`--max-retries=0`** — the sweep takes a durable `kv_store`-backed lock
@@ -201,6 +211,40 @@ for the go-live checklist.
 
 Do these **in order**. Do not skip to step 2.3.
 
+### 2.0 Go-live precondition: cap each charge at the client's Seazona balance (NOT BUILT)
+
+**`AUTOPAY_LIVE_RUN` must stay `false` until this exists.** It is a code
+change, not a configuration step, and it is deliberately not part of the
+AutoPay PR. The code TODO sits at the charge step in
+`apps/api/src/services/autopay-runner.service.js` (search for
+`go-live precondition`).
+
+Why: AutoPay works out what a doctor owes from the portal's own
+`invoice_payments` ledger. That ledger only knows about payments made through
+the portal. Payments staff take directly in Seazona (phone, check, cash keyed
+into the Seazona web app) never reach it, because Seazona's payment API is
+write-only. Without a cap, AutoPay charges an enrolled doctor again for money
+the lab already collected.
+
+What to build: before any live charge, read the client's current balance from
+Seazona and charge `min(planned amount, Seazona balance)`.
+
+- Seazona's JSON API has no balance field or statements endpoint (see the
+  Seazona section of `CLAUDE.md`: invoices carry no paid flag, clients carry
+  no balance, `/v1/payments/` is write-only, ledger/statement endpoints 404).
+- The only source is the statements grid's **Export to Excel** in Seazona's
+  admin web app. It produces an HTML `<table>` saved as `.xls`, which is easy to
+  parse, but it needs a staff **web login** (cookie session on the admin host),
+  not the API's client ID and secret. Getting that login, and deciding where its
+  credentials live, is part of this precondition.
+- Treat a Seazona balance that dropped with no matching portal payment as a
+  signal that someone paid out-of-band. Cap the charge, and flag the doctor for
+  staff to record the payment through the admin offline-payment flow so the
+  portal ledger catches up.
+- Until this is built, the operational rule in the PR still applies: for
+  enrolled doctors, staff record payments through the admin offline-payment
+  flow, never only in Seazona.
+
 ### 2.1 Confirm `autopay_attempts` has sane `would_charge` rows
 
 Run a manual dry-run execution first if you don't already have recent data
@@ -250,6 +294,8 @@ the last chance to catch a fat-fingered amount or the wrong doctor before
 money moves.
 
 ### 2.3 Set `AUTOPAY_LIVE_RUN=true` and redeploy
+
+Only once the 2.0 balance cap is built, deployed, and visible in a dry run.
 
 ```bash
 printf 'true' | gcloud secrets versions add autopay-live-run --project=$PROJECT_ID --data-file=-
@@ -346,7 +392,7 @@ These were found during implementation and are accepted risks, not bugs to
   `autopay_attempts` first.
 - **Seazona rate-limits hard, so the sweep is serial.** Concurrency 8 failed
   448 of 476 requests against Seazona; the sweep is deliberately serial with
-  ~110ms spacing between enrollments (`SEAZONA_SPACING_MS` in
+  ~1.1s spacing between enrollments (`SEAZONA_SPACING_MS` = 1100 in
   `apps/api/src/services/autopay-runner.service.js`), on top of each
   enrollment's own Seazona invoice fetch and (if live) Authorize.net charge
   latency. Wall-clock time scales with the size of the enrolled cohort, not
@@ -375,7 +421,33 @@ These were found during implementation and are accepted risks, not bugs to
   repo root), read the per-source counts it prints, and only re-run without
   `DRY_RUN` once those counts look right. This is unrelated to whether
   AutoPay is live, but matters for the same reason: it touches the ledger
-  that AutoPay reads balances from (`getPortalPaidMapStrict`).
+  that AutoPay reads balances from (`getClientPaidMapStrict`, keyed by
+  Seazona client + invoice since PR #36).
+- **The Seazona rate limiter is per process.** The throttle in
+  `seazona.service.js` counts requests in memory, so each API instance and
+  the `diamond-labs-jobs` execution each admit up to 50/min on their own.
+  Their sum can exceed Seazona's 60/min integration quota while a sweep runs
+  alongside busy doctor traffic. Keep the API service's max instances low,
+  run the sweep off-hours (the 9am Central schedule is a starting point), and
+  move the limiter onto the shared `kv_store` before the enrolled cohort
+  grows large.
+- **The invoice archive walk may not be complete.** `getAllInvoicesResult()`
+  walks Seazona's 10,000-record-capped, id-sorted list forward by
+  `lastModified`. Rows past the cap that share one timestamp, or that sit
+  between the cursor and the next page's newest timestamp, can be skipped.
+  This understates a balance (AutoPay charges less, or marks the enrollment
+  `completed`, which the next sweep re-checks); it cannot overcharge, because
+  allocations only ever touch invoices the walk returned and the in-lock cap
+  re-reads each one. Before go-live, compare the archive size a dry run sees
+  against Seazona's own invoice count (go-live step 2.1).
+- **A held charge pauses the enrollment.** If Authorize.net holds an AutoPay
+  charge for fraud review and the portal cannot release the hold,
+  `chargeCustomerProfile` reports the outcome as pending. The sweep records a
+  `skipped` attempt carrying the held `transaction_id`, sets the enrollment to
+  `paused` with `paused_reason = 'gateway_outcome_pending'`, sends no decline
+  email, and never retries it. Decide the held transaction in the merchant
+  interface; if it was approved, record it with the admin offline-payment
+  flow, then resume the enrollment from the admin AutoPay page.
 
 ---
 
