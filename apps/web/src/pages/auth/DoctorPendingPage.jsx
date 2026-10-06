@@ -12,8 +12,12 @@ export function DoctorPendingPage() {
           <Clock className="h-7 w-7 text-amber-600" />
         </div>
         <h2 className="mb-2 text-xl font-semibold">Registration Submitted</h2>
-        <p className="mb-6 text-sm text-gray-500">
+        <p className="mb-3 text-sm text-gray-500">
           Your doctor account is pending admin approval. You'll receive an email once your account has been reviewed.
+        </p>
+        <p className="mb-6 text-sm text-gray-500">
+          We've also emailed you a link to verify your address. If you already have an account with the lab,
+          your invoices connect once your email is verified.
         </p>
         <Link
           to={ROUTES.LOGIN}

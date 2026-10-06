@@ -1,7 +1,7 @@
 import { db } from "../config/database.js";
 import { redis } from "../config/redis.js";
 import { users, accounts, memberships, sessions, doctorProfiles, approvalTokens } from "../db/schema/index.js";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { createId } from "../lib/id.js";
 import { hashPassword, comparePassword } from "../lib/passwords.js";
 import {
@@ -27,6 +27,9 @@ const MFA_ATTEMPTS_PREFIX = "mfa_attempts:";
 const MFA_CONSUMED_PREFIX = "mfa_consumed:";
 const MAX_MFA_ATTEMPTS = 5;
 const MFA_TOKEN_TTL = 5 * 60; // matches signMfaToken's 5m expiry
+// Doctor email-verification link lifetime — matches the 7-day approval token so
+// a registrant approved late in that window can still verify.
+const DOCTOR_EMAIL_VERIFY_TTL = 7 * 24 * 60 * 60;
 
 // A real bcrypt hash of a random string, used ONLY to equalize response timing
 // when an account is missing or passwordless — so login can't be used as a
@@ -362,6 +365,10 @@ export async function verifyEmail(token) {
     .where(eq(users.id, userId));
 
   await redis.del(`email_verify:${token}`);
+
+  // The address is now proven, so a doctor whose email matches a Seazona client
+  // login can be linked to it (registration deliberately did not).
+  await linkSeazonaClientByVerifiedEmail(userId);
 }
 
 // Re-key of the second factor is as sensitive as removing it, so it takes the
@@ -436,25 +443,29 @@ export async function registerDoctor(data) {
     .limit(1);
   if (existing) throw createAppError(ERROR_CODES.EMAIL_ALREADY_EXISTS);
 
-  // Link this registration to an existing Seazona client.
+  // Match this registration against existing Seazona clients — but link NOTHING
+  // here. Registration is public and unauthenticated, and the linked client id is
+  // what gates access to that practice's invoices (patient names — PHI).
   //
-  // ONLY an email match auto-links. Registration is public and unauthenticated,
-  // and the linked client id is what gates access to that practice's invoices —
-  // i.e. patient names, which are PHI. A practice's phone number is public
-  // information, so auto-linking on it let anyone who could look up a phone
-  // number register their way into another practice's billing data.
+  //  • Email match: the registrant has not proven they control the address yet,
+  //    so it is only a pending match. verifyEmail() links it once they click the
+  //    link we send to that address (see linkSeazonaClientByVerifiedEmail).
+  //  • Phone match: a practice's phone number is public, so it never auto-links;
+  //    it is surfaced to the admin as a suggestion only.
   //
-  // A phone hit is now only a SUGGESTION surfaced to the admin in the approval
-  // email; a human links it deliberately. Email still auto-links because the
-  // address is the account's own identifier.
-  let seazonaClientId = null;
-  let seazonaAccountNumber = null;
+  // Admin approval is independent of the link: an approved doctor with no link
+  // simply gets SEAZONA_CLIENT_NOT_LINKED on billing routes until they verify.
+  let seazonaEmailMatch = null;
   let suggestedSeazonaClient = null;
 
   const emailMatch = await seazonaService.checkLoginExists(data.email);
   if (emailMatch && emailMatch.clientId) {
-    seazonaClientId = String(emailMatch.clientId);
-    seazonaAccountNumber = emailMatch.accountNumber ? String(emailMatch.accountNumber) : null;
+    seazonaEmailMatch = {
+      clientId: String(emailMatch.clientId),
+      accountNumber: emailMatch.accountNumber ? String(emailMatch.accountNumber) : null,
+      // From Seazona's record — never the registrant-supplied companyName.
+      company: emailMatch.company || emailMatch.fullName || null,
+    };
   } else if (data.phone) {
     const phoneMatch = await seazonaService.findClientByPhone(data.phone);
     if (phoneMatch) {
@@ -479,8 +490,9 @@ export async function registerDoctor(data) {
     status: "active",
     role: "doctor",
     approvalStatus: "pending",
-    seazonaClientId,
-    seazonaAccountNumber,
+    // Deliberately unlinked — see the matching comment above.
+    seazonaClientId: null,
+    seazonaAccountNumber: null,
   });
 
   // Create default account
@@ -543,13 +555,72 @@ export async function registerDoctor(data) {
     companyName: data.companyName,
     approveUrl,
     rejectUrl,
-    seazonaLink: seazonaClientId
-      ? { clientId: seazonaClientId, accountNumber: seazonaAccountNumber, company: data.companyName }
-      : null,
+    seazonaEmailMatch,
     suggestedSeazonaClient,
   });
 
-  return { message: "Registration submitted. Awaiting admin approval." };
+  // Email-ownership proof. Sent to every doctor registrant (it also marks
+  // emailVerifiedAt); for an email match it is the ONLY way the Seazona link is
+  // made. Lives as long as the approval token so approve-then-verify works.
+  const verifyToken = generateSecureToken();
+  await redis.set(`email_verify:${verifyToken}`, userId, "EX", DOCTOR_EMAIL_VERIFY_TTL);
+  await emailService.sendWelcome({
+    email: data.email,
+    name: data.name,
+    verifyUrl: `${env.APP_URL}/auth/verify-email?token=${encodeURIComponent(verifyToken)}`,
+    expiresIn: "7 days",
+  });
+
+  return {
+    message: "Registration submitted. Check your email to verify your address — your account also needs admin approval.",
+  };
+}
+
+/**
+ * Link a doctor to the Seazona client whose login email matches theirs — called
+ * only after the user has PROVEN they control that address (verifyEmail).
+ *
+ * Re-queries Seazona with the now-verified address instead of trusting anything
+ * stored at registration. Never overrides an existing link (an admin may have
+ * set one deliberately) and never links a non-doctor. Soft-fails: a Seazona
+ * outage must not fail email verification itself.
+ *
+ * @returns {Promise<{ seazonaClientId: string, seazonaAccountNumber: string|null } | null>}
+ */
+export async function linkSeazonaClientByVerifiedEmail(userId) {
+  try {
+    const [user] = await db
+      .select({
+        email: users.email,
+        role: users.role,
+        emailVerifiedAt: users.emailVerifiedAt,
+        seazonaClientId: users.seazonaClientId,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!user || user.role !== "doctor" || !user.emailVerifiedAt || user.seazonaClientId) return null;
+
+    const match = await seazonaService.checkLoginExists(user.email);
+    if (!match?.clientId) return null;
+
+    const link = {
+      seazonaClientId: String(match.clientId),
+      seazonaAccountNumber: match.accountNumber ? String(match.accountNumber) : null,
+    };
+    const updated = await db
+      .update(users)
+      .set({ ...link, updatedAt: new Date() })
+      // Re-assert "still unlinked" in the write so a concurrent admin link wins.
+      .where(and(eq(users.id, userId), isNull(users.seazonaClientId)))
+      .returning({ id: users.id });
+    if (!updated.length) return null;
+    console.log(`[auth] linked user ${userId} to Seazona client ${link.seazonaClientId} after email verification`);
+    return link;
+  } catch (err) {
+    console.error(`[auth] Seazona link after email verification failed for user ${userId}:`, err);
+    return null;
+  }
 }
 
 /**

@@ -45,15 +45,17 @@ async function send({ to, subject, html, text }) {
   }
 }
 
-export async function sendWelcome({ email, name, verifyUrl }) {
-  await send({
+// `name` is escaped: on public doctor registration it is registrant-supplied and
+// this email goes to whatever address they typed — which may be someone else's.
+export async function sendWelcome({ email, name, verifyUrl, expiresIn = "24 hours" }) {
+  return send({
     to: email,
     subject: "Welcome! Please verify your email",
     html: `
-      <h1>Welcome, ${name}!</h1>
+      <h1>Welcome, ${esc(name)}!</h1>
       <p>Thanks for signing up. Please verify your email address by clicking the link below:</p>
       <p><a href="${verifyUrl}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;">Verify Email</a></p>
-      <p>This link expires in 24 hours.</p>
+      <p>This link expires in ${esc(expiresIn)}. If you didn't sign up, you can ignore this email.</p>
     `,
   });
 }
@@ -106,14 +108,19 @@ export async function sendAdminApprovalRequest({
   companyName,
   approveUrl,
   rejectUrl,
-  seazonaLink,
+  seazonaEmailMatch,
   suggestedSeazonaClient,
 }) {
-  // Approving grants access to a Seazona client's invoices — which carry patient
-  // names (PHI). Show the admin exactly which client, if any, this account is
-  // linked to, so approval is an informed decision rather than a blind one.
-  const linkRow = seazonaLink
-    ? `<tr><td style="padding:6px 12px;font-weight:bold;">Seazona account</td><td style="padding:6px 12px;">Linked by verified email — ${esc(seazonaLink.company || "account")} (acct ${esc(seazonaLink.accountNumber || "—")})</td></tr>`
+  // Approving grants a doctor account; the Seazona client link is what grants
+  // that client's invoices — which carry patient names (PHI). Registration is
+  // public and the email address is NOT verified at this point, so nothing here
+  // is linked yet: an email match links only once the registrant clicks the
+  // verification link we sent to that address (auth.service verifyEmail). The
+  // company/account shown comes from Seazona's own record, never from the
+  // registration form, so the admin isn't shown registrant-supplied text as if
+  // it were the matched practice.
+  const matchRow = seazonaEmailMatch
+    ? `<tr><td style="padding:6px 12px;font-weight:bold;">Seazona account</td><td style="padding:6px 12px;">NOT linked yet — email matches Seazona client ${esc(seazonaEmailMatch.company || "—")} (acct ${esc(seazonaEmailMatch.accountNumber || "—")}). It links automatically only after the registrant confirms they control this email address.</td></tr>`
     : `<tr><td style="padding:6px 12px;font-weight:bold;">Seazona account</td><td style="padding:6px 12px;">Not linked</td></tr>`;
 
   const suggestionBlock = suggestedSeazonaClient
@@ -122,7 +129,7 @@ export async function sendAdminApprovalRequest({
          Seazona client ${esc(suggestedSeazonaClient.company || "—")}
          (acct ${esc(suggestedSeazonaClient.accountNumber || "—")}).
          A phone number is public information, so we do not link on it automatically.
-         Verify this is the same practice and link it manually before approving.
+         If this is the same practice, it has to be linked manually.
        </p>`
     : "";
 
@@ -136,8 +143,8 @@ export async function sendAdminApprovalRequest({
         <tr><td style="padding:6px 12px;font-weight:bold;">Name</td><td style="padding:6px 12px;">${esc(doctorName)}</td></tr>
         <tr><td style="padding:6px 12px;font-weight:bold;">Email</td><td style="padding:6px 12px;">${esc(doctorEmail)}</td></tr>
         <tr><td style="padding:6px 12px;font-weight:bold;">NPI Number</td><td style="padding:6px 12px;">${esc(npiNumber)}</td></tr>
-        <tr><td style="padding:6px 12px;font-weight:bold;">Company</td><td style="padding:6px 12px;">${esc(companyName)}</td></tr>
-        ${linkRow}
+        <tr><td style="padding:6px 12px;font-weight:bold;">Company (as entered)</td><td style="padding:6px 12px;">${esc(companyName)}</td></tr>
+        ${matchRow}
       </table>
       ${suggestionBlock}
       <p style="margin:24px 0;">
