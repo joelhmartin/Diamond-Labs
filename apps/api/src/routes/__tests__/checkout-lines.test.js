@@ -11,6 +11,15 @@ test("quote lines become the order/receipt line shape, in dollars", () => {
   });
   assert.deepEqual(lines, [{
     variantId: "v1", catalogId: "61", seazonaProductId: "sz-1", name: "Mute Small",
-    unitPrice: 21.99, qty: 2, lineTotal: 43.98, taxable: true,
+    unitPrice: 21.99, unitCents: 2199, qty: 2, lineTotal: 43.98, lineCents: 4398, taxable: true,
+    priceSource: "base",
   }]);
+});
+
+test("a doctor's negotiated line keeps its price source for the order record", () => {
+  const [line] = checkoutLinesFromQuote({
+    lines: [{ variantId: "v1", name: "Mute", catalogId: null, legacySeazonaProductId: null, qty: 1, unitCents: 0, priceSource: "client", lineCents: 0, taxable: false }],
+  });
+  assert.equal(line.priceSource, "client");
+  assert.equal(line.unitCents, 0);
 });

@@ -24,6 +24,9 @@ export const orderItems = pgTable("order_items", {
   qty: integer("qty").notNull(),
   lineTotal: numeric("line_total", { precision: 12, scale: 2 }).notNull(),
   taxable: boolean("taxable").notNull().default(false),
+  // Where unitPrice came from: "client" (negotiated) | "base". Null on orders
+  // placed before the pricing service.
+  priceSource: varchar("price_source", { length: 10 }),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [

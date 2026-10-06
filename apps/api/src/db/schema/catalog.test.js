@@ -2,7 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   productFamilies, productOptions, productOptionValues, productVariants,
-  productVariantOptionValues, clientPrices, orderItems,
+  productVariantOptionValues, clientPrices, orderItems, orders,
 } from "./index.js";
 
 const has = (table, cols) => {
@@ -25,4 +25,11 @@ test("client prices are cents with a provenance", () => {
 test("order items can point at a variant and no longer require a shop SKU", () => {
   has(orderItems, ["variantId", "catalogId"]);
   assert.equal(orderItems.catalogId.notNull, false);
+});
+
+test("orders record who was priced and each line's price source", () => {
+  has(orders, ["pricedForUserId"]);
+  has(orderItems, ["priceSource"]);
+  assert.equal(orders.pricedForUserId.notNull, false);
+  assert.equal(orderItems.priceSource.notNull, false);
 });

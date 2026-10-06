@@ -39,7 +39,7 @@ import {
   verifyAllocations,
   recordPaymentAndAllocations,
 } from "../services/payment-recording.service.js";
-import { round2 } from "../lib/money.js";
+import { round2, toDecimalString } from "../lib/money.js";
 import { priceShopCart, pricingClientFor } from "../services/pricing.service.js";
 import { PricingError, assertQuotedTotal } from "../lib/pricing.js";
 import { pricingErrorReply } from "./catalog.routes.js";
@@ -223,10 +223,8 @@ async function recordGuestOrder({
   email,
   phone,
   shipping,
-  subtotal,
-  tax,
-  shippingCost,
-  total,
+  quote,
+  pricedForUserId,
   result,
   lines,
   log,
@@ -248,13 +246,14 @@ async function recordGuestOrder({
         email,
         phone: phone ? String(phone) : null,
         shipping,
-        subtotal: subtotal.toFixed(2),
-        tax: tax.toFixed(2),
-        shippingCost: shippingCost.toFixed(2),
-        total: total.toFixed(2),
+        subtotal: toDecimalString(quote.subtotalCents),
+        tax: toDecimalString(quote.taxCents),
+        shippingCost: toDecimalString(quote.shippingCents),
+        total: toDecimalString(quote.totalCents),
         transactionId: result.transactionId,
         authCode: result.authCode || null,
         status: "paid",
+        pricedForUserId,
         seazonaClientId,
         seazonaPushStatus: pushStatus,
       });
@@ -266,10 +265,11 @@ async function recordGuestOrder({
           catalogId: l.catalogId,
           seazonaProductId: l.seazonaProductId || null,
           name: l.name,
-          unitPrice: l.unitPrice.toFixed(2),
+          unitPrice: toDecimalString(l.unitCents),
           qty: l.qty,
-          lineTotal: l.lineTotal.toFixed(2),
+          lineTotal: toDecimalString(l.lineCents),
           taxable: l.taxable,
+          priceSource: l.priceSource,
         }))
       );
     });
@@ -323,7 +323,10 @@ async function recordGuestOrder({
   return { orderRecordFailed: false };
 }
 
-/** Quote lines → the dollar line shape orders, receipts and the Seazona push use. */
+/**
+ * Quote lines → the line shape orders, receipts and the Seazona push use.
+ * Dollars for the receipt/push; cents + priceSource for the order record.
+ */
 export function checkoutLinesFromQuote(quote) {
   return quote.lines.map((l) => ({
     variantId: l.variantId,
@@ -331,9 +334,12 @@ export function checkoutLinesFromQuote(quote) {
     seazonaProductId: l.legacySeazonaProductId,
     name: l.name,
     unitPrice: l.unitCents / 100,
+    unitCents: l.unitCents,
     qty: l.qty,
     lineTotal: l.lineCents / 100,
+    lineCents: l.lineCents,
     taxable: l.taxable,
+    priceSource: l.priceSource,
   }));
 }
 
@@ -374,9 +380,10 @@ export default async function paymentRoutes(fastify) {
     // ── Server-side price authority: the same pricing service the cart quote
     // uses (client price for approved doctors, else base). Client-sent prices
     // are ignored; the client amount is only compared, never charged.
+    const pricedForUserId = pricingClientFor(request.user);
     let quote;
     try {
-      quote = await priceShopCart({ lines: items, clientUserId: pricingClientFor(request.user) });
+      quote = await priceShopCart({ lines: items, clientUserId: pricedForUserId });
       // Refuse (409 PRICE_CHANGED) rather than charge a total the shopper wasn't shown.
       assertQuotedTotal(clientAmount, quote);
     } catch (err) {
@@ -457,7 +464,7 @@ export default async function paymentRoutes(fastify) {
           const orderId = createId();
           const rec = await recordGuestOrder({
             orderId, orderNumber, email, phone, shipping,
-            subtotal, tax, shippingCost, total, result, lines, log: fastify.log,
+            quote, pricedForUserId, result, lines, log: fastify.log,
           });
           orderRecordFailed = rec.orderRecordFailed;
 
