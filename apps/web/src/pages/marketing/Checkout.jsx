@@ -500,7 +500,7 @@ export function CheckoutPage() {
               <button
                 type="button"
                 onClick={submit}
-                disabled={processing}
+                disabled={processing || quoting || !quote || Boolean(quoteError)}
                 className="mt-5 btn-magnetic w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-full text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <span className="btn-bg bg-accent-600 rounded-full" />

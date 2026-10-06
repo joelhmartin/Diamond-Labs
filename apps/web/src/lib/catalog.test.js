@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { familyToProduct, variantFor, variantLabel, cartItemFor, migrateCart } from "./catalog.js";
+import { currentQuote, familyToProduct, variantFor, variantLabel, cartItemFor, migrateCart } from "./catalog.js";
 
 const family = {
   id: "f1", slug: "mute", name: "Mute", description: "Anti-snoring", category: "Sleep", imageUrl: "/catalog/mute.webp",
@@ -41,4 +41,15 @@ test("carts saved before variants existed are emptied, not sent to checkout", ()
   assert.deepEqual(migrateCart(old, 0).items, []);
   const kept = { items: [{ id: "v-l", variantId: "v-l", qty: 1 }] };
   assert.equal(migrateCart(kept, 0).items.length, 1);
+});
+
+test("a family with no variants has no from-price instead of Infinity", () => {
+  assert.equal(familyToProduct({ ...family, variants: [] }).priceFromCents, null);
+});
+
+test("a quote only counts for the cart it was priced from", () => {
+  const state = { key: "[[\"v-s\",1]]", quote: { totalCents: 100 } };
+  assert.equal(currentQuote(state, state.key).totalCents, 100);
+  assert.equal(currentQuote(state, "[[\"v-s\",2]]"), null);
+  assert.equal(currentQuote(null, state.key), null);
 });

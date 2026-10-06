@@ -12,7 +12,7 @@ import { formatCents } from "../../lib/money.js";
  */
 function toViewerShape(p, variant) {
   const priceCents = variant ? variant.priceCents : p.priceFromCents;
-  const price = priceCents === 0 ? "Included" : `${variant ? "" : "From "}${formatCents(priceCents)}`;
+  const price = priceCents == null ? "—" : priceCents === 0 ? "Included" : `${variant ? "" : "From "}${formatCents(priceCents)}`;
   const specs = [
     ...(variant?.code ? [{ label: "SKU", value: `#${variant.code}` }] : []),
     { label: "Price", value: price },

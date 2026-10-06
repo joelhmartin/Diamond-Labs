@@ -14,10 +14,15 @@ export function familyToProduct(family) {
     categories: family.category ? [family.category] : [],
     availability: "in-stock",
     active: true,
-    priceFromCents: Math.min(...prices),
+    priceFromCents: prices.length ? Math.min(...prices) : null,
     singleVariant: family.variants.length === 1 ? family.variants[0] : null,
     family,
   };
+}
+
+/** A quote only counts for the cart it was priced from; otherwise treat it as "still pricing". */
+export function currentQuote(state, key) {
+  return state && state.key === key ? state.quote : null;
 }
 
 export function variantFor(family, selectedValueIds) {

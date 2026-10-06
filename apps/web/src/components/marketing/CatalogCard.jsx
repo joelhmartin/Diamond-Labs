@@ -112,9 +112,11 @@ export function CatalogCard({ product, onOpen }) {
               ? product.singleVariant.priceCents === 0
                 ? "Included"
                 : formatCents(product.singleVariant.priceCents)
-              : product.priceFromCents === 0
-                ? "Included"
-                : `From ${formatCents(product.priceFromCents)}`}
+              : product.priceFromCents == null
+                ? "—"
+                : product.priceFromCents === 0
+                  ? "Included"
+                  : `From ${formatCents(product.priceFromCents)}`}
           </div>
 
           {!canBuy ? (
