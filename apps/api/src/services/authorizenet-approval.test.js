@@ -6,7 +6,7 @@ process.env.JWT_SECRET ||= "test-jwt-secret-that-is-at-least-32-chars";
 process.env.AUTHORIZE_NET_SANDBOX_API_LOGIN ||= "test-login";
 process.env.AUTHORIZE_NET_SANDBOX_TRANSACTION_KEY ||= "test-key";
 
-const { chargeWithNonce, chargeCustomerProfile } = await import("./authorizenet.service.js");
+const { chargeWithNonce, chargeCustomerProfile, releaseHeldTransaction } = await import("./authorizenet.service.js");
 
 /** Build a fetch stub returning an Authorize.net envelope, BOM and all. */
 function mockGatewayResponse(body) {
@@ -93,5 +93,96 @@ describe("charge approval enforcement", () => {
       responseCode: "1",
       authCode: "ABC123",
     });
+  });
+});
+
+/**
+ * A fraud-review hold (responseCode 4) is NOT a decline — staff can approve it
+ * later and the card is then charged. Reporting it as a plain failure invited a
+ * retry that created a second live transaction (Codex P1 on PR #36). The charge
+ * paths now decline the hold at the gateway before failing; if that cannot be
+ * done, the error is marked pending so the lock helpers keep their locks.
+ */
+describe("held-for-review charges are released before failing", () => {
+  /** fetch stub that answers each gateway call in order and records the request bodies. */
+  function sequence(...bodies) {
+    const calls = [];
+    const fn = vi.fn(async (_url, init) => {
+      calls.push(JSON.parse(init.body));
+      const body = bodies[Math.min(calls.length - 1, bodies.length - 1)];
+      return { text: async () => "﻿" + JSON.stringify(body) };
+    });
+    fn.calls = calls;
+    return fn;
+  }
+  const errorEnvelope = { messages: { resultCode: "Error", message: [{ text: "Transaction cannot be updated." }] } };
+  const okEnvelope = { messages: { resultCode: "Ok", message: [{ text: "Successful." }] } };
+
+  beforeEach(() => vi.stubEnv("AUTHORIZE_NET_ENV", "sandbox"));
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  for (const [name, charge] of [
+    ["chargeCustomerProfile", () => chargeCustomerProfile({ customerProfileId: "cp_1", paymentProfileId: "pp_1", amount: 100 })],
+    ["chargeWithNonce", () => chargeWithNonce({ amount: 100, opaqueData: { dataDescriptor: "d", dataValue: "v" } })],
+  ]) {
+    it(`${name}: declines the hold, then fails definitively (safe to retry)`, async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const fetch = sequence(envelope("4"), okEnvelope);
+      vi.stubGlobal("fetch", fetch);
+
+      const err = await charge().catch((e) => e);
+      expect(err).toBeInstanceOf(Error);
+      expect(err).toMatchObject({ heldForReview: true, transactionId: "60000000001" });
+      expect(err.gatewayOutcomePending).toBeUndefined();
+
+      expect(fetch.calls).toHaveLength(2);
+      expect(fetch.calls[1].updateHeldTransactionRequest.heldTransactionRequest).toEqual({
+        action: "decline",
+        refTransId: "60000000001",
+      });
+    });
+  }
+
+  it("falls back to a void when the decline is refused", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetch = sequence(envelope("4"), errorEnvelope, envelope("1"));
+    vi.stubGlobal("fetch", fetch);
+
+    const err = await chargeCustomerProfile({ customerProfileId: "cp_1", paymentProfileId: "pp_1", amount: 100 }).catch((e) => e);
+    expect(err.heldForReview).toBe(true);
+    expect(err.gatewayOutcomePending).toBeUndefined();
+    expect(fetch.calls[2].createTransactionRequest.transactionRequest).toEqual({
+      transactionType: "voidTransaction",
+      refTransId: "60000000001",
+    });
+  });
+
+  it("marks the outcome PENDING when the hold can be neither declined nor voided", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const alert = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", sequence(envelope("4"), errorEnvelope, errorEnvelope));
+
+    const err = await chargeCustomerProfile({ customerProfileId: "cp_1", paymentProfileId: "pp_1", amount: 100 }).catch((e) => e);
+    expect(err).toMatchObject({ heldForReview: true, gatewayOutcomePending: true, transactionId: "60000000001" });
+    expect(alert.mock.calls.flat().join(" ")).toMatch(/HELD_TXN_UNRESOLVED/);
+  });
+
+  it("a plain decline (responseCode 2) makes no extra gateway calls", async () => {
+    const fetch = sequence(envelope("2"));
+    vi.stubGlobal("fetch", fetch);
+
+    const err = await chargeCustomerProfile({ customerProfileId: "cp_1", paymentProfileId: "pp_1", amount: 100 }).catch((e) => e);
+    expect(err.heldForReview).toBeUndefined();
+    expect(fetch.calls).toHaveLength(1);
+  });
+
+  it("releaseHeldTransaction never throws, even on a network failure", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNRESET")));
+    await expect(releaseHeldTransaction("60000000001")).resolves.toBe(false);
   });
 });

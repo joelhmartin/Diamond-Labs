@@ -66,8 +66,19 @@ function round2(n) {
  * gateway's own (user-safe) decline text. Anything else (network, parse, config)
  * is a system failure → 502 PAYMENT_GATEWAY_ERROR with a generic message. We
  * never leak internals or stack traces to the client.
+ *
+ * Fraud-review holds get their own answers: a hold we declined at the gateway
+ * is a definitive "not charged" (402), but a hold we could NOT decline may still
+ * be captured, so the client is told not to retry (409) — the lock helpers have
+ * kept the idempotency key and invoice locks for the same reason.
  */
-function chargeErrorReply(reply, err) {
+export function chargeErrorReply(reply, err) {
+  if (err?.gatewayOutcomePending) {
+    return reply.code(409).send({ error: ERROR_CODES.PAYMENT_UNDER_REVIEW });
+  }
+  if (err?.heldForReview) {
+    return reply.code(402).send({ error: ERROR_CODES.PAYMENT_HELD_DECLINED });
+  }
   if (err?.authNetResponse) {
     const message = extractDeclineMessage(err.authNetResponse) || ERROR_CODES.CARD_DECLINED.message;
     return reply.code(402).send({ error: { ...ERROR_CODES.CARD_DECLINED, message } });

@@ -45,6 +45,8 @@ export const ERROR_CODES = {
   CARD_DECLINED: { code: "CARD_DECLINED", status: 402, message: "Your card was declined." },
   PAYMENT_GATEWAY_ERROR: { code: "PAYMENT_GATEWAY_ERROR", status: 502, message: "The payment gateway is temporarily unavailable. Please try again." },
   CHARGE_IN_PROGRESS: { code: "CHARGE_IN_PROGRESS", status: 409, message: "A charge for this request is already being processed. Please wait." },
+  PAYMENT_HELD_DECLINED: { code: "PAYMENT_HELD_DECLINED", status: 402, message: "This payment was flagged for review by our card processor and has been cancelled. Your card was not charged. Please contact the lab to complete payment." },
+  PAYMENT_UNDER_REVIEW: { code: "PAYMENT_UNDER_REVIEW", status: 409, message: "This payment is on hold for review by our card processor. Please do not retry — the lab will contact you to confirm whether it went through." },
   ALREADY_REFUNDED: { code: "ALREADY_REFUNDED", status: 409, message: "This transaction has already been refunded or voided." },
   REFUND_FAILED: { code: "REFUND_FAILED", status: 502, message: "The refund could not be completed. Please try again." },
   REFUND_UNCERTAIN: { code: "REFUND_UNCERTAIN", status: 409, message: "The reversal's outcome could not be confirmed — it may have already gone through. Do NOT retry; verify the transaction in Authorize.net and reconcile manually." },
