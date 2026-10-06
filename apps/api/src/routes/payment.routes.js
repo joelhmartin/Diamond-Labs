@@ -1,4 +1,4 @@
-import { authenticate } from "../middleware/authenticate.js";
+import { authenticate, optionalAuthenticate } from "../middleware/authenticate.js";
 import { requireApprovedDoctor, requireAdmin } from "../middleware/require-role.js";
 import { validate } from "../middleware/validate.js";
 import * as authorizenetService from "../services/authorizenet.service.js";
@@ -14,7 +14,7 @@ import { voidOrRefund } from "../lib/void-refund.js";
 import * as auditService from "../services/audit.service.js";
 import { db } from "../config/database.js";
 import { redis } from "../config/redis.js";
-import { users, invoicePayments, products, orders, orderItems, auditLog } from "../db/schema/index.js";
+import { users, invoicePayments, orders, orderItems, auditLog } from "../db/schema/index.js";
 import { eq, and, gt, inArray, like, desc } from "drizzle-orm";
 import { createId } from "../lib/id.js";
 import { env } from "../config/env.js";
@@ -40,6 +40,9 @@ import {
   recordPaymentAndAllocations,
 } from "../services/payment-recording.service.js";
 import { round2 } from "../lib/money.js";
+import { priceShopCart, pricingClientFor } from "../services/pricing.service.js";
+import { PricingError } from "../lib/pricing.js";
+import { pricingErrorReply } from "./catalog.routes.js";
 
 // Per-route strict rate limit for the charge-producing endpoints (M3). Layered
 // ON TOP of the global limiter; the global localhost allowList still applies in
@@ -49,17 +52,6 @@ const CHARGE_RATE_LIMIT = { config: { rateLimit: { max: 8, timeWindow: "1 minute
 // Hosted-payment binding record TTL (C2): a doctor has ~30 min to complete a
 // hosted charge before the issued token's server-side binding expires.
 const HOSTED_BINDING_TTL = 30 * 60;
-
-// ─── Guest-checkout pricing constants ───────────────────────────────────────
-// INTERIM flat values — tax/shipping are not yet modeled per-jurisdiction or
-// per-weight. These live server-side so the charged total cannot be tampered
-// with from the browser. The client display in Checkout.jsx mirrors these exact
-// constants for now; a future server quote endpoint should replace both.
-// NOTE: keep in sync with apps/web/src/pages/marketing/Checkout.jsx.
-const TAX_RATE = 0.08; // applied only to products.taxable line items
-const SHIPPING_FLAT = 12; // flat per-order, charged when subtotal > 0
-const MAX_QTY = 999; // per-line quantity ceiling — guards against an absurd qty
-// inflating the total past anything real and reaching the gateway as a 500.
 
 /**
  * Map a charge error to a user-safe reply (H2). An error carrying an
@@ -270,6 +262,7 @@ async function recordGuestOrder({
         lines.map((l) => ({
           id: createId(),
           orderId,
+          variantId: l.variantId,
           catalogId: l.catalogId,
           seazonaProductId: l.seazonaProductId || null,
           name: l.name,
@@ -330,6 +323,20 @@ async function recordGuestOrder({
   return { orderRecordFailed: false };
 }
 
+/** Quote lines → the dollar line shape orders, receipts and the Seazona push use. */
+export function checkoutLinesFromQuote(quote) {
+  return quote.lines.map((l) => ({
+    variantId: l.variantId,
+    catalogId: l.catalogId,
+    seazonaProductId: l.legacySeazonaProductId,
+    name: l.name,
+    unitPrice: l.unitCents / 100,
+    qty: l.qty,
+    lineTotal: l.lineCents / 100,
+    taxable: l.taxable,
+  }));
+}
+
 export default async function paymentRoutes(fastify) {
   // ───────────────────────────────────────────────────────────────
   // PUBLIC CHECKOUT — unauthenticated card charge for catalog orders.
@@ -337,10 +344,10 @@ export default async function paymentRoutes(fastify) {
   // Required: opaqueData (Accept.js nonce), amount, items[], email, shipping{}.
   // Intentionally does NOT store a CIM profile (guest checkout).
   // ───────────────────────────────────────────────────────────────
-  fastify.post("/payments/checkout", { ...CHARGE_RATE_LIMIT, preHandler: [validate(checkoutSchema)] }, async (request, reply) => {
+  fastify.post("/payments/checkout", { ...CHARGE_RATE_LIMIT, preHandler: [optionalAuthenticate, validate(checkoutSchema)] }, async (request, reply) => {
     // `amount` from the client is accepted for back-compat/logging ONLY — it is
     // NEVER used to charge. The charged total is recomputed server-side from the
-    // products table. This closes a price-tampering hole (pay $0.01 for $450).
+    // pricing service. This closes a price-tampering hole (pay $0.01 for $450).
     const { opaqueData, amount: clientAmount, items, email, shipping, phone, idempotencyKey: bodyKey } =
       request.body || {};
     const idempotencyKey = request.headers["idempotency-key"] || bodyKey || null;
@@ -364,65 +371,24 @@ export default async function paymentRoutes(fastify) {
       return { data: replay };
     }
 
-    // ── Server-side price authority: recompute every line from the products
-    // mirror. Unmapped / non-purchasable SKUs are refused (fail-safe — never
-    // guess a price). Client-sent price/amount are ignored entirely.
-    let subtotal = 0;
-    let taxableBase = 0;
-    // Resolved, price-authoritative lines — reused after the charge to build the
-    // immutable order_items snapshot and the (gated) Seazona push. Carries the
-    // mapped seazonaProductId so neither needs to re-query the catalog.
-    const lines = [];
-    for (const item of items) {
-      if (item?.id == null || item.id === "") {
-        return reply.code(422).send({
-          error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Each item requires an id." },
-        });
+    // ── Server-side price authority: the same pricing service the cart quote
+    // uses (client price for approved doctors, else base). Client-sent prices
+    // and amount are ignored entirely.
+    let quote;
+    try {
+      quote = await priceShopCart({ lines: items, clientUserId: pricingClientFor(request.user) });
+    } catch (err) {
+      if (err instanceof PricingError) {
+        const r = pricingErrorReply(err);
+        return reply.code(r.status).send(r.body);
       }
-      const qty = Number(item.qty);
-      if (!Number.isInteger(qty) || qty <= 0) {
-        return reply.code(422).send({
-          error: { ...ERROR_CODES.VALIDATION_ERROR, message: `Invalid quantity for item ${item.id}.` },
-        });
-      }
-      if (qty > MAX_QTY) {
-        return reply.code(422).send({
-          error: {
-            ...ERROR_CODES.VALIDATION_ERROR,
-            message: `Quantity for item ${item.id} exceeds the maximum of ${MAX_QTY} per order. Contact the lab for bulk orders.`,
-          },
-        });
-      }
-      const rows = await db
-        .select()
-        .from(products)
-        .where(and(eq(products.catalogId, String(item.id)), eq(products.purchasable, true)));
-      const product = rows[0];
-      if (!product || product.price == null) {
-        return reply.code(422).send({
-          error: {
-            ...ERROR_CODES.VALIDATION_ERROR,
-            message: `Item not available for online order (${item.id}). Contact the lab to place this order.`,
-          },
-        });
-      }
-      const line = round2(Number(product.price) * qty);
-      subtotal = round2(subtotal + line);
-      if (product.taxable) taxableBase = round2(taxableBase + line);
-      lines.push({
-        catalogId: String(item.id),
-        seazonaProductId: product.seazonaProductId,
-        name: product.name,
-        unitPrice: round2(Number(product.price)),
-        qty,
-        lineTotal: line,
-        taxable: Boolean(product.taxable),
-      });
+      throw err;
     }
-
-    const tax = round2(taxableBase * TAX_RATE);
-    const shippingCost = subtotal > 0 ? SHIPPING_FLAT : 0;
-    const total = round2(subtotal + tax + shippingCost);
+    const lines = checkoutLinesFromQuote(quote);
+    const subtotal = quote.subtotalCents / 100;
+    const tax = quote.taxCents / 100;
+    const shippingCost = quote.shippingCents / 100;
+    const total = quote.totalCents / 100;
 
     if (!(total > 0)) {
       return reply.code(422).send({
