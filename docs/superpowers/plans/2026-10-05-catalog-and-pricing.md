@@ -23,6 +23,13 @@
 - Verification bar for every task that touches schema: `cd apps/api && pnpm db:generate` must print "No schema changes" after the migration is committed.
 - Commit messages end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Subagents: Sonnet minimum, never Haiku.
 
+## Sequencing (from the Rx/payments session, 2026-10-05)
+
+- **Before Task 1:** PR #37 (AutoPay) and #36 (security) land on `main` first. Rebase `feat/own-the-lab` onto `origin/main` before cutting the piece branch. Main then has migrations up to 0024; this piece's migration must come from `pnpm db:generate` after the rebase (expect 0025). Never hand-number migrations.
+- **Task 9:** #37 moves charge/recording logic out of `payment.routes.js` into `services/payment-recording.service.js`, so the line numbers in Task 9 are stale. Read the current checkout handler and apply the same change wherever the products-mirror pricing loop and the order-items insert now live. The contract doesn't change: price through `priceShopCart`, record `variantId`.
+- **Rx mapping:** `catalog-map` rows are keyed by stable `mapKey`s, and `rx_code_overrides` (the lab's accumulated "always" choices) is keyed on them. This piece doesn't rekey anything: rows still resolve to a lab code, and a variant carries that same code (`variantByCode`). Do not edit `catalog-map/*` or `rx_code_overrides` here. If any Rx file is touched, run the replay harness `apps/api/scripts/rx-replay/run.mjs` as a regression check.
+- **Seazona:** no calls from this machine. The dev IP is currently blocked.
+
 ## Review Focus
 
 1. **A doctor's access token has expired while they shop** → they must not be silently priced as a guest (and charged base price). `optionalAuthenticate` 401s when a token is presented but invalid, so the client refreshes; it treats only a missing header as guest. Test in Task 6.
@@ -394,8 +401,8 @@ import { pgTable, varchar, text, integer, timestamp, index, uniqueIndex } from "
 // carrying the Seazona client link — the same key invoice_payments uses.
 //   source: manual   — entered by staff
 //           imported — from a Seazona price-list export
-//           inferred — last price actually billed (db/import-client-prices.js);
-//                      used, but flagged until reviewedAt is set
+//           inferred — last price actually billed (filled by the piece-5
+//                      migration); used, but flagged until reviewedAt is set
 export const clientPrices = pgTable("client_prices", {
   id: varchar("id", { length: 128 }).primaryKey(),
   clientUserId: varchar("client_user_id", { length: 128 }).notNull(),
@@ -3223,7 +3230,7 @@ gh pr create --base feat/own-the-lab --head feat/own-the-lab-1-catalog \
 Piece 1 of retiring Seazona (roadmap: docs/superpowers/specs/2026-10-05-own-the-lab-roadmap.md).
 
 - Owned catalog: families → options → variants, imported from the Seazona products mirror with an explicit Rx family seed.
-- Client negotiated prices, inferred from billed invoices (flagged until reviewed).
+- Client negotiated prices, entered per client by staff (inference from invoice history is deferred to the migration piece).
 - One integer-cents pricing service used by the shop catalog, cart quote and checkout.
 - Shop reads the catalog from the API with option pickers; checkout shows the server quote.
 - Admin Catalog page and per-client Pricing page.
