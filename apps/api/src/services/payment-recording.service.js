@@ -6,11 +6,7 @@ import { db } from "../config/database.js";
 import { invoicePayments } from "../db/schema/index.js";
 import { createId } from "../lib/id.js";
 import { env } from "../config/env.js";
-
-/** Round to cents consistently (avoids FP drift like 0.1+0.2). */
-function round2(n) {
-  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-}
+import { round2 } from "../lib/money.js";
 
 // "payment" rather than "txn" — this reads fine whether `transactionId` is a
 // real gateway transaction id or the `OFFLINE-<id>` sentinel an admin offline

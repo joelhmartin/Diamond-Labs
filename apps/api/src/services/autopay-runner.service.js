@@ -4,6 +4,7 @@ import { autopayEnrollments, autopayAttempts, users } from "../db/schema/index.j
 import { eq, and, or } from "drizzle-orm";
 import { createId } from "../lib/id.js";
 import { env } from "../config/env.js";
+import { round2 } from "../lib/money.js";
 import * as seazonaService from "./seazona.service.js";
 import * as authorizenetService from "./authorizenet.service.js";
 import { getClientPaidMapStrict } from "./invoice-ledger.service.js";
@@ -94,10 +95,6 @@ async function attemptsThisCycle(userId, cycleKey) {
  */
 const SEAZONA_SPACING_MS = 1_100;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-function round2(n) {
-  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-}
 
 /**
  * The base shape every attempt row shares, before its outcome-specific
