@@ -8,7 +8,31 @@ import { env } from "../config/env.js";
  * callers are unaffected and the receipt flow can report honestly whether an
  * email actually went out.
  */
+const MAX_SUBJECT_LENGTH = 200;
+
+/**
+ * Make a value safe for an email header (subject, recipient): control
+ * characters — CR/LF above all, which split headers — and Unicode line/paragraph
+ * separators become spaces, runs of whitespace collapse, and the result is capped
+ * at `max` characters (with an ellipsis when cut).
+ */
+export function headerSafe(value, max = MAX_SUBJECT_LENGTH) {
+  const clean = String(value ?? "")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001F\u007F-\u009F\u2028\u2029]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+}
+
 async function send({ to, subject, html, text }) {
+  // Header values: several subjects interpolate user input (doctor name, account
+  // name, ...) and `to` can be a registrant-typed address. Strip control
+  // characters (CR/LF header injection) and cap length centrally so no caller
+  // has to remember. Done first so the dev log line below is sanitized too.
+  to = headerSafe(to, 320);
+  subject = headerSafe(subject, MAX_SUBJECT_LENGTH);
+
   if (!mailgun) {
     console.log(`[EMAIL] To: ${to} | Subject: ${subject}`);
     if (env.NODE_ENV === "development") {
@@ -107,21 +131,28 @@ export async function sendAdminApprovalRequest({
   npiNumber,
   companyName,
   approveUrl,
+  approveUnlinkedUrl,
   rejectUrl,
   seazonaEmailMatch,
   suggestedSeazonaClient,
 }) {
   // Approving grants a doctor account; the Seazona client link is what grants
-  // that client's invoices — which carry patient names (PHI). Registration is
-  // public and the email address is NOT verified at this point, so nothing here
-  // is linked yet: an email match links only once the registrant clicks the
-  // verification link we sent to that address (auth.service verifyEmail). The
-  // company/account shown comes from Seazona's own record, never from the
-  // registration form, so the admin isn't shown registrant-supplied text as if
-  // it were the matched practice.
+  // that client's invoices — which carry patient names (PHI). Nothing is linked
+  // at registration. An email match is a PENDING link to the exact client named
+  // here; it is written only if the admin approves confirming that client AND
+  // the registrant verifies the address (auth.service completePendingSeazonaLink).
+  // Inbox access alone (e.g. a shared front-desk inbox) is not authority over the
+  // practice, which is why the admin's explicit confirmation is required. The
+  // company/account shown comes from Seazona's own record, never from the form.
   const matchRow = seazonaEmailMatch
-    ? `<tr><td style="padding:6px 12px;font-weight:bold;">Seazona account</td><td style="padding:6px 12px;">NOT linked yet — email matches Seazona client ${esc(seazonaEmailMatch.company || "—")} (acct ${esc(seazonaEmailMatch.accountNumber || "—")}). It links automatically only after the registrant confirms they control this email address.</td></tr>`
+    ? `<tr><td style="padding:6px 12px;font-weight:bold;">Seazona account</td><td style="padding:6px 12px;">NOT linked — email matches Seazona client <strong>${esc(seazonaEmailMatch.company || "—")}</strong> (acct ${esc(seazonaEmailMatch.accountNumber || "—")}). The review page asks you to approve <em>and link this client</em>, or approve without linking. A confirmed link takes effect only once the registrant also verifies their email address.</td></tr>`
     : `<tr><td style="padding:6px 12px;font-weight:bold;">Seazona account</td><td style="padding:6px 12px;">Not linked</td></tr>`;
+  const approveUnlinkedButton = seazonaEmailMatch && approveUnlinkedUrl
+    ? `<a href="${approveUnlinkedUrl}" style="display:inline-block;padding:12px 24px;background:#475569;color:#fff;text-decoration:none;border-radius:6px;margin-right:12px;">Approve without linking</a>`
+    : "";
+  const approveLabel = seazonaEmailMatch
+    ? `Approve &amp; link ${esc(seazonaEmailMatch.company || "client")} (acct ${esc(seazonaEmailMatch.accountNumber || "—")})`
+    : "Approve";
 
   const suggestionBlock = suggestedSeazonaClient
     ? `<p style="margin:16px 0;padding:12px;border-left:4px solid #f59e0b;background:#fffbeb;">
@@ -135,7 +166,9 @@ export async function sendAdminApprovalRequest({
 
   await send({
     to: env.ADMIN_NOTIFICATION_EMAIL,
-    subject: `New Doctor Registration — ${doctorName}`,
+    // doctorName is public-registration input; send() also sanitizes, but cap it
+    // tighter here so a long name can't crowd out the subject.
+    subject: `New Doctor Registration — ${headerSafe(doctorName, 80)}`,
     html: `
       <h1>New Doctor Registration Request</h1>
       <p>A new doctor has requested access to Diamond Labs:</p>
@@ -148,7 +181,8 @@ export async function sendAdminApprovalRequest({
       </table>
       ${suggestionBlock}
       <p style="margin:24px 0;">
-        <a href="${approveUrl}" style="display:inline-block;padding:12px 24px;background:#16a34a;color:#fff;text-decoration:none;border-radius:6px;margin-right:12px;">Approve</a>
+        <a href="${approveUrl}" style="display:inline-block;padding:12px 24px;background:#16a34a;color:#fff;text-decoration:none;border-radius:6px;margin-right:12px;">${approveLabel}</a>
+        ${approveUnlinkedButton}
         <a href="${rejectUrl}" style="display:inline-block;padding:12px 24px;background:#dc2626;color:#fff;text-decoration:none;border-radius:6px;">Reject</a>
       </p>
       <p style="color:#666;font-size:13px;">This link expires in 7 days.</p>
