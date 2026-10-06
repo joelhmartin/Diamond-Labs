@@ -11,24 +11,44 @@ import { summarizePayments } from "../lib/payment-summary.js";
  * routes (display) and the payment routes (the C1 over-allocation cap) read the
  * SAME aggregation, with no behavior drift.
  *
- * Both helpers fail SOFT (degrade to 0 / empty map) on a DB error — consistent
- * with the original invoice.routes.js behavior — rather than propagating a 500.
+ * "How much of this invoice is paid" is keyed by SEAZONA CLIENT + invoice, never
+ * by portal user. Several portal logins can share one seazonaClientId (one
+ * practice), and the invoice belongs to the practice: a per-user sum let a second
+ * login see — and pay — the full balance again after the first login paid it.
+ * The ledger row's `userId` is attribution (who paid), not ownership.
+ *
+ * The display reads fail SOFT (degrade to 0 / empty map) on a DB error. The cap
+ * read (`getInvoicePaidStrict`) THROWS, because a guard must fail closed.
  */
 
+/** WHERE clause for "ledger rows applied to this client's invoice". Exported for tests. */
+export function invoicePaidWhere({ seazonaClientId, seazonaInvoiceId }) {
+  // Missing either key would silently widen or empty the sum — refuse instead.
+  if (!seazonaClientId || !seazonaInvoiceId) {
+    throw new Error("invoice ledger: seazonaClientId and seazonaInvoiceId are both required");
+  }
+  return and(
+    eq(invoicePayments.seazonaClientId, String(seazonaClientId)),
+    eq(invoicePayments.seazonaInvoiceId, String(seazonaInvoiceId))
+  );
+}
+
 /**
- * Sum of applied portal payments per Seazona invoice for one user.
- * @param {string} userId
+ * Sum of applied portal payments per Seazona invoice for one Seazona client
+ * (every portal login of that practice). DISPLAY ONLY — fails soft.
+ * @param {string} seazonaClientId
  * @returns {Promise<Record<string, number>>} { [seazonaInvoiceId]: sumAppliedAmount }
  */
-export async function getPortalPaidMap(userId) {
+export async function getClientPaidMap(seazonaClientId) {
   try {
+    if (!seazonaClientId) return {};
     const rows = await db
       .select({
         seazonaInvoiceId: invoicePayments.seazonaInvoiceId,
         totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
       })
       .from(invoicePayments)
-      .where(eq(invoicePayments.userId, userId))
+      .where(eq(invoicePayments.seazonaClientId, String(seazonaClientId)))
       .groupBy(invoicePayments.seazonaInvoiceId);
 
     const map = {};
@@ -37,7 +57,7 @@ export async function getPortalPaidMap(userId) {
     }
     return map;
   } catch (err) {
-    console.error("[invoiceLedger] getPortalPaidMap DB error — degrading to empty map:", err);
+    console.error("[invoiceLedger] getClientPaidMap DB error — degrading to empty map:", err);
     return {};
   }
 }
@@ -77,23 +97,23 @@ export async function listAllPayments({ userId } = {}) {
 }
 
 /**
- * Sum of applied portal payments for a single Seazona invoice + user.
- * THROWS on a database error — callers that use this figure as a guard must
- * fail closed.
+ * Sum of applied portal payments for one Seazona client's invoice, across every
+ * portal login linked to that client. This is the figure the over-allocation
+ * caps subtract from the invoice total.
+ *
+ * THROWS on a database error (and on a missing key) — callers use this as a
+ * guard and must fail closed.
+ * @param {{ seazonaClientId: string, seazonaInvoiceId: string }} keys
  * @returns {Promise<number>}
  */
-export async function getInvoicePortalPaidStrict(userId, seazonaInvoiceId) {
+export async function getInvoicePaidStrict({ seazonaClientId, seazonaInvoiceId }) {
+  const where = invoicePaidWhere({ seazonaClientId, seazonaInvoiceId });
   const [row] = await db
     .select({
       totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
     })
     .from(invoicePayments)
-    .where(
-      and(
-        eq(invoicePayments.userId, userId),
-        eq(invoicePayments.seazonaInvoiceId, String(seazonaInvoiceId))
-      )
-    );
+    .where(where);
   return parseFloat(row?.totalPaid || 0);
 }
 
@@ -104,15 +124,16 @@ export async function getInvoicePortalPaidStrict(userId, seazonaInvoiceId) {
  * Never use this to enforce an over-payment cap. "Paid so far = 0" makes
  * `remaining = invoice.total`, so a transient DB blip would re-open the full
  * balance on an already-paid invoice and let it be charged again — the guard
- * would fail OPEN. Money paths must call `getInvoicePortalPaidStrict`.
+ * would fail OPEN. Money paths must call `getInvoicePaidStrict`.
+ * @param {{ seazonaClientId: string, seazonaInvoiceId: string }} keys
  * @returns {Promise<number>}
  */
-export async function getInvoicePortalPaid(userId, seazonaInvoiceId) {
+export async function getInvoicePaid({ seazonaClientId, seazonaInvoiceId }) {
   try {
-    return await getInvoicePortalPaidStrict(userId, seazonaInvoiceId);
+    return await getInvoicePaidStrict({ seazonaClientId, seazonaInvoiceId });
   } catch (err) {
     console.error(
-      `[invoiceLedger] getInvoicePortalPaid DB error for invoice ${seazonaInvoiceId} — degrading to 0:`,
+      `[invoiceLedger] getInvoicePaid DB error for invoice ${seazonaInvoiceId} — degrading to 0:`,
       err
     );
     return 0;

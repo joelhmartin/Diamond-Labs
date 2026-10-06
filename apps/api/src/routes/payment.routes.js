@@ -4,7 +4,7 @@ import { validate } from "../middleware/validate.js";
 import * as authorizenetService from "../services/authorizenet.service.js";
 import * as seazonaService from "../services/seazona.service.js";
 import {
-  getInvoicePortalPaidStrict,
+  getInvoicePaidStrict,
   listPaymentsForUser,
   listAllPayments,
 } from "../services/invoice-ledger.service.js";
@@ -284,11 +284,16 @@ async function verifyAllocations(allocations, user, { enforceCap = false } = {})
     }
     if (enforceCap) {
       // C1 — remaining = invoice total minus what's already been applied through
-      // the portal ledger for this doctor. The +0.005 tolerance absorbs cent
-      // rounding; a fully-paid invoice has remaining ~0 and is therefore blocked.
+      // the portal ledger for this Seazona CLIENT (every login of the practice —
+      // keying on user.id let a second login pay an already-paid invoice again).
+      // The +0.005 tolerance absorbs cent rounding; a fully-paid invoice has
+      // remaining ~0 and is therefore blocked.
       // STRICT read on purpose: a DB error here must abort the charge, not
       // silently report "paid so far = 0" and re-open the full balance.
-      const paid = await getInvoicePortalPaidStrict(user.id, a.invoiceId);
+      const paid = await getInvoicePaidStrict({
+        seazonaClientId: user.seazonaClientId,
+        seazonaInvoiceId: a.invoiceId,
+      });
       const remaining = round2(Number(inv.total || 0) - paid);
       if (Number(a.amount) > remaining + 0.005) {
         return {

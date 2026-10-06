@@ -7,9 +7,9 @@ import { invoicePayments, users } from "../db/schema/index.js";
 import { eq } from "drizzle-orm";
 import { createId } from "../lib/id.js";
 import {
-  getPortalPaidMap,
-  getInvoicePortalPaid,
-  getInvoicePortalPaidStrict,
+  getClientPaidMap,
+  getInvoicePaid,
+  getInvoicePaidStrict,
 } from "../services/invoice-ledger.service.js";
 import * as auditService from "../services/audit.service.js";
 import { redis } from "../config/redis.js";
@@ -134,7 +134,7 @@ export default async function invoiceRoutes(fastify) {
       request.query.lastModified
         ? seazonaService.getInvoicesResult(request.query.lastModified)
         : seazonaService.getAllInvoicesResult(),
-      getPortalPaidMap(request.user.id),
+      getClientPaidMap(seazonaClientId),
     ]);
 
     const doctorInvoices = invResult.invoices
@@ -167,7 +167,7 @@ export default async function invoiceRoutes(fastify) {
     }
 
     // Aggregate portal payments for this single invoice.
-    const portalPaid = await getInvoicePortalPaid(request.user.id, String(request.params.id));
+    const portalPaid = await getInvoicePaid({ seazonaClientId, seazonaInvoiceId: String(request.params.id) });
 
     // Audit PHI access — the invoice payload carries the patient name.
     auditService.logSafe({
@@ -225,10 +225,9 @@ export default async function invoiceRoutes(fastify) {
     // Resolve the doctor user for the ledger row: explicit userId wins, else the
     // user linked to this Seazona client.
     //
-    // An explicit userId MUST be verified to belong to this Seazona client. The
-    // remaining-balance cap below is computed per (userId, invoiceId), so an
-    // unchecked userId would compute "already paid = 0" against a user with no
-    // ledger history and re-open the invoice's full balance for re-recording.
+    // An explicit userId MUST be verified to belong to this Seazona client: it is
+    // who the ledger row is attributed to, and that user's own payment history
+    // would otherwise show another practice's payment.
     let ledgerUserId = null;
     if (bodyUserId) {
       const [named] = await db
@@ -267,10 +266,12 @@ export default async function invoiceRoutes(fastify) {
     try {
       rowId = await withInvoiceLocks(redis, [invoiceId], async () => {
         // Cap at the invoice's remaining balance (C1 helper). Already-paid portion
-        // is whatever the local ledger has recorded for THIS doctor + invoice.
+        // is everything the local ledger has recorded against this invoice for
+        // this Seazona CLIENT — every portal login of the practice, not just the
+        // user this row is attributed to.
         // STRICT read: this is a guard, so a DB error must abort rather than report
         // "paid so far = 0" and re-open the full balance.
-        const alreadyPaid = await getInvoicePortalPaidStrict(ledgerUserId, invoiceId);
+        const alreadyPaid = await getInvoicePaidStrict({ seazonaClientId, seazonaInvoiceId: invoiceId });
         const remaining = round2(Number(invoice.total || 0) - alreadyPaid);
         if (amt > remaining + 0.005) {
           const err = new Error(
