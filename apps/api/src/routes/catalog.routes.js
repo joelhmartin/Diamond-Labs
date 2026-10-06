@@ -18,7 +18,9 @@ export function pricingErrorReply(err) {
 
 export default async function catalogRoutes(fastify) {
   // The shop catalog. Approved doctors see their negotiated prices.
-  fastify.get("/catalog", { preHandler: [optionalAuthenticate] }, async (request) => {
+  fastify.get("/catalog", { preHandler: [optionalAuthenticate] }, async (request, reply) => {
+    // Per-shopper prices: never cache, and never share across Authorization values.
+    reply.header("Cache-Control", "private, no-store").header("Vary", "Authorization");
     const families = await listFamilies({ shopOnly: true });
     const prices = await loadClientPrices(
       pricingClientFor(request.user),

@@ -17,7 +17,8 @@ import { SEED_CATALOG } from "../../../web/src/data/catalog.js";
 
 const DRY_RUN = process.env.DRY_RUN === "1";
 
-const rows = await db.select().from(products);
+// Ordered so the winner of a duplicate lab code and the slug suffixes are the same on every run.
+const rows = await db.select().from(products).orderBy(products.seazonaProductId);
 const { families, warnings } = planCatalogImport({ products: rows, familySeed: FAMILY_SEED, shopSeed: SEED_CATALOG });
 
 const legacyIds = families.flatMap((f) => f.variants.map((v) => v.legacySeazonaProductId));

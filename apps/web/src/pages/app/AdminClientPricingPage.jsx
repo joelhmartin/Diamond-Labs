@@ -16,8 +16,16 @@ export function priceDelta(priceCents, basePriceCents) {
   return pct < 0 ? `−${Math.abs(pct)}%` : `+${pct}%`;
 }
 
+/** Who these prices belong to, for the page header. */
+export function clientLabel(users, userId) {
+  const u = users.find((x) => x.id === userId);
+  if (!u) return null;
+  return { name: u.name || u.email, email: u.name ? u.email : null, practice: u.account?.name ?? null };
+}
+
 export function AdminClientPricingPage() {
   const { userId } = useParams();
+  const [client, setClient] = useState(null);
   const [prices, setPrices] = useState([]);
   const [variants, setVariants] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -40,6 +48,14 @@ export function AdminClientPricingPage() {
     }
   }
   useEffect(() => { load(); }, [userId]);
+
+  // The existing admin users list (AdminUsersPage) is the one admin read of a user.
+  useEffect(() => {
+    setClient(null);
+    api.get("/admin/users")
+      .then((res) => setClient(clientLabel(res.data.data.users, userId)))
+      .catch(() => setClient(null));
+  }, [userId]);
 
   const unreviewed = useMemo(() => prices.filter((p) => !p.reviewedAt), [prices]);
 
@@ -68,7 +84,12 @@ export function AdminClientPricingPage() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
       <Link to={ROUTES.ADMIN_USERS} className="inline-flex items-center gap-1 text-sm text-navy/50 hover:text-navy"><ArrowLeft size={14} /> Users</Link>
-      <h1 className="font-heading font-bold text-2xl text-navy">Client pricing</h1>
+      <div>
+        <h1 className="font-heading font-bold text-2xl text-navy">Client pricing{client ? ` — ${client.name}` : ""}</h1>
+        {client && (
+          <p className="text-sm text-navy/50">{[client.email, client.practice].filter(Boolean).join(" · ")}</p>
+        )}
+      </div>
       {error && <div className="p-3 rounded-lg bg-red-50 text-red-600 text-sm">{error}</div>}
 
       {unreviewed.length > 0 && (
