@@ -25,10 +25,11 @@ vi.mock("../../services/seazona.service.js", () => ({
 
 let alreadyPaid = 0;
 vi.mock("../../services/invoice-ledger.service.js", () => ({
-  getInvoicePortalPaidStrict: async () => alreadyPaid,
-  getPortalPaidMap: async () => ({}),
-  getInvoicePortalPaid: async () => 0,
-  getGlobalPortalPaidMap: async () => ({}),
+  getInvoicePaidStrict: async () => alreadyPaid,
+  getClientPaidMap: async () => ({}),
+  getInvoicePaid: async () => 0,
+  getAllClientsPaidMap: async () => ({}),
+  clientInvoiceKey: (clientId, invoiceId) => `${clientId}:${invoiceId}`,
 }));
 
 const recordCalls = [];

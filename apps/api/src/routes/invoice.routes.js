@@ -10,7 +10,8 @@ import {
   getClientPaidMap,
   getInvoicePaid,
   getInvoicePaidStrict,
-  getGlobalPortalPaidMap,
+  getAllClientsPaidMap,
+  clientInvoiceKey,
 } from "../services/invoice-ledger.service.js";
 import * as auditService from "../services/audit.service.js";
 import { redis } from "../config/redis.js";
@@ -94,11 +95,11 @@ export default async function invoiceRoutes(fastify) {
         ? seazonaService.getInvoicesResult(request.query.lastModified)
         : seazonaService.getAllInvoicesResult(),
       seazonaService.listClients(),
-      getGlobalPortalPaidMap(),
+      getAllClientsPaidMap(),
     ]);
     const seazonaUnavailable = !invResult.reachable;
 
-    const invoices = invResult.invoices.map((inv) => normalizeInvoice(inv, paidMap[String(inv.id)] || 0));
+    const invoices = invResult.invoices.map((inv) => normalizeInvoice(inv, paidMap[clientInvoiceKey(inv.clientId, inv.id)] || 0));
 
     // Index clients by id for lookup
     const clients = {};

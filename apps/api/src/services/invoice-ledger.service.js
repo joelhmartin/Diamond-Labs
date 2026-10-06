@@ -1,6 +1,6 @@
 import { db } from "../config/database.js";
 import { invoicePayments } from "../db/schema/index.js";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { summarizePayments } from "../lib/payment-summary.js";
 
 /**
@@ -81,25 +81,38 @@ export async function getClientPaidMap(seazonaClientId) {
   }
 }
 
+/** Key into `getAllClientsPaidMap`'s result: one Seazona client's invoice. */
+export function clientInvoiceKey(seazonaClientId, seazonaInvoiceId) {
+  return `${seazonaClientId}:${seazonaInvoiceId}`;
+}
+
 /**
- * Applied totals for EVERY invoice across all users, keyed by seazonaInvoiceId.
- * The admin invoice list needs balances for many doctors at once; calling
- * getPortalPaidMap per user would be N queries. Soft-fails to {} — this is a
+ * Applied totals for EVERY client's invoices in one query, keyed by
+ * `clientInvoiceKey(seazonaClientId, seazonaInvoiceId)` — the same client +
+ * invoice keying as `getClientPaidMap`, so the admin list and a doctor's own
+ * list can never disagree about one invoice. Ledger rows with no
+ * seazonaClientId are excluded, exactly as they are from the per-client reads.
+ * The admin invoice list needs balances for many clients at once; calling
+ * getClientPaidMap per client would be N queries. Soft-fails to {} — this is a
  * display path, never a guard.
- * @returns {Promise<Record<string, number>>} { [seazonaInvoiceId]: sumAppliedAmount }
+ * @returns {Promise<Record<string, number>>}
  */
-export async function getGlobalPortalPaidMap() {
+export async function getAllClientsPaidMap() {
   try {
     const rows = await db
       .select({
+        seazonaClientId: invoicePayments.seazonaClientId,
         seazonaInvoiceId: invoicePayments.seazonaInvoiceId,
         totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
       })
       .from(invoicePayments)
-      .groupBy(invoicePayments.seazonaInvoiceId);
-    return Object.fromEntries(rows.map((r) => [String(r.seazonaInvoiceId), parseFloat(r.totalPaid || 0)]));
+      .where(isNotNull(invoicePayments.seazonaClientId))
+      .groupBy(invoicePayments.seazonaClientId, invoicePayments.seazonaInvoiceId);
+    return Object.fromEntries(
+      rows.map((r) => [clientInvoiceKey(r.seazonaClientId, r.seazonaInvoiceId), parseFloat(r.totalPaid || 0)])
+    );
   } catch (err) {
-    console.error("[invoiceLedger] getGlobalPortalPaidMap failed — degrading to empty:", err);
+    console.error("[invoiceLedger] getAllClientsPaidMap failed — degrading to empty:", err);
     return {};
   }
 }

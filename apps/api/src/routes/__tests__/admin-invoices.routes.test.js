@@ -7,8 +7,8 @@ process.env.JWT_SECRET ||= "test-jwt-secret-that-is-at-least-32-chars";
 // Task 14: GET /admin/invoices used to call normalizeInvoice(inv) with no paid
 // figure, so every invoice reported portalBalance === total and
 // portalPaid === false regardless of what was actually paid through the
-// portal. These tests prove the route now wires getGlobalPortalPaidMap's
-// output into normalizeInvoice per invoice id.
+// portal. These tests prove the route now wires getAllClientsPaidMap's
+// output into normalizeInvoice per (Seazona client, invoice).
 
 const admin = { id: "admin-1", role: "admin", approvalStatus: "approved" };
 vi.mock("../../middleware/authenticate.js", () => ({
@@ -38,10 +38,11 @@ vi.mock("../../services/seazona.service.js", () => ({
 
 let paidMap = {};
 vi.mock("../../services/invoice-ledger.service.js", () => ({
-  getGlobalPortalPaidMap: async () => paidMap,
-  getPortalPaidMap: async () => ({}),
-  getInvoicePortalPaid: async () => 0,
-  getInvoicePortalPaidStrict: async () => 0,
+  getAllClientsPaidMap: async () => paidMap,
+  clientInvoiceKey: (clientId, invoiceId) => `${clientId}:${invoiceId}`,
+  getClientPaidMap: async () => ({}),
+  getInvoicePaid: async () => 0,
+  getInvoicePaidStrict: async () => 0,
 }));
 
 const invoiceRoutes = (await import("../invoice.routes.js")).default;
@@ -60,9 +61,9 @@ describe("GET /admin/invoices balances", () => {
     ];
     clients = [{ id: "c1" }, { id: "c2" }];
     // Net of a $200 payment and a $50 refund on invoice 101 — proves the route
-    // passes through whatever getGlobalPortalPaidMap nets out, negative rows
+    // passes through whatever getAllClientsPaidMap nets out, negative rows
     // included, rather than re-deriving it from raw invoice data.
-    paidMap = { "101": 150 };
+    paidMap = { "c1:101": 150 };
 
     const app = await buildApp();
     const res = await app.inject({ method: "GET", url: "/api/v1/admin/invoices" });
@@ -87,7 +88,7 @@ describe("GET /admin/invoices balances", () => {
   it("marks an invoice fully paid when the ledger net covers the total", async () => {
     invoices = [{ id: "303", invoiceNumber: "INV-303", total: 80, fullName: "Dr. C", clientId: "c3", status: "Shipped" }];
     clients = [{ id: "c3" }];
-    paidMap = { "303": 80 };
+    paidMap = { "c3:303": 80 };
 
     const app = await buildApp();
     const res = await app.inject({ method: "GET", url: "/api/v1/admin/invoices" });
