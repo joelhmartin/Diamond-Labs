@@ -71,6 +71,7 @@
 **Files:** `cloudbuild.staging.yaml` (new).
 - Steps: build, with `VITE_APP_ENV=staging`, `VITE_AUTHORIZE_NET_ENV=sandbox` and the sandbox `VITE_AUTHORIZE_NET_API_LOGIN` / `VITE_AUTHORIZE_NET_CLIENT_KEY` from Secret Manager; then push the `staging-${SHORT_SHA}` tag; then run `diamond-labs-migrate-staging --execute-now --wait`; then deploy `diamond-labs-api-staging`.
 - There is no jobs step, so staging never runs AutoPay.
+- Add `.coderabbit.yaml` with `reviews.auto_review.base_branches: ["feat/own-the-lab"]`. CodeRabbit skips PRs into non-default branches by default; PR #46 got no review until one was triggered by hand.
 
 ### Task S5: Provision (controller runs, with the user's authenticated gcloud)
 Each command is shown before it runs. Everything new is named `*-staging` / `STAGING_*`.
