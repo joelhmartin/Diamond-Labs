@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cartLinesSchema } from "./catalog.schema.js";
 
 /**
  * Shared payment validation schemas. Mirror the backend payment routes so the
@@ -101,18 +102,7 @@ export const checkoutSchema = z
     // Display/back-compat only — never charged; coerced to match the route's
     // historical leniency (it ran Number(clientAmount) for a warning compare).
     amount: z.coerce.number().positive().max(100000).optional(),
-    items: z
-      .array(
-        z
-          .object({
-            id: z.union([z.string().min(1), z.number()]),
-            // Coerce so a stringy "2" from a quantity input still validates —
-            // matching the route's prior Number(item.qty) handling.
-            qty: z.coerce.number().int().positive(),
-          })
-          .passthrough()
-      )
-      .min(1),
+    items: cartLinesSchema,
     email: z.string().email(),
     shipping: z
       .object({
