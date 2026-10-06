@@ -1,6 +1,6 @@
 import { db } from "../config/database.js";
 import { invoicePayments } from "../db/schema/index.js";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { summarizePayments } from "../lib/payment-summary.js";
 
 /**
@@ -35,29 +35,84 @@ export function invoicePaidWhere({ seazonaClientId, seazonaInvoiceId }) {
 
 /**
  * Sum of applied portal payments per Seazona invoice for one Seazona client
- * (every portal login of that practice). DISPLAY ONLY — fails soft.
+ * (every portal login of that practice).
+ *
+ * THROWS on a database error (and on a missing client id) — this is the
+ * money-path read: the AutoPay sweep resolves the balance it will charge from
+ * it, and must fail closed rather than silently reopen every invoice's full
+ * total. Display callers use `getClientPaidMap`, which wraps this one query.
  * @param {string} seazonaClientId
  * @returns {Promise<Record<string, number>>} { [seazonaInvoiceId]: sumAppliedAmount }
+ */
+export async function getClientPaidMapStrict(seazonaClientId) {
+  if (!seazonaClientId) {
+    throw new Error("invoice ledger: seazonaClientId is required");
+  }
+  const rows = await db
+    .select({
+      seazonaInvoiceId: invoicePayments.seazonaInvoiceId,
+      totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
+    })
+    .from(invoicePayments)
+    .where(eq(invoicePayments.seazonaClientId, String(seazonaClientId)))
+    .groupBy(invoicePayments.seazonaInvoiceId);
+
+  const map = {};
+  for (const row of rows) {
+    map[row.seazonaInvoiceId] = parseFloat(row.totalPaid || 0);
+  }
+  return map;
+}
+
+/**
+ * Soft-fail variant of `getClientPaidMapStrict` for DISPLAY ONLY: on a DB error
+ * (or no client id) it degrades to an empty map, i.e. every invoice reads as
+ * unpaid. Never use it on a money path.
+ * @param {string} seazonaClientId
+ * @returns {Promise<Record<string, number>>}
  */
 export async function getClientPaidMap(seazonaClientId) {
   try {
     if (!seazonaClientId) return {};
+    return await getClientPaidMapStrict(seazonaClientId);
+  } catch (err) {
+    console.error("[invoiceLedger] getClientPaidMap DB error — degrading to empty map:", err);
+    return {};
+  }
+}
+
+/** Key into `getAllClientsPaidMap`'s result: one Seazona client's invoice. */
+export function clientInvoiceKey(seazonaClientId, seazonaInvoiceId) {
+  return `${seazonaClientId}:${seazonaInvoiceId}`;
+}
+
+/**
+ * Applied totals for EVERY client's invoices in one query, keyed by
+ * `clientInvoiceKey(seazonaClientId, seazonaInvoiceId)` — the same client +
+ * invoice keying as `getClientPaidMap`, so the admin list and a doctor's own
+ * list can never disagree about one invoice. Ledger rows with no
+ * seazonaClientId are excluded, exactly as they are from the per-client reads.
+ * The admin invoice list needs balances for many clients at once; calling
+ * getClientPaidMap per client would be N queries. Soft-fails to {} — this is a
+ * display path, never a guard.
+ * @returns {Promise<Record<string, number>>}
+ */
+export async function getAllClientsPaidMap() {
+  try {
     const rows = await db
       .select({
+        seazonaClientId: invoicePayments.seazonaClientId,
         seazonaInvoiceId: invoicePayments.seazonaInvoiceId,
         totalPaid: sql`sum(${invoicePayments.appliedAmount})`.as("total_paid"),
       })
       .from(invoicePayments)
-      .where(eq(invoicePayments.seazonaClientId, String(seazonaClientId)))
-      .groupBy(invoicePayments.seazonaInvoiceId);
-
-    const map = {};
-    for (const row of rows) {
-      map[row.seazonaInvoiceId] = parseFloat(row.totalPaid || 0);
-    }
-    return map;
+      .where(isNotNull(invoicePayments.seazonaClientId))
+      .groupBy(invoicePayments.seazonaClientId, invoicePayments.seazonaInvoiceId);
+    return Object.fromEntries(
+      rows.map((r) => [clientInvoiceKey(r.seazonaClientId, r.seazonaInvoiceId), parseFloat(r.totalPaid || 0)])
+    );
   } catch (err) {
-    console.error("[invoiceLedger] getClientPaidMap DB error — degrading to empty map:", err);
+    console.error("[invoiceLedger] getAllClientsPaidMap failed — degrading to empty:", err);
     return {};
   }
 }

@@ -24,11 +24,14 @@ export const ROUTES = {
   ADMIN_RX_MAPPING: "/admin/rx-mapping",
   ADMIN_RX_CASES: "/admin/rx-cases",
   ADMIN_RX_CASE_DETAIL: "/admin/rx-cases/:id",
+  ADMIN_AUTOPAY: "/admin/autopay",
+  ADMIN_JOBS: "/admin/jobs",
 
   // Doctor
   DOCTOR_INVOICES: "/doctor/invoices",
   DOCTOR_PAYMENTS: "/doctor/payments",
   DOCTOR_SAVED_CARDS: "/doctor/saved-cards",
+  DOCTOR_AUTOPAY: "/doctor/autopay",
   DOCTOR_NEW_CASE: "/app/cases/new",
 
   // Rx forms (faithful 1:1 JotForm ports)

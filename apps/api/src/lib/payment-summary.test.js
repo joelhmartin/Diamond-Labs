@@ -101,3 +101,41 @@ describe("summarizePayments", () => {
     expect(out.map((p) => p.transactionId)).toEqual(["NEW", "OLD"]);
   });
 });
+
+describe("payment source passthrough", () => {
+  // The `source` column exists so an unattended AutoPay charge is
+  // distinguishable from one a person initiated. If summarizePayments drops it,
+  // the column is written but never readable and every history row looks the same.
+  it("carries source through to the summary", () => {
+    const [summary] = summarizePayments([
+      {
+        userId: "u1",
+        seazonaClientId: "c1",
+        seazonaInvoiceId: "i1",
+        invoiceNumber: "1001",
+        appliedAmount: "500.00",
+        transactionId: "tx-autopay-1",
+        source: "autopay",
+        createdAt: new Date("2026-08-15T14:00:00Z"),
+      },
+    ]);
+    expect(summary.source).toBe("autopay");
+  });
+
+  it("distinguishes an autopay charge from a manual one", () => {
+    const rows = [
+      { userId: "u1", seazonaInvoiceId: "i1", invoiceNumber: "1001", appliedAmount: "500.00", transactionId: "tx-auto", source: "autopay", createdAt: new Date("2026-08-15T14:00:00Z") },
+      { userId: "u1", seazonaInvoiceId: "i2", invoiceNumber: "1002", appliedAmount: "200.00", transactionId: "tx-manual", source: "doctor_card", createdAt: new Date("2026-08-16T14:00:00Z") },
+    ];
+    const byTxn = Object.fromEntries(summarizePayments(rows).map((s) => [s.transactionId, s.source]));
+    expect(byTxn["tx-auto"]).toBe("autopay");
+    expect(byTxn["tx-manual"]).toBe("doctor_card");
+  });
+
+  it("returns null for legacy rows written before the column existed", () => {
+    const [summary] = summarizePayments([
+      { userId: "u1", seazonaInvoiceId: "i1", appliedAmount: "100.00", transactionId: "tx-old", createdAt: new Date("2026-01-01T00:00:00Z") },
+    ]);
+    expect(summary.source).toBeNull();
+  });
+});

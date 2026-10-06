@@ -25,6 +25,7 @@ const {
   getInvoicePaidStrict,
   getInvoicePaid,
   getClientPaidMap,
+  getClientPaidMapStrict,
 } = await import("./invoice-ledger.service.js");
 
 const dialect = new PgDialect();
@@ -93,5 +94,29 @@ describe("invoice paid-cap keying", () => {
     const { sql } = render(state.wheres[0]);
     expect(sql).toMatch(/"seazona_client_id" = \$1/);
     expect(sql).not.toMatch(/user_id/);
+  });
+
+  it("getClientPaidMapStrict (AutoPay's balance read) uses the same client keying", async () => {
+    state.result = [{ seazonaInvoiceId: "inv-1", totalPaid: "10.00" }];
+    await expect(getClientPaidMapStrict("client-1")).resolves.toEqual({ "inv-1": 10 });
+    const { sql } = render(state.wheres[0]);
+    expect(sql).toMatch(/"seazona_client_id" = \$1/);
+    expect(sql).not.toMatch(/user_id/);
+  });
+
+  it("getClientPaidMapStrict THROWS on a DB error instead of reopening every invoice's full total", async () => {
+    state.fail = new Error("connection reset");
+    await expect(getClientPaidMapStrict("client-1")).rejects.toThrow("connection reset");
+  });
+
+  it("getClientPaidMapStrict THROWS on a missing client id rather than reporting nothing paid", async () => {
+    await expect(getClientPaidMapStrict(null)).rejects.toThrow(/required/);
+    expect(state.wheres).toHaveLength(0);
+  });
+
+  it("getClientPaidMap (display) degrades to {} on a DB error", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    state.fail = new Error("connection reset");
+    await expect(getClientPaidMap("client-1")).resolves.toEqual({});
   });
 });

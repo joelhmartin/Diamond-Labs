@@ -25,12 +25,13 @@ export function headerSafe(value, max = MAX_SUBJECT_LENGTH) {
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
-async function send({ to, subject, html, text }) {
+async function send({ to, bcc, subject, html, text }) {
   // Header values: several subjects interpolate user input (doctor name, account
   // name, ...) and `to` can be a registrant-typed address. Strip control
   // characters (CR/LF header injection) and cap length centrally so no caller
   // has to remember. Done first so the dev log line below is sanitized too.
   to = headerSafe(to, 320);
+  if (bcc) bcc = headerSafe(bcc, 320);
   subject = headerSafe(subject, MAX_SUBJECT_LENGTH);
 
   if (!mailgun) {
@@ -44,6 +45,7 @@ async function send({ to, subject, html, text }) {
   const form = new URLSearchParams();
   form.set("from", env.EMAIL_FROM);
   form.set("to", to);
+  if (bcc) form.set("bcc", bcc);
   form.set("subject", subject);
   if (html) form.set("html", html);
   if (text) form.set("text", text);
@@ -215,6 +217,32 @@ export async function sendDoctorRejected({ email, name }) {
 }
 
 /**
+ * AutoPay charge failed. Sent to the doctor; the lab gets a blind copy via
+ * ADMIN_NOTIFICATION_EMAIL so a paused enrollment does not go unnoticed.
+ */
+export async function sendAutopayFailure({ email, name, amount, reason, paused }) {
+  return send({
+    to: email,
+    bcc: env.ADMIN_NOTIFICATION_EMAIL,
+    subject: paused ? "AutoPay paused — payment failed" : "AutoPay payment failed",
+    html: `
+      <h1>We couldn't process your AutoPay payment</h1>
+      <p>Hello${name ? `, ${esc(name)}` : ""} — your scheduled AutoPay payment of
+         <strong>$${Number(amount).toFixed(2)}</strong> did not go through.</p>
+      <p style="color:#5a6b7b;">Reason: ${esc(reason)}</p>
+      ${paused
+        ? `<p style="padding:12px;border-left:4px solid #f59e0b;background:#fffbeb;">
+             We've <strong>paused</strong> your AutoPay after repeated failures. Update your
+             card and contact the lab to resume — no further attempts will be made until then.
+           </p>`
+        : `<p>We'll try again in a couple of days. You can also update your card or pay
+             manually from your portal at any time.</p>`}
+      <p><a href="${env.APP_URL}/doctor/saved-cards" style="display:inline-block;padding:12px 24px;background:#13AEEF;color:#fff;text-decoration:none;border-radius:999px;font-weight:600;">Update your card</a></p>
+    `,
+  });
+}
+
+/**
  * Escape user-supplied strings before interpolating into email HTML.
  *
  * Used by the receipts AND by the admin approval request, whose name/NPI/company
@@ -378,10 +406,16 @@ export async function sendRxSubmissionReceived({ caseNumber, practiceName, devic
 
 /**
  * Doctor invoice-payment receipt. Sent (soft-fail) after a successful invoice
- * payment is recorded — covers both the saved-card and hosted-card flows.
- * `invoices` are { number, amount } per invoice the charge was applied to.
+ * payment is recorded — covers the saved-card, hosted-card, AutoPay, and admin
+ * offline-record flows. `invoices` are { number, amount } per invoice the
+ * payment was applied to.
+ *
+ * `wasCharged` (default true) distinguishes an actual card charge from an
+ * admin recording a payment that was already taken by other means (check,
+ * cash, or entered directly in Seazona) — pass `false` for the latter so the
+ * copy never tells a doctor their card was charged when it wasn't.
  */
-export async function sendPaymentReceipt({ to, amount, invoices = [], transactionId, date }) {
+export async function sendPaymentReceipt({ to, amount, invoices = [], transactionId, date, wasCharged = true }) {
   if (!to) return false;
   const when = (date instanceof Date ? date : new Date()).toLocaleDateString("en-US", {
     year: "numeric",
@@ -398,10 +432,16 @@ export async function sendPaymentReceipt({ to, amount, invoices = [], transactio
     )
     .join("");
 
+  const heading = wasCharged ? "Payment received" : "Payment recorded";
+  const intro = wasCharged
+    ? `Thank you — your payment to Diamond Orthotic Laboratory was processed on ${when}.`
+    : `We've recorded a payment of ${money(amount)} on your Diamond Orthotic Laboratory account, applied on ${when}. Your card was not charged through the portal for this payment.`;
+  const totalLabel = wasCharged ? "Total charged" : "Total recorded";
+
   const html = `
     <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a2733;">
-      <h1 style="font-size:20px;margin:0 0 4px;">Payment received</h1>
-      <p style="margin:0 0 20px;color:#5a6b7b;font-size:13px;">Thank you — your payment to Diamond Orthotic Laboratory was processed on ${when}.</p>
+      <h1 style="font-size:20px;margin:0 0 4px;">${heading}</h1>
+      <p style="margin:0 0 20px;color:#5a6b7b;font-size:13px;">${intro}</p>
       <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
         <thead>
           <tr>
@@ -412,7 +452,7 @@ export async function sendPaymentReceipt({ to, amount, invoices = [], transactio
         <tbody>${rows}</tbody>
         <tfoot>
           <tr>
-            <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">Total charged</td>
+            <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${totalLabel}</td>
             <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${money(amount)}</td>
           </tr>
         </tfoot>
@@ -426,7 +466,10 @@ export async function sendPaymentReceipt({ to, amount, invoices = [], transactio
     </div>
   `;
 
-  return send({ to, subject: "Payment received — Diamond Orthotic Laboratory", html });
+  const subject = wasCharged
+    ? "Payment received — Diamond Orthotic Laboratory"
+    : "Payment recorded — Diamond Orthotic Laboratory";
+  return send({ to, subject, html });
 }
 
 /**

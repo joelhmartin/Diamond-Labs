@@ -1,14 +1,15 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { X, CreditCard, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "../ui/Button.jsx";
 import { useToast } from "../ui/Toast.jsx";
 import { HostedPaymentForm } from "./HostedPaymentForm.jsx";
+import { useInvoiceAllocation, round2, balanceOf, idOf } from "../../hooks/useInvoiceAllocation.js";
 import api from "../../config/api.js";
 
-export const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-// Use portalBalance (partial-payment-aware) when present; fall back to gross total for safety.
-export const balanceOf = (inv) => round2(inv.portalBalance != null ? inv.portalBalance : (parseFloat(inv.total) || 0));
-const idOf = (inv) => inv.id || inv.invoiceId;
+// Re-exported for existing importers (e.g. InvoicesPage.jsx) — the canonical
+// definitions now live in useInvoiceAllocation.js, shared with the admin
+// DoctorPaymentDrawer's charge panel.
+export { round2, balanceOf };
 
 export function PaymentModal({ invoices, onClose, onSuccess }) {
   const [method, setMethod] = useState("new"); // "new" | "saved"
@@ -20,21 +21,17 @@ export function PaymentModal({ invoices, onClose, onSuccess }) {
   const [saveCard, setSaveCard] = useState(false); // "save this card" checkbox
   const { addToast } = useToast();
 
-  // Oldest-due-first ordering drives FIFO auto-allocation.
-  const ordered = useMemo(
-    () => [...invoices].sort((a, b) => new Date(a.due || 0) - new Date(b.due || 0)),
-    [invoices]
-  );
-
-  // alloc: { [invoiceId]: appliedAmount } — the source of truth for the charge.
-  const [alloc, setAlloc] = useState(() =>
-    Object.fromEntries(invoices.map((inv) => [idOf(inv), balanceOf(inv)]))
-  );
-  const totalBalance = useMemo(
-    () => round2(invoices.reduce((s, inv) => s + balanceOf(inv), 0)),
-    [invoices]
-  );
-  const [targetStr, setTargetStr] = useState(String(totalBalance.toFixed(2)));
+  const {
+    ordered,
+    alloc,
+    targetStr,
+    totalBalance,
+    handleTargetChange,
+    setRow,
+    payTotal,
+    allocations,
+    canPay,
+  } = useInvoiceAllocation(invoices);
 
   useEffect(() => {
     api.get("/payments/saved-cards")
@@ -50,51 +47,6 @@ export function PaymentModal({ invoices, onClose, onSuccess }) {
       .catch(() => {})
       .finally(() => setLoadingCards(false));
   }, []);
-
-  // Distribute `target` across invoices oldest-first, capped at each balance.
-  const autoAllocate = (target) => {
-    let remaining = round2(Math.max(0, target));
-    const next = {};
-    for (const inv of ordered) {
-      const bal = balanceOf(inv);
-      const apply = round2(Math.min(bal, remaining));
-      next[idOf(inv)] = apply;
-      remaining = round2(remaining - apply);
-    }
-    setAlloc(next);
-  };
-
-  const handleTargetChange = (val) => {
-    setTargetStr(val);
-    const n = parseFloat(val);
-    if (!Number.isNaN(n)) autoAllocate(n);
-  };
-
-  const setRow = (inv, val) => {
-    const bal = balanceOf(inv);
-    let n = parseFloat(val);
-    if (Number.isNaN(n) || n < 0) n = 0;
-    if (n > bal) n = bal;
-    setAlloc((prev) => {
-      const next = { ...prev, [idOf(inv)]: round2(n) };
-      setTargetStr(
-        String(round2(Object.values(next).reduce((s, v) => s + (v || 0), 0)).toFixed(2))
-      );
-      return next;
-    });
-  };
-
-  const payTotal = round2(Object.values(alloc).reduce((s, v) => s + (Number(v) || 0), 0));
-
-  const allocations = invoices
-    .filter((inv) => (Number(alloc[idOf(inv)]) || 0) > 0)
-    .map((inv) => ({
-      invoiceId: idOf(inv),
-      invoiceNumber: inv.invoiceNumber,
-      amount: round2(alloc[idOf(inv)]),
-    }));
-
-  const canPay = payTotal > 0 && allocations.length > 0;
 
   const submit = async (charger) => {
     if (!canPay) {

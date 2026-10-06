@@ -52,6 +52,19 @@ const STATUS_LABEL = {
   refund_pending: "Refund pending",
 };
 
+// How the payment was initiated. AutoPay is the one nobody clicked, so the lab
+// needs to see it distinctly when reconciling — otherwise a scheduled charge is
+// indistinguishable from one a doctor or an admin made by hand. Rows written
+// before the `source` column existed carry null; render nothing rather than guess.
+const SOURCE_LABEL = {
+  autopay: "AutoPay",
+  doctor_card: "Doctor — card",
+  doctor_hosted: "Doctor — card",
+  admin_card: "Admin — card",
+  admin_offline: "Offline",
+  refund: "Refund",
+};
+
 function StatusPill({ status }) {
   return (
     <span
@@ -196,6 +209,7 @@ export function AdminPaymentsPage() {
                 <th className="px-4 py-3 font-medium">Doctor</th>
                 <th className="px-4 py-3 font-medium">Transaction</th>
                 <th className="px-4 py-3 font-medium">Invoices</th>
+                <th className="px-4 py-3 font-medium">Method</th>
                 <th className="px-4 py-3 font-medium text-right">Gross</th>
                 <th className="px-4 py-3 font-medium text-right">Refunded</th>
                 <th className="px-4 py-3 font-medium text-right">Net</th>
@@ -218,6 +232,15 @@ export function AdminPaymentsPage() {
                       <td className="px-4 py-3 font-mono text-xs text-navy/60">{p.transactionId}</td>
                       <td className="px-4 py-3 text-navy/70 text-xs">
                         {p.invoices.map((inv) => inv.invoiceNumber || inv.seazonaInvoiceId).join(", ") || "—"}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {p.source === "autopay" ? (
+                          <span className="inline-block rounded-full bg-brand-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-brand-700">
+                            AutoPay
+                          </span>
+                        ) : (
+                          <span className="text-xs text-navy/50">{SOURCE_LABEL[p.source] || "—"}</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right text-navy/80 whitespace-nowrap">{formatUSD(p.gross)}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap text-navy/60">
@@ -258,7 +281,7 @@ export function AdminPaymentsPage() {
                     </tr>
                     {open && (
                       <tr className="bg-surface-50/40">
-                        <td colSpan={9} className="px-4 py-3">
+                        <td colSpan={10} className="px-4 py-3">
                           {!audit || audit.loading ? (
                             <div className="flex items-center gap-2 text-xs text-navy/40">
                               <Loader2 size={12} className="animate-spin" /> Loading history…

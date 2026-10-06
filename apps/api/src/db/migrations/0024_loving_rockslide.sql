@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "autopay_attempts_user_cycle_success_idx" ON "autopay_attempts" USING btree ("user_id","cycle_key") WHERE status = 'succeeded' AND dry_run = false;

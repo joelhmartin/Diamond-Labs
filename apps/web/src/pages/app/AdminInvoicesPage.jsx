@@ -101,11 +101,20 @@ function remainingOf(inv) {
 // Modal for recording a payment that staff already took directly in Seazona,
 // reflecting it in the portal's invoice_payments ledger so the doctor's balance
 // is accurate. No Seazona write is made (the payment already exists there).
-function OfflinePaymentModal({ invoice, onClose, onRecorded }) {
+// Exported so DoctorPaymentDrawer.jsx (admin per-doctor payment parity panel)
+// can reuse the identical flow instead of duplicating it.
+// `userId` (optional): the portal user the payment is attributed to. The
+// per-doctor drawer passes the doctor it was opened for; without it the API
+// picks a user linked to the invoice's Seazona client.
+export function OfflinePaymentModal({ invoice, userId, onClose, onRecorded }) {
   const remaining = remainingOf(invoice);
   const [amountStr, setAmountStr] = useState(String(remaining.toFixed(2)));
+  const [recordInSeazona, setRecordInSeazona] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState(null);
+  // Set once the server reports the payment was recorded but its ledger write
+  // failed — the submit button stays locked so it can't be recorded twice.
+  const [needsReconcile, setNeedsReconcile] = useState(false);
   const { addToast } = useToast();
 
   const amount = parseFloat(amountStr);
@@ -116,11 +125,25 @@ function OfflinePaymentModal({ invoice, onClose, onRecorded }) {
     setSubmitting(true);
     setErr(null);
     try {
-      await api.post(`/admin/invoices/${invoice.id}/offline-payment`, {
+      const res = await api.post(`/admin/invoices/${invoice.id}/offline-payment`, {
         amount: Number(amount.toFixed(2)),
         invoiceNumber: invoice.invoiceNumber,
         seazonaClientId: invoice.clientId,
+        ...(userId ? { userId } : {}),
+        recordInSeazona,
       });
+      // 200 with ledgerWriteFailed: the payment was NOT written to the portal
+      // ledger. Don't report success or close — a staff member who thinks it
+      // failed silently would record it again.
+      const result = res.data?.data;
+      if (result?.ledgerWriteFailed) {
+        setNeedsReconcile(true);
+        setErr(
+          `This payment needs manual reconciliation — it was not saved to the portal ledger. ` +
+            `Do not record it again. Reference: ${result.transactionId || "unknown"}.`
+        );
+        return;
+      }
       addToast({
         message: `Recorded ${formatUSD(amount)} offline payment on #${invoice.invoiceNumber}.`,
         type: "success",
@@ -159,8 +182,8 @@ function OfflinePaymentModal({ invoice, onClose, onRecorded }) {
           Record offline payment
         </h3>
         <p className="mt-1 text-xs text-navy/50">
-          Entered in Seazona · reflects in the portal balance only. No charge is
-          made.
+          Reflects a payment already received (check, cash, or entered in
+          Seazona) in the portal balance. No card is charged.
         </p>
 
         <div className="mt-4 rounded-xl bg-surface-50 border border-surface-300/50 p-3 text-xs text-navy/60 space-y-0.5">
@@ -198,6 +221,24 @@ function OfflinePaymentModal({ invoice, onClose, onRecorded }) {
           />
         </div>
 
+        <label className="mt-4 flex items-start gap-2.5 rounded-xl border border-surface-300/50 bg-surface-50 p-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={recordInSeazona}
+            onChange={(e) => setRecordInSeazona(e.target.checked)}
+            disabled={submitting}
+            className="mt-0.5 h-3.5 w-3.5 rounded border-surface-300 text-brand-500 focus:ring-brand-500/30"
+          />
+          <span className="text-xs text-navy/70">
+            <span className="font-semibold text-navy">
+              Also record this payment in Seazona
+            </span>
+            <br />
+            Leave unchecked if staff already entered it in Seazona — checking
+            it would double-credit the account.
+          </span>
+        </label>
+
         {err && (
           <div className="mt-3 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
             <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
@@ -217,7 +258,7 @@ function OfflinePaymentModal({ invoice, onClose, onRecorded }) {
           <button
             type="button"
             onClick={submit}
-            disabled={!valid || submitting}
+            disabled={!valid || submitting || needsReconcile}
             className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold bg-brand-500 text-white hover:bg-brand-600 transition-all disabled:opacity-50"
           >
             {submitting && <Loader2 size={12} className="animate-spin" />}
