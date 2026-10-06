@@ -29,7 +29,7 @@ Established by reconnaissance, not assumption:
    their Seazona notes. Only 4 of 476 clients (0.8%) contain card data. Admin
    and doctor card entry is therefore the *only* route to a card on file.
 4. **Seazona rate-limits hard.** At concurrency 8, 448 of 476 requests failed;
-   serial with ~110 ms spacing succeeded 476/476. Any sweep must be serialized
+   serial with ~110 ms spacing succeeded 476/476, but Seazona documents 60 requests/minute, so the runner spaces requests ~1.1 s apart (`SEAZONA_SPACING_MS = 1_100`). Any sweep must be serialized
    and throttled.
 5. **Accept.js is inert in production.** `apps/api/Dockerfile:22-25` declares
    the `VITE_AUTHORIZE_NET_*` build args, but `cloudbuild.yaml`'s build step
@@ -204,7 +204,7 @@ cycle:
    `chargeCustomerProfile`, then `recordPaymentAndAllocations` with
    `source: "autopay"` — which writes the single account-level Seazona payment
    and the per-invoice local ledger rows, exactly as the manual paths do.
-6. Requests to Seazona are **serialized with ~110 ms spacing** (constraint 4).
+6. Requests to Seazona are **serialized with ~1.1 s spacing** (60/min) (constraint 4).
 
 **Dry run** (`AUTOPAY_LIVE_RUN=false`) performs steps 1–4, records
 `would_charge` attempts with full allocations, and stops before the charge.

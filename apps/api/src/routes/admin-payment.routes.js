@@ -452,7 +452,9 @@ export default async function adminPaymentRoutes(fastify) {
         { log: request.log }
       );
 
-      await auditService.logSafe({
+      // A replayed Idempotency-Key served the cached result — no new charge
+      // happened, so don't record a second one in the audit trail.
+      if (!outcome.replayed) await auditService.logSafe({
         userId: request.user.id,
         action: "payment.charge_by_admin",
         targetType: "user",
