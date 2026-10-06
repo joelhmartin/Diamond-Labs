@@ -1,11 +1,13 @@
-import { and, asc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, count, eq, inArray, ne } from "drizzle-orm";
+import { canDeleteVariant, canDeleteOptionValue } from "@my-app/shared";
 import { db } from "../config/database.js";
 import {
   productFamilies, productOptions, productOptionValues, productVariants, productVariantOptionValues,
+  clientPrices, orderItems,
 } from "../db/schema/index.js";
 import { createId } from "../lib/id.js";
 import {
-  shapeFamily, missingCombinations, validateCombination, findDuplicateCombination,
+  shapeFamily, missingCombinations, validateCombination, findDuplicateCombination, planMerge,
 } from "../lib/catalog-variants.js";
 
 export class CatalogError extends Error {
@@ -21,7 +23,28 @@ function rethrowConflict(err, what) {
   throw err;
 }
 
-async function loadShaped(familyRows, conn = db) {
+/**
+ * What refers to each variant from outside the catalog: client prices and
+ * order lines. With no FKs, these counts are what keeps a delete from
+ * orphaning either. -> Map(variantId → { clientPriceCount, orderItemCount })
+ */
+export async function variantUsage(variantIds, conn = db) {
+  const usage = new Map(variantIds.map((id) => [id, { clientPriceCount: 0, orderItemCount: 0 }]));
+  if (variantIds.length === 0) return usage;
+  const [cp, oi] = await Promise.all([
+    conn.select({ id: clientPrices.variantId, n: count() }).from(clientPrices)
+      .where(inArray(clientPrices.variantId, variantIds)).groupBy(clientPrices.variantId),
+    conn.select({ id: orderItems.variantId, n: count() }).from(orderItems)
+      .where(inArray(orderItems.variantId, variantIds)).groupBy(orderItems.variantId),
+  ]);
+  for (const r of cp) usage.get(r.id).clientPriceCount = Number(r.n);
+  for (const r of oi) usage.get(r.id).orderItemCount = Number(r.n);
+  return usage;
+}
+
+// Admin views carry each variant's usage counts so the UI can offer delete
+// exactly when the API will accept it; the public shop never loads them.
+async function loadShaped(familyRows, conn = db, { withUsage = false } = {}) {
   if (familyRows.length === 0) return [];
   const familyIds = familyRows.map((f) => f.id);
   const options = await conn.select().from(productOptions).where(inArray(productOptions.familyId, familyIds));
@@ -35,10 +58,12 @@ async function loadShaped(familyRows, conn = db) {
   const links = variantIds.length
     ? await conn.select().from(productVariantOptionValues).where(inArray(productVariantOptionValues.variantId, variantIds))
     : [];
+  const usage = withUsage ? await variantUsage(variantIds, conn) : null;
   return familyRows.map((family) => {
     const opts = options.filter((o) => o.familyId === family.id);
     const optIds = new Set(opts.map((o) => o.id));
-    const vars = variants.filter((v) => v.familyId === family.id);
+    const vars = variants.filter((v) => v.familyId === family.id)
+      .map((v) => (usage ? { ...v, ...usage.get(v.id) } : v));
     const varIds = new Set(vars.map((v) => v.id));
     return shapeFamily({
       family,
@@ -56,13 +81,14 @@ export async function listFamilies({ shopOnly = false } = {}) {
     : undefined;
   const rows = await db.select().from(productFamilies).where(where)
     .orderBy(asc(productFamilies.position), asc(productFamilies.name));
-  return loadShaped(rows);
+  return loadShaped(rows, db, { withUsage: !shopOnly });
 }
 
+/** Admin read of one family, with variant usage counts. */
 export async function getFamily(id, conn = db) {
   const rows = await conn.select().from(productFamilies).where(eq(productFamilies.id, id));
   if (rows.length === 0) throw new CatalogError("NOT_FOUND", "Product family not found.");
-  return (await loadShaped(rows, conn))[0];
+  return (await loadShaped(rows, conn, { withUsage: true }))[0];
 }
 
 /**
@@ -149,8 +175,7 @@ export async function addOption(familyId, { name, values }) {
 
 export async function addOptionValue(optionId, value) {
   return db.transaction(async (tx) => {
-    const [option] = await tx.select().from(productOptions).where(eq(productOptions.id, optionId));
-    if (!option) throw new CatalogError("NOT_FOUND", "Option not found.");
+    const option = await loadOption(tx, optionId);
     const existing = await tx.select().from(productOptionValues).where(eq(productOptionValues.optionId, optionId));
     if (existing.some((v) => v.value.toLowerCase() === value.toLowerCase())) {
       throw new CatalogError("CONFLICT", `${option.name} already has ${value}.`);
@@ -200,23 +225,98 @@ export async function mergeSingleVariantFamily({ targetFamilyId, sourceFamilyId,
     }
     const check = validateCombination(target.options, optionValueIds);
     if (!check.ok) throw new CatalogError("INVALID", check.reason);
-    const clash = findDuplicateCombination(target.variants, optionValueIds);
-    // An inactive, unpriced placeholder created by the grid can be replaced.
-    if (clash && (clash.active || clash.basePriceCents != null)) {
-      throw new CatalogError("CONFLICT", `That combination is already ${clash.name}.`);
-    }
-    if (clash) {
-      await tx.delete(productVariantOptionValues).where(eq(productVariantOptionValues.variantId, clash.id));
-      await tx.delete(productVariants).where(eq(productVariants.id, clash.id));
-    }
     const moving = source.variants[0];
-    await tx.update(productVariants).set({ familyId: targetFamilyId, updatedAt: new Date() })
+    // getFamily carries usage counts, so `clash` already knows its client prices and orders.
+    const clash = findDuplicateCombination(target.variants, optionValueIds);
+    const plan = planMerge({
+      clash, clashUsage: { clientPriceCount: clash?.clientPriceCount, orderItemCount: clash?.orderItemCount },
+      sourceChannel: source.channel, targetChannel: target.channel,
+      movingActive: moving.active,
+    });
+    if (plan.error) throw new CatalogError("CONFLICT", plan.error);
+    if (plan.replaceId) await deleteVariantRows(tx, [plan.replaceId]);
+    await tx.update(productVariants).set({ familyId: targetFamilyId, active: plan.active, updatedAt: new Date() })
       .where(eq(productVariants.id, moving.id));
     for (const optionValueId of optionValueIds) {
       await tx.insert(productVariantOptionValues).values({ variantId: moving.id, optionValueId });
     }
     await tx.delete(productFamilies).where(eq(productFamilies.id, sourceFamilyId));
     return getFamily(targetFamilyId, tx);
+  });
+}
+
+async function deleteVariantRows(tx, variantIds) {
+  if (variantIds.length === 0) return;
+  await tx.delete(productVariantOptionValues).where(inArray(productVariantOptionValues.variantId, variantIds));
+  await tx.delete(productVariants).where(inArray(productVariants.id, variantIds));
+}
+
+async function loadOption(conn, optionId) {
+  const [option] = await conn.select().from(productOptions).where(eq(productOptions.id, optionId));
+  if (!option) throw new CatalogError("NOT_FOUND", "Option not found.");
+  return option;
+}
+
+export async function renameOption(optionId, name) {
+  return db.transaction(async (tx) => {
+    const option = await loadOption(tx, optionId);
+    const siblings = await tx.select().from(productOptions).where(eq(productOptions.familyId, option.familyId));
+    if (siblings.some((o) => o.id !== optionId && o.name.toLowerCase() === name.toLowerCase())) {
+      throw new CatalogError("CONFLICT", `This family already has an option called ${name}.`);
+    }
+    await tx.update(productOptions).set({ name }).where(eq(productOptions.id, optionId));
+    return getFamily(option.familyId, tx);
+  });
+}
+
+async function loadOptionValue(conn, valueId) {
+  const [value] = await conn.select().from(productOptionValues).where(eq(productOptionValues.id, valueId));
+  if (!value) throw new CatalogError("NOT_FOUND", "Option value not found.");
+  return { value, option: await loadOption(conn, value.optionId) };
+}
+
+export async function renameOptionValue(valueId, newValue) {
+  return db.transaction(async (tx) => {
+    const { option } = await loadOptionValue(tx, valueId);
+    const siblings = await tx.select().from(productOptionValues).where(eq(productOptionValues.optionId, option.id));
+    if (siblings.some((v) => v.id !== valueId && v.value.toLowerCase() === newValue.toLowerCase())) {
+      throw new CatalogError("CONFLICT", `${option.name} already has ${newValue}.`);
+    }
+    await tx.update(productOptionValues).set({ value: newValue }).where(eq(productOptionValues.id, valueId));
+    return getFamily(option.familyId, tx);
+  });
+}
+
+/** Delete a blank placeholder variant (see canDeleteVariant). */
+export async function deleteVariant(variantId) {
+  return db.transaction(async (tx) => {
+    const [variant] = await tx.select().from(productVariants).where(eq(productVariants.id, variantId));
+    if (!variant) throw new CatalogError("NOT_FOUND", "Variant not found.");
+    const family = await getFamily(variant.familyId, tx);
+    const shaped = family.variants.find((v) => v.id === variantId);
+    const r = canDeleteVariant({
+      variant: shaped, clientPriceCount: shaped.clientPriceCount, orderItemCount: shaped.orderItemCount,
+      familyVariantCount: family.variants.length,
+    });
+    if (!r.ok) throw new CatalogError("CONFLICT", `${variant.name} can't be deleted. ${r.reason}`);
+    await deleteVariantRows(tx, [variantId]);
+    return getFamily(variant.familyId, tx);
+  });
+}
+
+/** Delete an option value and the (blank) variants that use it, in one transaction. */
+export async function deleteOptionValue(valueId) {
+  return db.transaction(async (tx) => {
+    const { value, option } = await loadOptionValue(tx, valueId);
+    const family = await getFamily(option.familyId, tx);
+    const opt = family.options.find((o) => o.id === option.id);
+    const using = family.variants.filter((v) => v.optionValueIds.includes(valueId));
+    const r = canDeleteOptionValue({ optionValueCount: opt.values.length, variants: using });
+    if (!r.ok) throw new CatalogError("CONFLICT", `${option.name} ${value.value} can't be deleted. ${r.reason}`);
+    await deleteVariantRows(tx, using.map((v) => v.id));
+    await tx.delete(productVariantOptionValues).where(eq(productVariantOptionValues.optionValueId, valueId));
+    await tx.delete(productOptionValues).where(eq(productOptionValues.id, valueId));
+    return getFamily(option.familyId, tx);
   });
 }
 

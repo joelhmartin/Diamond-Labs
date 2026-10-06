@@ -1,3 +1,4 @@
+import { canDeleteVariant } from "@my-app/shared";
 import { unitPriceFor } from "./pricing.js";
 
 // Variant-grid rules. Pure — services/catalog.service.js does the DB work.
@@ -73,4 +74,23 @@ export function presentShopFamily(shaped, clientPrices) {
   if (variants.length === 0) return null;
   const { id, slug, name, description, category, imageUrl, options } = shaped;
   return { id, slug, name, description, category, imageUrl, options, variants };
+}
+
+const SHOP_VISIBLE = new Set(["shop", "both"]);
+
+/**
+ * How a single-variant family folds into a target combination.
+ * - A clashing variant may be replaced only if it is a blank placeholder
+ *   (the deletion rule: inactive, unpriced, no code, no client prices, unsold).
+ * - A lab-billed (rx) item moved into a shop-visible family lands inactive, so
+ *   it never goes on sale by accident; staff re-activate it deliberately.
+ * -> { error } | { replaceId: string|null, active: boolean }
+ */
+export function planMerge({ clash, clashUsage = {}, sourceChannel, targetChannel, movingActive }) {
+  if (clash) {
+    const r = canDeleteVariant({ variant: clash, ...clashUsage });
+    if (!r.ok) return { error: `That combination is already ${clash.name}. ${r.reason}` };
+  }
+  const exposes = sourceChannel === "rx" && SHOP_VISIBLE.has(targetChannel);
+  return { replaceId: clash?.id ?? null, active: exposes ? false : Boolean(movingActive) };
 }

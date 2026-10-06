@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import {
   ERROR_CODES, familyCreateSchema, familyUpdateSchema, optionCreateSchema, optionValueCreateSchema,
-  variantUpdateSchema, familyMergeSchema, clientPriceUpsertSchema, clientPriceReviewSchema,
+  optionRenameSchema, optionValueRenameSchema, variantUpdateSchema, familyMergeSchema, clientPriceUpsertSchema, clientPriceReviewSchema,
 } from "@my-app/shared";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireAdmin } from "../middleware/require-role.js";
@@ -50,8 +50,16 @@ export default async function adminCatalogRoutes(fastify) {
     run(reply, () => catalog.addOption(req.params.id, req.body)));
   fastify.post("/admin/catalog/options/:id/values", withBody(optionValueCreateSchema), (req, reply) =>
     run(reply, () => catalog.addOptionValue(req.params.id, req.body.value)));
+  fastify.patch("/admin/catalog/options/:id", withBody(optionRenameSchema), (req, reply) =>
+    run(reply, () => catalog.renameOption(req.params.id, req.body.name)));
+  fastify.patch("/admin/catalog/option-values/:id", withBody(optionValueRenameSchema), (req, reply) =>
+    run(reply, () => catalog.renameOptionValue(req.params.id, req.body.value)));
+  fastify.delete("/admin/catalog/option-values/:id", admin, (req, reply) =>
+    run(reply, () => catalog.deleteOptionValue(req.params.id)));
   fastify.patch("/admin/catalog/variants/:id", withBody(variantUpdateSchema), (req, reply) =>
     run(reply, () => catalog.updateVariant(req.params.id, req.body)));
+  fastify.delete("/admin/catalog/variants/:id", admin, (req, reply) =>
+    run(reply, () => catalog.deleteVariant(req.params.id)));
   fastify.post("/admin/catalog/families/:id/merge", withBody(familyMergeSchema), (req, reply) =>
     run(reply, () => catalog.mergeSingleVariantFamily({ targetFamilyId: req.params.id, ...req.body })));
 

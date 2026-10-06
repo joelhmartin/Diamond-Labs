@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { parsePriceInput, familyBadge, canActivate } from "./AdminCatalogPage.jsx";
+import { parsePriceInput, familyBadge, canActivate, variantDeleteCheck, valueDeleteCheck } from "./AdminCatalogPage.jsx";
 
 test("admins type dollars; the API gets cents", () => {
   assert.equal(parsePriceInput("199"), 19900);
@@ -26,4 +26,18 @@ test("shop variants need a price to activate; lab-billed ones may rely on client
   assert.equal(rx.ok, true);
   assert.match(rx.note, /negotiated price/);
   assert.equal(canActivate({ channel: "rx" }, {}, 500).note, null);
+});
+
+test("delete is offered by the same rule the API enforces, using the variant's usage counts", () => {
+  const blank = { id: "b", name: "Mute PMT", active: false, basePriceCents: null, code: null, clientPriceCount: 0, orderItemCount: 0, optionValueIds: ["pmt"] };
+  const sold = { ...blank, id: "s", name: "Mute Nylon", orderItemCount: 2, optionValueIds: ["nylon"] };
+  const family = { variants: [blank, sold] };
+  assert.equal(variantDeleteCheck(family, blank).ok, true);
+  assert.match(variantDeleteCheck(family, sold).reason, /past orders/);
+  assert.match(variantDeleteCheck({ variants: [blank] }, blank).reason, /only variant/);
+
+  const option = { id: "m", name: "Material", values: [{ id: "pmt" }, { id: "nylon" }] };
+  assert.equal(valueDeleteCheck(family, option, "pmt").ok, true);
+  assert.match(valueDeleteCheck(family, option, "nylon").reason, /Mute Nylon/);
+  assert.match(valueDeleteCheck(family, { ...option, values: [{ id: "pmt" }] }, "pmt").reason, /only value/);
 });

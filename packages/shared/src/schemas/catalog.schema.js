@@ -35,6 +35,9 @@ export const optionCreateSchema = z.object({
 
 export const optionValueCreateSchema = z.object({ value: z.string().trim().min(1).max(120) });
 
+export const optionRenameSchema = z.object({ name: z.string().trim().min(1).max(60) });
+export const optionValueRenameSchema = optionValueCreateSchema;
+
 export const variantUpdateSchema = z.object({
   code: z.string().trim().min(1).max(60).nullable().optional(),
   name: z.string().trim().min(1).max(200).optional(),

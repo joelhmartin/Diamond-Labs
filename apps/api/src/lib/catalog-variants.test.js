@@ -2,7 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   combinations, missingCombinations, validateCombination,
-  findDuplicateCombination, shapeFamily, presentShopFamily,
+  findDuplicateCombination, shapeFamily, presentShopFamily, planMerge,
 } from "./catalog-variants.js";
 
 const design = { id: "d", values: [{ id: "d1" }, { id: "d2" }] };
@@ -64,4 +64,30 @@ test("the shop sees only active, priced variants — with the client's price", (
 test("a family with nothing sellable is hidden", () => {
   const empty = { ...shaped, variants: shaped.variants.filter((v) => v.id !== "v1") };
   assert.equal(presentShopFamily(empty, new Map()), null);
+});
+
+const placeholder = { id: "p1", name: "Mute Large", active: false, basePriceCents: null, code: null };
+
+test("a merge replaces only a blank placeholder", () => {
+  const base = { sourceChannel: "shop", targetChannel: "shop", movingActive: true };
+  assert.deepEqual(planMerge({ ...base, clash: null }), { replaceId: null, active: true });
+  assert.deepEqual(planMerge({ ...base, clash: placeholder }), { replaceId: "p1", active: true });
+  for (const clash of [
+    { ...placeholder, active: true },
+    { ...placeholder, basePriceCents: 1000 },
+    { ...placeholder, code: "61L" },
+  ]) assert.match(planMerge({ ...base, clash }).error, /already Mute Large/);
+  assert.match(planMerge({ ...base, clash: placeholder, clashUsage: { clientPriceCount: 1 } }).error, /client price/);
+  assert.match(planMerge({ ...base, clash: placeholder, clashUsage: { orderItemCount: 3 } }).error, /past orders/);
+});
+
+test("a lab-billed item merged into a shop-visible family lands inactive", () => {
+  const m = (sourceChannel, targetChannel, movingActive = true) =>
+    planMerge({ clash: null, sourceChannel, targetChannel, movingActive }).active;
+  assert.equal(m("rx", "shop"), false);
+  assert.equal(m("rx", "both"), false);
+  assert.equal(m("rx", "rx"), true);
+  assert.equal(m("shop", "both"), true);
+  assert.equal(m("both", "shop"), true);
+  assert.equal(m("shop", "shop", false), false); // never activates an inactive one
 });

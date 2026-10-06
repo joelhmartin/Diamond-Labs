@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search, Loader2, AlertCircle, Plus, Layers, Save } from "lucide-react";
+import { Search, Loader2, AlertCircle, Plus, Layers, Save, Pencil, Trash2, X, Check } from "lucide-react";
+import { canDeleteVariant, canDeleteOptionValue } from "@my-app/shared";
 import api from "../../config/api.js";
 import { formatCents } from "../../lib/money.js";
 
@@ -34,9 +35,77 @@ export function canActivate(family, variant, priceCents) {
   return { ok: false, note: "A variant needs a price before it can be active." };
 }
 
+/** The API's own deletion rule, fed the usage counts the admin catalog carries. */
+export function variantDeleteCheck(family, variant) {
+  return canDeleteVariant({
+    variant, clientPriceCount: variant.clientPriceCount, orderItemCount: variant.orderItemCount,
+    familyVariantCount: family.variants.length,
+  });
+}
+
+export function valueDeleteCheck(family, option, valueId) {
+  return canDeleteOptionValue({
+    optionValueCount: option.values.length,
+    variants: family.variants.filter((v) => v.optionValueIds.includes(valueId)),
+  });
+}
+
 const errorText = (err) => err.response?.data?.error?.message || "Something went wrong.";
 
-function VariantRow({ family, variant, onSaved }) {
+/** Text with a pencil; click to edit in place. onSave returns true on success. */
+function InlineRename({ value, label, onSave, busy, className = "" }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  if (!editing) {
+    return (
+      <span className={`inline-flex items-center gap-1 ${className}`}>
+        {value}
+        <button type="button" aria-label={`Rename ${label}`} title={`Rename ${label}`} className="text-navy/30 hover:text-navy"
+          onClick={() => { setDraft(value); setEditing(true); }}>
+          <Pencil size={12} />
+        </button>
+      </span>
+    );
+  }
+  const save = async () => { if (await onSave(draft.trim())) setEditing(false); };
+  return (
+    <span className="inline-flex items-center gap-1">
+      <input className={`${INPUT} w-36 py-1`} aria-label={`New name for ${label}`} value={draft} autoFocus
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter" && draft.trim()) save(); if (e.key === "Escape") setEditing(false); }} />
+      <button type="button" aria-label="Save name" disabled={busy || !draft.trim() || draft.trim() === value} className="text-brand-600 disabled:opacity-40" onClick={save}><Check size={14} /></button>
+      <button type="button" aria-label="Cancel rename" className="text-navy/40" onClick={() => setEditing(false)}><X size={14} /></button>
+    </span>
+  );
+}
+
+/** Delete with an inline "Confirm delete?" step; disabled with the reason when the API would refuse. */
+function DeleteControl({ check, label, onConfirm, busy }) {
+  const [confirming, setConfirming] = useState(false);
+  if (!check.ok) {
+    return (
+      <button type="button" disabled aria-label={`Delete ${label}`} title={`Can't delete: ${check.reason}`} className="text-navy/20 cursor-not-allowed">
+        <Trash2 size={14} />
+      </button>
+    );
+  }
+  if (!confirming) {
+    return (
+      <button type="button" aria-label={`Delete ${label}`} title={`Delete ${label}`} className="text-navy/40 hover:text-red-600" onClick={() => setConfirming(true)}>
+        <Trash2 size={14} />
+      </button>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-xs">
+      <span className="text-red-600">Confirm delete?</span>
+      <button type="button" disabled={busy} className="font-semibold text-red-600 disabled:opacity-40" onClick={async () => { if (!(await onConfirm())) setConfirming(false); }}>Yes</button>
+      <button type="button" className="text-navy/50" onClick={() => setConfirming(false)}>No</button>
+    </span>
+  );
+}
+
+function VariantRow({ family, variant, onSaved, act, busy }) {
   const labelOf = new Map(family.options.flatMap((o) => o.values.map((v) => [v.id, v.value])));
   const [draft, setDraft] = useState({
     name: variant.name ?? "",
@@ -86,6 +155,10 @@ function VariantRow({ family, variant, onSaved }) {
         <button type="button" onClick={save} disabled={saving} className="inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700 disabled:opacity-40">
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save
         </button>
+        <div className="mt-2">
+          <DeleteControl check={variantDeleteCheck(family, variant)} label={variant.name} busy={busy}
+            onConfirm={() => act(() => api.delete(`/admin/catalog/variants/${variant.id}`))} />
+        </div>
       </td>
     </tr>
   );
@@ -171,7 +244,7 @@ function FamilyDetail({ family, families, onChange }) {
           </thead>
           <tbody>
             {family.variants.map((v) => (
-              <VariantRow key={`${v.id}:${v.updatedAt}`} family={family} variant={v} onSaved={onChange} />
+              <VariantRow key={`${v.id}:${v.updatedAt}`} family={family} variant={v} onSaved={onChange} act={act} busy={busy} />
             ))}
           </tbody>
         </table>
@@ -181,8 +254,16 @@ function FamilyDetail({ family, families, onChange }) {
         <h3 className="font-semibold text-sm text-navy">Options</h3>
         {family.options.map((o) => (
           <div key={o.id} className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="font-medium w-24">{o.name}</span>
-            {o.values.map((v) => <span key={v.id} className="px-2 py-1 rounded-full bg-surface-100">{v.value}</span>)}
+            <InlineRename className="font-medium min-w-[6rem]" value={o.name} label={o.name} busy={busy}
+              onSave={(name) => act(() => api.patch(`/admin/catalog/options/${o.id}`, { name }))} />
+            {o.values.map((v) => (
+              <span key={v.id} className="px-2 py-1 rounded-full bg-surface-100 inline-flex items-center gap-1">
+                <InlineRename value={v.value} label={`${o.name} ${v.value}`} busy={busy}
+                  onSave={(value) => act(() => api.patch(`/admin/catalog/option-values/${v.id}`, { value }))} />
+                <DeleteControl check={valueDeleteCheck(family, o, v.id)} label={`${o.name} ${v.value}`} busy={busy}
+                  onConfirm={() => act(() => api.delete(`/admin/catalog/option-values/${v.id}`))} />
+              </span>
+            ))}
             <input className={`${INPUT} w-36`} placeholder={`Add ${o.name.toLowerCase()}`} value={newValue[o.id] ?? ""} onChange={(e) => setNewValue({ ...newValue, [o.id]: e.target.value })} />
             <button type="button" aria-label={`Add ${o.name} value`} disabled={busy || !newValue[o.id]?.trim()} className="text-brand-600 disabled:opacity-40"
               onClick={async () => { if (await act(() => api.post(`/admin/catalog/options/${o.id}/values`, { value: newValue[o.id].trim() }))) setNewValue((nv) => ({ ...nv, [o.id]: "" })); }}>
@@ -203,7 +284,8 @@ function FamilyDetail({ family, families, onChange }) {
             Add option
           </button>
         </div>
-        <p className="text-xs text-navy/50">Adding an option gives existing variants its first value and creates every other combination unpriced and inactive.</p>
+        <p className="text-xs text-navy/50">Adding an option gives existing variants its first value and creates every other combination unpriced and inactive.
+          Only blank variants (inactive, unpriced, no code, no client prices, never ordered) can be deleted; deleting a value deletes its variants.</p>
       </section>
 
       {family.options.length === 0 && (

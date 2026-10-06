@@ -18,5 +18,8 @@ export * from "./constants/errors.js";
 export * from "./utils/permissions.js";
 export * from "./utils/validation.js";
 
+// Catalog
+export { canDeleteVariant, canDeleteOptionValue } from "./catalog/variant-rules.js";
+
 // Rx
 export { buildDigitalDevices, buildFormDevices, buildOrthoDevice, DEVICE_LABELS } from "./rx/form-devices.js";
