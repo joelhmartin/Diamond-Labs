@@ -18,6 +18,7 @@ import {
   Info,
 } from "lucide-react";
 import api from "../../config/api.js";
+import ImageUploadField from "../../components/ui/ImageUploadField.jsx";
 import { SEED_CATALOG } from "../../data/catalog.js";
 
 const INPUT =
@@ -222,17 +223,11 @@ function ProductEditor({ product, onClose, onSave, saving }) {
             />
           </div>
 
-          <div>
-            <label className="block text-[10px] font-mono text-navy/40 uppercase tracking-widest mb-1.5">
-              Image URL (shop)
-            </label>
-            <input
-              className={INPUT}
-              value={draft.imageUrl}
-              onChange={(e) => update("imageUrl", e.target.value)}
-              placeholder="/catalog/product.webp or full URL"
-            />
-          </div>
+          <ImageUploadField
+            label="Image (shop)"
+            value={draft.imageUrl}
+            onChange={(url) => update("imageUrl", url)}
+          />
 
           <div>
             <label className="block text-[10px] font-mono text-navy/40 uppercase tracking-widest mb-1.5">
