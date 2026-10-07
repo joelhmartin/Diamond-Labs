@@ -84,6 +84,25 @@ test("a truncate failure on one table still attempts the rest, exit 2, names the
   assert.ok(!out.lines.some((l) => l.includes("staging DB emptied — re-import")));
 });
 
+test("scrub creates and upserts the marker inside the committing transaction", async () => {
+  const c = fake();
+  const { exitCode } = await go(c);
+  assert.equal(exitCode, 0);
+  const ddl = c.log.findIndex((s) => /CREATE TABLE IF NOT EXISTS staging_seed_marker/.test(s));
+  const up = c.log.findIndex((s) => /INSERT INTO staging_seed_marker/.test(s));
+  assert.ok(ddl > 0 && up > ddl);
+  assert.ok(up < c.log.indexOf("COMMIT"));
+});
+
+test("failed scrub: marker write rolls back and emptying does not exclude the marker", async () => {
+  const relations = [...rels(Object.keys(SCRUB_PLAN)), ...rels(["staging_seed_marker"])];
+  const c = fake({ relations, failOn: (s) => (/INSERT INTO staging_seed_marker/.test(s) ? new Error("boom") : undefined) });
+  const { exitCode } = await go(c);
+  assert.equal(exitCode, 1);
+  assert.ok(c.log.includes("ROLLBACK"));
+  assert.ok(truncs(c).includes('TRUNCATE TABLE "public"."staging_seed_marker" CASCADE'));
+});
+
 test("emptying covers all non-system schemas, drops matviews, skips foreign tables and drizzle bookkeeping", async () => {
   const relations = [
     ...rels(["users"]), ...rels(["audit"], "r", "other"), ...rels(["mv"], "m"), ...rels(["part"], "p"),

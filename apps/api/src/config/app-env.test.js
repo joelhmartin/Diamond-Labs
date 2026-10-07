@@ -2,7 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { readFileSync } from "node:fs";
-import { assertSafeConfig, stagingRewrite, isStaging, registerStagingHeaders, effectiveGatewayMode, testModeError } from "./app-env.js";
+import { assertSafeConfig, assertScrubMarker, stagingRewrite, isStaging, registerStagingHeaders, effectiveGatewayMode, testModeError } from "./app-env.js";
 
 const GOOD = {
   APP_ENV: "staging",
@@ -144,4 +144,16 @@ test("testModeError: refuses production under staging, validates otherwise", () 
 test("both payment test routes use testModeError", () => {
   const src = readFileSync(new URL("../routes/payment.routes.js", import.meta.url), "utf8");
   assert.equal(src.match(/testModeError\(mode, env\)/g).length, 2);
+});
+
+test("scrub marker gate: present boots; missing row, missing table or query error refuse; non-staging skips", async () => {
+  const REFUSAL = /no successful scrub marker — refusing to serve/;
+  await assert.doesNotReject(assertScrubMarker(GOOD, async () => [{ "?column?": 1 }]));
+  await assert.rejects(assertScrubMarker(GOOD, async () => []), REFUSAL);
+  await assert.rejects(assertScrubMarker(GOOD, async () => { throw new Error('relation "staging_seed_marker" does not exist'); }), REFUSAL);
+  let called = false;
+  const spy = async () => { called = true; throw new Error("must not run"); };
+  await assertScrubMarker({ APP_ENV: "production" }, spy);
+  await assertScrubMarker({}, spy);
+  assert.equal(called, false);
 });

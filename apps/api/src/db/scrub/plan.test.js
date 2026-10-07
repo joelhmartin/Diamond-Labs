@@ -180,3 +180,7 @@ test("drift check ignores only drizzle migration bookkeeping, flags other schema
   assert.deepEqual(findUnclassifiedLive({ "drizzle.__drizzle_migrations": ["id", "hash"] }), []);
   assert.equal(findUnclassifiedLive({ "other.patients": ["id"] }).length, 1);
 });
+
+test("drift check ignores the scrub's staging_seed_marker table", () => {
+  assert.deepEqual(findUnclassifiedLive({ staging_seed_marker: ["id", "scrubbed_at", "scrub_version"] }), []);
+});

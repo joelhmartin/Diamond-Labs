@@ -10,7 +10,8 @@ import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import multipart from "@fastify/multipart";
 import { env } from "./config/env.js";
-import { assertSafeConfig, registerStagingHeaders } from "./config/app-env.js";
+import { assertSafeConfig, assertScrubMarker, registerStagingHeaders } from "./config/app-env.js";
+import { queryClient } from "./config/database.js";
 import { reqSerializer } from "./lib/log-serializers.js";
 import project from "../../../project.config.js";
 import { errorHandler } from "./middleware/error-handler.js";
@@ -256,6 +257,8 @@ if (existsSync(webDist)) {
 // Start
 const start = async () => {
   try {
+    // Staging only: never serve a DB the scrub has not marked successful.
+    await assertScrubMarker(env, (sql) => queryClient.unsafe(sql));
     await fastify.listen({ port: env.PORT, host: "0.0.0.0" });
     console.log(`Server running on port ${env.PORT}`);
     if (env.JOBS_DEV_INTERVAL && env.NODE_ENV !== "production") {

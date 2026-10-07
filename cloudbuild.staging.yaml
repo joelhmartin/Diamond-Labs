@@ -22,6 +22,7 @@ substitutions:
   _REPO: us-central1-docker.pkg.dev/diamond-labs-prod/diamond-labs/api
   _SERVICE: diamond-labs-api-staging
   _MIGRATE_JOB: diamond-labs-migrate-staging
+  _SCRUB_JOB: diamond-labs-scrub-staging
 
 steps:
   # 1. Build from the monorepo root. The sandbox public keys come from Secret
@@ -74,7 +75,7 @@ steps:
       - run
       - jobs
       - update
-      - diamond-labs-scrub-staging
+      - ${_SCRUB_JOB}
       - --image=${_REPO}:staging-${SHORT_SHA}
       - --region=${_REGION}
 

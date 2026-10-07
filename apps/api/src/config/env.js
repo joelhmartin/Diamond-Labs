@@ -6,9 +6,9 @@ const envSchema = z.object({
   // Deployment environment. "staging" arms the safety switches in config/app-env.js
   // (mail redirect, Seazona off, sandbox payments, noindex) and the boot gate.
   // Unset == "development": identical to production behaviour for these switches.
+  APP_ENV: z.enum(["production", "staging", "development"]).default("development"),
   // Cloud Run service name (set by the platform); read only by the staging re-creation guard.
   K_SERVICE: z.string().optional(),
-  APP_ENV: z.enum(["production", "staging", "development"]).default("development"),
   // Staging only: every outbound email is redirected to this address.
   STAGING_EMAIL_TO: z.string().email().optional(),
   // "true" hard-disables the Seazona wrapper (no network). Required under staging.

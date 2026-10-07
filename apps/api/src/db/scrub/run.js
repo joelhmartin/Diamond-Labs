@@ -17,7 +17,14 @@ import { SCRUB_PLAN, buildStatements, classSummary, assertScrubAllowed, findUncl
 
 const SCHEMA_BEHIND = "schema behind code — run diamond-labs-migrate-staging before scrubbing";
 export const NOT_SCRUBBED = "[scrub] staging DB NOT scrubbed — do not serve it; drop or re-run";
+// The marker is deliberately NOT kept: fail-closed emptying truncates it, so a failed
+// scrub leaves no marker and the server refuses to serve the database.
 const KEEP_OUT = new Set(["drizzle.__drizzle_migrations"]);
+export const SCRUB_VERSION = "staging-scrub-v1";
+const MARKER_DDL = "CREATE TABLE IF NOT EXISTS staging_seed_marker (id int primary key, scrubbed_at timestamptz not null, scrub_version text)";
+const MARKER_UPSERT =
+  "INSERT INTO staging_seed_marker (id, scrubbed_at, scrub_version) VALUES (1, now(), $1) " +
+  "ON CONFLICT (id) DO UPDATE SET scrubbed_at = EXCLUDED.scrubbed_at, scrub_version = EXCLUDED.scrub_version";
 const fq = (schema, table) => `"${schema.replace(/"/g, '""')}"."${table.replace(/"/g, '""')}"`;
 const keyOf = (schema, table) => (schema === "public" ? table : `${schema}.${table}`);
 
@@ -130,6 +137,9 @@ export async function runScrub(client, env, { plan = SCRUB_PLAN, knownMapKeys, o
         const res = await tx.unsafe(s.sql, s.params);
         acc.push({ table: s.table, action: s.mode === "delete" ? "deleted" : "updated", rows: res.count });
       }
+      // Same transaction as the scrub: the marker exists only if the scrub committed.
+      await tx.unsafe(MARKER_DDL);
+      await tx.unsafe(MARKER_UPSERT, [SCRUB_VERSION]);
       return acc;
     });
     committed = true;

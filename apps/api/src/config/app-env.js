@@ -37,6 +37,25 @@ export function assertSafeConfig(env) {
 }
 
 /**
+ * Serve gate. Under APP_ENV=staging the server may only run against a database the
+ * scrub finished successfully: `staging_seed_marker` (written by the scrub in its
+ * committing transaction, emptied by its fail-closed path, absent from a fresh prod
+ * import) must hold row id=1. `query(sql)` is injected (resolves to rows). Any
+ * missing table, missing row or query error refuses. Skipped entirely outside staging.
+ */
+export async function assertScrubMarker(env, query) {
+  if (!isStaging(env)) return;
+  const refuse = () => new Error("staging DB has no successful scrub marker — refusing to serve");
+  let rows;
+  try {
+    rows = await query("SELECT 1 FROM staging_seed_marker WHERE id = 1");
+  } catch {
+    throw refuse();
+  }
+  if (!rows || rows.length < 1) throw refuse();
+}
+
+/**
  * Rewrite an outbound email for staging: recipient becomes STAGING_EMAIL_TO, the
  * subject is prefixed with the original recipient, cc/bcc are dropped. Identity
  * outside staging. Returns null (fail closed: do not send) if staging has no

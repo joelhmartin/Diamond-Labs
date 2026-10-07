@@ -295,8 +295,12 @@ export const SCRUB_PLAN = {
   product_variant_option_values: { mode: "update", columns: { variant_id: K, option_value_id: K } },
 };
 
-/** Live relations the drift check ignores (bookkeeping only: migration hashes + timestamps). */
-export const IGNORED_LIVE_TABLES = ["drizzle.__drizzle_migrations"];
+/**
+ * Live relations the drift check ignores (bookkeeping only): migration hashes +
+ * timestamps, and the scrub's own success marker (created by the scrub, never by an
+ * app migration; the server refuses to serve a staging DB without it).
+ */
+export const IGNORED_LIVE_TABLES = ["drizzle.__drizzle_migrations", "staging_seed_marker"];
 
 export const COLUMN_CLASSES = ["keep", "phi", "pii", "secret", "reset"];
 

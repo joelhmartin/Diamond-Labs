@@ -48,6 +48,10 @@ test("disabled: every exported entry point makes zero network calls and resolves
   const lines = spies.flatMap((s) => s.mock.calls.map((c) => String(c[0])));
   assert.ok(lines.some((l) => l.startsWith("[SeazonaDisabled]")));
   for (const l of lines) assert.doesNotMatch(l, /^\[Seazona\]/);
+  // Only the method is logged, never the request path.
+  const disabled = lines.filter((l) => l.startsWith("[SeazonaDisabled]"));
+  for (const l of disabled) assert.match(l, /^\[SeazonaDisabled\] [A-Z]+ skipped/);
+  assert.ok(!disabled.some((l) => /v1\/|clients|invoices|orders|a@b\.com|5551234567/.test(l)));
 });
 
 test("disabled: checkHealth reports disabled, not down, with no network", async () => {

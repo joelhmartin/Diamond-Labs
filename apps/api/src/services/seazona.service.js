@@ -105,7 +105,8 @@ async function requestRaw(path, options = {}) {
   // covers every exported function. Deliberately NOT logged with the `[Seazona]`
   // prefix the GCP alert metric matches.
   if (isDisabled()) {
-    console.log(`[SeazonaDisabled] ${options.method || "GET"} ${path} skipped (SEAZONA_DISABLED=true)`);
+    // Method only: the path can carry identifiers (client ids, emails in query strings).
+    console.log(`[SeazonaDisabled] ${options.method || "GET"} skipped (SEAZONA_DISABLED=true)`);
     return { ok: false, status: 0, data: null };
   }
   if (!env.SEAZONA_API_KEY || !env.SEAZONA_SECRET || !env.SEAZONA_BASE_URL) {
