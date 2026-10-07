@@ -19,4 +19,11 @@ export function acceptJsUrl(authNetEnv) {
   return ACCEPT_JS[key];
 }
 
+/** Build-time guard: a staging bundle must load the sandbox Accept.js. Throws otherwise. */
+export function assertStagingBuildSafe(appEnv, authNetEnv) {
+  if (isStagingBuild(appEnv) && authNetEnv !== "sandbox") {
+    throw new Error(`VITE_APP_ENV=staging requires VITE_AUTHORIZE_NET_ENV=sandbox (got "${authNetEnv ?? ""}")`);
+  }
+}
+
 export const isStagingBuild = (appEnv) => appEnv === "staging";

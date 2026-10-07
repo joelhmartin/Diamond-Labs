@@ -1,4 +1,5 @@
 import { env } from "../config/env.js";
+import { effectiveGatewayMode } from "../config/app-env.js";
 
 /**
  * Authorize.net service using the JSON API directly.
@@ -9,9 +10,10 @@ import { env } from "../config/env.js";
 // `mode` is "sandbox" | "production". When omitted it falls back to the
 // global AUTHORIZE_NET_ENV. The test payment flow forces a mode explicitly so
 // sandbox testing never depends on flipping the global env.
+// Under APP_ENV=staging this is ALWAYS "sandbox", even for an explicit
+// "production" (see effectiveGatewayMode).
 function resolveMode(mode) {
-  if (mode === "sandbox" || mode === "production") return mode;
-  return env.AUTHORIZE_NET_ENV === "production" ? "production" : "sandbox";
+  return effectiveGatewayMode(mode, env);
 }
 
 function apiUrl(mode) {

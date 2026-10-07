@@ -2,7 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { readFileSync } from "node:fs";
-import { assertSafeConfig, stagingRewrite, isStaging, registerStagingHeaders } from "./app-env.js";
+import { assertSafeConfig, stagingRewrite, isStaging, registerStagingHeaders, effectiveGatewayMode, testModeError } from "./app-env.js";
 
 const GOOD = {
   APP_ENV: "staging",
@@ -90,4 +90,45 @@ test("index.js runs assertSafeConfig before listen and registers staging headers
   assert.ok(gate > -1, "assertSafeConfig(env) must be called");
   assert.ok(listen > -1 && gate < listen, "gate must precede listen");
   assert.ok(src.includes("registerStagingHeaders(fastify, env)"));
+});
+
+test("assertSafeConfig rejects live Authorize.net credentials under staging", () => {
+  assert.throws(() => assertSafeConfig({ ...GOOD, AUTHORIZE_NET_API_LOGIN: "live" }), /AUTHORIZE_NET_API_LOGIN/);
+  assert.throws(() => assertSafeConfig({ ...GOOD, AUTHORIZE_NET_TRANSACTION_KEY: "live" }), /AUTHORIZE_NET_TRANSACTION_KEY/);
+  // Sandbox-named creds are fine.
+  assert.doesNotThrow(() => assertSafeConfig({ ...GOOD, AUTHORIZE_NET_SANDBOX_API_LOGIN: "s", AUTHORIZE_NET_SANDBOX_TRANSACTION_KEY: "s" }));
+  // Production may keep them.
+  assert.doesNotThrow(() => assertSafeConfig({ APP_ENV: "production", AUTHORIZE_NET_API_LOGIN: "live", AUTHORIZE_NET_TRANSACTION_KEY: "live" }));
+});
+
+test("assertSafeConfig rejects AutoPay live run and a jobs trigger secret under staging", () => {
+  assert.throws(() => assertSafeConfig({ ...GOOD, AUTOPAY_LIVE_RUN: true }), /AUTOPAY_LIVE_RUN/);
+  assert.throws(() => assertSafeConfig({ ...GOOD, AUTOPAY_LIVE_RUN: "true" }), /AUTOPAY_LIVE_RUN/);
+  assert.throws(() => assertSafeConfig({ ...GOOD, JOBS_TRIGGER_SECRET: "s" }), /JOBS_TRIGGER_SECRET/);
+  assert.doesNotThrow(() => assertSafeConfig({ ...GOOD, AUTOPAY_LIVE_RUN: false }));
+  assert.doesNotThrow(() => assertSafeConfig({ ...GOOD, AUTOPAY_LIVE_RUN: "false" }));
+  // Production unaffected.
+  assert.doesNotThrow(() => assertSafeConfig({ APP_ENV: "production", AUTOPAY_LIVE_RUN: true, JOBS_TRIGGER_SECRET: "s" }));
+});
+
+test("effectiveGatewayMode: staging is always sandbox; others unchanged", () => {
+  const st = { APP_ENV: "staging", AUTHORIZE_NET_ENV: "production" };
+  assert.equal(effectiveGatewayMode("production", st), "sandbox");
+  assert.equal(effectiveGatewayMode(undefined, st), "sandbox");
+  assert.equal(effectiveGatewayMode("production", { AUTHORIZE_NET_ENV: "sandbox" }), "production");
+  assert.equal(effectiveGatewayMode("sandbox", { AUTHORIZE_NET_ENV: "production" }), "sandbox");
+  assert.equal(effectiveGatewayMode(undefined, { AUTHORIZE_NET_ENV: "production" }), "production");
+  assert.equal(effectiveGatewayMode(undefined, {}), "sandbox");
+});
+
+test("testModeError: refuses production under staging, validates otherwise", () => {
+  assert.match(testModeError("production", { APP_ENV: "staging" }), /not allowed in staging/);
+  assert.equal(testModeError("sandbox", { APP_ENV: "staging" }), null);
+  assert.equal(testModeError("production", {}), null);
+  assert.match(testModeError("bogus", {}), /must be/);
+});
+
+test("both payment test routes use testModeError", () => {
+  const src = readFileSync(new URL("../routes/payment.routes.js", import.meta.url), "utf8");
+  assert.equal(src.match(/testModeError\(mode, env\)/g).length, 2);
 });
