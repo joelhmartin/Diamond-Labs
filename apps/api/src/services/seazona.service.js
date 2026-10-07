@@ -1,5 +1,10 @@
 import { env } from "../config/env.js";
 
+/** True when SEAZONA_DISABLED="true" (staging): no Seazona call may leave the process. */
+export function isDisabled() {
+  return env.SEAZONA_DISABLED === "true";
+}
+
 function getAuthHeader() {
   const credentials = Buffer.from(`${env.SEAZONA_API_KEY}:${env.SEAZONA_SECRET}`).toString("base64");
   return `Basic ${credentials}`;
@@ -96,6 +101,13 @@ export function __resetRateLimiter() {
  * on 2xx, else null. Never throws: network errors resolve to `{ ok:false, status:0 }`.
  */
 async function requestRaw(path, options = {}) {
+  // Staging kill switch: the only fetch in this file is below, so this gate
+  // covers every exported function. Deliberately NOT logged with the `[Seazona]`
+  // prefix the GCP alert metric matches.
+  if (isDisabled()) {
+    console.log(`[SeazonaDisabled] ${options.method || "GET"} ${path} skipped (SEAZONA_DISABLED=true)`);
+    return { ok: false, status: 0, data: null };
+  }
   if (!env.SEAZONA_API_KEY || !env.SEAZONA_SECRET || !env.SEAZONA_BASE_URL) {
     console.warn("[Seazona] API credentials not configured");
     return { ok: false, status: 0, data: null };
@@ -181,9 +193,10 @@ async function request(path, options = {}) {
  * Cheap liveness probe for the health route. Uses login-exists (a single indexed
  * lookup) so it stays fast and side-effect-free. Reads its own probe result from
  * requestRaw's return value — no shared state, so concurrent traffic can't taint
- * it. Returns { ok, status }.
+ * it. Returns { ok, status } (plus disabled:true when SEAZONA_DISABLED).
  */
 export async function checkHealth() {
+  if (isDisabled()) return { ok: false, status: 0, disabled: true };
   const { ok, status } = await requestRaw("v1/clients/login-exists?email=__healthcheck__%40diamond.invalid");
   return { ok, status };
 }
