@@ -1,7 +1,4 @@
-/** Round to cents consistently (avoids FP drift). */
-function round2(n) {
-  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-}
+import { round2 } from "./money.js";
 
 /**
  * How much this cycle actually charges.

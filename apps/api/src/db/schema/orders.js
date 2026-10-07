@@ -49,6 +49,10 @@ export const orders = pgTable("orders", {
   // starts at "paid".
   status: varchar("status", { length: 30 }).notNull().default("paid"),
 
+  // Whose negotiated prices the order was charged at (pricingClientFor at
+  // checkout); null = guest/base pricing.
+  pricedForUserId: varchar("priced_for_user_id", { length: 128 }),
+
   // Seazona createOrder push outcome (nullable until/unless a push runs).
   seazonaClientId: varchar("seazona_client_id", { length: 100 }),
   seazonaOrderId: varchar("seazona_order_id", { length: 128 }),

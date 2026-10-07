@@ -4,10 +4,8 @@
  * fabrication (OND/ONP/DDSO orthotics built per case) lives in products.js
  * and routes through the Digital Rx form instead.
  *
- * This file is the SEED data. Live product state (including admin edits and
- * new products added through the admin UI) lives in the catalog store
- * (stores/catalog.store.js), which hydrates from SEED_CATALOG on first use
- * and persists to localStorage thereafter.
+ * This file is legacy SEED data (still read by the admin products page until
+ * Task 13). The public shop reads the server catalog: GET /api/v1/catalog.
  */
 
 function file(path) {
@@ -148,7 +146,7 @@ function build(p) {
 
 export const SEED_CATALOG = RAW.map(build);
 
-/** Backwards-compat — most consumers should use the catalog store instead. */
+/** Backwards-compat — the shop uses GET /api/v1/catalog (hooks/useCatalog.js). */
 export const CATALOG = SEED_CATALOG.filter((p) => p.active);
 
 export const CATEGORIES = Array.from(

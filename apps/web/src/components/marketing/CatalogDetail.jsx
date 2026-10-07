@@ -1,25 +1,24 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { ProductViewer } from "./ProductViewer";
 import { useCartStore } from "../../stores/cart.store";
+import { AVAILABILITY_META } from "../../data/catalog";
+import { variantFor, cartItemFor } from "../../lib/catalog.js";
+import { formatCents } from "../../lib/money.js";
 
 /**
- * Adapts a catalog product (simple shape) into the ProductViewer schema.
+ * Adapts a shop product (see lib/catalog.js familyToProduct) plus the
+ * currently selected variant into the ProductViewer schema.
  */
-function toViewerShape(p) {
-  const price = p.price === 0 ? "Included" : `$${p.price.toFixed(2)}`;
-  const stockValue =
-    p.stock > 0 ? "In Stock" : p.stock === 0 ? "Out of Stock" : "Backorder";
-
+function toViewerShape(p, variant) {
+  const priceCents = variant ? variant.priceCents : p.priceFromCents;
+  const price = priceCents == null ? "—" : priceCents === 0 ? "Included" : `${variant ? "" : "From "}${formatCents(priceCents)}`;
   const specs = [
-    { label: "SKU",          value: `#${p.id}` },
-    { label: "Price",        value: price },
-    { label: "Availability", value: stockValue },
-    ...(p.categories.length
-      ? [{ label: "Category", value: p.categories.join(" · ") }]
-      : []),
+    ...(variant?.code ? [{ label: "SKU", value: `#${variant.code}` }] : []),
+    { label: "Price", value: price },
+    { label: "Availability", value: AVAILABILITY_META[p.availability]?.label ?? "In Stock" },
+    ...(p.categories.length ? [{ label: "Category", value: p.categories.join(" · ") }] : []),
   ];
-
   return {
     name: p.name,
     fullName: p.description || p.categories[0] || "Diamond Orthotic Catalog",
@@ -27,10 +26,7 @@ function toViewerShape(p) {
     category: p.categories[0] || "Catalog",
     categoryColor: "text-navy/60",
     categoryBg: "bg-surface-200/80",
-    images:
-      p.images && p.images.length
-        ? p.images.map((src) => ({ src, label: p.name }))
-        : [{ src: null, label: p.name }],
+    images: [{ src: p.image, label: p.name }],
     specs,
   };
 }
@@ -38,6 +34,8 @@ function toViewerShape(p) {
 export function CatalogDetail({ product, onClose }) {
   const add = useCartStore((s) => s.add);
   const open = useCartStore((s) => s.open);
+  const family = product?.family;
+  const [picked, setPicked] = useState({});
 
   useEffect(() => {
     function onKey(e) {
@@ -51,13 +49,27 @@ export function CatalogDetail({ product, onClose }) {
     };
   }, [onClose]);
 
-  if (!product) return null;
+  const variant = useMemo(
+    () => (family ? variantFor(family, Object.values(picked)) : null),
+    [family, picked],
+  );
 
-  const viewerProduct = toViewerShape(product);
+  if (!product) return null;
+  const viewerProduct = toViewerShape(product, variant);
   const priceValue = viewerProduct.specs.find((s) => s.label === "Price").value;
 
+  // A combination can exist in the option lists without a sellable variant
+  // (the server hides unpriced ones), so only offer values that still lead somewhere.
+  function reachable(optionId, valueId) {
+    const others = Object.entries(picked).filter(([o]) => o !== optionId).map(([, v]) => v);
+    return family.variants.some(
+      (v) => v.optionValueIds.includes(valueId) && others.every((o) => v.optionValueIds.includes(o)),
+    );
+  }
+
   function handleAdd() {
-    add(product);
+    if (!variant) return;
+    add(cartItemFor(family, variant));
     open();
     onClose();
   }
@@ -80,10 +92,39 @@ export function CatalogDetail({ product, onClose }) {
           <X size={18} />
         </button>
 
+        {family.options.length > 0 && (
+          <div className="mb-6 space-y-4">
+            {family.options.map((o) => (
+              <div key={o.id}>
+                <p className="font-mono text-xs text-navy/40 uppercase tracking-widest mb-2">{o.name}</p>
+                <div className="flex flex-wrap gap-2">
+                  {o.values.map((v) => {
+                    const on = picked[o.id] === v.id;
+                    const ok = reachable(o.id, v.id);
+                    return (
+                      <button
+                        key={v.id}
+                        type="button"
+                        disabled={!ok}
+                        onClick={() => setPicked((p) => ({ ...p, [o.id]: v.id }))}
+                        className={`px-4 py-2 rounded-full text-sm border transition-all ${
+                          on ? "bg-navy text-white border-navy" : "bg-white border-surface-300 text-navy hover:border-brand-500"
+                        } ${ok ? "" : "opacity-30 cursor-not-allowed"}`}
+                      >
+                        {v.value}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         <ProductViewer
           product={viewerProduct}
           onCta={handleAdd}
-          ctaLabel={`Add to Cart · ${priceValue}`}
+          ctaLabel={variant ? `Add to Cart · ${priceValue}` : "Choose options"}
           registered={false}
         />
       </div>

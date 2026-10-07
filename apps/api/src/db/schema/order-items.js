@@ -14,15 +14,19 @@ export const orderItems = pgTable("order_items", {
   id: varchar("id", { length: 128 }).primaryKey(),
   orderId: varchar("order_id", { length: 128 }).notNull().references(() => orders.id),
 
-  // Always populated — checkout 422s earlier on a non-purchasable/missing product,
-  // so every recorded line carries a catalogId and a snapshot name.
-  catalogId: varchar("catalog_id", { length: 100 }).notNull(),
+  // Legacy shop SKU id; null when the variant has none.
+  catalogId: varchar("catalog_id", { length: 100 }),
+  // The catalog variant sold (own-the-lab). Null on orders placed before it.
+  variantId: varchar("variant_id", { length: 128 }),
   seazonaProductId: varchar("seazona_product_id", { length: 100 }),
   name: text("name").notNull(),
   unitPrice: numeric("unit_price", { precision: 12, scale: 2 }).notNull(),
   qty: integer("qty").notNull(),
   lineTotal: numeric("line_total", { precision: 12, scale: 2 }).notNull(),
   taxable: boolean("taxable").notNull().default(false),
+  // Where unitPrice came from: "client" (negotiated) | "base". Null on orders
+  // placed before the pricing service.
+  priceSource: varchar("price_source", { length: 10 }),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [

@@ -17,3 +17,7 @@ export { rxCodeOverrides } from "./rx-code-overrides.js";
 export { appTheme } from "./app-theme.js";
 export { autopayEnrollments, autopayAttempts, autopayStatusEnum, autopayAttemptStatusEnum } from "./autopay.js";
 export { jobRuns, jobRunStatusEnum, jobRunTriggerEnum } from "./job-runs.js";
+export {
+  productFamilies, productOptions, productOptionValues, productVariants, productVariantOptionValues,
+} from "./catalog.js";
+export { clientPrices } from "./client-prices.js";

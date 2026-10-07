@@ -176,6 +176,20 @@
       "when": 1791256071252,
       "tag": "0024_loving_rockslide",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791258256925,
+      "tag": "0025_grey_the_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791260110678,
+      "tag": "0026_spicy_network",
+      "breakpoints": true
     }
   ]
 }

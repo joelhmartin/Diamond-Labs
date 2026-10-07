@@ -2,17 +2,14 @@ import { useState } from "react";
 import { Plus, Minus, Check, Image as ImageIcon } from "lucide-react";
 import { useCartStore } from "../../stores/cart.store";
 import { AVAILABILITY_META } from "../../data/catalog";
-
-function formatPrice(p) {
-  if (p === 0) return "Included";
-  return `$${p.toFixed(2)}`;
-}
+import { cartItemFor } from "../../lib/catalog.js";
+import { formatCents } from "../../lib/money.js";
 
 export function CatalogCard({ product, onOpen }) {
   const add = useCartStore((s) => s.add);
   const setQty = useCartStore((s) => s.setQty);
   const cartItem = useCartStore((s) =>
-    s.items.find((i) => i.id === product.id)
+    s.items.find((i) => i.id === product.singleVariant?.id)
   );
   const [imgFailed, setImgFailed] = useState(false);
 
@@ -28,18 +25,19 @@ export function CatalogCard({ product, onOpen }) {
   function handleAdd(e) {
     e.stopPropagation();
     if (!canBuy) return;
-    add(product);
+    if (!product.singleVariant) { onOpen(); return; }
+    add(cartItemFor(product.family, product.singleVariant));
   }
 
   function handleInc(e) {
     e.stopPropagation();
     if (!canBuy) return;
-    setQty(product.id, qty + 1);
+    setQty(product.singleVariant.id, qty + 1);
   }
 
   function handleDec(e) {
     e.stopPropagation();
-    setQty(product.id, qty - 1);
+    setQty(product.singleVariant.id, qty - 1);
   }
 
   return (
@@ -110,7 +108,15 @@ export function CatalogCard({ product, onOpen }) {
 
         <div className="mt-4 pt-4 border-t border-surface-300/50 flex items-center justify-between">
           <div className="font-heading font-bold text-lg tracking-tight">
-            {formatPrice(product.price)}
+            {product.singleVariant
+              ? product.singleVariant.priceCents === 0
+                ? "Included"
+                : formatCents(product.singleVariant.priceCents)
+              : product.priceFromCents == null
+                ? "—"
+                : product.priceFromCents === 0
+                  ? "Included"
+                  : `From ${formatCents(product.priceFromCents)}`}
           </div>
 
           {!canBuy ? (
@@ -151,8 +157,7 @@ export function CatalogCard({ product, onOpen }) {
               onClick={handleAdd}
               className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-semibold bg-navy text-white hover:bg-brand-500 transition-colors"
             >
-              <Plus size={13} />
-              Add
+              {product.singleVariant ? <><Plus size={13} />Add</> : "Choose options"}
             </button>
           )}
         </div>

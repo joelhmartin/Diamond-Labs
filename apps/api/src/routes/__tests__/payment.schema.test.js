@@ -112,20 +112,21 @@ describe("refundSchema", () => {
 describe("checkoutSchema", () => {
   const base = {
     opaqueData: { dataDescriptor: "d", dataValue: "v" },
-    items: [{ id: "SKU1", qty: 2 }],
+    amount: 50,
+    items: [{ variantId: "SKU1", qty: 2 }],
     email: "buyer@example.com",
     shipping: { name: "A B", address1: "1 St", city: "Town", state: "TX", postalCode: "75001" },
   };
-  it("accepts a valid guest checkout body and passes through extra item fields", () => {
+  it("accepts a valid guest checkout body and strips extra item fields (server prices from variantId)", () => {
     const r = checkoutSchema.safeParse({
       ...base,
       amount: 50,
       phone: "555",
       idempotencyKey: "uuid",
-      items: [{ id: 5, qty: 1, name: "Widget", price: 9.99 }],
+      items: [{ variantId: "5", qty: 1, name: "Widget", price: 9.99 }],
     });
     expect(r.success).toBe(true);
-    expect(r.data.items[0].name).toBe("Widget");
+    expect(r.data.items[0]).toEqual({ variantId: "5", qty: 1 });
   });
   it("requires opaqueData, email, items and a complete shipping address", () => {
     expect(checkoutSchema.safeParse({ ...base, opaqueData: { dataDescriptor: "d" } }).success).toBe(false);
@@ -133,8 +134,36 @@ describe("checkoutSchema", () => {
     expect(checkoutSchema.safeParse({ ...base, items: [] }).success).toBe(false);
     expect(checkoutSchema.safeParse({ ...base, shipping: { name: "A" } }).success).toBe(false);
   });
+  it("requires the quoted amount the shopper agreed to, cent-precise", () => {
+    const { amount, ...noAmount } = base;
+    expect(checkoutSchema.safeParse(noAmount).success).toBe(false);
+    expect(checkoutSchema.safeParse({ ...base, amount: 10.001 }).success).toBe(false);
+    expect(checkoutSchema.safeParse({ ...base, amount: -1 }).success).toBe(false);
+    expect(checkoutSchema.safeParse({ ...base, amount: 0 }).success).toBe(true);
+    expect(checkoutSchema.safeParse({ ...base, amount: "43.60" }).data.amount).toBe(43.6);
+  });
   it("rejects non-positive or non-integer item quantities", () => {
-    expect(checkoutSchema.safeParse({ ...base, items: [{ id: "x", qty: 0 }] }).success).toBe(false);
-    expect(checkoutSchema.safeParse({ ...base, items: [{ id: "x", qty: 1.5 }] }).success).toBe(false);
+    expect(checkoutSchema.safeParse({ ...base, items: [{ variantId: "x", qty: 0 }] }).success).toBe(false);
+    expect(checkoutSchema.safeParse({ ...base, items: [{ variantId: "x", qty: 1.5 }] }).success).toBe(false);
+  });
+});
+
+describe("checkoutSchema amount typing", () => {
+  const body = (amount) => ({
+    opaqueData: { dataDescriptor: "d", dataValue: "v" },
+    amount,
+    items: [{ variantId: "v1", qty: 1 }],
+    email: "a@b.co",
+    shipping: { name: "n", address1: "a", city: "c", state: "TX", postalCode: "75001" },
+  });
+  it("accepts numbers and numeric strings, including zero", () => {
+    expect(checkoutSchema.safeParse(body(43.6)).success).toBe(true);
+    expect(checkoutSchema.safeParse(body("43.60")).success).toBe(true);
+    expect(checkoutSchema.safeParse(body(0)).success).toBe(true);
+  });
+  it("rejects null, booleans, arrays and blank strings that coerce to a number", () => {
+    for (const bad of [null, false, true, [], [5], "", "  "]) {
+      expect(checkoutSchema.safeParse(body(bad)).success, JSON.stringify(bad)).toBe(false);
+    }
   });
 });

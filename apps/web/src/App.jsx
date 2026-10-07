@@ -27,10 +27,11 @@ import { DoctorPendingPage } from "./pages/auth/DoctorPendingPage.jsx";
 import { DashboardPage } from "./pages/app/DashboardPage.jsx";
 import { SettingsPage } from "./pages/app/SettingsPage.jsx";
 import { MembersPage } from "./pages/app/MembersPage.jsx";
-import { AdminProductsPage } from "./pages/app/AdminProductsPage.jsx";
+import { AdminCatalogPage } from "./pages/app/AdminCatalogPage.jsx";
 import { AdminInvoicesPage } from "./pages/app/AdminInvoicesPage.jsx";
 import { AdminPaymentsPage } from "./pages/app/AdminPaymentsPage.jsx";
 import { AdminUsersPage } from "./pages/app/AdminUsersPage.jsx";
+import { AdminClientPricingPage } from "./pages/app/AdminClientPricingPage.jsx";
 import { AdminAutoPayPage } from "./pages/app/AdminAutoPayPage.jsx";
 import { AdminJobsPage } from "./pages/app/AdminJobsPage.jsx";
 import { AdminOrdersPage } from "./pages/app/AdminOrdersPage.jsx";
@@ -215,12 +216,13 @@ function AppRoutes() {
         <Route path="/members" element={<MembersPage />} />
         <Route element={<RequireAdmin />}>
           <Route path="/admin" element={<Navigate to="/admin/invoices" replace />} />
-          <Route path="/admin/products" element={<AdminProductsPage />} />
+          <Route path="/admin/products" element={<AdminCatalogPage />} />
           <Route path="/admin/invoices" element={<AdminInvoicesPage />} />
           <Route path="/admin/payments" element={<AdminPaymentsPage />} />
           <Route path="/admin/orders" element={<AdminOrdersPage />} />
           <Route path="/admin/orders/:id" element={<AdminOrderDetailPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />
+          <Route path="/admin/users/:userId/pricing" element={<AdminClientPricingPage />} />
           <Route path="/admin/autopay" element={<AdminAutoPayPage />} />
           <Route path="/admin/jobs" element={<AdminJobsPage />} />
           <Route path="/admin/rx-mapping" element={<AdminRxMappingPage />} />

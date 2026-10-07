@@ -4,10 +4,7 @@
  * `services/invoice-ledger.service.js` fetch rows and delegate the shaping here.
  */
 
-/** Round to cents consistently (avoids FP drift like 0.1 + 0.2). */
-function round2(n) {
-  return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-}
+import { round2 } from "./money.js";
 
 export const REFUND_PENDING_PREFIX = "REFUND-PENDING-";
 // Offline payments (admin "record offline payment") have no Authorize.net
