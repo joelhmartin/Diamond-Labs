@@ -2,6 +2,13 @@ import { z } from "zod";
 
 export const CATALOG_CHANNELS = ["shop", "rx", "both"];
 
+/**
+ * Accept a number or a numeric string ("2", "43.60"), then validate `inner`.
+ * z.coerce.number() would also turn null/""/false/true/[3] into numbers.
+ */
+export const numericInput = (inner) =>
+  z.preprocess((v) => (typeof v === "string" && v.trim() !== "" ? Number(v) : v), inner);
+
 const cents = z.number().int().min(0).max(10_000_000);
 const slug = z.string().trim().min(1).max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Lowercase letters, numbers and dashes only.");
 const nonEmpty = (o) => Object.keys(o).length > 0;
@@ -63,7 +70,7 @@ export const clientPriceReviewSchema = z.object({
 
 export const cartLinesSchema = z.array(z.object({
   variantId: z.string().min(1).max(128),
-  qty: z.coerce.number().int().positive(),
+  qty: numericInput(z.number().int().positive()),
 })).min(1).max(100);
 
 export const catalogQuoteSchema = z.object({ items: cartLinesSchema });

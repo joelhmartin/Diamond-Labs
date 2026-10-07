@@ -147,3 +147,23 @@ describe("checkoutSchema", () => {
     expect(checkoutSchema.safeParse({ ...base, items: [{ variantId: "x", qty: 1.5 }] }).success).toBe(false);
   });
 });
+
+describe("checkoutSchema amount typing", () => {
+  const body = (amount) => ({
+    opaqueData: { dataDescriptor: "d", dataValue: "v" },
+    amount,
+    items: [{ variantId: "v1", qty: 1 }],
+    email: "a@b.co",
+    shipping: { name: "n", address1: "a", city: "c", state: "TX", postalCode: "75001" },
+  });
+  it("accepts numbers and numeric strings, including zero", () => {
+    expect(checkoutSchema.safeParse(body(43.6)).success).toBe(true);
+    expect(checkoutSchema.safeParse(body("43.60")).success).toBe(true);
+    expect(checkoutSchema.safeParse(body(0)).success).toBe(true);
+  });
+  it("rejects null, booleans, arrays and blank strings that coerce to a number", () => {
+    for (const bad of [null, false, true, [], [5], "", "  "]) {
+      expect(checkoutSchema.safeParse(body(bad)).success, JSON.stringify(bad)).toBe(false);
+    }
+  });
+});

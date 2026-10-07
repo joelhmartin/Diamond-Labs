@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { cartLinesSchema } from "./catalog.schema.js";
+import { cartLinesSchema, numericInput } from "./catalog.schema.js";
 
 /**
  * Shared payment validation schemas. Mirror the backend payment routes so the
@@ -102,8 +102,10 @@ export const checkoutSchema = z
     }),
     // The total the shopper agreed to. Compared, never charged. min(0) so a
     // $0.00 cart reaches the route's own "contact the lab" refusal.
-    amount: z.coerce.number().min(0).max(100000)
-      .refine(hasAtMost2Decimals, { message: "amount must have at most 2 decimal places" }),
+    amount: numericInput(
+      z.number().min(0).max(100000)
+        .refine(hasAtMost2Decimals, { message: "amount must have at most 2 decimal places" }),
+    ),
     items: cartLinesSchema,
     email: z.string().email(),
     shipping: z

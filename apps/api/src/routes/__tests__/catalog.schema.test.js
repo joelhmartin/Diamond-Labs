@@ -51,3 +51,10 @@ test("checkout items are cart lines", () => {
   assert.equal(checkoutSchema.safeParse({ ...base, items: [{ variantId: "v1", qty: 1 }] }).success, true);
   assert.equal(checkoutSchema.safeParse({ ...base, items: [{ id: "16", qty: 1 }] }).success, false);
 });
+
+test("cart qty accepts numbers and numeric strings but not booleans, arrays, null or blanks", () => {
+  const ok = (qty) => cartLinesSchema.safeParse([{ variantId: "v1", qty }]).success;
+  assert.equal(ok(2), true);
+  assert.equal(ok("2"), true);
+  for (const bad of [true, false, [3], null, "", " ", "abc", 0, 1.5, "1.5"]) assert.equal(ok(bad), false, JSON.stringify(bad));
+});

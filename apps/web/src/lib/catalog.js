@@ -31,6 +31,11 @@ export function shopperIdentity({ isLoading, user }) {
   return user?.id ?? "guest";
 }
 
+/** Data tagged `{ identity }` only counts for the shopper it was fetched/picked for. */
+export function matchesShopper(entry, identity) {
+  return entry != null && identity != null && entry.identity === identity;
+}
+
 /** The key a quote is cached under: the shopper and the cart lines. */
 export function quoteKey(items, identity, nonce = 0) {
   return JSON.stringify([identity, nonce, items.map((i) => [i.variantId, i.qty])]);

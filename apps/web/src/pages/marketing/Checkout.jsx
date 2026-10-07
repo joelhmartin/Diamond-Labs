@@ -48,7 +48,7 @@ function SummaryItem({ item, line }) {
         </div>
       </div>
       <div className="font-heading font-bold text-sm text-navy whitespace-nowrap">
-        {!line || line.lineCents === 0 ? "—" : formatCents(line.lineCents)}
+        {!line ? "—" : line.lineCents === 0 ? "Included" : formatCents(line.lineCents)}
       </div>
     </div>
   );

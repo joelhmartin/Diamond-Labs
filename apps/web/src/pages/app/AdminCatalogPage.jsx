@@ -369,6 +369,7 @@ export function AdminCatalogPage() {
     try {
       const res = await api.get("/admin/catalog/families");
       setFamilies(res.data.data.families);
+      setError(null);
     } catch (err) {
       setError(errorText(err));
     } finally {

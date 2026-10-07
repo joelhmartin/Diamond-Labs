@@ -6,6 +6,7 @@ import { CatalogCard } from "./CatalogCard";
 import { CatalogDetail } from "./CatalogDetail";
 import { usePagination } from "../../hooks/usePagination.js";
 import { Pagination } from "../ui/Pagination.jsx";
+import { matchesShopper } from "../../lib/catalog.js";
 import { playOnView } from "../../lib/playOnView";
 
 const ALL = "All";
@@ -39,7 +40,7 @@ export function CatalogSection() {
     };
   }, []);
 
-  const { products, loading, error } = useCatalog();
+  const { products, loading, error, identity } = useCatalog();
   const categories = useMemo(
     () => Array.from(new Set(products.flatMap((p) => p.categories))).sort(),
     [products]
@@ -169,7 +170,7 @@ export function CatalogSection() {
                 <CatalogCard
                   key={p.id}
                   product={p}
-                  onOpen={() => setDetail(p)}
+                  onOpen={() => setDetail({ identity, product: p })}
                 />
               ))}
             </div>
@@ -182,8 +183,8 @@ export function CatalogSection() {
         )}
       </div>
 
-      {detail && (
-        <CatalogDetail product={detail} onClose={() => setDetail(null)} />
+      {matchesShopper(detail, identity) && (
+        <CatalogDetail product={detail.product} onClose={() => setDetail(null)} />
       )}
     </section>
   );

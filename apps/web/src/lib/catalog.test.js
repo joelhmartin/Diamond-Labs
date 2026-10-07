@@ -2,7 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   currentQuote, familyToProduct, variantFor, variantLabel, cartItemFor, migrateCart,
-  shopperIdentity, quoteKey, quoteLineFor,
+  shopperIdentity, quoteKey, quoteLineFor, matchesShopper,
 } from "./catalog.js";
 
 const family = {
@@ -81,4 +81,12 @@ test("cart lines read their prices from the matching quote line", () => {
   assert.equal(quoteLineFor(quote, "v-s").lineCents, 3998);
   assert.equal(quoteLineFor(quote, "v-l"), null);
   assert.equal(quoteLineFor(null, "v-s"), null);
+});
+
+test("data only counts for the shopper it was fetched for", () => {
+  const entry = { identity: "doc-1", products: [1] };
+  assert.equal(matchesShopper(entry, "doc-1"), true);
+  assert.equal(matchesShopper(entry, "guest"), false);
+  assert.equal(matchesShopper(entry, null), false);
+  assert.equal(matchesShopper(null, "guest"), false);
 });
