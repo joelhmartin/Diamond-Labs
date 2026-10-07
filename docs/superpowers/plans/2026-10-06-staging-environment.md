@@ -79,7 +79,7 @@ Each command is shown before it runs. Everything new is named `*-staging` / `STA
 **Serve-after-scrub rule:** the `diamond-labs-api-staging` service does NOT exist from the moment prod data is imported until the scrub exits 0. `--max-instances=0` is not an acceptable substitute (it does not guarantee Cloud Run stops serving): the service is deleted. Crash, kill and connection-loss during a scrub cannot be handled in code, so the database is simply never served before a clean exit.
 
 1. Create the `diamond_labs_staging` database and the `staging_app` user, granted on that database only. Its password goes to a new `STAGING_DATABASE_URL` secret (socket form).
-2. Create the secrets, and the `diamond-labs-migrate-staging`, `diamond-labs-scrub-staging` and catalog-import / create-admin jobs, but NOT the service. Env on the jobs: `APP_ENV=staging`, `SEAZONA_DISABLED=true`, `AUTHORIZE_NET_ENV=sandbox`, `NODE_ENV=production`; use the runtime SA, granted access to the new secrets only. Secrets:
+2. Create the secrets, and the `diamond-labs-migrate-staging`, `diamond-labs-scrub-staging` and catalog-import / create-admin jobs, but NOT the service. Env on the jobs: `APP_ENV=staging`, `SEAZONA_DISABLED=true`, `AUTHORIZE_NET_ENV=sandbox`, `NODE_ENV=production`; run them as the dedicated `staging-runtime@diamond-labs-prod.iam.gserviceaccount.com` service account (a narrow SA replacing the prod runtime SA): it is granted `secretmanager.secretAccessor` on the `STAGING_*` secrets and the shared mail/JWT-expiry secrets listed in step 7 only, plus `cloudsql.client`, and nothing else. It cannot read any prod secret. Create the jobs with the same flags as the service in step 7 (`gcloud run jobs create <name> --image=<staging image> --region=us-central1 --service-account=staging-runtime@diamond-labs-prod.iam.gserviceaccount.com --set-cloudsql-instances diamond-labs-prod:us-central1:diamond-labs-db --set-env-vars APP_ENV=staging,SEAZONA_DISABLED=true,AUTHORIZE_NET_ENV=sandbox,NODE_ENV=production,... --set-secrets ...`, with the job's own `--command/--args`). Secrets:
    - `STAGING_JWT_SECRET` (random 96 characters)
    - `STAGING_JWT_REFRESH_SECRET` if the app uses one
    - `STAGING_AUTHORIZE_NET_SANDBOX_*`, copied from the local values without printing them
@@ -88,15 +88,37 @@ Each command is shown before it runs. Everything new is named `*-staging` / `STA
    - `STAGING_ADMIN_PASSWORD`
 3. Import, as the staging role: create a private bucket `gs://diamond-labs-staging-seed` with a 1-day delete lifecycle and grant the Cloud SQL SA object write; `gcloud sql export sql diamond-labs-db gs://…/prod.sql --database=diamond_labs`, then `gcloud sql import sql` into `diamond_labs_staging` as the staging role.
 4. Run `diamond-labs-migrate-staging` (brings the schema level with the code; the scrub fails closed on a schema mismatch).
-5. Run `diamond-labs-scrub-staging`, then delete the export object from `gs://diamond-labs-staging-seed` **whatever the result** (success or failure: an unscrubbed prod dump must not sit in the bucket waiting for the lifecycle rule). **The scrub must exit 0.** Any other result: do not proceed; drop and re-create the database with the step-1 grants (the role already exists) and start again from step 3.
-6. Run the catalog import job (`db:import-catalog`, from piece 1) and the one-shot `create-admin` job.
-7. Only now create the `diamond-labs-api-staging` service (same env as the jobs) and the Cloud Build trigger `deploy-staging-on-own-the-lab`: `^feat/own-the-lab$` → `cloudbuild.staging.yaml`.
+5. First confirm the scrub job's image equals the migrate job's (`gcloud run jobs describe diamond-labs-scrub-staging --region=us-central1 --format='value(spec.template.spec.template.spec.containers[0].image)'` against the same for `diamond-labs-migrate-staging`; `cloudbuild.staging.yaml` keeps them in step, but a re-seed must not rely on it). Then run `diamond-labs-scrub-staging`, then delete the export object from `gs://diamond-labs-staging-seed` **whatever the result** (success or failure: an unscrubbed prod dump must not sit in the bucket waiting for the lifecycle rule). **The scrub must exit 0.** Any other result: do not proceed; drop and re-create the database with the step-1 grants (the role already exists) and start again from step 3.
+6. Catalog import and create-admin run from a workstation, not as Cloud Run jobs (the image does not contain `apps/web/src/data/catalog.js`). Start `cloud-sql-proxy --gcloud-auth --port 5433 diamond-labs-prod:us-central1:diamond-labs-db`, then from `apps/api` run, as `staging_app`:
+   ```
+   DATABASE_URL='postgresql://staging_app:<password from STAGING_DATABASE_URL>@127.0.0.1:5433/diamond_labs_staging' \
+   APP_ENV=staging SEAZONA_DISABLED=true JWT_SECRET="$(openssl rand -hex 48)" \
+   node src/db/import-catalog.js
+
+   DATABASE_URL='<same>' APP_ENV=staging SEAZONA_DISABLED=true JWT_SECRET="$(openssl rand -hex 48)" \
+   ADMIN_EMAIL=<admin email> ADMIN_NAME='<admin name>' \
+   ADMIN_PASSWORD="$(gcloud secrets versions access latest --secret=STAGING_ADMIN_PASSWORD --project diamond-labs-prod)" \
+   node src/db/create-admin.js
+   ```
+   Run the scripts with `node` directly (the `pnpm db:*` wrappers use `--env-file=.env`, which would load a local .env over these values). The JWT_SECRET is throwaway (the scripts only need config to parse). Never point DATABASE_URL at the prod database.
+7. Only now create the `diamond-labs-api-staging` service and the Cloud Build trigger. Service command:
+   ```
+   gcloud run deploy diamond-labs-api-staging \
+     --image=us-central1-docker.pkg.dev/diamond-labs-prod/diamond-labs/api:staging-<sha> \
+     --region=us-central1 \
+     --service-account=staging-runtime@diamond-labs-prod.iam.gserviceaccount.com \
+     --set-cloudsql-instances diamond-labs-prod:us-central1:diamond-labs-db \
+     --allow-unauthenticated --max-instances=2 --memory=512Mi \
+     --set-env-vars "APP_ENV=staging,SEAZONA_DISABLED=true,AUTHORIZE_NET_ENV=sandbox,NODE_ENV=production,RX_GCS_BUCKET=diamond-labs-rx-files-staging,APP_URL=https://diamond-labs-api-staging-565921059210.us-central1.run.app,CORS_ORIGINS=https://diamond-labs-api-staging-565921059210.us-central1.run.app,ADMIN_NOTIFICATION_EMAIL=<staging inbox>" \
+     --set-secrets "DATABASE_URL=STAGING_DATABASE_URL:latest,JWT_SECRET=STAGING_JWT_SECRET:latest,JWT_EXPIRY=JWT_EXPIRY:latest,REFRESH_TOKEN_EXPIRY=REFRESH_TOKEN_EXPIRY:latest,AUTHORIZE_NET_SANDBOX_API_LOGIN=STAGING_AUTHORIZE_NET_SANDBOX_API_LOGIN:latest,AUTHORIZE_NET_SANDBOX_TRANSACTION_KEY=STAGING_AUTHORIZE_NET_SANDBOX_TRANSACTION_KEY:latest,MAILGUN_API_KEY=MAILGUN_API_KEY:latest,MAILGUN_DOMAIN=MAILGUN_DOMAIN:latest,EMAIL_FROM=EMAIL_FROM:latest,PHI_ENCRYPTION_KEY=STAGING_PHI_ENCRYPTION_KEY:latest,STAGING_EMAIL_TO=STAGING_EMAIL_TO:latest"
+   ```
+   Then the Cloud Build trigger `deploy-staging-on-own-the-lab`: `^feat/own-the-lab$` → `cloudbuild.staging.yaml`.
 8. Scope the two Seazona log-based alert policies to the prod service.
 
 **Re-seed procedure (refreshing an existing staging):**
 1. Disable the trigger `deploy-staging-on-own-the-lab` (a push would otherwise re-create the service mid-seed). `gcloud builds triggers update` has no disable flag: `gcloud beta builds triggers export deploy-staging-on-own-the-lab --destination=trigger.yaml`, set `disabled: true`, `gcloud builds triggers import --source=trigger.yaml` (pass the trigger's `--region` if it is regional).
 2. Delete the service: `gcloud run services delete diamond-labs-api-staging`.
-3. Drop and re-create `diamond_labs_staging` (`gcloud sql databases delete/create`), then as `postgres` re-apply the step-1 grants to the new database (`ALTER DATABASE … OWNER TO staging_app`, `REVOKE CONNECT … FROM PUBLIC`, `GRANT CONNECT … TO staging_app`, `ALTER SCHEMA public OWNER TO staging_app`; the role itself already exists), then re-run steps 3 to 6 above (import; migrate; scrub, exit 0, deleting the export object whatever the result; catalog import; admin).
+3. Drop and re-create `diamond_labs_staging` (`gcloud sql databases delete/create`), then as `postgres` re-apply the step-1 grants to the new database (`ALTER DATABASE … OWNER TO staging_app`, `REVOKE CONNECT … FROM PUBLIC`, `GRANT CONNECT … TO staging_app`, `ALTER SCHEMA public OWNER TO staging_app`; the role itself already exists), then re-run steps 3 to 6 above (import; migrate; confirm the scrub job image equals the migrate job's; scrub, exit 0, deleting the export object whatever the result; catalog import and create-admin from a workstation through `cloud-sql-proxy --gcloud-auth` as `staging_app`, per step 6).
 4. Re-create the service only (step 7's `gcloud run deploy`; the trigger still exists, just disabled). Never re-create it after a non-zero scrub exit.
 5. Re-enable the trigger: same export/import with `disabled: false`.
 

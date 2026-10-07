@@ -63,6 +63,21 @@ steps:
       - --execute-now
       - --wait
 
+  # 3b. Keep the scrub Job on the same image as the migrate Job. The scrub fails
+  #     closed on a schema mismatch, so a stale scrub image would block every
+  #     re-seed. Update only: NO --execute-now (the scrub is run by hand, after a
+  #     prod-data import, never by the pipeline).
+  - id: scrub-image
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - update
+      - diamond-labs-scrub-staging
+      - --image=${_REPO}:staging-${SHORT_SHA}
+      - --region=${_REGION}
+
   # 4. Deploy the new revision of the staging service.
   - id: deploy
     name: gcr.io/google.com/cloudsdktool/cloud-sdk

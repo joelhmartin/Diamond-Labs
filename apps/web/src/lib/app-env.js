@@ -19,6 +19,20 @@ export function acceptJsUrl(authNetEnv) {
   return ACCEPT_JS[key];
 }
 
+/**
+ * Swap the production Accept.js URL in html for the target env's URL. Throws if a
+ * different URL is needed but the production URL is absent, so the swap can never
+ * silently do nothing (a staging build would then ship the live script).
+ */
+export function swapAcceptJsUrl(html, authNetEnv) {
+  const target = acceptJsUrl(authNetEnv);
+  if (target === ACCEPT_JS.production) return html;
+  if (!html.includes(ACCEPT_JS.production)) {
+    throw new Error(`Accept.js swap failed: ${ACCEPT_JS.production} not found in index.html, cannot point it at ${target}`);
+  }
+  return html.replace(ACCEPT_JS.production, target);
+}
+
 /** Build-time guard: a staging bundle must load the sandbox Accept.js. Throws otherwise. */
 export function assertStagingBuildSafe(appEnv, authNetEnv) {
   if (isStagingBuild(appEnv) && authNetEnv !== "sandbox") {

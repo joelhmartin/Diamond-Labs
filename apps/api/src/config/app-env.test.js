@@ -24,6 +24,19 @@ test("assertSafeConfig rejects staging missing any single safety switch", () => 
   assert.throws(() => assertSafeConfig({ ...GOOD, SEAZONA_DISABLED: "false" }), /SEAZONA_DISABLED/);
 });
 
+test("assertSafeConfig refuses a *-staging Cloud Run service without APP_ENV=staging", () => {
+  assert.throws(() => assertSafeConfig({ K_SERVICE: "diamond-labs-api-staging" }), /staging service but APP_ENV/);
+  assert.throws(() => assertSafeConfig({ K_SERVICE: "diamond-labs-api-staging", APP_ENV: "production" }), /staging service/);
+  assert.throws(() => assertSafeConfig({ K_SERVICE: "x-staging", APP_ENV: "development" }), /staging service/);
+});
+
+test("assertSafeConfig: K_SERVICE leaves production and a correct staging unchanged", () => {
+  assert.doesNotThrow(() => assertSafeConfig({ K_SERVICE: "diamond-labs-api" }));
+  assert.doesNotThrow(() => assertSafeConfig({ K_SERVICE: "diamond-labs-api", APP_ENV: "production" }));
+  assert.doesNotThrow(() => assertSafeConfig({}));
+  assert.doesNotThrow(() => assertSafeConfig({ ...GOOD, K_SERVICE: "diamond-labs-api-staging" }));
+});
+
 test("assertSafeConfig reports every problem at once", () => {
   assert.throws(
     () => assertSafeConfig({ APP_ENV: "staging" }),

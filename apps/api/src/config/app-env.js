@@ -11,6 +11,14 @@ export const isStaging = (env) => env?.APP_ENV === "staging";
  * mail is redirected and Seazona is hard-disabled. Reports every problem at once.
  */
 export function assertSafeConfig(env) {
+  // Re-creation guard: a Cloud Run service named *-staging that was re-created
+  // without APP_ENV=staging would otherwise boot as a normal (unsafe) instance.
+  // K_SERVICE is injected by Cloud Run; unset locally and "diamond-labs-api" in prod.
+  if (!isStaging(env) && typeof env?.K_SERVICE === "string" && env.K_SERVICE.endsWith("-staging")) {
+    throw new Error(
+      `Unsafe configuration, refusing to boot: Cloud Run service "${env.K_SERVICE}" is a staging service but APP_ENV is not "staging"`,
+    );
+  }
   if (!isStaging(env)) return;
   const problems = [];
   if (env.AUTHORIZE_NET_ENV !== "sandbox") problems.push('AUTHORIZE_NET_ENV must be "sandbox"');

@@ -10,4 +10,5 @@ reviews:
   auto_review:
     enabled: true
     base_branches:
-      - "feat/own-the-lab"
+      # CodeRabbit treats these entries as regexes, so anchor the name.
+      - "^feat/own-the-lab$"

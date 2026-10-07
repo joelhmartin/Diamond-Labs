@@ -1,14 +1,12 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
-import { acceptJsUrl, assertStagingBuildSafe } from "./src/lib/app-env.js";
-
-const PROD_ACCEPT_JS = "https://js.authorize.net/v1/Accept.js";
+import { swapAcceptJsUrl, assertStagingBuildSafe } from "./src/lib/app-env.js";
 
 // Point index.html's Accept.js <script> at the sandbox or live host per
 // VITE_AUTHORIZE_NET_ENV. Unset => production URL, so default builds are unchanged.
 const acceptJsPlugin = (authNetEnv) => ({
   name: "accept-js-url",
-  transformIndexHtml: (html) => html.replace(PROD_ACCEPT_JS, acceptJsUrl(authNetEnv)),
+  transformIndexHtml: (html) => swapAcceptJsUrl(html, authNetEnv),
 });
 
 export default defineConfig(({ mode }) => {
