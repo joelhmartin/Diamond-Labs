@@ -88,7 +88,7 @@ Each command is shown before it runs. Everything new is named `*-staging` / `STA
    - `STAGING_ADMIN_PASSWORD`
 3. Import, as the staging role: create a private bucket `gs://diamond-labs-staging-seed` with a 1-day delete lifecycle and grant the Cloud SQL SA object write; `gcloud sql export sql diamond-labs-db gs://…/prod.sql --database=diamond_labs`, then `gcloud sql import sql` into `diamond_labs_staging` as the staging role.
 4. Run `diamond-labs-migrate-staging` (brings the schema level with the code; the scrub fails closed on a schema mismatch).
-5. Run `diamond-labs-scrub-staging`, then delete the export object from `gs://diamond-labs-staging-seed` **whatever the result** (success or failure: an unscrubbed prod dump must not sit in the bucket waiting for the lifecycle rule). **The scrub must exit 0.** Any other result: do not proceed; drop the database and start again from step 1.
+5. Run `diamond-labs-scrub-staging`, then delete the export object from `gs://diamond-labs-staging-seed` **whatever the result** (success or failure: an unscrubbed prod dump must not sit in the bucket waiting for the lifecycle rule). **The scrub must exit 0.** Any other result: do not proceed; drop and re-create the database with the step-1 grants (the role already exists) and start again from step 3.
 6. Run the catalog import job (`db:import-catalog`, from piece 1) and the one-shot `create-admin` job.
 7. Only now create the `diamond-labs-api-staging` service (same env as the jobs) and the Cloud Build trigger `deploy-staging-on-own-the-lab`: `^feat/own-the-lab$` → `cloudbuild.staging.yaml`.
 8. Scope the two Seazona log-based alert policies to the prod service.
@@ -96,8 +96,8 @@ Each command is shown before it runs. Everything new is named `*-staging` / `STA
 **Re-seed procedure (refreshing an existing staging):**
 1. Disable the trigger `deploy-staging-on-own-the-lab` (a push would otherwise re-create the service mid-seed). `gcloud builds triggers update` has no disable flag: `gcloud beta builds triggers export deploy-staging-on-own-the-lab --destination=trigger.yaml`, set `disabled: true`, `gcloud builds triggers import --source=trigger.yaml` (pass the trigger's `--region` if it is regional).
 2. Delete the service: `gcloud run services delete diamond-labs-api-staging`.
-3. Drop and re-create `diamond_labs_staging`, then re-run steps 3 to 6 above (import; migrate; scrub, exit 0, deleting the export object whatever the result; catalog import; admin).
-4. Re-create the service exactly as in step 7. Never re-create it after a non-zero scrub exit.
+3. Drop and re-create `diamond_labs_staging` (`gcloud sql databases delete/create`), then as `postgres` re-apply the step-1 grants to the new database (`ALTER DATABASE … OWNER TO staging_app`, `REVOKE CONNECT … FROM PUBLIC`, `GRANT CONNECT … TO staging_app`, `ALTER SCHEMA public OWNER TO staging_app`; the role itself already exists), then re-run steps 3 to 6 above (import; migrate; scrub, exit 0, deleting the export object whatever the result; catalog import; admin).
+4. Re-create the service only (step 7's `gcloud run deploy`; the trigger still exists, just disabled). Never re-create it after a non-zero scrub exit.
 5. Re-enable the trigger: same export/import with `disabled: false`.
 
 ### Task S6: Verify
@@ -110,3 +110,10 @@ Each command is shown before it runs. Everything new is named `*-staging` / `STA
 - The receipt arrives at `STAGING_EMAIL_TO` with the `[STAGING →` prefix.
 - A spot SQL query on staging shows no patient names, no rx files, and null password hashes and CIM ids.
 - The prod service revision and prod DB are unchanged: compare the revision name and a row count before and after.
+
+**Provisioning notes (first run, 2026-10-07):**
+- `import-catalog` and `create-admin` were run from a workstation through `cloud-sql-proxy --gcloud-auth` as `staging_app`, not as Cloud Run jobs: `import-catalog` reads `apps/web/src/data/catalog.js`, which the runtime image does not contain.
+- The first image was built with a build-and-push-only config (the full pipeline would have deployed the service before the scrub).
+- Cloud SQL's SQL export carries no ownership statements, so an import as `staging_app` leaves every object owned by `staging_app`; no ownership fix-up is needed. Never use `REASSIGN OWNED BY postgres` (it also reassigns shared objects such as the production database).
+- The two Seazona alert policies were already scoped to `service_name="diamond-labs-api"`; step 8 needed no change.
+
