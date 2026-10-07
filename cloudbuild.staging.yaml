@@ -1,6 +1,6 @@
 # CI/CD for the STAGING API (Cloud Run service diamond-labs-api-staging).
 #
-# Triggered on push to `feat/own-the-lab` (trigger: deploy-api-staging-on-own-the-lab).
+# Triggered on push to `feat/own-the-lab` (trigger: deploy-staging-on-own-the-lab).
 # Same shape as cloudbuild.yaml (production) with these deliberate differences:
 #   - own service, own migrate Job, own image tag `staging-${SHORT_SHA}`.
 #     NEVER tags `latest`: that tag belongs to production's pipeline.

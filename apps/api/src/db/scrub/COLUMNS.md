@@ -2,7 +2,9 @@
 
 Source of truth is `plan.js` (data) and `plan.test.js` (fails if any schema column is unclassified). This file explains the reasoning. Run with `pnpm --filter @my-app/api db:scrub-staging`; it only runs against `current_database() = 'diamond_labs_staging'` with `APP_ENV=staging`.
 
-Classes: **keep** (copied), **phi** (patient health info/identity), **pii** (customer or free-text personal data), **secret** (credentials, tokens, payment profiles), **reset** (operational state neutralised). Everything not "keep" is overwritten in one transaction. Encrypted PHI is never decrypted; it is replaced (staging has a different key). Doctor and practice names and emails are kept by design (mail is redirected, no password survives).
+Classes: **keep** (copied), **phi** (patient health info/identity), **pii** (customer or free-text personal data), **secret** (credentials, tokens, payment profiles), **reset** (operational state neutralised). Everything not "keep" is overwritten in one transaction, followed by `VACUUM FULL` on each touched table (outside the transaction) so old PHI tuples do not linger in dead pages.
+
+**Fail closed:** if the scrub transaction fails (including the drift check), the script TRUNCATEs every table that has any non-keep column (list derived from `plan.js`, `tablesToEmpty`), prints "staging DB emptied — re-import" and exits non-zero. A guard refusal (wrong DB or env) never truncates anything. Encrypted PHI is never decrypted; it is replaced (staging has a different key). Doctor and practice names and emails are kept by design (mail is redirected, no password survives).
 
 ## Rewritten columns
 
@@ -11,6 +13,7 @@ Classes: **keep** (copied), **phi** (patient health info/identity), **pii** (cus
 | users.password_hash | secret | NULL |
 | users.mfa_secret | secret | NULL |
 | users.mfa_enabled | reset | false |
+| users.email, users.name (role = 'user' only) | pii | `user+<id>@example.invalid` / `Scrubbed User`. Public sign-ups, not doctors; doctors and admins keep both |
 | users.authorize_net_customer_profile_id | secret | NULL (prod CIM ids must never reach sandbox) |
 | users.default_payment_profile_id | secret | NULL |
 | accounts.settings | pii | `{}` (free-form jsonb) |
@@ -19,6 +22,10 @@ Classes: **keep** (copied), **phi** (patient health info/identity), **pii** (cus
 | doctor_profiles.delivery_notes | pii | NULL (free text, could name a patient) |
 | autopay_enrollments.enabled | reset | false |
 | autopay_enrollments.payment_profile_id | secret | `'SCRUBBED'` (NOT NULL) |
+| autopay_enrollments.paused_reason | pii | NULL (free text) |
+| rx_case_lines.source_label | phi | NULL (copies the doctor's free-form "Other" device text verbatim; the app encrypts the source as PHI) |
+| rx_case_lines.name | phi | `Manual line` when origin = 'manual' (staff-typed), else unchanged |
+| rx_case_lines.map_key | phi | `open:<id>` when status = 'open' (embeds the literal "Other" text), else unchanged |
 | autopay_attempts.failure_reason | pii | NULL (gateway/Seazona error text) |
 | job_runs.summary | pii | NULL |
 | job_runs.error | pii | NULL |
@@ -49,12 +56,12 @@ Classes: **keep** (copied), **phi** (patient health info/identity), **pii** (cus
 
 ## Kept (judgement calls)
 
-- users: email, name, avatar_url, status/role/approval, Seazona link ids (inert: Seazona is disabled in staging).
-- accounts: name, slug, owner. doctor_profiles: company name, address, phone, NPI, license (practice business data and public identifiers; only the free-text delivery notes go).
+- users with role doctor/admin: email, name; all users: avatar_url, status/role/approval, Seazona link ids (inert: Seazona is disabled in staging).
+- accounts: name, slug, owner. doctor_profiles: company name, address, phone, NPI, license. DEVIATION from the strictest reading (addresses/phones scrubbed): accepted as practice business data and public identifiers; only the free-text delivery notes go. A sole practitioner's practice address may also be a home address.
 - rx_cases: case_number, practice_name, device_key/category, first_device, records_method, physical_bite, form_type, due_date, rush, status. Non-identifying once names, DOB, contact and free text are gone. Clinical-ish (`physical_bite`) but not linkable to a person.
-- rx_case_lines.source_label: the doctor's literal product/option selection. rx_code_overrides.note: lab-staff mapping rationale about product codes. Neither is patient text by design; neither is enforced. Revisit if that stops being true.
+- rx_code_overrides.map_key and .note: a global mapping vocabulary shared across all cases, keyed by option/product slot, not by patient. Residual risk accepted: a map_key written from a literal "Other" text would survive. Revisit if overrides start being keyed by free text.
 - invoice_payments, autopay_attempts (allocations are invoice id/number/amount), orders money columns and transaction ids, order_items, catalog and product tables, memberships, app_theme.
 
 ## Not in the schema
 
-The plan mentions MFA backup/recovery codes; no such column exists today. If one is added, `plan.test.js` fails until it is classified. The script also checks the live database catalog, so a table or column present in the database but unknown to the plan aborts the run before anything is changed.
+The plan mentions MFA backup/recovery codes; no such column exists today. If one is added, `plan.test.js` fails until it is classified. The script also checks the live catalog (`pg_attribute`/`pg_class`/`pg_namespace`, every non-system schema; only `drizzle.__drizzle_migrations` is ignored), so a table or column present in the database but unknown to the plan aborts the run before anything is changed.

@@ -4,7 +4,7 @@ import { getTableColumns, getTableName, is } from "drizzle-orm";
 import { PgTable } from "drizzle-orm/pg-core";
 import * as schema from "../schema/index.js";
 import {
-  SCRUB_PLAN, COLUMN_CLASSES, buildStatements, classSummary, assertScrubAllowed, findUnclassifiedLive,
+  SCRUB_PLAN, COLUMN_CLASSES, buildStatements, tablesToEmpty, buildEmptyStatement, classSummary, assertScrubAllowed, findUnclassifiedLive,
 } from "./plan.js";
 
 const tables = Object.values(schema).filter((v) => is(v, PgTable));
@@ -53,13 +53,14 @@ const MUST_SCRUB = {
     "signature_url", "general_comments", "seazona_push_error", "payload_snapshot", "manual_note"],
   rx_case_files: ["original_name", "gcs_url"],
   orders: ["email", "phone", "shipping", "auth_code", "seazona_push_error"],
-  users: ["password_hash", "mfa_secret", "authorize_net_customer_profile_id", "default_payment_profile_id"],
+  rx_case_lines: ["name", "map_key", "source_label"],
+  users: ["email", "name", "password_hash", "mfa_secret", "authorize_net_customer_profile_id", "default_payment_profile_id"],
   audit_log: ["metadata", "ip_address"],
   sessions: ["refresh_token_hash", "ip_address", "user_agent"],
   approval_tokens: ["token"],
   invitations: ["email", "token"],
   kv_store: ["key", "value"],
-  autopay_enrollments: ["payment_profile_id"],
+  autopay_enrollments: ["payment_profile_id", "paused_reason"],
   doctor_profiles: ["delivery_notes"],
 };
 
@@ -90,7 +91,7 @@ test("buildStatements never writes a keep column and is deterministic (idempoten
   assert.deepEqual(a, buildStatements());
   for (const s of a.filter((x) => x.mode === "update")) {
     const kept = Object.entries(SCRUB_PLAN[s.table].columns).filter(([, c]) => c.class === "keep").map(([n]) => n);
-    for (const col of kept) assert.ok(!s.sql.includes(`"${col}" =`), `${s.table}.${col} is keep but is written`);
+    for (const col of kept) assert.ok(!(s.sql.includes(` SET "${col}" =`) || s.sql.includes(`, "${col}" =`)), `${s.table}.${col} is keep but is written`);
   }
   // no statement depends on the prior value of a scrubbed column except via id/case_number
   assert.ok(a.every((s) => !/^TRUNCATE/i.test(s.sql)));
@@ -121,4 +122,40 @@ test("findUnclassifiedLive reports unknown tables and columns", () => {
   assert.deepEqual(findUnclassifiedLive({ users: ["id", "email"] }), []);
   assert.equal(findUnclassifiedLive({ users: ["id", "ssn"] }).length, 1);
   assert.equal(findUnclassifiedLive({ patients: ["id"] }).length, 1);
+});
+
+test("users: only role 'user' is anonymised; doctors/admins keep email and name", () => {
+  const sql = buildStatements().find((s) => s.table === "users").sql;
+  assert.match(sql, /"email" = CASE WHEN "role" = 'user' THEN 'user\+' \|\| "id" \|\| '@example.invalid' ELSE "email" END/);
+  assert.match(sql, /"name" = CASE WHEN "role" = 'user' THEN 'Scrubbed User' ELSE "name" END/);
+});
+
+test("rx_case_lines: free text is neutralised", () => {
+  const sql = buildStatements().find((s) => s.table === "rx_case_lines").sql;
+  assert.match(sql, /"source_label" = NULL/);
+  assert.match(sql, /"name" = CASE WHEN "origin" = 'manual' THEN 'Manual line' ELSE "name" END/);
+  assert.match(sql, /"map_key" = CASE WHEN "status" = 'open' THEN 'open:' \|\| "id" ELSE "map_key" END/);
+});
+
+test("fail-closed: empty list is derived from the plan and covers every non-keep table", () => {
+  const derived = Object.entries(SCRUB_PLAN)
+    .filter(([, s]) => Object.values(s.columns).some((c) => c.class !== "keep"))
+    .map(([t]) => t)
+    .sort();
+  assert.deepEqual([...tablesToEmpty()].sort(), derived);
+  for (const t of ["rx_cases", "rx_case_files", "rx_case_lines", "orders", "users", "sessions", "kv_store", "audit_log"]) {
+    assert.ok(tablesToEmpty().includes(t), t);
+  }
+  // pure-keep tables are not emptied
+  assert.ok(!tablesToEmpty().includes("products"));
+  // a synthetic plan proves derivation (no hand list)
+  const synth = { a: { mode: "update", columns: { x: { class: "keep" } } }, b: { mode: "update", columns: { y: { class: "phi", set: "NULL" } } } };
+  assert.deepEqual(tablesToEmpty(synth), ["b"]);
+  assert.equal(buildEmptyStatement(synth), 'TRUNCATE "b" CASCADE');
+  assert.match(buildEmptyStatement(), /^TRUNCATE .*"rx_cases".* CASCADE$/);
+});
+
+test("drift check ignores only drizzle migration bookkeeping, flags other schemas", () => {
+  assert.deepEqual(findUnclassifiedLive({ "drizzle.__drizzle_migrations": ["id", "hash"] }), []);
+  assert.equal(findUnclassifiedLive({ "other.patients": ["id"] }).length, 1);
 });

@@ -2,7 +2,7 @@
  * Staging scrub plan — pure data + pure helpers (no imports, no I/O).
  *
  * Production holds PHI (medical/dental patients on Rx cases) and customer PII.
- * Every column of every table is classified here. scrub-plan.test.js fails if a
+ * Every column of every table is classified here. plan.test.js fails if a
  * column on any schema table is missing, so a future column cannot reach staging
  * unclassified. Human-readable rationale: ./COLUMNS.md (keep the two in step).
  *
@@ -36,7 +36,13 @@ export const SCRUB_PLAN = {
   users: {
     mode: "update",
     columns: {
-      id: K, email: K, email_verified_at: K, name: K, avatar_url: K,
+      id: K,
+      // Public sign-ups (role 'user') are shoppers/patients' contacts, not doctors: anonymise.
+      // Doctors and admins keep email/name (the lab must recognise its clients).
+      email: pii(`CASE WHEN "role" = 'user' THEN 'user+' || "id" || '@example.invalid' ELSE "email" END`),
+      email_verified_at: K,
+      name: pii(`CASE WHEN "role" = 'user' THEN 'Scrubbed User' ELSE "name" END`),
+      avatar_url: K,
       password_hash: secret("NULL"),
       mfa_secret: secret("NULL"),
       mfa_enabled: reset("false"),
@@ -122,7 +128,9 @@ export const SCRUB_PLAN = {
       enabled: reset("false"),
       amount: K, day_of_month: K,
       payment_profile_id: secret(`'SCRUBBED'`), // prod CIM id; NOT NULL so a marker, never a real id
-      status: K, paused_reason: K, consecutive_failures: K, min_amount_override: K,
+      status: K,
+      paused_reason: pii("NULL"), // free text
+      consecutive_failures: K, min_amount_override: K,
       last_run_at: K, last_charged_at: K, created_by_user_id: K, updated_by_user_id: K,
       created_at: K, updated_at: K,
     },
@@ -204,9 +212,15 @@ export const SCRUB_PLAN = {
   rx_case_lines: {
     mode: "update",
     columns: {
-      id: K, case_id: K, position: K, seazona_code: K, seazona_product_id: K, name: K, arch: K, map_key: K,
+      id: K, case_id: K, position: K, seazona_code: K, seazona_product_id: K,
+      // Manual lines are staff-typed free text; auto lines are catalog names.
+      name: phi(`CASE WHEN "origin" = 'manual' THEN 'Manual line' ELSE "name" END`),
+      arch: K,
+      // For an unresolved ('open') line map_key embeds the doctor's literal "Other" text.
+      map_key: phi(`CASE WHEN "status" = 'open' THEN 'open:' || "id" ELSE "map_key" END`),
       status: K, origin: K, note_only: K,
-      source_label: K, // the doctor's literal product/option selection, not patient text
+      // Copies the doctor's free-form "Other" device text verbatim (the app encrypts the source as PHI).
+      source_label: phi("NULL"),
       created_at: K, updated_at: K,
     },
   },
@@ -253,6 +267,24 @@ export const SCRUB_PLAN = {
   product_variant_option_values: { mode: "update", columns: { variant_id: K, option_value_id: K } },
 };
 
+/**
+ * Tables the fail-closed path must empty: every table with at least one non-keep
+ * column (or deleted outright). Derived from the plan, never a hand list.
+ */
+export function tablesToEmpty(plan = SCRUB_PLAN) {
+  return Object.entries(plan)
+    .filter(([, s]) => s.mode === "delete" || Object.values(s.columns).some((c) => c.class !== "keep"))
+    .map(([t]) => t);
+}
+
+/** Single TRUNCATE for the fail-closed path (CASCADE so FK children cannot block it). */
+export function buildEmptyStatement(plan = SCRUB_PLAN) {
+  return `TRUNCATE ${tablesToEmpty(plan).map(q).join(", ")} CASCADE`;
+}
+
+/** Live relations the drift check ignores (bookkeeping only: migration hashes + timestamps). */
+export const IGNORED_LIVE_TABLES = ["drizzle.__drizzle_migrations"];
+
 export const COLUMN_CLASSES = ["keep", "phi", "pii", "secret", "reset"];
 
 const q = (ident) => `"${String(ident).replace(/"/g, '""')}"`;
@@ -298,12 +330,13 @@ export function assertScrubAllowed({ appEnv, currentDatabase }) {
 }
 
 /**
- * Pure drift check against the live catalog: `live` is { table: [columns] }.
+ * Pure drift check against the live catalog: `live` is { table: [columns] } keyed by bare name for public, `schema.table` otherwise.
  * Returns human-readable problems for any live table/column the plan does not classify.
  */
 export function findUnclassifiedLive(live, plan = SCRUB_PLAN) {
   const problems = [];
   for (const [table, cols] of Object.entries(live)) {
+    if (IGNORED_LIVE_TABLES.includes(table)) continue;
     const spec = plan[table];
     if (!spec) { problems.push(`table ${table} is not in the scrub plan`); continue; }
     for (const c of cols) if (!spec.columns[c]) problems.push(`column ${table}.${c} is not in the scrub plan`);
