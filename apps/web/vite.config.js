@@ -1,8 +1,18 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
+import { acceptJsUrl } from "./src/lib/app-env.js";
 
-export default defineConfig({
-  plugins: [react()],
+const PROD_ACCEPT_JS = "https://js.authorize.net/v1/Accept.js";
+
+// Point index.html's Accept.js <script> at the sandbox or live host per
+// VITE_AUTHORIZE_NET_ENV. Unset => production URL, so default builds are unchanged.
+const acceptJsPlugin = (authNetEnv) => ({
+  name: "accept-js-url",
+  transformIndexHtml: (html) => html.replace(PROD_ACCEPT_JS, acceptJsUrl(authNetEnv)),
+});
+
+export default defineConfig(({ mode }) => ({
+  plugins: [react(), acceptJsPlugin(loadEnv(mode, process.cwd(), "VITE_").VITE_AUTHORIZE_NET_ENV)],
   server: {
     port: 5173,
     // Allow access via dev tunnels (cloudflared/ngrok) — required for testing
@@ -15,4 +25,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));
