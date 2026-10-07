@@ -30,6 +30,16 @@ const reset = (set) => ({ class: "reset", set });
 // Classified columns of a table whose rows are deleted outright (no per-column rewrite).
 const gone = (cls) => ({ class: cls });
 
+// Canonical catalog name for a product code: the owned catalog (product_variants, unique
+// code) first, then the Seazona mirror (products; code not unique, so ordered for
+// determinism). `col` is a fully qualified column reference holding the code.
+const catalogNameFor = (col) =>
+  `(SELECT v."name" FROM "product_variants" v WHERE v."code" = ${col} LIMIT 1), ` +
+  `(SELECT p."name" FROM "products" p WHERE p."code" = ${col} ORDER BY p."seazona_product_id" LIMIT 1)`;
+
+// An account whose owner (accounts.owner_id, the FK register() sets) is a public sign-up.
+const OWNER_IS_SHOPPER = `EXISTS (SELECT 1 FROM "users" u WHERE u."id" = "accounts"."owner_id" AND u."role" = 'user')`;
+
 const SHIPPING_PLACEHOLDER = `'{"name":"Scrubbed Customer","address1":"1 Test Street","city":"Testville","state":"TX","postalCode":"00000"}'::jsonb`;
 
 export const SCRUB_PLAN = {
@@ -57,7 +67,13 @@ export const SCRUB_PLAN = {
   accounts: {
     mode: "update",
     columns: {
-      id: K, name: K, slug: K, owner_id: K, logo_url: K,
+      id: K,
+      // register() names a shopper's account "<name>'s Account" and slugs it from the name.
+      // Shopper-owned accounts are anonymised; doctor/admin accounts keep theirs. The slug
+      // stays unique because account ids are (cuid2, 24 chars: 'account-<id>' fits varchar(50)).
+      name: pii(`CASE WHEN ${OWNER_IS_SHOPPER} THEN 'Account ' || "accounts"."id" ELSE "accounts"."name" END`),
+      slug: pii(`CASE WHEN ${OWNER_IS_SHOPPER} THEN 'account-' || "accounts"."id" ELSE "accounts"."slug" END`),
+      owner_id: K, logo_url: K,
       settings: pii(`'{}'::jsonb`), // free-form jsonb, no schema guarantee it is PHI-free
       plan: K, status: K, created_at: K, updated_at: K,
     },
@@ -214,8 +230,9 @@ export const SCRUB_PLAN = {
     updateParamsFrom: "knownMapKeys", // `set` expressions reference $1 = ctx.knownMapKeys
     columns: {
       id: K, case_id: K, position: K, seazona_code: K, seazona_product_id: K,
-      // Manual lines are staff-typed free text; auto lines are catalog names.
-      name: phi(`CASE WHEN "origin" = 'manual' THEN 'Manual line' ELSE "name" END`),
+      // Staff-typed text (line editor -> "always" overrides) reaches auto lines too, so EVERY
+      // line's name is re-derived from the catalog by its code; unknown/no code -> 'Line'.
+      name: phi(`LEFT(COALESCE(${catalogNameFor('"rx_case_lines"."seazona_code"')}, 'Line'), 255)`),
       arch: K,
       // map_key can carry a doctor-typed literal on ANY line (an "always" override fed it, even
       // on auto/confirmed lines). Keep only KNOWN catalog-map keys ($1 = ctx.knownMapKeys,
@@ -235,7 +252,10 @@ export const SCRUB_PLAN = {
     mode: "update",
     deleteUnlessIn: { column: "map_key", ctxKey: "knownMapKeys" },
     columns: {
-      id: K, map_key: K, seazona_code: K, seazona_product_id: K, seazona_name: K,
+      id: K, map_key: K, seazona_code: K, seazona_product_id: K,
+      // Staff-typed in the line editor. Re-derived from the catalog by code; NULL stays NULL
+      // (a noteOnly ruling has no product, and inventing a name would misrepresent it).
+      seazona_name: phi(`CASE WHEN "rx_code_overrides"."seazona_name" IS NULL THEN NULL ELSE LEFT(COALESCE(${catalogNameFor('"rx_code_overrides"."seazona_code"')}, 'Line'), 255) END`),
       note: K, // lab-staff mapping rationale about product codes
       note_only: K, confirmed_by: K, created_at: K, updated_at: K,
     },

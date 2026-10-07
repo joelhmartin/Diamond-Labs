@@ -55,6 +55,8 @@ const MUST_SCRUB = {
   rx_case_files: ["original_name", "gcs_url"],
   orders: ["email", "phone", "shipping", "auth_code", "seazona_push_error"],
   rx_case_lines: ["name", "map_key", "source_label"],
+  rx_code_overrides: ["seazona_name"],
+  accounts: ["name", "slug", "settings"],
   users: ["email", "name", "password_hash", "mfa_secret", "authorize_net_customer_profile_id", "default_payment_profile_id"],
   audit_log: ["metadata", "ip_address"],
   sessions: ["refresh_token_hash", "ip_address", "user_agent"],
@@ -134,7 +136,9 @@ test("users: only role 'user' is anonymised; doctors/admins keep email and name"
 test("rx_case_lines: free text is neutralised", () => {
   const sql = buildStatements(SCRUB_PLAN, CTX).find((s) => s.table === "rx_case_lines").sql;
   assert.match(sql, /"source_label" = NULL/);
-  assert.match(sql, /"name" = CASE WHEN "origin" = 'manual' THEN 'Manual line' ELSE "name" END/);
+  // EVERY line's name is re-derived from the catalog (staff text spreads to auto lines).
+  assert.ok(sql.includes(`"name" = LEFT(COALESCE((SELECT v."name" FROM "product_variants" v WHERE v."code" = "rx_case_lines"."seazona_code" LIMIT 1), (SELECT p."name" FROM "products" p WHERE p."code" = "rx_case_lines"."seazona_code" ORDER BY p."seazona_product_id" LIMIT 1), 'Line'), 255)`), sql);
+  assert.doesNotMatch(sql, /"origin" = 'manual'/);
   assert.match(sql, /"map_key" = CASE WHEN "map_key" IS NULL THEN NULL WHEN "map_key" = ANY\(\$1\) THEN "map_key" ELSE 'line:' \|\| "id" END/);
   const st = buildStatements(SCRUB_PLAN, CTX).find((s) => s.table === "rx_case_lines");
   assert.deepEqual(st.params, [CTX.knownMapKeys]);
@@ -146,6 +150,22 @@ test("rx_code_overrides: rows not in the known catalog keys are deleted; no ctx 
   assert.match(s.sql, /^DELETE FROM "rx_code_overrides" WHERE NOT \("map_key" = ANY\(\$1\)\)$/);
   assert.deepEqual(s.params, [["mod:labial-bow"]]);
   assert.throws(() => buildStatements(SCRUB_PLAN, {}), /knownMapKeys/);
+});
+
+test("rx_code_overrides: seazona_name re-derived from the catalog by code after the delete; NULL stays NULL", () => {
+  const sts = buildStatements(SCRUB_PLAN, CTX).filter((x) => x.table === "rx_code_overrides");
+  assert.deepEqual(sts.map((s) => s.mode), ["delete", "update"]);
+  const sql = sts[1].sql;
+  assert.ok(sql.startsWith(`UPDATE "rx_code_overrides" SET "seazona_name" = CASE WHEN "rx_code_overrides"."seazona_name" IS NULL THEN NULL ELSE LEFT(COALESCE(`), sql);
+  assert.ok(sql.includes(`v."code" = "rx_code_overrides"."seazona_code"`) && sql.includes(`p."code" = "rx_code_overrides"."seazona_code"`), sql);
+  assert.match(sql, /'Line'\), 255\) END$/);
+});
+
+test("accounts: shopper-owned accounts get id-derived name/slug; others keep theirs", () => {
+  const sql = buildStatements(SCRUB_PLAN, CTX).find((s) => s.table === "accounts").sql;
+  const owner = `EXISTS (SELECT 1 FROM "users" u WHERE u."id" = "accounts"."owner_id" AND u."role" = 'user')`;
+  assert.ok(sql.includes(`"name" = CASE WHEN ${owner} THEN 'Account ' || "accounts"."id" ELSE "accounts"."name" END`), sql);
+  assert.ok(sql.includes(`"slug" = CASE WHEN ${owner} THEN 'account-' || "accounts"."id" ELSE "accounts"."slug" END`), sql);
 });
 
 test("findMissingFromLive reports plan tables/columns absent from the live DB", () => {

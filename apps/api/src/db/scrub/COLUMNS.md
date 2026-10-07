@@ -6,7 +6,7 @@ Classes: **keep** (copied), **phi** (patient health info/identity), **pii** (cus
 
 **Fail closed** (`run.js`): after the guard passes, ANY failure (schema behind code, an unclassified live table/column, the scrub transaction, VACUUM) empties the database. The table list comes from the live catalog (`pg_class`/`pg_namespace`, relkind r/p/m, all non-system schemas, excluding only `drizzle.__drizzle_migrations`), not from the plan, so it works when plan tables do not exist. One `TRUNCATE ... CASCADE` per table so one failure cannot block the rest; materialized views are dropped; foreign tables are reported and skipped. The guard is re-checked on the same connection right before. Exit 1 = "staging DB emptied — re-import"; exit 2 = "CRITICAL: staging DB NOT fully emptied — drop the database now". A guard refusal (wrong DB or env) never truncates anything and exits 1.
 
-Pre-check before the transaction: every plan table and column must exist live ("schema behind code — run diamond-labs-migrate-staging before scrubbing"), and every live table/column (relkind r/p/m/f) must be in the plan. Encrypted PHI is never decrypted; it is replaced (staging has a different key). Doctor and practice names and emails are kept by design (mail is redirected, no password survives).
+Pre-check before the transaction: every plan table and column must exist live ("schema behind code — run diamond-labs-migrate-staging before scrubbing"), and every live table/column (relkind r/p/m/f) must be in the plan. Foreign tables (relkind f) count for this drift check, but the fail-closed emptying cannot truncate them and skips them (reported by name). Encrypted PHI is never decrypted; it is replaced (staging has a different key). Doctor and practice names and emails are kept by design (mail is redirected, no password survives).
 
 ## Rewritten columns
 
@@ -19,6 +19,7 @@ Pre-check before the transaction: every plan table and column must exist live ("
 | users.authorize_net_customer_profile_id | secret | NULL (prod CIM ids must never reach sandbox) |
 | users.default_payment_profile_id | secret | NULL |
 | accounts.settings | pii | `{}` (free-form jsonb) |
+| accounts.name, accounts.slug (owner role = 'user' only) | pii | `Account <id>` / `account-<id>`. Ownership is `accounts.owner_id` (what `register()` sets); `register()` names a shopper's account `"<name>'s Account"` and slugs it from the name. Slug stays unique because ids are; doctor/admin accounts keep both |
 | audit_log.metadata | pii | `{}` (free text: notes, names, emails) |
 | audit_log.ip_address | pii | NULL |
 | doctor_profiles.delivery_notes | pii | NULL (free text, could name a patient) |
@@ -26,7 +27,8 @@ Pre-check before the transaction: every plan table and column must exist live ("
 | autopay_enrollments.payment_profile_id | secret | `'SCRUBBED'` (NOT NULL) |
 | autopay_enrollments.paused_reason | pii | NULL (free text) |
 | rx_case_lines.source_label | phi | NULL (copies the doctor's free-form "Other" device text verbatim; the app encrypts the source as PHI) |
-| rx_case_lines.name | phi | `Manual line` when origin = 'manual' (staff-typed), else unchanged |
+| rx_case_lines.name | phi | EVERY line: the catalog name for `seazona_code` (`product_variants.code` first, then `products.code`), else `Line`. Staff-typed line-editor text spreads to auto lines via "always" overrides, so origin cannot be trusted |
+| rx_code_overrides.seazona_name | phi | catalog name for `seazona_code` (same lookup), else `Line`; NULL stays NULL (noteOnly rulings have no product). Runs after the known-key DELETE |
 | rx_case_lines.map_key | phi | kept only when it is a KNOWN catalog-map key (same list as rx_code_overrides); otherwise `line:<id>`; NULL stays NULL. Any line (auto/confirmed too) can carry a doctor-typed literal when an "always" override fed it |
 | autopay_attempts.failure_reason | pii | NULL (gateway/Seazona error text) |
 | job_runs.summary | pii | NULL |
@@ -59,9 +61,9 @@ Pre-check before the transaction: every plan table and column must exist live ("
 ## Kept (judgement calls)
 
 - users with role doctor/admin: email, name; all users: avatar_url, status/role/approval, Seazona link ids (inert: Seazona is disabled in staging).
-- accounts: name, slug, owner. doctor_profiles: company name, address, phone, NPI, license. DEVIATION from the strictest reading (addresses/phones scrubbed): accepted as practice business data and public identifiers; only the free-text delivery notes go. A sole practitioner's practice address may also be a home address.
+- accounts (doctor/admin-owned): name, slug; all: owner. doctor_profiles: company name, address, phone, NPI, license. DEVIATION from the strictest reading (addresses/phones scrubbed): accepted as practice business data and public identifiers; only the free-text delivery notes go. A sole practitioner's practice address may also be a home address.
 - rx_cases: case_number, practice_name, device_key/category, first_device, records_method, physical_bite, form_type, due_date, rush, status. Non-identifying once names, DOB, contact and free text are gone. Clinical-ish (`physical_bite`) but not linkable to a person.
-- rx_code_overrides: only rows whose map_key is a KNOWN catalog-map key (from the DEVICE/MODIFICATION/ATTRIBUTE/LAB_SERVICE/GUARD/ORTHO tables, `known-map-keys.js`) are kept; every other row is DELETED. The key prefixes (`mod:`, `attr:`, `primary:`) are shared by stable slugs and by doctor-typed literals (`mod:<literal>`), so shape cannot tell them apart; this is the "not in the known set" fallback. Consequence: a real lab override on a key the tables no longer emit is also dropped. `note` and the rest of each kept row are lab-staff mapping data.
+- rx_code_overrides: only rows whose map_key is a KNOWN catalog-map key (from the DEVICE/MODIFICATION/ATTRIBUTE/LAB_SERVICE/GUARD/ORTHO tables, `known-map-keys.js`) are kept; every other row is DELETED. The key prefixes (`mod:`, `attr:`, `primary:`) are shared by stable slugs and by doctor-typed literals (`mod:<literal>`), so shape cannot tell them apart; this is the "not in the known set" fallback. Consequence: a real lab override on a key the tables no longer emit is also dropped. `note` and the rest of each kept row (except `seazona_name`, re-derived) are lab-staff mapping data.
 - invoice_payments, autopay_attempts (allocations are invoice id/number/amount), orders money columns and transaction ids, order_items, catalog and product tables, memberships, app_theme.
 
 ## Not in the schema
@@ -72,6 +74,6 @@ The plan mentions MFA backup/recovery codes; no such column exists today. If one
 
 Crash, `kill`, OOM, Cloud Run Job timeout and connection loss cannot be handled in code (a dead process cannot empty anything; the scrub transaction rolls back, leaving the unscrubbed import in place). They are covered operationally:
 
-- The staging service is not created, or is at 0 max instances / 0 traffic, from the moment prod data lands in `diamond_labs_staging` until `diamond-labs-scrub-staging` exits 0.
+- The staging service does not exist from the moment prod data lands in `diamond_labs_staging` until `diamond-labs-scrub-staging` exits 0. Scaling to `--max-instances=0` is NOT a substitute (it is not a guarantee that Cloud Run stops serving); the service is deleted.
 - Any non-zero exit means "do not serve": exit 1 = refused, or failed and emptied; exit 2 or a missing "committed" line = possibly unscrubbed. The script prints "staging DB NOT scrubbed — do not serve it; drop or re-run" for every pre-guard failure (module load, config, connection) and for exit 2. If in doubt, drop the database.
-- Re-seeding an existing staging: first set `diamond-labs-api-staging` to `--max-instances=0` (or delete the database), then import, migrate, scrub (exit 0), run the catalog import, and only then restore max instances. See Task S5 in the staging plan.
+- Re-seeding an existing staging: (1) disable the trigger `deploy-staging-on-own-the-lab` (so a push cannot re-create the service mid-seed); (2) delete the service `diamond-labs-api-staging`; (3) drop and re-create `diamond_labs_staging`, then import, migrate, scrub (exit 0), catalog import and admin; (4) re-create the service as in S5 step 7; (5) re-enable the trigger. Never re-create the service after a non-zero scrub exit. The export object is deleted from the seed bucket whatever the scrub's result. See Task S5 in the staging plan.
