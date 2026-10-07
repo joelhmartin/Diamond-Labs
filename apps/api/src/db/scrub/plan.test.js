@@ -4,9 +4,10 @@ import { getTableColumns, getTableName, is } from "drizzle-orm";
 import { PgTable } from "drizzle-orm/pg-core";
 import * as schema from "../schema/index.js";
 import {
-  SCRUB_PLAN, COLUMN_CLASSES, buildStatements, tablesToEmpty, buildEmptyStatement, classSummary, assertScrubAllowed, findUnclassifiedLive,
+  SCRUB_PLAN, COLUMN_CLASSES, buildStatements, findMissingFromLive, classSummary, assertScrubAllowed, findUnclassifiedLive,
 } from "./plan.js";
 
+const CTX = { knownMapKeys: ["mod:labial-bow"] };
 const tables = Object.values(schema).filter((v) => is(v, PgTable));
 const dbColumns = (t) => Object.values(getTableColumns(t)).map((c) => c.name);
 
@@ -81,14 +82,14 @@ test("rx_case_files, sessions, kv_store, approval_tokens, invitations are emptie
 });
 
 test("autopay enrollments are disabled and prod payment profiles are replaced", () => {
-  const sql = buildStatements().find((s) => s.table === "autopay_enrollments").sql;
+  const sql = buildStatements(SCRUB_PLAN, CTX).find((s) => s.table === "autopay_enrollments").sql;
   assert.match(sql, /"enabled" = false/);
   assert.match(sql, /"payment_profile_id" = 'SCRUBBED'/);
 });
 
 test("buildStatements never writes a keep column and is deterministic (idempotent)", () => {
-  const a = buildStatements();
-  assert.deepEqual(a, buildStatements());
+  const a = buildStatements(SCRUB_PLAN, CTX);
+  assert.deepEqual(a, buildStatements(SCRUB_PLAN, CTX));
   for (const s of a.filter((x) => x.mode === "update")) {
     const kept = Object.entries(SCRUB_PLAN[s.table].columns).filter(([, c]) => c.class === "keep").map(([n]) => n);
     for (const col of kept) assert.ok(!(s.sql.includes(` SET "${col}" =`) || s.sql.includes(`, "${col}" =`)), `${s.table}.${col} is keep but is written`);
@@ -125,34 +126,31 @@ test("findUnclassifiedLive reports unknown tables and columns", () => {
 });
 
 test("users: only role 'user' is anonymised; doctors/admins keep email and name", () => {
-  const sql = buildStatements().find((s) => s.table === "users").sql;
+  const sql = buildStatements(SCRUB_PLAN, CTX).find((s) => s.table === "users").sql;
   assert.match(sql, /"email" = CASE WHEN "role" = 'user' THEN 'user\+' \|\| "id" \|\| '@example.invalid' ELSE "email" END/);
   assert.match(sql, /"name" = CASE WHEN "role" = 'user' THEN 'Scrubbed User' ELSE "name" END/);
 });
 
 test("rx_case_lines: free text is neutralised", () => {
-  const sql = buildStatements().find((s) => s.table === "rx_case_lines").sql;
+  const sql = buildStatements(SCRUB_PLAN, CTX).find((s) => s.table === "rx_case_lines").sql;
   assert.match(sql, /"source_label" = NULL/);
   assert.match(sql, /"name" = CASE WHEN "origin" = 'manual' THEN 'Manual line' ELSE "name" END/);
-  assert.match(sql, /"map_key" = CASE WHEN "status" = 'open' THEN 'open:' \|\| "id" ELSE "map_key" END/);
+  assert.match(sql, /"map_key" = CASE WHEN "status" = 'open' OR "origin" = 'manual' THEN 'line:' \|\| "id" ELSE "map_key" END/);
 });
 
-test("fail-closed: empty list is derived from the plan and covers every non-keep table", () => {
-  const derived = Object.entries(SCRUB_PLAN)
-    .filter(([, s]) => Object.values(s.columns).some((c) => c.class !== "keep"))
-    .map(([t]) => t)
-    .sort();
-  assert.deepEqual([...tablesToEmpty()].sort(), derived);
-  for (const t of ["rx_cases", "rx_case_files", "rx_case_lines", "orders", "users", "sessions", "kv_store", "audit_log"]) {
-    assert.ok(tablesToEmpty().includes(t), t);
-  }
-  // pure-keep tables are not emptied
-  assert.ok(!tablesToEmpty().includes("products"));
-  // a synthetic plan proves derivation (no hand list)
-  const synth = { a: { mode: "update", columns: { x: { class: "keep" } } }, b: { mode: "update", columns: { y: { class: "phi", set: "NULL" } } } };
-  assert.deepEqual(tablesToEmpty(synth), ["b"]);
-  assert.equal(buildEmptyStatement(synth), 'TRUNCATE "b" CASCADE');
-  assert.match(buildEmptyStatement(), /^TRUNCATE .*"rx_cases".* CASCADE$/);
+test("rx_code_overrides: rows not in the known catalog keys are deleted; no ctx fails loudly", () => {
+  const s = buildStatements(SCRUB_PLAN, CTX).find((x) => x.table === "rx_code_overrides");
+  assert.match(s.sql, /^DELETE FROM "rx_code_overrides" WHERE NOT \("map_key" = ANY\(\$1\)\)$/);
+  assert.deepEqual(s.params, [["mod:labial-bow"]]);
+  assert.throws(() => buildStatements(SCRUB_PLAN, {}), /knownMapKeys/);
+});
+
+test("findMissingFromLive reports plan tables/columns absent from the live DB", () => {
+  const live = Object.fromEntries(Object.entries(SCRUB_PLAN).map(([t, s]) => [t, Object.keys(s.columns)]));
+  assert.deepEqual(findMissingFromLive(live), []);
+  const { client_prices: _x, ...noCp } = live;
+  assert.deepEqual(findMissingFromLive(noCp), ["table client_prices is missing"]);
+  assert.equal(findMissingFromLive({ ...live, users: ["id"] }).length, Object.keys(SCRUB_PLAN.users.columns).length - 1);
 });
 
 test("drift check ignores only drizzle migration bookkeeping, flags other schemas", () => {

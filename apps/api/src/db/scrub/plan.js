@@ -216,8 +216,9 @@ export const SCRUB_PLAN = {
       // Manual lines are staff-typed free text; auto lines are catalog names.
       name: phi(`CASE WHEN "origin" = 'manual' THEN 'Manual line' ELSE "name" END`),
       arch: K,
-      // For an unresolved ('open') line map_key embeds the doctor's literal "Other" text.
-      map_key: phi(`CASE WHEN "status" = 'open' THEN 'open:' || "id" ELSE "map_key" END`),
+      // map_key embeds the doctor's literal "Other" text for unresolved ('open') lines AND
+      // for resolved manual lines (a human mapped a literal-derived key to a product).
+      map_key: phi(`CASE WHEN "status" = 'open' OR "origin" = 'manual' THEN 'line:' || "id" ELSE "map_key" END`),
       status: K, origin: K, note_only: K,
       // Copies the doctor's free-form "Other" device text verbatim (the app encrypts the source as PHI).
       source_label: phi("NULL"),
@@ -225,7 +226,12 @@ export const SCRUB_PLAN = {
     },
   },
   rx_code_overrides: {
+    // map_key shapes (mod:/attr:/primary:/guard:) are shared by stable catalog slugs AND
+    // literal-derived keys (mod:<doctor text>), so the shape cannot tell them apart.
+    // Keep only rows whose map_key is a KNOWN catalog-map key (the lab's real
+    // vocabulary, injected as ctx.knownMapKeys); DELETE every other row.
     mode: "update",
+    deleteUnlessIn: { column: "map_key", ctxKey: "knownMapKeys" },
     columns: {
       id: K, map_key: K, seazona_code: K, seazona_product_id: K, seazona_name: K,
       note: K, // lab-staff mapping rationale about product codes
@@ -267,21 +273,6 @@ export const SCRUB_PLAN = {
   product_variant_option_values: { mode: "update", columns: { variant_id: K, option_value_id: K } },
 };
 
-/**
- * Tables the fail-closed path must empty: every table with at least one non-keep
- * column (or deleted outright). Derived from the plan, never a hand list.
- */
-export function tablesToEmpty(plan = SCRUB_PLAN) {
-  return Object.entries(plan)
-    .filter(([, s]) => s.mode === "delete" || Object.values(s.columns).some((c) => c.class !== "keep"))
-    .map(([t]) => t);
-}
-
-/** Single TRUNCATE for the fail-closed path (CASCADE so FK children cannot block it). */
-export function buildEmptyStatement(plan = SCRUB_PLAN) {
-  return `TRUNCATE ${tablesToEmpty(plan).map(q).join(", ")} CASCADE`;
-}
-
 /** Live relations the drift check ignores (bookkeeping only: migration hashes + timestamps). */
 export const IGNORED_LIVE_TABLES = ["drizzle.__drizzle_migrations"];
 
@@ -290,13 +281,19 @@ export const COLUMN_CLASSES = ["keep", "phi", "pii", "secret", "reset"];
 const q = (ident) => `"${String(ident).replace(/"/g, '""')}"`;
 
 /**
- * Ordered statements for the plan: [{ table, mode, sql }]. Tables with nothing to
- * rewrite produce no statement. Order is declaration order (no inter-table FKs are
- * violated: only rows of leaf/child tables are deleted, nothing references them).
+ * Ordered statements for the plan: [{ table, mode, sql, params? }]. Tables with
+ * nothing to rewrite produce no statement. `ctx.knownMapKeys` (string[]) is required
+ * when the plan has a deleteUnlessIn rule, so a caller that forgets it fails loudly.
  */
-export function buildStatements(plan = SCRUB_PLAN) {
+export function buildStatements(plan = SCRUB_PLAN, ctx = {}) {
   const out = [];
   for (const [table, spec] of Object.entries(plan)) {
+    if (spec.deleteUnlessIn) {
+      const { column, ctxKey } = spec.deleteUnlessIn;
+      const keys = ctx[ctxKey];
+      if (!Array.isArray(keys) || !keys.length) throw new Error(`buildStatements needs a non-empty ctx.${ctxKey} for ${table}`);
+      out.push({ table, mode: "delete", sql: `DELETE FROM ${q(table)} WHERE NOT (${q(column)} = ANY($1))`, params: [keys] });
+    }
     if (spec.mode === "delete") {
       out.push({ table, mode: "delete", sql: `DELETE FROM ${q(table)}` });
       continue;
@@ -327,6 +324,19 @@ export function assertScrubAllowed({ appEnv, currentDatabase }) {
     problems.push(`current_database() must be "diamond_labs_staging" (got ${JSON.stringify(currentDatabase ?? null)})`);
   }
   if (problems.length) throw new Error(`scrub-staging refuses to run: ${problems.join("; ")}`);
+}
+
+/**
+ * Pure: plan tables/columns that do NOT exist in the live database (schema behind
+ * code). `live` as for findUnclassifiedLive.
+ */
+export function findMissingFromLive(live, plan = SCRUB_PLAN) {
+  const problems = [];
+  for (const [table, spec] of Object.entries(plan)) {
+    if (!live[table]) { problems.push(`table ${table} is missing`); continue; }
+    for (const c of Object.keys(spec.columns)) if (!live[table].includes(c)) problems.push(`column ${table}.${c} is missing`);
+  }
+  return problems;
 }
 
 /**
