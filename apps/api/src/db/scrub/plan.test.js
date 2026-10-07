@@ -133,6 +133,11 @@ test("users: only role 'user' is anonymised; doctors/admins keep email and name"
   assert.match(sql, /"name" = CASE WHEN "role" = 'user' THEN 'Scrubbed User' ELSE "name" END/);
 });
 
+test("users: shopper avatar_url is NULLed; doctors/admins keep theirs", () => {
+  const sql = buildStatements(SCRUB_PLAN, CTX).find((s) => s.table === "users").sql;
+  assert.match(sql, /"avatar_url" = CASE WHEN "role" = 'user' THEN NULL ELSE "avatar_url" END/);
+});
+
 test("rx_case_lines: free text is neutralised", () => {
   const sql = buildStatements(SCRUB_PLAN, CTX).find((s) => s.table === "rx_case_lines").sql;
   assert.match(sql, /"source_label" = NULL/);
@@ -166,6 +171,7 @@ test("accounts: shopper-owned accounts get id-derived name/slug; others keep the
   const owner = `EXISTS (SELECT 1 FROM "users" u WHERE u."id" = "accounts"."owner_id" AND u."role" = 'user')`;
   assert.ok(sql.includes(`"name" = CASE WHEN ${owner} THEN 'Account ' || "accounts"."id" ELSE "accounts"."name" END`), sql);
   assert.ok(sql.includes(`"slug" = CASE WHEN ${owner} THEN 'account-' || "accounts"."id" ELSE "accounts"."slug" END`), sql);
+  assert.ok(sql.includes(`"logo_url" = CASE WHEN ${owner} THEN NULL ELSE "accounts"."logo_url" END`), sql);
 });
 
 test("findMissingFromLive reports plan tables/columns absent from the live DB", () => {

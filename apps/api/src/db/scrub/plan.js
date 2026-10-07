@@ -52,7 +52,7 @@ export const SCRUB_PLAN = {
       email: pii(`CASE WHEN "role" = 'user' THEN 'user+' || "id" || '@example.invalid' ELSE "email" END`),
       email_verified_at: K,
       name: pii(`CASE WHEN "role" = 'user' THEN 'Scrubbed User' ELSE "name" END`),
-      avatar_url: K,
+      avatar_url: pii(`CASE WHEN "role" = 'user' THEN NULL ELSE "avatar_url" END`),
       password_hash: secret("NULL"),
       mfa_secret: secret("NULL"),
       mfa_enabled: reset("false"),
@@ -73,7 +73,8 @@ export const SCRUB_PLAN = {
       // stays unique because account ids are (cuid2, 24 chars: 'account-<id>' fits varchar(50)).
       name: pii(`CASE WHEN ${OWNER_IS_SHOPPER} THEN 'Account ' || "accounts"."id" ELSE "accounts"."name" END`),
       slug: pii(`CASE WHEN ${OWNER_IS_SHOPPER} THEN 'account-' || "accounts"."id" ELSE "accounts"."slug" END`),
-      owner_id: K, logo_url: K,
+      owner_id: K,
+      logo_url: pii(`CASE WHEN ${OWNER_IS_SHOPPER} THEN NULL ELSE "accounts"."logo_url" END`),
       settings: pii(`'{}'::jsonb`), // free-form jsonb, no schema guarantee it is PHI-free
       plan: K, status: K, created_at: K, updated_at: K,
     },

@@ -110,7 +110,7 @@ test("emptying covers all non-system schemas, drops matviews, skips foreign tabl
   ];
   const c = fake({ columns: liveRows(["client_prices"]), relations });
   const { exitCode, out } = await go(c);
-  assert.equal(exitCode, 1);
+  assert.equal(exitCode, 2);
   assert.deepEqual(c.log, [
     'DROP MATERIALIZED VIEW IF EXISTS "public"."mv" CASCADE',
     'TRUNCATE TABLE "public"."users" CASCADE',
@@ -118,6 +118,13 @@ test("emptying covers all non-system schemas, drops matviews, skips foreign tabl
     'TRUNCATE TABLE "public"."part" CASCADE',
   ]);
   assert.ok(out.lines.some((l) => l.includes("ft")));
+});
+
+test("a skipped foreign table fails the emptying: exit 2, CRITICAL message names it", async () => {
+  const c = fake({ columns: liveRows(["client_prices"]), relations: [...rels(["users"]), ...rels(["ft"], "f")] });
+  const { exitCode, out } = await go(c);
+  assert.equal(exitCode, 2);
+  assert.ok(out.lines.some((l) => /CRITICAL: staging DB NOT fully emptied — drop the database now.*\bft\b/.test(l)), out.lines.join("\n"));
 });
 
 test("guard is re-checked on the same connection right before emptying; failure means no truncate and exit 2", async () => {

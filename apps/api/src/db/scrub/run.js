@@ -80,7 +80,8 @@ async function failClosed(client, env, out, reason) {
   const foreign = rels.filter((r) => r.relkind === "f").map((r) => keyOf(r.schema, r.table_name));
   if (foreign.length) out.error(`[scrub] foreign tables cannot be truncated, skipped: ${foreign.join(", ")}`);
 
-  const failed = [];
+  // A foreign table cannot be truncated, so its (possibly remote/production) rows may persist.
+  const failed = [...foreign];
   // Matviews first (dropped: TRUNCATE does not apply, and a refresh would depend on order),
   // then plain/partitioned tables, one statement each so one failure cannot block the rest.
   const order = [...rels.filter((r) => r.relkind === "m"), ...rels.filter((r) => r.relkind === "r" || r.relkind === "p")];
