@@ -211,14 +211,16 @@ export const SCRUB_PLAN = {
   },
   rx_case_lines: {
     mode: "update",
+    updateParamsFrom: "knownMapKeys", // `set` expressions reference $1 = ctx.knownMapKeys
     columns: {
       id: K, case_id: K, position: K, seazona_code: K, seazona_product_id: K,
       // Manual lines are staff-typed free text; auto lines are catalog names.
       name: phi(`CASE WHEN "origin" = 'manual' THEN 'Manual line' ELSE "name" END`),
       arch: K,
-      // map_key embeds the doctor's literal "Other" text for unresolved ('open') lines AND
-      // for resolved manual lines (a human mapped a literal-derived key to a product).
-      map_key: phi(`CASE WHEN "status" = 'open' OR "origin" = 'manual' THEN 'line:' || "id" ELSE "map_key" END`),
+      // map_key can carry a doctor-typed literal on ANY line (an "always" override fed it, even
+      // on auto/confirmed lines). Keep only KNOWN catalog-map keys ($1 = ctx.knownMapKeys,
+      // the same list used for rx_code_overrides); NULL stays NULL.
+      map_key: phi(`CASE WHEN "map_key" IS NULL THEN NULL WHEN "map_key" = ANY($1) THEN "map_key" ELSE 'line:' || "id" END`),
       status: K, origin: K, note_only: K,
       // Copies the doctor's free-form "Other" device text verbatim (the app encrypts the source as PHI).
       source_label: phi("NULL"),
@@ -301,7 +303,14 @@ export function buildStatements(plan = SCRUB_PLAN, ctx = {}) {
     const sets = Object.entries(spec.columns)
       .filter(([, c]) => c.class !== "keep")
       .map(([name, c]) => `${q(name)} = ${c.set}`);
-    if (sets.length) out.push({ table, mode: "update", sql: `UPDATE ${q(table)} SET ${sets.join(", ")}` });
+    if (!sets.length) continue;
+    const stmt = { table, mode: "update", sql: `UPDATE ${q(table)} SET ${sets.join(", ")}` };
+    if (spec.updateParamsFrom) {
+      const keys = ctx[spec.updateParamsFrom];
+      if (!Array.isArray(keys) || !keys.length) throw new Error(`buildStatements needs a non-empty ctx.${spec.updateParamsFrom} for ${table}`);
+      stmt.params = [keys];
+    }
+    out.push(stmt);
   }
   return out;
 }

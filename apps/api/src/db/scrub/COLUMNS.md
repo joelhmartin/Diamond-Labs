@@ -27,7 +27,7 @@ Pre-check before the transaction: every plan table and column must exist live ("
 | autopay_enrollments.paused_reason | pii | NULL (free text) |
 | rx_case_lines.source_label | phi | NULL (copies the doctor's free-form "Other" device text verbatim; the app encrypts the source as PHI) |
 | rx_case_lines.name | phi | `Manual line` when origin = 'manual' (staff-typed), else unchanged |
-| rx_case_lines.map_key | phi | `line:<id>` when status = 'open' OR origin = 'manual' (embeds the doctor's literal "Other" text, also after a human resolved it), else unchanged |
+| rx_case_lines.map_key | phi | kept only when it is a KNOWN catalog-map key (same list as rx_code_overrides); otherwise `line:<id>`; NULL stays NULL. Any line (auto/confirmed too) can carry a doctor-typed literal when an "always" override fed it |
 | autopay_attempts.failure_reason | pii | NULL (gateway/Seazona error text) |
 | job_runs.summary | pii | NULL |
 | job_runs.error | pii | NULL |
@@ -67,3 +67,11 @@ Pre-check before the transaction: every plan table and column must exist live ("
 ## Not in the schema
 
 The plan mentions MFA backup/recovery codes; no such column exists today. If one is added, `plan.test.js` fails until it is classified. The script also checks the live catalog (`pg_attribute`/`pg_class`/`pg_namespace`, relkind r/p/m/f, every non-system schema; only `drizzle.__drizzle_migrations` is ignored), so a table or column present in the database but unknown to the plan aborts the run before anything is changed.
+
+## Operational rule: never serve the database until the scrub exits 0
+
+Crash, `kill`, OOM, Cloud Run Job timeout and connection loss cannot be handled in code (a dead process cannot empty anything; the scrub transaction rolls back, leaving the unscrubbed import in place). They are covered operationally:
+
+- The staging service is not created, or is at 0 max instances / 0 traffic, from the moment prod data lands in `diamond_labs_staging` until `diamond-labs-scrub-staging` exits 0.
+- Any non-zero exit means "do not serve": exit 1 = refused, or failed and emptied; exit 2 or a missing "committed" line = possibly unscrubbed. The script prints "staging DB NOT scrubbed — do not serve it; drop or re-run" for every pre-guard failure (module load, config, connection) and for exit 2. If in doubt, drop the database.
+- Re-seeding an existing staging: first set `diamond-labs-api-staging` to `--max-instances=0` (or delete the database), then import, migrate, scrub (exit 0), run the catalog import, and only then restore max instances. See Task S5 in the staging plan.

@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { runScrub } from "./run.js";
+import { runScrub, NOT_SCRUBBED } from "./run.js";
 import { SCRUB_PLAN } from "./plan.js";
 
 const CTX = { knownMapKeys: ["mod:labial-bow"] };
@@ -131,4 +131,33 @@ test("VACUUM failure after commit: precaution message, empties everything, exit 
   assert.ok(out.lines.some((l) => l.includes("scrub committed; VACUUM failed — emptying as a precaution")));
   assert.ok(!out.lines.some((l) => l.includes("rolled back")));
   assert.equal(truncs(c).length, Object.keys(SCRUB_PLAN).length);
+});
+
+test("a non-Error throw (string/undefined) still reaches the emptying path", async () => {
+  for (const thrown of ["boom string", undefined]) {
+    const c = fake({ failOn: (s) => { if (s.startsWith('UPDATE "orders"')) throw thrown; } });
+    const { exitCode, out } = await go(c);
+    assert.equal(exitCode, 1);
+    assert.equal(truncs(c).length, Object.keys(SCRUB_PLAN).length);
+    assert.ok(out.lines.some((l) => l.includes("staging DB emptied — re-import")));
+  }
+});
+
+test("NOT_SCRUBBED is printed on guard refusal, connection failure and exit 2; never on success", async () => {
+  assert.match(NOT_SCRUBBED, /staging DB NOT scrubbed — do not serve it; drop or re-run/);
+  const refused = await go(fake({ db: "diamond_labs" }));
+  assert.ok(refused.out.lines.includes(NOT_SCRUBBED));
+
+  const dead = fake();
+  dead.unsafe = async () => { throw new Error("ECONNREFUSED"); };
+  const conn = await go(dead);
+  assert.equal(conn.exitCode, 1);
+  assert.ok(conn.out.lines.includes(NOT_SCRUBBED));
+
+  const two = await go(fake({ columns: liveRows(["client_prices"]), relations: rels(["a"]), failOn: (s) => (s.includes('"a"') ? new Error("locked") : undefined) }));
+  assert.equal(two.exitCode, 2);
+  assert.ok(two.out.lines.includes(NOT_SCRUBBED));
+
+  const ok = await go(fake());
+  assert.ok(!ok.out.lines.includes(NOT_SCRUBBED));
 });

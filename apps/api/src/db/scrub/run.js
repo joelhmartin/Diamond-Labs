@@ -16,6 +16,7 @@
 import { SCRUB_PLAN, buildStatements, classSummary, assertScrubAllowed, findUnclassifiedLive, findMissingFromLive } from "./plan.js";
 
 const SCHEMA_BEHIND = "schema behind code — run diamond-labs-migrate-staging before scrubbing";
+export const NOT_SCRUBBED = "[scrub] staging DB NOT scrubbed — do not serve it; drop or re-run";
 const KEEP_OUT = new Set(["drizzle.__drizzle_migrations"]);
 const fq = (schema, table) => `"${schema.replace(/"/g, '""')}"."${table.replace(/"/g, '""')}"`;
 const keyOf = (schema, table) => (schema === "public" ? table : `${schema}.${table}`);
@@ -108,7 +109,8 @@ export async function runScrub(client, env, { plan = SCRUB_PLAN, knownMapKeys, o
     dbName = await currentDb(client);
     assertScrubAllowed({ appEnv: env.APP_ENV, currentDatabase: dbName });
   } catch (err) {
-    out.error(`[scrub] REFUSED: ${err.message}`);
+    out.error(`[scrub] REFUSED: ${String(err?.message ?? err)}`);
+    out.error(NOT_SCRUBBED);
     return { exitCode: 1 };
   }
 
@@ -143,11 +145,14 @@ export async function runScrub(client, env, { plan = SCRUB_PLAN, knownMapKeys, o
     out.log(`[scrub] tables in plan: ${Object.keys(plan).length}; column classes: ${JSON.stringify(classSummary(plan))}`);
     return { exitCode: 0 };
   } catch (err) {
+    const msg = String(err?.message ?? err); // a non-Error throw must still reach the emptying path
     const reason = committed
-      ? `scrub committed; VACUUM failed — emptying as a precaution (${err.message})`
-      : err.message.startsWith(SCHEMA_BEHIND) || err.message.startsWith("database has unclassified")
-        ? err.message
-        : `transaction rolled back: ${err.message}`;
-    return { exitCode: await failClosed(client, env, out, reason) };
+      ? `scrub committed; VACUUM failed — emptying as a precaution (${msg})`
+      : msg.startsWith(SCHEMA_BEHIND) || msg.startsWith("database has unclassified")
+        ? msg
+        : `transaction rolled back: ${msg}`;
+    const exitCode = await failClosed(client, env, out, reason);
+    if (exitCode === 2) out.error(NOT_SCRUBBED);
+    return { exitCode };
   }
 }

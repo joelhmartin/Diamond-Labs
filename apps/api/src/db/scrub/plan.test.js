@@ -135,7 +135,10 @@ test("rx_case_lines: free text is neutralised", () => {
   const sql = buildStatements(SCRUB_PLAN, CTX).find((s) => s.table === "rx_case_lines").sql;
   assert.match(sql, /"source_label" = NULL/);
   assert.match(sql, /"name" = CASE WHEN "origin" = 'manual' THEN 'Manual line' ELSE "name" END/);
-  assert.match(sql, /"map_key" = CASE WHEN "status" = 'open' OR "origin" = 'manual' THEN 'line:' \|\| "id" ELSE "map_key" END/);
+  assert.match(sql, /"map_key" = CASE WHEN "map_key" IS NULL THEN NULL WHEN "map_key" = ANY\(\$1\) THEN "map_key" ELSE 'line:' \|\| "id" END/);
+  const st = buildStatements(SCRUB_PLAN, CTX).find((s) => s.table === "rx_case_lines");
+  assert.deepEqual(st.params, [CTX.knownMapKeys]);
+  assert.throws(() => buildStatements(SCRUB_PLAN, {}), /knownMapKeys/);
 });
 
 test("rx_code_overrides: rows not in the known catalog keys are deleted; no ctx fails loudly", () => {

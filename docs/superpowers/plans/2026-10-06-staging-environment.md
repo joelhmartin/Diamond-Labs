@@ -75,24 +75,28 @@
 
 ### Task S5: Provision (controller runs, with the user's authenticated gcloud)
 Each command is shown before it runs. Everything new is named `*-staging` / `STAGING_*`.
+
+**Serve-after-scrub rule:** the `diamond-labs-api-staging` service does NOT exist (or is at `--max-instances=0`) from the moment prod data is imported until the scrub exits 0. Crash, kill and connection-loss during a scrub cannot be handled in code, so the database is simply never served before a clean exit.
+
 1. Create the `diamond_labs_staging` database and the `staging_app` user, granted on that database only. Its password goes to a new `STAGING_DATABASE_URL` secret (socket form).
-2. Create the secrets:
+2. Create the secrets, and the `diamond-labs-migrate-staging`, `diamond-labs-scrub-staging` and catalog-import / create-admin jobs, but NOT the service. Env on the jobs: `APP_ENV=staging`, `SEAZONA_DISABLED=true`, `AUTHORIZE_NET_ENV=sandbox`, `NODE_ENV=production`; use the runtime SA, granted access to the new secrets only. Secrets:
    - `STAGING_JWT_SECRET` (random 96 characters)
    - `STAGING_JWT_REFRESH_SECRET` if the app uses one
    - `STAGING_AUTHORIZE_NET_SANDBOX_*`, copied from the local values without printing them
-   - `STAGING_VITE_AUTHORIZE_NET_CLIENT_KEY`
+   - `STAGING_VITE_AUTHORIZE_NET_API_LOGIN` and `STAGING_VITE_AUTHORIZE_NET_CLIENT_KEY`
    - `STAGING_EMAIL_TO`
    - `STAGING_ADMIN_PASSWORD`
-3. Create the `diamond-labs-migrate-staging` job and the `diamond-labs-api-staging` service, with the env set above: `APP_ENV=staging`, `SEAZONA_DISABLED=true`, `AUTHORIZE_NET_ENV=sandbox`, `NODE_ENV=production`. Use the runtime SA, which is granted access to the new secrets only.
-4. Create the Cloud Build trigger `deploy-staging-on-own-the-lab`: `^feat/own-the-lab$` → `cloudbuild.staging.yaml`.
-5. Seed:
-   - Create a private bucket `gs://diamond-labs-staging-seed` with a 1-day delete lifecycle and grant the Cloud SQL SA object write.
-   - `gcloud sql export sql diamond-labs-db gs://…/prod.sql --database=diamond_labs`, then `gcloud sql import sql` into `diamond_labs_staging`.
-   - Run the scrub as a job (`diamond-labs-scrub-staging`) on the staging image.
-   - Delete the export object.
-   - Run `db:import-catalog`, from piece 1, as a staging job.
-   - Create the staging admin via the existing `create-admin` script as a one-shot job.
-6. Scope the two Seazona log-based alert policies to the prod service.
+3. Import, as the staging role: create a private bucket `gs://diamond-labs-staging-seed` with a 1-day delete lifecycle and grant the Cloud SQL SA object write; `gcloud sql export sql diamond-labs-db gs://…/prod.sql --database=diamond_labs`, then `gcloud sql import sql` into `diamond_labs_staging` as the staging role.
+4. Run `diamond-labs-migrate-staging` (brings the schema level with the code; the scrub fails closed on a schema mismatch).
+5. Run `diamond-labs-scrub-staging`. **It must exit 0.** Any other result: do not proceed; drop the database and start again from step 1. Then delete the export object.
+6. Run the catalog import job (`db:import-catalog`, from piece 1) and the one-shot `create-admin` job.
+7. Only now create the `diamond-labs-api-staging` service (same env as the jobs) and the Cloud Build trigger `deploy-staging-on-own-the-lab`: `^feat/own-the-lab$` → `cloudbuild.staging.yaml`.
+8. Scope the two Seazona log-based alert policies to the prod service.
+
+**Re-seed procedure (refreshing an existing staging):**
+1. `gcloud run services update diamond-labs-api-staging --max-instances=0` (or delete the database).
+2. Re-run steps 3 to 6 above (import over a dropped and re-created `diamond_labs_staging`; migrate; scrub, exit 0; catalog import; admin).
+3. Restore `--max-instances` on the service. Never restore it after a non-zero scrub exit.
 
 ### Task S6: Verify
 - `/api/v1/health` returns 200 on the staging URL.
