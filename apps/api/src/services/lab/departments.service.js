@@ -29,7 +29,9 @@ export async function createDepartment({ name, position = 0 }) {
   }
 }
 
-export async function updateDepartment(id, patch) {
+export async function updateDepartment(id, input) {
+  const patch = {};
+  for (const k of ["name", "position", "active"]) if (input?.[k] !== undefined) patch[k] = input[k];
   try {
     const [row] = await db
       .update(labDepartments)

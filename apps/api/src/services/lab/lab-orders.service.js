@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, ilike, inArray, lte, notInArray, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { isoDateIn, isOverdue, LAB_TIMEZONE, STAFF_ROLES } from "@my-app/shared";
+import { isoDateIn, isOverdue, LAB_TIMEZONE, STAFF_ROLES, caseSummary } from "@my-app/shared";
 import { db } from "../../config/database.js";
 import { env } from "../../config/env.js";
 import {
@@ -66,7 +66,7 @@ async function variantIdsForCodes(tx, codes) {
 async function insertPlan(tx, { labOrder, lines, events }) {
   await tx.insert(labOrders).values(sealOrder(labOrder));
   if (lines.length) await tx.insert(labOrderLines).values(lines.map((l) => ({ ...l, id: createId() })));
-  if (events.length) await tx.insert(labOrderEvents).values(events.map(sealEvent));
+  if (events.length) await tx.insert(labOrderEvents).values(events.map((e, i) => sealEvent({ ...e, at: new Date(new Date(e.at).getTime() + i) })));
 }
 
 /**
@@ -200,7 +200,7 @@ export async function getLabOrderDetail(id, now = new Date()) {
       .from(labOrderEvents)
       .leftJoin(actor, eq(actor.id, labOrderEvents.byUserId))
       .where(eq(labOrderEvents.labOrderId, id))
-      .orderBy(asc(labOrderEvents.at)),
+      .orderBy(asc(labOrderEvents.at), asc(labOrderEvents.id)),
     order.remakeOfOrderId
       ? db.select({ orderNumber: labOrders.orderNumber }).from(labOrders).where(eq(labOrders.id, order.remakeOfOrderId))
       : Promise.resolve([]),
@@ -218,7 +218,7 @@ export async function getLabOrderDetail(id, now = new Date()) {
         caseNumber: c.caseNumber,
         status: c.status,
         practiceName: c.practiceName ?? null,
-        patientName: `${c.patientFirst ?? ""} ${c.patientLast ?? ""}`.trim() || null,
+        patientName: caseSummary(c).patientName,
         formType: c.formType,
         formData: c.formData ?? {},
         generalComments: c.generalComments ?? null,
@@ -278,8 +278,9 @@ export async function labOrdersForCases(caseIds) {
  * transaction. The UPDATE is conditional on the version read, so two
  * technicians racing past assertFresh still can't both win.
  */
-async function mutate(id, expectedVersion, plan) {
-  return db.transaction(async (tx) => {
+// `database` is injectable so the version/seal behaviour can be tested with a fake.
+export async function mutate(id, expectedVersion, plan, database = db) {
+  return database.transaction(async (tx) => {
     const [row] = await tx.select().from(labOrders).where(eq(labOrders.id, id));
     if (!row) throw new LabOrderError("NOT_FOUND", "Lab order not found.");
     const order = openOrder(row);
