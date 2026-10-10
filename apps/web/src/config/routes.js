@@ -28,6 +28,10 @@ export const ROUTES = {
   ADMIN_AUTOPAY: "/admin/autopay",
   ADMIN_JOBS: "/admin/jobs",
 
+  // Lab (admin + lab staff)
+  LAB_BOARD: "/lab",
+  LAB_ORDER_DETAIL: "/lab/orders/:id",
+
   // Doctor
   DOCTOR_INVOICES: "/doctor/invoices",
   DOCTOR_PAYMENTS: "/doctor/payments",
@@ -44,6 +48,8 @@ export const ROUTES = {
   CHECKOUT: "/checkout",
 };
 
+export const labOrderPath = (id) => `/lab/orders/${id}`;
+
 /**
  * Given the current user, return the URL that should serve as their "home"
  * after login / when they click a profile link from the navbar.
@@ -55,6 +61,7 @@ export function roleHome(user) {
     if (user.approvalStatus === "pending") return ROUTES.REGISTER_PENDING;
     if (user.approvalStatus === "approved") return ROUTES.DOCTOR_INVOICES;
   }
+  if (user.role === "lab") return ROUTES.LAB_BOARD;
   // Everyone else (including admin) lands on the dashboard; the sidebar
   // surfaces role-specific sections like /admin/*.
   return ROUTES.DASHBOARD;

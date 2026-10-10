@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
+import { useAuth } from "../../hooks/useAuth.js";
 import { ROUTES } from "../../config/routes.js";
 import { resolutionLabel } from "../../lib/rx-case-labels.js";
 
@@ -729,6 +730,8 @@ const TABS = [
 export function AdminRxCaseDetailPage() {
   const { id } = useParams();
   const { addToast } = useToast();
+  const { user } = useAuth();
+  const canEdit = user?.role === "admin";
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -789,7 +792,8 @@ export function AdminRxCaseDetailPage() {
     );
   }
 
-  const locked = caseRow.status === "pushed";
+  const locked = caseRow.status === "pushed" || caseRow.status === "released";
+  const readOnly = locked || !canEdit;
   const isPushing = caseRow.seazonaPushStatus === "pushing";
   const blockedReason = pushBlockedReason(lines);
   const resolution = resolutionLabel(caseRow.seazonaPushStatus);
@@ -944,7 +948,7 @@ export function AdminRxCaseDetailPage() {
             </Banner>
           )}
 
-          {!locked && (
+          {!locked && canEdit && (
             <div className="bg-white rounded-2xl border border-surface-300/50 p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
@@ -1007,7 +1011,7 @@ export function AdminRxCaseDetailPage() {
               <h2 className="font-heading font-bold text-sm text-navy">
                 Order lines <span className="text-navy/30 font-normal">({lines.length})</span>
               </h2>
-              {!locked && (
+              {!readOnly && (
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -1035,7 +1039,7 @@ export function AdminRxCaseDetailPage() {
               </div>
             )}
 
-            {addingLine && !locked && (
+            {addingLine && !readOnly && (
               <div className="p-4">
                 <AddLineForm caseId={id} onAdded={handleLineAdded} onClose={() => setAddingLine(false)} />
               </div>
@@ -1050,7 +1054,7 @@ export function AdminRxCaseDetailPage() {
                     key={line.id}
                     caseId={id}
                     line={line}
-                    locked={locked}
+                    locked={readOnly}
                     onSaved={handleLineSaved}
                     onDeleted={handleLineDeleted}
                   />

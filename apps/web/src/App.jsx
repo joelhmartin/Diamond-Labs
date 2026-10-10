@@ -40,6 +40,9 @@ import { AdminRxMappingPage } from "./pages/app/AdminRxMappingPage.jsx";
 import { AdminRxCasesPage } from "./pages/app/AdminRxCasesPage.jsx";
 import { AdminRxCaseDetailPage } from "./pages/app/AdminRxCaseDetailPage.jsx";
 import { RequireAdmin } from "./guards/RequireAdmin.jsx";
+import { RequireStaff } from "./guards/RequireStaff.jsx";
+import { LabBoardPage } from "./pages/lab/LabBoardPage.jsx";
+import { LabOrderDetailPage } from "./pages/lab/LabOrderDetailPage.jsx";
 
 // Marketing pages
 import { HomePage } from "./pages/marketing/Home.jsx";
@@ -226,6 +229,10 @@ function AppRoutes() {
           <Route path="/admin/autopay" element={<AdminAutoPayPage />} />
           <Route path="/admin/jobs" element={<AdminJobsPage />} />
           <Route path="/admin/rx-mapping" element={<AdminRxMappingPage />} />
+        </Route>
+        <Route element={<RequireStaff />}>
+          <Route path="/lab" element={<LabBoardPage />} />
+          <Route path="/lab/orders/:id" element={<LabOrderDetailPage />} />
           <Route path="/admin/rx-cases" element={<AdminRxCasesPage />} />
           <Route path="/admin/rx-cases/:id" element={<AdminRxCaseDetailPage />} />
         </Route>
