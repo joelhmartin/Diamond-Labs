@@ -717,6 +717,7 @@ export function AdminRxCaseDetailPage() {
   const startRelease = () => (legacyPushUnconfirmed ? setConfirmLegacyOpen(true) : doRelease(false));
 
   const doRelease = async (confirmNotInSeazona) => {
+    if (releasing) return;
     setConfirmLegacyOpen(false);
     setReleasing(true);
     setReleaseError(null);
@@ -1069,7 +1070,8 @@ export function AdminRxCaseDetailPage() {
           <button
             type="button"
             onClick={() => doRelease(true)}
-            className="px-4 py-2 rounded-full text-sm font-bold bg-brand-500 text-white hover:bg-brand-600 transition-colors"
+            disabled={releasing}
+            className="disabled:opacity-50 px-4 py-2 rounded-full text-sm font-bold bg-brand-500 text-white hover:bg-brand-600 transition-colors"
           >
             No Seazona order exists — release
           </button>

@@ -68,9 +68,11 @@ charged is piece 3's concern.
     (legacy)".
   - `RX_LIVE_PUSH` auto-push becomes **auto-release**, under the same gate:
     clean cases skip the queue.
-- **Shop orders:** checkout creates the lab order (status `received`) in the
-  same transaction that records the paid order. Shop lines are picked and
-  shipped, not fabricated; the lab handles them on the same board.
+- **Shop orders:** checkout creates the lab order (status `received`) in its
+  own transaction right after the paid order commits. A failure is logged
+  (`[LAB][SHOP_ORDER_FAILED]`) for backfill and never rolls back the paid
+  order. Shop lines are picked and shipped, not fabricated; the lab handles
+  them on the same board.
 - **Seazona order code removed on this branch:**
   - `pushCaseToSeazona`, `build-order-payload` and the send-test route;
   - checkout's `pushOrderToSeazona`;
@@ -130,8 +132,8 @@ Implementation details:
 
 - Illegal transitions return 422 with the allowed next statuses.
 - Every mutation runs in a transaction that also writes the event row.
-- Concurrent edits: status changes carry the `updatedAt` the client saw. A
-  mismatch returns 409 "This order changed — reload", so two technicians can't
+- Concurrent edits: every mutation carries `expectedVersion` (the `version`
+  the client saw) and every change increments it. A mismatch returns 409 "This order changed — reload", so two technicians can't
   silently overwrite each other.
 - PHI: patient fields stay encrypted at rest, as in `rx_cases`. Lab orders
   reference the case rather than copying patient data. Lab-role access to

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Search, RefreshCw, Loader2, AlertCircle } from "lucide-react";
 import { LAB_ORDER_STATUSES, LAB_STATUS_LABELS, formatUsDate, formatLabDate } from "@my-app/shared";
@@ -24,7 +24,9 @@ export function AdminOrdersPage() {
 
   // Search and filters run on the server: the list is capped, so filtering
   // only what was loaded would silently miss older orders.
+  const requestSeq = useRef(0);
   const load = async () => {
+    const seq = ++requestSeq.current;
     setLoading(true);
     try {
       const params = { includeClosed: "true" };
@@ -32,13 +34,15 @@ export function AdminOrdersPage() {
       if (status) params.status = status;
       if (source) params.source = source;
       const res = await api.get("/lab/orders", { params });
+      if (seq !== requestSeq.current) return;
       setOrders(res.data.data.orders);
       setTruncated(Boolean(res.data.data.truncated));
       setError(null);
     } catch (err) {
+      if (seq !== requestSeq.current) return;
       setError(errorText(err));
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
   };
   useEffect(() => {
