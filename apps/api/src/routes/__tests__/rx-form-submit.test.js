@@ -97,3 +97,9 @@ test("auto-push is off unless RX_LIVE_PUSH is exactly 'true'", () => {
   assert.equal(shouldAutoPush(""), false);
   assert.equal(shouldAutoPush("true"), true);
 });
+
+test("auto-release is off unless RX_AUTO_RELEASE is exactly 'true'", async () => {
+  const { shouldAutoRelease } = await import("../rx.routes.js");
+  assert.equal(shouldAutoRelease("true"), true);
+  for (const v of [undefined, "", "1", "TRUE", "yes", "false"]) assert.equal(shouldAutoRelease(v), false, String(v));
+});

@@ -12,7 +12,10 @@ import * as auditService from "../services/audit.service.js";
 import { createId } from "../lib/id.js";
 import { encryptJson, encryptField } from "../lib/crypto.js";
 import { env } from "../config/env.js";
-import { ERROR_CODES, STAFF_ROLES } from "@my-app/shared";
+import { validate } from "../middleware/validate.js";
+import { ERROR_CODES, STAFF_ROLES, rxReleaseSchema, currentLabOrder } from "@my-app/shared";
+import { releaseRxCase, labOrdersForCases } from "../services/lab/lab-orders.service.js";
+import { labErrorReply } from "../services/lab/lab-errors.js";
 import { and, asc, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import {
   CASE_STATUSES,
@@ -23,6 +26,7 @@ import {
   manualResolution,
   normalizeSeazonaCode,
   overrideRowFor,
+  releaseRefusal,
   statusForLine,
   summariseLines,
 } from "../services/rx/case-gates.js";
@@ -40,6 +44,7 @@ export {
   manualResolution,
   normalizeSeazonaCode,
   overrideRowFor,
+  releaseRefusal,
   statusForLine,
   summariseLines,
 } from "../services/rx/case-gates.js";
@@ -306,7 +311,7 @@ export default async function adminRxCasesRoutes(fastify) {
       return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
     }
 
-    const [lines, files] = await Promise.all([
+    const [lines, files, labOrdersByCase] = await Promise.all([
       db
         .select()
         .from(rxCaseLines)
@@ -316,6 +321,7 @@ export default async function adminRxCasesRoutes(fastify) {
         .select()
         .from(rxCaseFiles)
         .where(eq(rxCaseFiles.caseId, caseRow.id)),
+      labOrdersForCases([caseRow.id]),
     ]);
 
     auditService.logSafe({
@@ -339,12 +345,14 @@ export default async function adminRxCasesRoutes(fastify) {
       });
     }
 
+    const lo = currentLabOrder(labOrdersByCase.get(caseRow.id) ?? []);
     return {
       data: {
         case: decrypted,
         lines,
         files,
         prescription: decrypted.formData,
+        labOrder: lo ? { id: lo.id, orderNumber: lo.orderNumber, status: lo.status } : null,
       },
     };
   });
@@ -768,6 +776,77 @@ export default async function adminRxCasesRoutes(fastify) {
   });
 
   // ───────────────────────────────────────────────────────────────────────────
+  // POST /admin/rx-cases/:id/release
+  // Release a reviewed case to the production board. Replaces the Seazona
+  // push (own-the-lab piece 2): same line gate (canRelease, formerly canPush),
+  // but the "order" is our own lab order, created in the same transaction
+  // that moves the case to `released`.
+  //
+  // Order of checks: releaseRefusal (already released / legacy pushed /
+  // cancelled / an unconfirmed legacy Seazona push) -> canRelease on the
+  // STORED lines -> transaction (claim case, allocate number, insert order,
+  // lines and event). Lab staff may release; editing lines stays admin-only.
+  // ───────────────────────────────────────────────────────────────────────────
+  fastify.post("/admin/rx-cases/:id/release", {
+    preHandler: [authenticate, requireRole(...STAFF_ROLES), validate(rxReleaseSchema)],
+  }, async (request, reply) => {
+    const caseId = request.params.id;
+    const [caseRowRaw] = await db.select().from(rxCases).where(eq(rxCases.id, caseId));
+    if (!caseRowRaw) return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+
+    const refusal = releaseRefusal(caseRowRaw, { confirmNotInSeazona: request.body.confirmNotInSeazona === true });
+    if (refusal) return reply.code(refusal.status).send({ error: refusal.error });
+
+    const lines = await db
+      .select()
+      .from(rxCaseLines)
+      .where(eq(rxCaseLines.caseId, caseId))
+      .orderBy(asc(rxCaseLines.position));
+    const gate = canRelease(lines);
+    if (!gate.ok) {
+      return reply.code(422).send({
+        error: { code: "RX_RELEASE_BLOCKED", status: 422, message: gate.reason, blocking: gate.blocking },
+      });
+    }
+
+    let caseRow;
+    try {
+      caseRow = decryptRxPhi(caseRowRaw);
+    } catch (err) {
+      request.log.error({ caseId, err: err.message }, "rx PHI decrypt failed");
+      return reply.code(500).send({ error: { code: "INTERNAL_ERROR", status: 500, message: "Failed to load case." } });
+    }
+
+    let result;
+    try {
+      result = await db.transaction((tx) => releaseRxCase(tx, { caseRow, lines, byUserId: request.user.id }));
+    } catch (err) {
+      const r = labErrorReply(err);
+      if (r) return reply.code(r.status).send(r.body);
+      throw err;
+    }
+
+    // No PHI: ids, the order number and lab codes only.
+    auditService.logSafe({
+      userId: request.user.id,
+      action: "rx_case.released",
+      targetType: "rx_case",
+      targetId: caseId,
+      metadata: {
+        labOrderId: result.labOrder.id,
+        orderNumber: result.labOrder.orderNumber,
+        unknownCodes: result.unknownCodes,
+        confirmedNotInSeazona: request.body.confirmNotInSeazona === true,
+      },
+      ipAddress: request.ip,
+    });
+
+    return reply.code(201).send({
+      data: { caseId, status: "released", labOrder: result.labOrder, unknownCodes: result.unknownCodes },
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
   // POST /admin/rx-cases/:id/push
   // Send a reviewed case to Seazona as a real order. HIGHEST-RISK route in this
   // module: Seazona has no idempotency key, so a duplicate push is a real
@@ -862,6 +941,7 @@ export default async function adminRxCasesRoutes(fastify) {
       .set({ seazonaPushStatus: "pushing", updatedAt: new Date() })
       .where(and(
         eq(rxCases.id, caseId),
+        ne(rxCases.status, "released"),
         ne(rxCases.status, "pushed"),
         or(isNull(rxCases.seazonaPushStatus), ne(rxCases.seazonaPushStatus, "pushing")),
       ))

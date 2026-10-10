@@ -10,6 +10,7 @@ import * as seazonaService from "../services/seazona.service.js";
 import { seedLines } from "../services/rx/case-lines.service.js";
 import { loadOverrides } from "../services/rx/code-overrides.service.js";
 import { canRelease, summariseLines } from "../services/rx/case-gates.js";
+import { releaseRxCase } from "../services/lab/lab-orders.service.js";
 import { pushCaseToSeazona, shouldReleasePushLock } from "../services/rx/push-case.service.js";
 import { uploadCaseFile, deleteStoredFile, getSignedReadUrl } from "../services/storage.service.js";
 import { encryptRxPhi, decryptRxPhi } from "../services/rx/phi-crypto.js";
@@ -47,6 +48,14 @@ export const SUBMISSION_STATUS = "new";
  * default no matter how the env var is malformed.
  */
 export function shouldAutoPush(flag) {
+  return flag === "true";
+}
+
+/**
+ * Whether a freshly-submitted, cleanly-resolved case is released straight to
+ * the production board. Exact "true" only - any other value, or unset, is off.
+ */
+export function shouldAutoRelease(flag) {
   return flag === "true";
 }
 
@@ -547,6 +556,39 @@ export default async function rxRoutes(fastify) {
       .where(eq(rxCaseLines.caseId, caseId))
       .orderBy(asc(rxCaseLines.position));
 
+    // ── Auto-release under RX_AUTO_RELEASE ────────────────────────────────
+    // Same gate the queue's Release button uses (canRelease on the stored
+    // lines) and the same release (releaseRxCase) - never a second copy. A
+    // case that doesn't pass stays "new" for the queue. Any failure is
+    // logged and leaves the case for a human; the doctor's submission has
+    // already succeeded and must not fail over this.
+    let finalStatus = SUBMISSION_STATUS;
+    if (shouldAutoRelease(env.RX_AUTO_RELEASE) && canRelease(lines).ok) {
+      try {
+        const caseRow = {
+          id: caseId,
+          userId,
+          status: SUBMISSION_STATUS,
+          dueDate: data.dueDate || null,
+          formData: data.formData ?? {},
+          rush: false,
+          rushTier: null,
+        };
+        const result = await db.transaction((tx) => releaseRxCase(tx, { caseRow, lines, byUserId: null }));
+        finalStatus = "released";
+        auditService.logSafe({
+          userId: request.user.id,
+          action: "rx_case.auto_released",
+          targetType: "rx_case",
+          targetId: caseId,
+          metadata: { labOrderId: result.labOrder.id, orderNumber: result.labOrder.orderNumber, unknownCodes: result.unknownCodes },
+          ipAddress: request.ip,
+        });
+      } catch (err) {
+        request.log.error({ caseId, err: err.message }, "[LAB][RX_AUTO_RELEASE_FAILED] auto-release failed; case left for the queue");
+      }
+    }
+
     // ── Auto-push under RX_LIVE_PUSH ───────────────────────────────────────
     // Off by default (shouldAutoPush requires an exact "true"). Seazona has
     // no idempotency key, so an accidental push here is a real order a human
@@ -570,8 +612,7 @@ export default async function rxRoutes(fastify) {
     // is lost, this is not a failure — a human (or another request) already
     // owns this case's push, so skip and leave the case exactly as it is for
     // the queue; do not error the doctor's submission over it.
-    let finalStatus = SUBMISSION_STATUS;
-    if (shouldAutoPush(env.RX_LIVE_PUSH)) {
+    if (finalStatus === SUBMISSION_STATUS && shouldAutoPush(env.RX_LIVE_PUSH)) {
       if (!env.SEAZONA_ORDER_USER_ID) {
         // Same hard precondition the admin push route 503s on. No status
         // written — the case just stays "new", waiting for a human to push

@@ -83,6 +83,12 @@ const envSchema = z.object({
 
   // Google Cloud Storage
   RX_GCS_BUCKET: z.string().optional(),
+  // Auto-release gate (own-the-lab piece 2). Exactly "true" enables it: a
+  // cleanly-resolved incoming case (canRelease passes) is released straight
+  // to the production board on submission, skipping the review queue. It
+  // creates only our own lab order - nothing leaves this system - so the
+  // worst case of a wrong release is a job staff cancel on the board.
+  RX_AUTO_RELEASE: z.string().optional(),
   MEDIA_GCS_BUCKET: z.string().optional(),
   // Digital Rx live Seazona push gate.
   //

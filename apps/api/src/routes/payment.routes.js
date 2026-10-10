@@ -17,6 +17,7 @@ import { redis } from "../config/redis.js";
 import { users, invoicePayments, orders, orderItems, auditLog } from "../db/schema/index.js";
 import { eq, and, gt, inArray, like, desc } from "drizzle-orm";
 import { createId } from "../lib/id.js";
+import { createShopLabOrder } from "../services/lab/lab-orders.service.js";
 import { env } from "../config/env.js";
 import { testModeError } from "../config/app-env.js";
 import {
@@ -206,8 +207,10 @@ async function pushOrderToSeazona({ order, lines, shipping, log }) {
 }
 
 /**
- * Record a successful guest catalog charge LOCALLY (authoritative) and attempt the
- * gated Seazona createOrder push. Mirrors `recordPaymentAndAllocations` on the doctor
+ * Record a successful guest catalog charge LOCALLY (authoritative), then its lab
+ * order, and attempt the gated Seazona createOrder push. The lab order is created
+ * right after the paid order commits, in its own transaction: a failure is logged
+ * ([LAB][SHOP_ORDER_FAILED]) for backfill, never lost money or a lost order. Mirrors `recordPaymentAndAllocations` on the doctor
  * path: SOFT-FAIL only — this never throws into checkout, because the card is already
  * charged and failing the response would invite a double-charge on retry.
  *
@@ -282,6 +285,17 @@ async function recordGuestOrder({
     return { orderRecordFailed: true };
   }
 
+  // The job for the bench. Deliberately OUTSIDE the paid-order transaction: the
+  // card is already charged, so a DB error here must never roll back the order row.
+  // No PHI or card data in the log line.
+  try {
+    await db.transaction((tx) =>
+      createShopLabOrder(tx, { orderId, clientUserId: pricedForUserId, quoteLines: quote.lines })
+    );
+  } catch (err) {
+    console.error(`[LAB][SHOP_ORDER_FAILED] order=${orderId}: ${String(err?.message || err)}`);
+  }
+
   // Gated live write. Unreachable for pure guest checkout (pushStatus is never
   // "pending" when seazonaClientId is null) — built for a future client-linked
   // order. Never executed in dev (skipped_not_production). The order is ALREADY
@@ -331,6 +345,7 @@ async function recordGuestOrder({
 export function checkoutLinesFromQuote(quote) {
   return quote.lines.map((l) => ({
     variantId: l.variantId,
+    code: l.code ?? null,
     catalogId: l.catalogId,
     seazonaProductId: l.legacySeazonaProductId,
     name: l.name,
