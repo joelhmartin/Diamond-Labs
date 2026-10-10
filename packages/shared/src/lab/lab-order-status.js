@@ -94,11 +94,14 @@ export const DOCTOR_STATUS_LABELS = {
   on_hold: "On hold",
   shipped: "Shipped",
   cancelled: "Cancelled",
+  // Case-level (no lab order yet): the lab sent the case back with a question.
+  awaiting_doctor: "Waiting on you",
 };
 
 export function doctorStatusFor({ caseStatus, labOrderStatus } = {}) {
   if (labOrderStatus) return DOCTOR_STATUS_LABELS[labOrderStatus] ?? "In production";
   if (caseStatus === "cancelled") return "Cancelled";
+  if (caseStatus === "awaiting_doctor") return DOCTOR_STATUS_LABELS.awaiting_doctor;
   if (caseStatus === "pushed") return "Sent to lab";
   return "Submitted";
 }
@@ -112,6 +115,13 @@ export function currentLabOrder(labOrders = []) {
 export function formatUsDate(isoDate) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(isoDate ?? "");
   return m ? `${m[2]}/${m[3]}/${m[1]}` : "";
+}
+
+/** An instant (Date / ISO timestamp) as the lab's calendar date, "MM/DD/YYYY"; "" for null/invalid. */
+export function formatLabDate(instant) {
+  if (!instant) return "";
+  const d = new Date(instant);
+  return Number.isNaN(d.getTime()) ? "" : formatUsDate(isoDateIn(LAB_TIMEZONE, d));
 }
 
 /**

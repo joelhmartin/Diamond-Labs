@@ -72,3 +72,10 @@ test("characters the PDF fonts can't draw become ?, everything else survives", (
   const m = buildTicketModel({ ...rxDetail, rxCase: { ...rxDetail.rxCase, generalComments: "Smile 😀" } }, { generatedAt });
   assert.equal(m.comments, "Smile ?");
 });
+
+test("a doctor whose name is the practice's isn't printed twice", () => {
+  const m = buildTicketModel({ ...rxDetail, rxCase: { ...rxDetail.rxCase, practiceName: "Dr Amy Lee" } }, { generatedAt });
+  const labels = m.header.map(([k]) => k);
+  assert.equal(labels.includes("Doctor"), false);
+  assert.equal(Object.fromEntries(m.header).Practice, "Dr Amy Lee");
+});

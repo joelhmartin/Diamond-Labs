@@ -107,8 +107,8 @@ export function planRxRelease({ caseRow, lines, variantIdByCode = new Map(), ord
 }
 
 /**
- * A paid shop order → its lab order. Runs inside the checkout transaction
- * AFTER the card is charged, so it must not refuse anything the pricing
+ * A paid shop order → its lab order. Runs in its own transaction after
+ * the paid order commits, so it must not refuse anything the pricing
  * service accepted: a guest, a codeless variant — all still make a job.
  * Shop lines are picked and shipped, not fabricated; same board.
  */

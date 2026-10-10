@@ -16,7 +16,7 @@ import {
 import { Link } from "react-router-dom";
 import api from "../../config/api.js";
 import { useAuth } from "../../hooks/useAuth.js";
-import { roleToggle } from "../../lib/staff.js";
+import { roleToggleFor } from "@my-app/shared";
 import { DoctorPaymentDrawer } from "../../components/admin/DoctorPaymentDrawer.jsx";
 
 const INPUT =
@@ -398,14 +398,14 @@ export function AdminUsersPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-1">
-                          {roleToggle(u, me?.id) && (
+                          {roleToggleFor(u, me?.id) && (
                             <button
                               type="button"
                               disabled={busyId === u.id}
-                              onClick={() => changeRole(u, roleToggle(u, me?.id).role)}
+                              onClick={() => changeRole(u, roleToggleFor(u, me?.id).role)}
                               className="flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-800 hover:bg-amber-500/20 disabled:opacity-50"
                             >
-                              {roleToggle(u, me?.id).label}
+                              {roleToggleFor(u, me?.id).label}
                             </button>
                           )}
                           {u.role === "doctor" && (

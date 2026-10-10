@@ -50,7 +50,7 @@ export const orders = pgTable("orders", {
   seazonaClientId: varchar("seazona_client_id", { length: 100 }),
   seazonaOrderId: varchar("seazona_order_id", { length: 128 }),
   // Legacy — see header.
-    seazonaPushStatus: varchar("seazona_push_status", { length: 40 }),
+  seazonaPushStatus: varchar("seazona_push_status", { length: 40 }),
   seazonaPushError: text("seazona_push_error"),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

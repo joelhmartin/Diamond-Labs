@@ -9,7 +9,7 @@
 - The status transition table and the doctor-facing status mapping live in `packages/shared/src/lab/lab-order-status.js`, so the API and web read the same rules.
 - Pure planners in `apps/api/src/services/lab/lab-order-rules.js` turn a case, a paid order or a remake into rows. They also turn every staff action into a patch plus an event.
 - `lab-orders.service.js` runs those plans in transactions, with an optimistic `version` check.
-- Rx release replaces the Seazona push, behind the same gate (`canPush`, renamed `canRelease`). Checkout creates the lab order in the transaction that records the paid order.
+- Rx release replaces the Seazona push, behind the same gate (`canPush`, renamed `canRelease`). Checkout creates the shop lab order in its own transaction right after the paid order commits; a failure logs `[LAB][SHOP_ORDER_FAILED]` for backfill and never rolls back the charged order (the I4 ruling).
 - The work ticket is a pure `buildTicketModel`. A thin pdfkit renderer lays it out and draws a vector Code 128 barcode from a pure, tested encoder.
 - The Rx form definitions move to `packages/shared`, so the server can group answers the way the form does.
 
@@ -80,7 +80,7 @@ These are the five input classes most likely to bite a real user, each pinned to
 2. **A doctor opens My cases while their case is on hold.** They see "On hold" but never the hold reason, lab notes, assignee or department. Pinned by the `doctorCaseView` allow-list test in **Task 1**. The doctor API (Task 11) is wired to that view only.
 3. **A legacy case is stuck at `seazonaPushStatus = "pushing"`.** It may already exist in Seazona, so release refuses it until staff confirm they checked. Pinned by the `releaseRefusal` tests in **Task 3**.
 4. **The doctor ticks "rush" on the live form.** `rx_cases.rush` stays false, but the lab order must still be rush, with its tier, and the ticket shows the RUSH banner. Pinned by the `rushFromCase` tests in **Task 3** and the ticket banner test in **Task 9**.
-5. **A guest buys a shop item whose variant has no lab code.** Creating the lab order runs inside the checkout transaction *after* the card is charged, so it must never refuse what pricing accepted. Pinned by the `planShopLabOrder` guest/codeless test in **Task 3**. The checkout wiring source test is in **Task 7**.
+5. **A guest buys a shop item whose variant has no lab code.** The shop lab order is created in its own transaction right after the paid order commits (never inside it), so it must never refuse what pricing accepted; a failure logs `[LAB][SHOP_ORDER_FAILED]` for backfill and cannot roll back the charge (the I4 ruling). Pinned by the `planShopLabOrder` guest/codeless test in **Task 3**. The checkout wiring source test is in **Task 7**.
 
 ---
 
@@ -1169,8 +1169,8 @@ export function planRxRelease({ caseRow, lines, variantIdByCode = new Map(), ord
 }
 
 /**
- * A paid shop order → its lab order. Runs inside the checkout transaction
- * AFTER the card is charged, so it must not refuse anything the pricing
+ * A paid shop order → its lab order. Runs in its own transaction after the paid order commits
+ * (never inside it), so it must not refuse anything the pricing
  * service accepted: a guest, a codeless variant — all still make a job.
  * Shop lines are picked and shipped, not fabricated; same board.
  */

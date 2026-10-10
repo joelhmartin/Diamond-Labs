@@ -1,4 +1,4 @@
-import { LAB_STATUS_LABELS, LAB_TIMEZONE, isoDateIn, formatUsDate } from "@my-app/shared";
+import { LAB_STATUS_LABELS, LAB_TIMEZONE, formatUsDate, formatLabDate } from "@my-app/shared";
 
 /**
  * Everything printed on a work ticket, decided here so it is testable — the
@@ -28,8 +28,7 @@ const archLabel = (a) => (a ? (ARCH[String(a).toLowerCase()] ?? String(a)) : "")
 
 // Dates print via the shared formatter; "—" when absent.
 const usDate = (iso) => formatUsDate(iso) || "—";
-/** An instant, as the lab's calendar date. */
-const labDate = (instant) => (instant ? usDate(isoDateIn(LAB_TIMEZONE, new Date(instant))) : "—");
+const labDate = (instant) => formatLabDate(instant) || "—";
 const labDateTime = (instant) => new Date(instant).toLocaleString("en-US", {
   timeZone: LAB_TIMEZONE, month: "2-digit", day: "2-digit", year: "numeric", hour: "numeric", minute: "2-digit",
 });
@@ -42,6 +41,7 @@ export function buildTicketModel(detail, { answerGroups = [], generatedAt }) {
   if (order.status === "on_hold") banners.push("ON HOLD");
 
   const ship = shopOrder?.shipping;
+  const practice = rxCase?.practiceName || order.clientName || ship?.name || "—";
   const model = {
     title: `Work ticket #${order.orderNumber}`,
     orderNumber: String(order.orderNumber),
@@ -50,8 +50,9 @@ export function buildTicketModel(detail, { answerGroups = [], generatedAt }) {
     header: [
       ["Order", `#${order.orderNumber}`],
       rxCase ? ["Case", rxCase.caseNumber ?? "—"] : ["Shop order", shopOrder?.orderNumber ?? "—"],
-      ["Practice", rxCase?.practiceName || order.clientName || ship?.name || "—"],
-      ["Doctor", order.clientName || "—"],
+      ["Practice", practice],
+      // A solo practice is named after its doctor; don't print the name twice.
+      ...((order.clientName || "—") === practice ? [] : [["Doctor", order.clientName || "—"]]),
       ["Patient", rxCase?.patientName || "—"],
       ["Received", labDate(order.receivedAt)],
       ["Due", usDate(order.dueDate)],

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Loader2, RefreshCw, Search, AlertTriangle, Zap, RotateCcw, AlertCircle } from "lucide-react";
-import { LAB_BOARD_COLUMNS, LAB_STATUS_LABELS, formatUsDate } from "@my-app/shared";
+import { LAB_BOARD_COLUMNS, LAB_STATUS_LABELS, formatUsDate, isTerminalLabStatus } from "@my-app/shared";
 import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { labOrderPath } from "../../config/routes.js";
@@ -107,6 +107,7 @@ export function LabBoardPage() {
   }, []);
 
   const columns = useMemo(() => groupByStatus(cards), [cards]);
+  const openCount = cards.filter((c) => !isTerminalLabStatus(c.status)).length;
   const overdueCount = cards.filter((c) => c.overdue).length;
 
   const move = async (card, to) => {
@@ -130,7 +131,7 @@ export function LabBoardPage() {
         <div>
           <h1 className="font-heading text-3xl font-bold tracking-tight text-navy">Production</h1>
           <p className="mt-1 text-sm text-navy/50">
-            {cards.length} open job{cards.length === 1 ? "" : "s"}
+            {openCount} open job{openCount === 1 ? "" : "s"}
             {overdueCount > 0 && <span className="ml-2 font-semibold text-red-600">· {overdueCount} overdue</span>}
           </p>
         </div>

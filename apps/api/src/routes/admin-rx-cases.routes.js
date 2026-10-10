@@ -746,7 +746,7 @@ export default async function adminRxCasesRoutes(fastify) {
 
     let result;
     try {
-      result = await db.transaction((tx) => releaseRxCase(tx, { caseRow, lines, byUserId: request.user.id }));
+      result = await db.transaction((tx) => releaseRxCase(tx, { caseRow, byUserId: request.user.id }));
     } catch (err) {
       const r = labErrorReply(err);
       if (r) return reply.code(r.status).send(r.body);

@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Loader2, RotateCcw } from "lucide-react";
-import { formatUsDate } from "@my-app/shared";
+import { formatLabDate, formatUsDate } from "@my-app/shared";
 import api from "../../config/api.js";
 import { ROUTES } from "../../config/routes.js";
 
 const TONES = {
   Submitted: "bg-blue-500/10 text-blue-700",
+  "Waiting on you": "bg-orange-500/10 text-orange-800",
   Received: "bg-violet-500/10 text-violet-700",
   "In production": "bg-amber-500/10 text-amber-800",
   "On hold": "bg-red-500/10 text-red-700",
@@ -15,7 +16,7 @@ const TONES = {
   Cancelled: "bg-gray-200 text-gray-700",
 };
 
-const dateText = (d) => formatUsDate(d) || "—";
+const dateText = (d) => formatLabDate(d) || "—";
 
 export function MyCasesPage() {
   const [cases, setCases] = useState([]);
@@ -56,7 +57,7 @@ export function MyCasesPage() {
                     <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${TONES[c.status] ?? "bg-gray-100 text-gray-700"}`}>{c.status}</span>
                     {c.isRemake && <span className="ml-1 inline-flex items-center gap-0.5 text-[11px] font-semibold text-violet-700"><RotateCcw size={10} /> Remake</span>}
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{dateText(c.dueDate)}</td>
+                  <td className="px-4 py-3 text-gray-600">{formatUsDate(c.dueDate) || "—"}</td>
                 </tr>
               ))}
             </tbody>

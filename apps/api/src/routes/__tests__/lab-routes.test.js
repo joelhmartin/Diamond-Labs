@@ -61,3 +61,11 @@ test("the work ticket is staff-only, never cached, and audit-logged", () => {
   assert.match(body, /lab_order\.ticket_printed/);
   assert.match(body, /application\/pdf/);
 });
+
+test("a role change only lands if the role is still the one we validated (409 otherwise)", () => {
+  const adminSource = read("../admin.routes.js");
+  const body = handlerSource(adminSource, 'fastify.put("/admin/users/:id/role",');
+  assert.match(body, /eq\(users\.role, target\.role\)/);
+  assert.match(body, /\.returning\(/);
+  assert.match(body, /code\(409\)/);
+});

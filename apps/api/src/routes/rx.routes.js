@@ -558,7 +558,7 @@ export default async function rxRoutes(fastify) {
           rush: false,
           rushTier: null,
         };
-        const result = await db.transaction((tx) => releaseRxCase(tx, { caseRow, lines, byUserId: null }));
+        const result = await db.transaction((tx) => releaseRxCase(tx, { caseRow, byUserId: null }));
         finalStatus = "released";
         auditService.logSafe({
           userId: request.user.id,

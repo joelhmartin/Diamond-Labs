@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { LAB_ORDER_STATUSES } from "../lab/lab-order-status.js";
+import { ROLE_CHANGE_CHOICES } from "../constants/user-roles.js";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD.");
 const version = z.number().int().positive();
@@ -46,4 +47,4 @@ export const labOrderListQuerySchema = z.object({
 
 export const rxReleaseSchema = z.object({ confirmNotInSeazona: z.boolean().optional() }).default({});
 
-export const userRoleChangeSchema = z.object({ role: z.enum(["lab", "user"]) });
+export const userRoleChangeSchema = z.object({ role: z.enum(ROLE_CHANGE_CHOICES) });

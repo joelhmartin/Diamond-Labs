@@ -5,12 +5,11 @@ import { authenticate } from "../middleware/authenticate.js";
 import { requireAdmin } from "../middleware/require-role.js";
 import { validate } from "../middleware/validate.js";
 import * as auditService from "../services/audit.service.js";
-import { roleChangeRefusal } from "../lib/staff-roles.js";
 import * as authService from "../services/auth.service.js";
 import * as emailService from "../services/email.service.js";
 import { syncSeazonaProducts, EmptyRemoteError } from "../db/sync-seazona-products.js";
 import { env } from "../config/env.js";
-import { ERROR_CODES, userRoleChangeSchema } from "@my-app/shared";
+import { ERROR_CODES, userRoleChangeSchema, roleChangeRefusal } from "@my-app/shared";
 
 export default async function adminRoutes(fastify) {
   // ──────────────────────────────────────────────────────────────
@@ -166,7 +165,7 @@ export default async function adminRoutes(fastify) {
     return { data: { sent, requested: userIds.length } };
   });
 
-  // Grant or remove lab-staff access. Only user <-> lab (lib/staff-roles.js).
+  // Grant or remove lab-staff access. Only user <-> lab (ROLE_CHANGE_CHOICES in @my-app/shared).
   fastify.put("/admin/users/:id/role", {
     preHandler: [authenticate, requireAdmin, validate(userRoleChangeSchema)],
   }, async (request, reply) => {
@@ -180,7 +179,18 @@ export default async function adminRoutes(fastify) {
       return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: refusal } });
     }
     if (target.role !== request.body.role) {
-      await db.update(users).set({ role: request.body.role, updatedAt: new Date() }).where(eq(users.id, target.id));
+      // Conditional on the role we validated: a doctor approval or admin
+      // promotion that landed since the select must not be overwritten.
+      const changed = await db
+        .update(users)
+        .set({ role: request.body.role, updatedAt: new Date() })
+        .where(and(eq(users.id, target.id), eq(users.role, target.role)))
+        .returning({ id: users.id });
+      if (changed.length === 0) {
+        return reply.code(409).send({
+          error: { ...ERROR_CODES.VALIDATION_ERROR, code: "ROLE_CHANGED", status: 409, message: "This user's role changed while you were editing. Reload and try again." },
+        });
+      }
       auditService.logSafe({
         userId: request.user.id,
         action: "user.role_changed",

@@ -309,6 +309,10 @@ export function LabOrderDetailPage() {
                 <span className="text-xs text-navy/50">Assigned to</span>
                 <select className={INPUT} disabled={busy || closed} value={order.assigneeUserId ?? ""} onChange={(e) => setField("assign", e.target.value || null)}>
                   <option value="">Nobody</option>
+                  {/* Former staff stay visible (as inactive) rather than reading as "Nobody". */}
+                  {order.assigneeUserId && !staff.some((s) => s.id === order.assigneeUserId) && (
+                    <option value={order.assigneeUserId} disabled>{order.assigneeName || "Former staff"} (inactive)</option>
+                  )}
                   {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </label>
@@ -334,7 +338,7 @@ export function LabOrderDetailPage() {
           </Panel>
 
           <Panel title="Lab notes (staff only)">
-            <textarea className={`${INPUT} min-h-[100px]`} value={notes} onChange={(e) => setNotes(e.target.value)} />
+            <textarea className={`${INPUT} min-h-[100px]`} maxLength={5000} value={notes} onChange={(e) => setNotes(e.target.value)} />
             <button type="button" disabled={busy || notes === (order.labNotes ?? "")} onClick={() => setField("notes", notes)} className="mt-2 rounded-full bg-navy px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-40">
               Save notes
             </button>

@@ -4,7 +4,7 @@ import { isoDateIn, isOverdue, LAB_TIMEZONE, STAFF_ROLES, caseSummary } from "@m
 import { db } from "../../config/database.js";
 import { env } from "../../config/env.js";
 import {
-  labOrders, labOrderLines, labOrderEvents, labDepartments, rxCases, rxCaseFiles, orders, users, productVariants,
+  labOrders, labOrderLines, labOrderEvents, labDepartments, rxCases, rxCaseFiles, rxCaseLines, orders, users, productVariants,
 } from "../../db/schema/index.js";
 import { createId } from "../../lib/id.js";
 import { encryptField, decryptField } from "../../lib/crypto.js";
@@ -77,9 +77,12 @@ async function insertPlan(tx, { labOrder, lines, events }) {
  * rolls the claim back.
  *
  * @param {object} caseRow DECRYPTED rx_cases row (id, userId, status, dueDate, formData, rush, rushTier)
- * @param {Array}  lines   the case's stored rx_case_lines, position order
+ *
+ * The case's lines are re-read here, after the claim, so the job is planned
+ * from what is stored now, not from a copy a caller read before an edit.
+ * The caller's own canRelease check is only an early, friendly refusal.
  */
-export async function releaseRxCase(tx, { caseRow, lines, byUserId = null }) {
+export async function releaseRxCase(tx, { caseRow, byUserId = null }) {
   const claimed = await tx
     .update(rxCases)
     .set({ status: "released", updatedAt: new Date() })
@@ -88,6 +91,11 @@ export async function releaseRxCase(tx, { caseRow, lines, byUserId = null }) {
   if (claimed.length === 0) {
     throw new LabOrderError("ALREADY_RELEASED", "This case was already released, pushed, or cancelled.");
   }
+  const lines = await tx
+    .select()
+    .from(rxCaseLines)
+    .where(eq(rxCaseLines.caseId, caseRow.id))
+    .orderBy(asc(rxCaseLines.position));
   const variantIdByCode = await variantIdsForCodes(tx, lines.map((l) => l.seazonaCode));
   const orderNumber = await allocateOrderNumber(tx);
   const plan = planRxRelease({ caseRow, lines, variantIdByCode, orderNumber, labOrderId: createId(), byUserId, now: new Date() });
@@ -111,7 +119,8 @@ function boardWhere(f, now) {
   const conds = [];
   if (f.status) {
     conds.push(eq(labOrders.status, f.status));
-  } else if (!f.includeClosed) {
+  } else if (!f.includeClosed && !f.q) {
+    // A search looks through history: the shipped window only keeps the board tidy.
     const since = new Date(now.getTime() - SHIPPED_VISIBLE_DAYS * 86_400_000);
     conds.push(or(
       notInArray(labOrders.status, ["shipped", "cancelled"]),
@@ -138,6 +147,18 @@ function boardWhere(f, now) {
   return conds.length ? and(...conds) : undefined;
 }
 
+export const LIST_LIMIT = 1000;
+
+/**
+ * The board works rush-first, oldest due first. Admin › Orders (includeClosed)
+ * is an archive: newest received first, so the cap trims the oldest history.
+ */
+export function listOrder(f) {
+  return f.includeClosed
+    ? [desc(labOrders.receivedAt), desc(labOrders.orderNumber)]
+    : [desc(labOrders.rush), asc(labOrders.dueDate), asc(labOrders.orderNumber)];
+}
+
 /** Board / Admin › Orders list. Cards never include hold reasons or lab notes. */
 export async function listLabOrders(filters = {}, now = new Date()) {
   const rows = await db
@@ -156,8 +177,8 @@ export async function listLabOrders(filters = {}, now = new Date()) {
     .leftJoin(client, eq(client.id, labOrders.clientUserId))
     .leftJoin(assignee, eq(assignee.id, labOrders.assigneeUserId))
     .where(boardWhere(filters, now))
-    .orderBy(desc(labOrders.rush), asc(labOrders.dueDate), asc(labOrders.orderNumber))
-    .limit(1000);
+    .orderBy(...listOrder(filters))
+    .limit(LIST_LIMIT);
 
   const ids = rows.map((r) => r.order.id);
   const lineRows = ids.length
@@ -173,7 +194,8 @@ export async function listLabOrders(filters = {}, now = new Date()) {
     byOrder.get(l.labOrderId).push(l);
   }
   const today = isoDateIn(LAB_TIMEZONE, now);
-  return rows.map((r) => presentBoardCard(r, byOrder.get(r.order.id) ?? [], today));
+  const cards = rows.map((r) => presentBoardCard(r, byOrder.get(r.order.id) ?? [], today));
+  return { orders: cards, truncated: rows.length >= LIST_LIMIT };
 }
 
 /**

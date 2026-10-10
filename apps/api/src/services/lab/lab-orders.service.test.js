@@ -143,3 +143,29 @@ test("build notes and the ticket banner share one rush source", async () => {
   assert.match(compileNotesMulti({ ...c, ...rushFromCase(c) }, []), /RUSH \(Expedited\)/);
   assert.match(source, /compileNotesMulti\(\{ \.\.\.c, \.\.\.rushFromCase\(c\) \}/);
 });
+
+test("releaseRxCase plans from the lines re-read after the claim, not a caller's copy", async () => {
+  // The caller's pre-transaction copy would have passed; the stored lines now have an open one.
+  const tx = fakeTx({ updates: [[{ id: "c1" }]], selects: [[{ status: "open", noteOnly: false, name: "Crown" }]] });
+  await assert.rejects(
+    mod.releaseRxCase(tx, { caseRow: { id: "c1", userId: "u1", status: "in_review", formData: {} }, lines: [{ status: "confirmed", noteOnly: false }], byUserId: "u1" }),
+    (e) => e instanceof LabOrderError && e.code === "RELEASE_BLOCKED",
+  );
+  assert.equal(tx.log.filter((l) => l.op === "insert").length, 0);
+  const body = source.slice(source.indexOf("export async function releaseRxCase"), source.indexOf("export async function createShopLabOrder"));
+  assert.ok(body.indexOf("rxCaseLines") > body.indexOf('status: "released"'), "lines are read after the claim");
+});
+
+test("a search looks through shipped history; the board's shipped window only applies without one", () => {
+  const body = source.slice(source.indexOf("function boardWhere"), source.indexOf("export const LIST_LIMIT") > 0 ? source.indexOf("export async function listLabOrders") : undefined);
+  assert.match(body, /!f\.includeClosed && !f\.q/);
+});
+
+test("Admin > Orders is newest-received-first and says when the cap trimmed it; the board keeps rush/due order", () => {
+  assert.equal(mod.LIST_LIMIT, 1000);
+  assert.notDeepEqual(mod.listOrder({ includeClosed: true }), mod.listOrder({ includeClosed: false }));
+  assert.equal(mod.listOrder({ includeClosed: true }).length, 2);
+  assert.equal(mod.listOrder({}).length, 3);
+  assert.match(source, /truncated: rows\.length >= LIST_LIMIT/);
+  assert.match(source, /\.limit\(LIST_LIMIT\)/);
+});

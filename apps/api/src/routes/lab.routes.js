@@ -35,7 +35,7 @@ export default async function labRoutes(fastify) {
     auditService.logSafe({ userId: request.user.id, action, targetType, targetId, metadata, ipAddress: request.ip });
 
   fastify.get("/lab/orders", { preHandler: [...STAFF, validateQuery(labOrderListQuerySchema)] }, async (request) => ({
-    data: { orders: await labOrdersService.listLabOrders(request.query) },
+    data: await labOrdersService.listLabOrders(request.query), // { orders, truncated }
   }));
 
   fastify.get("/lab/orders/:id", { preHandler: STAFF }, async (request, reply) => {

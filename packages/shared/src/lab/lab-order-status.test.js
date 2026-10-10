@@ -2,7 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   LAB_ORDER_STATUSES, LAB_BOARD_COLUMNS, LAB_STATUS_LABELS, allowedNextStatuses, canMoveLabOrder,
-  reasonRequiredFor, isOverdue, isoDateIn, doctorStatusFor, doctorCaseView, formatUsDate, caseSummary,
+  reasonRequiredFor, isOverdue, isoDateIn, doctorStatusFor, doctorCaseView, formatUsDate, formatLabDate, caseSummary,
 } from "./lab-order-status.js";
 
 // The whole table, written out. Every pair not listed here must be refused.
@@ -76,7 +76,7 @@ test("doctors see production in plain words", () => {
   assert.equal(doctorStatusFor({ caseStatus: "released", labOrderStatus: "on_hold" }), "On hold");
   assert.equal(doctorStatusFor({ caseStatus: "released", labOrderStatus: "shipped" }), "Shipped");
   assert.equal(doctorStatusFor({ caseStatus: "new" }), "Submitted");
-  assert.equal(doctorStatusFor({ caseStatus: "awaiting_doctor" }), "Submitted");
+  assert.equal(doctorStatusFor({ caseStatus: "awaiting_doctor" }), "Waiting on you");
   assert.equal(doctorStatusFor({ caseStatus: "pushed" }), "Sent to lab");
   assert.equal(doctorStatusFor({ caseStatus: "cancelled" }), "Cancelled");
 });
@@ -142,4 +142,12 @@ test("caseSummary is the one place patient name and devices are composed", () =>
   assert.deepEqual(caseSummary({ patientFirst: "Jane", deviceOptions: { devices: [{ deviceKey: "guard" }] } }), { patientName: "Jane", deviceSummary: "guard" });
   assert.deepEqual(caseSummary({}), { patientName: null, deviceSummary: null });
   assert.deepEqual(caseSummary(null), { patientName: null, deviceSummary: null });
+});
+
+test("formatLabDate prints the lab's calendar date, not UTC's", () => {
+  // 11:30 PM Oct 6 in Chicago (CDT) is already Oct 7 in UTC.
+  assert.equal(formatLabDate("2026-10-07T04:30:00Z"), "10/06/2026");
+  assert.equal(formatLabDate(new Date("2026-10-07T18:00:00Z")), "10/07/2026");
+  assert.equal(formatLabDate(null), "");
+  assert.equal(formatLabDate("nonsense"), "");
 });
