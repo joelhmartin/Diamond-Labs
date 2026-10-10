@@ -47,6 +47,10 @@ Pre-check before the transaction: every plan table and column must exist live ("
 | rx_cases.general_comments, manual_note | phi | NULL |
 | rx_cases.seazona_push_error | phi | NULL (can echo the order payload, incl. patient name) |
 | client_prices.note | pii | NULL (free text about a client) |
+| lab_orders.hold_reason, lab_orders.lab_notes | phi | NULL (staff-typed free text, encrypted at rest; can name a patient) |
+| lab_order_events.note | phi | NULL (staff-typed free text, encrypted at rest) |
+| lab_order_lines.name | phi | the catalog name for `code` (`product_variants.code` first, then `products.code`), else `Line`. Instruction lines carry doctor/staff-typed text, same rule as `rx_case_lines.name` |
+| lab_order_lines.source_label | phi | NULL (copies the doctor's free-form "Other" device text) |
 
 ## Tables emptied (DELETE all rows)
 
@@ -64,6 +68,7 @@ Pre-check before the transaction: every plan table and column must exist live ("
 - accounts (doctor/admin-owned): name, slug, logo_url (shopper-owned accounts get logo_url NULLed); all: owner. doctor_profiles: company name, address, phone, NPI, license. DEVIATION from the strictest reading (addresses/phones scrubbed): accepted as practice business data and public identifiers; only the free-text delivery notes go. A sole practitioner's practice address may also be a home address.
 - rx_cases: case_number, practice_name, device_key/category, first_device, records_method, physical_bite, form_type, due_date, rush, status. Non-identifying once names, DOB, contact and free text are gone. Clinical-ish (`physical_bite`) but not linkable to a person.
 - rx_code_overrides: only rows whose map_key is a KNOWN catalog-map key (from the DEVICE/MODIFICATION/ATTRIBUTE/LAB_SERVICE/GUARD/ORTHO tables, `known-map-keys.js`) are kept; every other row is DELETED. The key prefixes (`mod:`, `attr:`, `primary:`) are shared by stable slugs and by doctor-typed literals (`mod:<literal>`), so shape cannot tell them apart; this is the "not in the known set" fallback. Consequence: a real lab override on a key the tables no longer emit is also dropped. `note` and the rest of each kept row (except `seazona_name`, re-derived) are lab-staff mapping data.
+- lab_departments, and lab_orders / lab_order_lines / lab_order_events apart from the columns above: ids, source reference (rx case or shop order id, no patient data copied), status, dates, rush, remake links, assignee, version, codes, quantities, event types and from/to values. Non-identifying once the free text is gone.
 - invoice_payments, autopay_attempts (allocations are invoice id/number/amount), orders money columns and transaction ids, order_items, catalog and product tables, memberships, app_theme.
 
 ## Not in the schema

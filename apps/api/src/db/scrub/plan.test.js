@@ -65,6 +65,9 @@ const MUST_SCRUB = {
   kv_store: ["key", "value"],
   autopay_enrollments: ["payment_profile_id", "paused_reason"],
   doctor_profiles: ["delivery_notes"],
+  lab_orders: ["hold_reason", "lab_notes"],
+  lab_order_events: ["note"],
+  lab_order_lines: ["name", "source_label"],
 };
 
 test("named PHI/PII/secret columns are never classified keep", () => {
