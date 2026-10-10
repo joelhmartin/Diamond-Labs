@@ -116,7 +116,7 @@ export function planShopLabOrder({ orderId, clientUserId = null, quoteLines, ord
   const labOrder = newOrder({ labOrderId, orderNumber, source: "shop_order", sourceId: orderId, clientUserId, now });
   const lines = quoteLines.map((l, position) => ({
     labOrderId, position, variantId: l.variantId ?? null, code: l.code ?? null,
-    name: l.name || "Unnamed item", arch: null, qty: l.qty, noteOnly: false, sourceLabel: null,
+    name: l.name || "Unnamed item", arch: null, qty: Number.isInteger(l.qty) && l.qty > 0 ? l.qty : 1, noteOnly: false, sourceLabel: null,
   }));
   const event = { labOrderId, type: "release", from: "paid", to: "received", byUserId: null, note: null, at: now };
   return { labOrder, lines, event };
@@ -228,7 +228,8 @@ export function initialsFor(name) {
   return `${parts[0][0]}${last}`.toUpperCase();
 }
 
-function summarise(lines) {
+/** One-line summary of a job's lines (note-only lines excluded). Shared by the board card and the ticket. */
+export function summariseLabLines(lines) {
   const names = lines.filter((l) => !l.noteOnly).map((l) => (l.qty > 1 ? `${l.qty}× ${l.name}` : l.name));
   if (names.length === 0) return "—";
   return names.length > 2 ? `${names.slice(0, 2).join(", ")} +${names.length - 2}` : names.join(", ");
@@ -250,7 +251,7 @@ export function presentBoardCard(row, lines = [], todayIso) {
     heldFrom: o.heldFrom ?? null,
     version: o.version,
     practice: row.practiceName || row.clientName || row.shipping?.name || "—",
-    deviceSummary: summarise(lines),
+    deviceSummary: summariseLabLines(lines),
     dueDate: o.dueDate ?? null,
     rush: Boolean(o.rush),
     rushTier: o.rushTier ?? null,

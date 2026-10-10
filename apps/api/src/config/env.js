@@ -70,6 +70,11 @@ const envSchema = z.object({
   AUTOPAY_TIMEZONE: z.string().default("America/Chicago"),
   // Consecutive declines before an enrollment is paused.
   AUTOPAY_MAX_FAILURES: z.coerce.number().int().positive().default(3),
+  // ── Lab orders ──
+  // Lab order numbers continue the lab's paperwork numbering. Piece 5 sets
+  // this to the legacy system's last order number + 1 before cutover;
+  // allocation is max(existing + 1, start), so raising it later never reuses a number.
+  LAB_ORDER_NUMBER_START: z.coerce.number().int().positive().default(100000),
   // Shared secret for the HTTP job trigger. Required in production only.
   JOBS_TRIGGER_SECRET: z.string().optional(),
   // Opt-in dev-only in-process interval trigger (see jobs/triggers/interval.js).

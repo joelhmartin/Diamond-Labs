@@ -1,7 +1,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
-  LabOrderError, nextLabOrderNumber, parseDueDate, rushFromCase, planRxRelease, planShopLabOrder, planRemake,
+  LabOrderError, summariseLabLines, nextLabOrderNumber, parseDueDate, rushFromCase, planRxRelease, planShopLabOrder, planRemake,
   assertFresh, planStatusChange, planFieldChange, initialsFor, presentBoardCard,
 } from "./lab-order-rules.js";
 
@@ -269,4 +269,17 @@ test("a shop card falls back from practice to the buyer's account, then the ship
   assert.equal(guest.reference, "DOL-ABC");
   assert.equal(guest.deviceSummary, "2× Retainer case");
   assert.equal(guest.assigneeInitials, null);
+});
+
+test("shop line qty falls back to 1 unless it is a positive integer (the planner stays total)", () => {
+  const plan = planShopLabOrder({
+    orderId: "o", orderNumber: 1, labOrderId: "l", now,
+    quoteLines: [{ name: "a", qty: 0 }, { name: "b", qty: 2.5 }, { name: "c", qty: "3" }, { name: "d" }, { name: "e", qty: 4 }],
+  });
+  assert.deepEqual(plan.lines.map((l) => l.qty), [1, 1, 1, 1, 4]);
+});
+
+test("summariseLabLines is exported for the ticket and services", () => {
+  assert.equal(summariseLabLines([{ name: "A", qty: 2 }, { name: "N", noteOnly: true, qty: 1 }]), "2× A");
+  assert.equal(summariseLabLines([]), "—");
 });
