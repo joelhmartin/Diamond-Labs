@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { useId, useRef, useState, useEffect } from "react";
 import { ImagePlus, Loader2, Trash2, Link2, AlertCircle } from "lucide-react";
 import api from "../../config/api.js";
 
@@ -20,10 +20,12 @@ export function checkImageFile(file) {
  * called with the new URL, or "" when the image is removed. Pasting an
  * existing URL stays available as a fallback, but uploading is the default.
  */
-export default function ImageUploadField({ value, onChange, label = "Image" }) {
+export default function ImageUploadField({ value, onChange, label = "Image", onUploadingChange }) {
   const inputId = useId();
   const fileRef = useRef(null);
   const [uploading, setUploading] = useState(false);
+  // Optional: lets a parent form hold its own Save while a file is still uploading.
+  useEffect(() => { onUploadingChange?.(uploading); }, [uploading, onUploadingChange]);
   const [error, setError] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [pasteMode, setPasteMode] = useState(false);
