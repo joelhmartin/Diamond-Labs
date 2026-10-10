@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Loader2, AlertCircle, Printer, FileText, RotateCcw, Zap, PauseCircle, Clock } from "lucide-react";
 import { LAB_STATUS_LABELS, allowedNextStatuses, reasonRequiredFor, groupRxAnswers, getRxForm } from "@my-app/shared";
@@ -6,7 +6,7 @@ import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { Modal } from "../../components/ui/Modal.jsx";
 import { ROUTES, labOrderPath } from "../../config/routes.js";
-import { describeEvent, errorText, isStale, openInNewTab } from "../../lib/lab-board.js";
+import { describeEvent, errorText, blobErrorText, isStale, openInNewTab } from "../../lib/lab-board.js";
 
 const INPUT =
   "w-full px-3 py-2 rounded-lg bg-white border border-surface-300/60 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10";
@@ -37,6 +37,7 @@ export function LabOrderDetailPage() {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [lookupError, setLookupError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [staff, setStaff] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -46,25 +47,47 @@ export function LabOrderDetailPage() {
   const [reasonFor, setReasonFor] = useState(null); // { kind: "status"|"remake", to?, title, submit }
   const [reasonText, setReasonText] = useState("");
 
+  // What the inputs last mirrored from the server, so a reload only resets
+  // text the user is typing when the server value (or the order) changed.
+  const synced = useRef({ id: null, labNotes: null, dueDate: null });
+  const requestSeq = useRef(0);
+  const shownId = useRef(null);
+
   const load = useCallback(async () => {
+    const seq = ++requestSeq.current;
     try {
       const res = await api.get(`/lab/orders/${id}`);
+      if (seq !== requestSeq.current) return;
+      const { order: o } = res.data.data;
+      const s = synced.current;
+      if (s.id !== o.id || s.labNotes !== (o.labNotes ?? "")) setNotes(o.labNotes ?? "");
+      if (s.id !== o.id || s.dueDate !== (o.dueDate ?? "")) setDue(o.dueDate ?? "");
+      synced.current = { id: o.id, labNotes: o.labNotes ?? "", dueDate: o.dueDate ?? "" };
+      shownId.current = id;
       setDetail(res.data.data);
-      setNotes(res.data.data.order.labNotes ?? "");
-      setDue(res.data.data.order.dueDate ?? "");
       setError(null);
     } catch (err) {
-      setError(errorText(err));
+      if (seq !== requestSeq.current) return;
+      // A failed reload keeps the order already on screen; only a first load fails the page.
+      if (shownId.current === id) addToast({ message: errorText(err), type: "error" });
+      else setError(errorText(err));
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
-  }, [id]);
+  }, [id, addToast]);
 
-  useEffect(() => { load(); }, [load]);
+  // Navigating to another order (e.g. a remake) must not show the old one.
+  useEffect(() => {
+    setDetail(null);
+    setError(null);
+    setLoading(true);
+    shownId.current = null;
+    load();
+  }, [load]);
   useEffect(() => {
     Promise.all([api.get("/lab/staff"), api.get("/lab/departments", { params: { includeInactive: "true" } })])
       .then(([s, d]) => { setStaff(s.data.data.staff); setDepartments(d.data.data.departments); })
-      .catch((err) => setError(errorText(err)));
+      .catch((err) => setLookupError(errorText(err)));
   }, []);
 
   const staffById = useMemo(() => Object.fromEntries(staff.map((s) => [s.id, s.name])), [staff]);
@@ -138,7 +161,7 @@ export function LabOrderDetailPage() {
       const url = URL.createObjectURL(res.data);
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
       return url;
-    }).catch((err) => addToast({ message: errorText(err), type: "error" }));
+    }).catch(async (err) => addToast({ message: await blobErrorText(err), type: "error" }));
   const openFile = (fileId) =>
     openInNewTab(async () => (await api.get(`/admin/rx-cases/${rxCase.id}/files/${fileId}`)).data.data.url)
       .catch((err) => addToast({ message: errorText(err), type: "error" }));
@@ -176,6 +199,12 @@ export function LabOrderDetailPage() {
           )}
         </div>
       </div>
+
+      {lookupError && (
+        <div className="mb-5 flex items-center gap-2 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
+          <AlertCircle size={14} /> Couldn't load staff and departments ({lookupError}). Names may be missing and assignment is unavailable until you refresh.
+        </div>
+      )}
 
       {order.status === "on_hold" && (
         <div className="mb-5 flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">

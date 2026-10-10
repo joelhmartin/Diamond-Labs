@@ -1,11 +1,12 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth.js";
 import { Spinner } from "../components/ui/Spinner.jsx";
-import { ROUTES } from "../config/routes.js";
+import { ROUTES, roleHome } from "../config/routes.js";
 
 /**
  * Gate on the user's own role (users.role), not their account membership
- * (see RequireRole). Signed-out users go to login; wrong role goes home.
+ * (see RequireRole). Signed-out users go to login; wrong role goes to their own
+ * role home (a lab user never lands on the admin dashboard).
  */
 export function RequireUserRole({ roles }) {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -24,7 +25,7 @@ export function RequireUserRole({ roles }) {
   }
 
   if (!roles.includes(user?.role)) {
-    return <Navigate to={ROUTES.DASHBOARD} replace />;
+    return <Navigate to={roleHome(user)} replace />;
   }
 
   return <Outlet />;

@@ -49,6 +49,23 @@ export function errorText(err) {
   return err?.response?.data?.error?.message || err?.message || "Something went wrong.";
 }
 
+/**
+ * Message for a failed request made with responseType "blob": the server's
+ * JSON error body arrives as a Blob, so decode it before falling back to errorText.
+ */
+export async function blobErrorText(err) {
+  const data = err?.response?.data;
+  if (data instanceof Blob) {
+    try {
+      const body = JSON.parse(await data.text());
+      if (body?.error?.message) return body.error.message;
+    } catch {
+      /* not JSON — use the generic message */
+    }
+  }
+  return errorText(err);
+}
+
 export function isStale(err) {
   return err?.response?.status === 409 && err?.response?.data?.error?.code === "STALE";
 }

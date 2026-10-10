@@ -932,14 +932,16 @@ export function AdminRxCaseDetailPage() {
               tone="warning"
               icon={AlertCircle}
               action={
-                <button
-                  type="button"
-                  disabled={clearingLock}
-                  onClick={doClearLock}
-                  className="ml-3 flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-600 text-white hover:bg-amber-700 transition-colors disabled:opacity-50"
-                >
-                  <Unlock size={12} /> {clearingLock ? "Clearing…" : "Clear push lock"}
-                </button>
+                canEdit && (
+                  <button
+                    type="button"
+                    disabled={clearingLock}
+                    onClick={doClearLock}
+                    className="ml-3 flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-600 text-white hover:bg-amber-700 transition-colors disabled:opacity-50"
+                  >
+                    <Unlock size={12} /> {clearingLock ? "Clearing…" : "Clear push lock"}
+                  </button>
+                )
               }
             >
               A push to this case was started and never confirmed — it may have reached Seazona, or it may not

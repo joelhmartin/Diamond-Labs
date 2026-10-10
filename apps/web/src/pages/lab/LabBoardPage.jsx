@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Loader2, RefreshCw, Search, AlertTriangle, Zap, RotateCcw, AlertCircle } from "lucide-react";
 import { LAB_BOARD_COLUMNS, LAB_STATUS_LABELS, formatUsDate } from "@my-app/shared";
@@ -77,15 +77,21 @@ export function LabBoardPage() {
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState({ departmentId: "", assigneeUserId: "", rush: false, dueBefore: "", q: "" });
 
+  // Only the newest request may write results: a slow response for an older
+  // filter must not overwrite what the current filter shows.
+  const requestSeq = useRef(0);
   const load = useCallback(async () => {
+    const seq = ++requestSeq.current;
     try {
       const res = await api.get("/lab/orders", { params: boardParams(filters) });
+      if (seq !== requestSeq.current) return;
       setCards(res.data.data.orders);
       setError(null);
     } catch (err) {
+      if (seq !== requestSeq.current) return;
       setError(errorText(err));
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
   }, [filters]);
 
