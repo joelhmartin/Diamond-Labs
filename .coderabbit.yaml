@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=https://docs.coderabbitai.com/schemas/coderabbit-config.json
+# Schema keys: reviews.auto_review.base_branches (array of string; "Base branches
+# (other than the default branch) to review", default []) and .enabled (default
+# true). https://docs.coderabbit.ai/reference/configuration
+#
+# CodeRabbit skips PRs whose base is not the default branch unless listed here
+# (PR #46 got no review until triggered by hand). The default branch (main) is
+# always reviewed, so listing the long-lived integration branch only ADDS coverage.
+reviews:
+  auto_review:
+    enabled: true
+    base_branches:
+      # CodeRabbit treats these entries as regexes, so anchor the name.
+      - "^feat/own-the-lab$"

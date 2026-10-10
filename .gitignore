@@ -9,3 +9,6 @@ dist/
 coverage/
 .vite/
 *.tsbuildinfo
+
+# Claude Code agent worktrees
+.claude/worktrees/

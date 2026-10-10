@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/own-the-lab]
   pull_request:
-    branches: [main]
+    branches: [main, feat/own-the-lab]
 
 jobs:
   ci:

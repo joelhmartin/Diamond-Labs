@@ -3,6 +3,16 @@ import project from "../../../../project.config.js";
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+  // Deployment environment. "staging" arms the safety switches in config/app-env.js
+  // (mail redirect, Seazona off, sandbox payments, noindex) and the boot gate.
+  // Unset == "development": identical to production behaviour for these switches.
+  APP_ENV: z.enum(["production", "staging", "development"]).default("development"),
+  // Cloud Run service name (set by the platform); read only by the staging re-creation guard.
+  K_SERVICE: z.string().optional(),
+  // Staging only: every outbound email is redirected to this address.
+  STAGING_EMAIL_TO: z.string().email().optional(),
+  // "true" hard-disables the Seazona wrapper (no network). Required under staging.
+  SEAZONA_DISABLED: z.string().optional(),
   PORT: z.coerce.number().default(3000),
   APP_URL: z.string().url().default("http://localhost:5173"),
   API_URL: z.string().url().default("http://localhost:3000"),
@@ -68,6 +78,7 @@ const envSchema = z.object({
 
   // Google Cloud Storage
   RX_GCS_BUCKET: z.string().optional(),
+  MEDIA_GCS_BUCKET: z.string().optional(),
   // Digital Rx live Seazona push gate.
   //
   // NOTE — this is LIVE, not a stub. B5 (2026-08-21): an earlier version of

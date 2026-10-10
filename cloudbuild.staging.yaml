@@ -1,0 +1,103 @@
+# CI/CD for the STAGING API (Cloud Run service diamond-labs-api-staging).
+#
+# Triggered on push to `feat/own-the-lab` (trigger: deploy-staging-on-own-the-lab).
+# Same shape as cloudbuild.yaml (production) with these deliberate differences:
+#   - own service, own migrate Job, own image tag `staging-${SHORT_SHA}`.
+#     NEVER tags `latest`: that tag belongs to production's pipeline.
+#   - the web bundle is built for staging: VITE_APP_ENV=staging (banner),
+#     VITE_AUTHORIZE_NET_ENV=sandbox (jstest Accept.js) and the SANDBOX public
+#     Accept.js keys from Secret Manager (STAGING_VITE_AUTHORIZE_NET_*).
+#   - NO jobs step: staging never updates or runs the AutoPay jobs Job.
+# Pipeline: build -> push -> migrate (hard gate) -> deploy.
+#
+# The service itself must run with APP_ENV=staging etc. (see
+# docs/superpowers/plans/2026-10-06-staging-environment.md); it refuses to boot
+# otherwise. This file only builds and rolls out.
+#
+# Manual run (SHORT_SHA is only populated on trigger builds - pass it):
+#   gcloud builds submit --config cloudbuild.staging.yaml --project diamond-labs-prod \
+#     --substitutions=SHORT_SHA="$(git rev-parse --short HEAD)"
+substitutions:
+  _REGION: us-central1
+  _REPO: us-central1-docker.pkg.dev/diamond-labs-prod/diamond-labs/api
+  _SERVICE: diamond-labs-api-staging
+  _MIGRATE_JOB: diamond-labs-migrate-staging
+  _SCRUB_JOB: diamond-labs-scrub-staging
+
+steps:
+  # 1. Build from the monorepo root. The sandbox public keys come from Secret
+  #    Manager (availableSecrets below) and are passed as build args; bash is the
+  #    entrypoint so $$VAR is expanded by the shell, not by Cloud Build.
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    secretEnv: [STAGING_VITE_AUTHORIZE_NET_API_LOGIN, STAGING_VITE_AUTHORIZE_NET_CLIENT_KEY]
+    args:
+      - -c
+      - |
+        docker build -f apps/api/Dockerfile \
+          --build-arg VITE_APP_ENV=staging \
+          --build-arg VITE_AUTHORIZE_NET_ENV=sandbox \
+          --build-arg VITE_AUTHORIZE_NET_API_LOGIN="$$STAGING_VITE_AUTHORIZE_NET_API_LOGIN" \
+          --build-arg VITE_AUTHORIZE_NET_CLIENT_KEY="$$STAGING_VITE_AUTHORIZE_NET_CLIENT_KEY" \
+          -t ${_REPO}:staging-${SHORT_SHA} \
+          .
+
+  # 2. Push the staging tag only.
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: [push, "${_REPO}:staging-${SHORT_SHA}"]
+
+  # 3. Point the staging migrate Job at the new image and run it. --wait makes the
+  #    step fail (and abort the deploy) if migrations error. The Job carries the
+  #    STAGING DATABASE_URL (diamond_labs_staging); it never touches prod.
+  - id: migrate
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - update
+      - ${_MIGRATE_JOB}
+      - --image=${_REPO}:staging-${SHORT_SHA}
+      - --region=${_REGION}
+      - --execute-now
+      - --wait
+
+  # 3b. Keep the scrub Job on the same image as the migrate Job. The scrub fails
+  #     closed on a schema mismatch, so a stale scrub image would block every
+  #     re-seed. Update only: NO --execute-now (the scrub is run by hand, after a
+  #     prod-data import, never by the pipeline).
+  - id: scrub-image
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - update
+      - ${_SCRUB_JOB}
+      - --image=${_REPO}:staging-${SHORT_SHA}
+      - --region=${_REGION}
+
+  # 4. Deploy the new revision of the staging service.
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REPO}:staging-${SHORT_SHA}
+      - --region=${_REGION}
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/STAGING_VITE_AUTHORIZE_NET_API_LOGIN/versions/latest
+      env: STAGING_VITE_AUTHORIZE_NET_API_LOGIN
+    - versionName: projects/$PROJECT_ID/secrets/STAGING_VITE_AUTHORIZE_NET_CLIENT_KEY/versions/latest
+      env: STAGING_VITE_AUTHORIZE_NET_CLIENT_KEY
+
+images:
+  - ${_REPO}:staging-${SHORT_SHA}
+options:
+  logging: CLOUD_LOGGING_ONLY
