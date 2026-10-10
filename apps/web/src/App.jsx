@@ -35,7 +35,8 @@ import { AdminClientPricingPage } from "./pages/app/AdminClientPricingPage.jsx";
 import { AdminAutoPayPage } from "./pages/app/AdminAutoPayPage.jsx";
 import { AdminJobsPage } from "./pages/app/AdminJobsPage.jsx";
 import { AdminOrdersPage } from "./pages/app/AdminOrdersPage.jsx";
-import { AdminOrderDetailPage } from "./pages/app/AdminOrderDetailPage.jsx";
+import { AdminDepartmentsPage } from "./pages/app/AdminDepartmentsPage.jsx";
+import { MyCasesPage } from "./pages/doctor/MyCasesPage.jsx";
 import { AdminRxMappingPage } from "./pages/app/AdminRxMappingPage.jsx";
 import { AdminRxCasesPage } from "./pages/app/AdminRxCasesPage.jsx";
 import { AdminRxCaseDetailPage } from "./pages/app/AdminRxCaseDetailPage.jsx";
@@ -223,7 +224,7 @@ function AppRoutes() {
           <Route path="/admin/invoices" element={<AdminInvoicesPage />} />
           <Route path="/admin/payments" element={<AdminPaymentsPage />} />
           <Route path="/admin/orders" element={<AdminOrdersPage />} />
-          <Route path="/admin/orders/:id" element={<AdminOrderDetailPage />} />
+          <Route path="/admin/lab/departments" element={<AdminDepartmentsPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />
           <Route path="/admin/users/:userId/pricing" element={<AdminClientPricingPage />} />
           <Route path="/admin/autopay" element={<AdminAutoPayPage />} />
@@ -245,6 +246,7 @@ function AppRoutes() {
           <Route path="payments" element={<PaymentsPage />} />
           <Route path="saved-cards" element={<SavedCardsPage />} />
           <Route path="autopay" element={<AutoPayPage />} />
+          <Route path="cases" element={<MyCasesPage />} />
         </Route>
       </Route>
 

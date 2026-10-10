@@ -5,12 +5,12 @@ import { rxCases, rxCaseFiles, rxCaseLines } from "../db/schema/index.js";
 import { createId } from "../lib/id.js";
 import { env } from "../config/env.js";
 import { eq, desc, and, ne, or, isNull, asc } from "drizzle-orm";
-import { ERROR_CODES, rxCaseSubmitSchema, rxFormSubmitSchema, buildFormDevices } from "@my-app/shared";
+import { ERROR_CODES, rxCaseSubmitSchema, rxFormSubmitSchema, buildFormDevices, doctorCaseView } from "@my-app/shared";
 import * as seazonaService from "../services/seazona.service.js";
 import { seedLines } from "../services/rx/case-lines.service.js";
 import { loadOverrides } from "../services/rx/code-overrides.service.js";
 import { canRelease, summariseLines } from "../services/rx/case-gates.js";
-import { releaseRxCase } from "../services/lab/lab-orders.service.js";
+import { releaseRxCase, labOrdersForCases } from "../services/lab/lab-orders.service.js";
 import { pushCaseToSeazona, shouldReleasePushLock } from "../services/rx/push-case.service.js";
 import { uploadCaseFile, deleteStoredFile, getSignedReadUrl } from "../services/storage.service.js";
 import { encryptRxPhi, decryptRxPhi } from "../services/rx/phi-crypto.js";
@@ -848,7 +848,10 @@ export default async function rxRoutes(fastify) {
       metadata: { count: cases.length },
       ipAddress: request.ip,
     });
-    return { data: cases };
+    const labOrdersByCase = await labOrdersForCases(cases.map((c) => c.id));
+    // Doctor-facing allow-list: production status in plain words, never hold
+    // reasons, lab notes, Seazona internals or the operator's manual note.
+    return { data: cases.map((c) => doctorCaseView(c, labOrdersByCase.get(c.id) ?? [])) };
   });
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -872,7 +875,7 @@ export default async function rxRoutes(fastify) {
     }
 
     const files = await db
-      .select()
+      .select({ id: rxCaseFiles.id, kind: rxCaseFiles.kind, originalName: rxCaseFiles.originalName, size: rxCaseFiles.size, createdAt: rxCaseFiles.createdAt })
       .from(rxCaseFiles)
       .where(eq(rxCaseFiles.caseId, caseRow.id));
 
@@ -895,7 +898,8 @@ export default async function rxRoutes(fastify) {
         error: { code: "INTERNAL_ERROR", status: 500, message: "Failed to load case." },
       });
     }
-    return { data: { ...decrypted, files } };
+    const labOrdersByCase = await labOrdersForCases([decrypted.id]);
+    return { data: { ...doctorCaseView(decrypted, labOrdersByCase.get(decrypted.id) ?? []), files } };
   });
 
   // ─────────────────────────────────────────────────────────────────────────

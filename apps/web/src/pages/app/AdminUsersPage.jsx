@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import api from "../../config/api.js";
+import { useAuth } from "../../hooks/useAuth.js";
+import { roleToggle } from "../../lib/staff.js";
 import { DoctorPaymentDrawer } from "../../components/admin/DoctorPaymentDrawer.jsx";
 
 const INPUT =
@@ -22,6 +24,7 @@ const INPUT =
 
 const ROLE_COLORS = {
   admin:  "bg-brand-500/10 text-brand-700",
+  lab:    "bg-amber-500/10 text-amber-700",
   doctor: "bg-emerald-500/10 text-emerald-700",
   user:   "bg-navy/10 text-navy/60",
 };
@@ -67,6 +70,7 @@ function Toast({ tone, children, onDismiss }) {
 }
 
 export function AdminUsersPage() {
+  const { user: me } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [data, setData] = useState({ users: [], summary: null });
@@ -138,6 +142,19 @@ export function AdminUsersPage() {
     }
   }
 
+  async function changeRole(u, role) {
+    try {
+      setBusyId(u.id);
+      await api.put(`/admin/users/${u.id}/role`, { role });
+      setToast({ tone: "ok", text: role === "lab" ? `${u.email} is now lab staff` : `${u.email} no longer has lab access` });
+      await load();
+    } catch (err) {
+      setToast({ tone: "error", text: err.response?.data?.error?.message || err.message || "Couldn't change the role." });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function bulkSend(kind) {
     if (selected.size === 0) return;
     try {
@@ -201,7 +218,7 @@ export function AdminUsersPage() {
           />
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {["all", "admin", "doctor", "user"].map((r) => (
+          {["all", "admin", "lab", "doctor", "user"].map((r) => (
             <button
               key={r}
               type="button"
@@ -381,6 +398,16 @@ export function AdminUsersPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-1">
+                          {roleToggle(u, me?.id) && (
+                            <button
+                              type="button"
+                              disabled={busyId === u.id}
+                              onClick={() => changeRole(u, roleToggle(u, me?.id).role)}
+                              className="flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-800 hover:bg-amber-500/20 disabled:opacity-50"
+                            >
+                              {roleToggle(u, me?.id).label}
+                            </button>
+                          )}
                           {u.role === "doctor" && (
                             <Link
                               to={`/admin/users/${u.id}/pricing`}

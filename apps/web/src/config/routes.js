@@ -27,6 +27,7 @@ export const ROUTES = {
   ADMIN_RX_CASE_DETAIL: "/admin/rx-cases/:id",
   ADMIN_AUTOPAY: "/admin/autopay",
   ADMIN_JOBS: "/admin/jobs",
+  ADMIN_DEPARTMENTS: "/admin/lab/departments",
 
   // Lab (admin + lab staff)
   LAB_BOARD: "/lab",
@@ -37,6 +38,7 @@ export const ROUTES = {
   DOCTOR_PAYMENTS: "/doctor/payments",
   DOCTOR_SAVED_CARDS: "/doctor/saved-cards",
   DOCTOR_AUTOPAY: "/doctor/autopay",
+  DOCTOR_CASES: "/doctor/cases",
   DOCTOR_NEW_CASE: "/app/cases/new",
 
   // Rx forms (faithful 1:1 JotForm ports)
