@@ -18,6 +18,16 @@ export default async function healthRoutes(fastify) {
   // degraded Seazona returns HTTP 503 so external monitors can alert on the code.
   fastify.get("/health/seazona", { preHandler: [authenticate] }, async (request, reply) => {
     const seazona = await seazonaService.checkHealth();
+    if (seazona.disabled) {
+      // Intentionally off (staging): not an outage, so 200 and no `[Seazona]` alert line.
+      return {
+        data: {
+          status: "disabled",
+          timestamp: new Date().toISOString(),
+          services: { seazona: "disabled", seazonaStatus: 0 },
+        },
+      };
+    }
     if (!seazona.ok) {
       // Distinct, alertable token — the GCP log-based metric matches `[Seazona]`.
       request.log.error({ status: seazona.status }, "[Seazona] health probe FAILED — billing API unreachable");

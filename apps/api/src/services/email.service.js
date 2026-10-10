@@ -1,5 +1,6 @@
 import { mailgun } from "../config/email.js";
 import { env } from "../config/env.js";
+import { stagingRewrite } from "../config/app-env.js";
 
 /**
  * Dispatch an email through Mailgun's HTTP API. Returns `true` when the message
@@ -25,7 +26,12 @@ export function headerSafe(value, max = MAX_SUBJECT_LENGTH) {
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
-async function send({ to, bcc, subject, html, text }) {
+/**
+ * THE single choke point for outbound mail: every sender below calls deliver(),
+ * and it is the only code that talks to Mailgun. Staging redirection happens
+ * here so no send can skip it (email-staging.test.js enforces this).
+ */
+async function deliver({ to, bcc, subject, html, text }) {
   // Header values: several subjects interpolate user input (doctor name, account
   // name, ...) and `to` can be a registrant-typed address. Strip control
   // characters (CR/LF header injection) and cap length centrally so no caller
@@ -33,6 +39,15 @@ async function send({ to, bcc, subject, html, text }) {
   to = headerSafe(to, 320);
   if (bcc) bcc = headerSafe(bcc, 320);
   subject = headerSafe(subject, MAX_SUBJECT_LENGTH);
+
+  // Staging: redirect to STAGING_EMAIL_TO (identity in production). Applied after
+  // sanitising so the rewritten header values are clean too; null = fail closed.
+  const rewritten = stagingRewrite({ to, bcc, subject }, env);
+  if (!rewritten) {
+    console.error("[EMAIL] Staging mode without STAGING_EMAIL_TO; message suppressed");
+    return false;
+  }
+  ({ to, bcc, subject } = rewritten);
 
   if (!mailgun) {
     console.log(`[EMAIL] To: ${to} | Subject: ${subject}`);
@@ -74,7 +89,7 @@ async function send({ to, bcc, subject, html, text }) {
 // `name` is escaped: on public doctor registration it is registrant-supplied and
 // this email goes to whatever address they typed — which may be someone else's.
 export async function sendWelcome({ email, name, verifyUrl, expiresIn = "24 hours" }) {
-  return send({
+  return deliver({
     to: email,
     subject: "Welcome! Please verify your email",
     html: `
@@ -87,7 +102,7 @@ export async function sendWelcome({ email, name, verifyUrl, expiresIn = "24 hour
 }
 
 export async function sendInvitation({ email, inviterName, accountName, acceptUrl }) {
-  await send({
+  await deliver({
     to: email,
     subject: `You're invited to join ${accountName}`,
     html: `
@@ -100,7 +115,7 @@ export async function sendInvitation({ email, inviterName, accountName, acceptUr
 }
 
 export async function sendPasswordReset({ email, resetUrl }) {
-  await send({
+  await deliver({
     to: email,
     subject: "Reset your password",
     html: `
@@ -114,7 +129,7 @@ export async function sendPasswordReset({ email, resetUrl }) {
 
 /** Invite a Seazona-imported client to activate their new portal account. */
 export async function sendPortalInvitation({ email, name, activateUrl }) {
-  await send({
+  await deliver({
     to: email,
     subject: "Activate your Diamond Orthotic Laboratory portal",
     html: `
@@ -166,9 +181,9 @@ export async function sendAdminApprovalRequest({
        </p>`
     : "";
 
-  await send({
+  await deliver({
     to: env.ADMIN_NOTIFICATION_EMAIL,
-    // doctorName is public-registration input; send() also sanitizes, but cap it
+    // doctorName is public-registration input; deliver() also sanitizes, but cap it
     // tighter here so a long name can't crowd out the subject.
     subject: `New Doctor Registration — ${headerSafe(doctorName, 80)}`,
     html: `
@@ -193,7 +208,7 @@ export async function sendAdminApprovalRequest({
 }
 
 export async function sendDoctorApproved({ email, name, loginUrl }) {
-  await send({
+  await deliver({
     to: email,
     subject: "Your Diamond Labs account has been approved",
     html: `
@@ -205,7 +220,7 @@ export async function sendDoctorApproved({ email, name, loginUrl }) {
 }
 
 export async function sendDoctorRejected({ email, name }) {
-  await send({
+  await deliver({
     to: email,
     subject: "Diamond Labs account update",
     html: `
@@ -221,7 +236,7 @@ export async function sendDoctorRejected({ email, name }) {
  * ADMIN_NOTIFICATION_EMAIL so a paused enrollment does not go unnoticed.
  */
 export async function sendAutopayFailure({ email, name, amount, reason, paused }) {
-  return send({
+  return deliver({
     to: email,
     bcc: env.ADMIN_NOTIFICATION_EMAIL,
     subject: paused ? "AutoPay paused — payment failed" : "AutoPay payment failed",
@@ -361,7 +376,7 @@ export async function sendOrderReceipt({
     </div>
   `;
 
-  return send({
+  return deliver({
     to,
     subject: `Your Diamond Orthotic Laboratory order — ${orderNumber}`,
     html,
@@ -386,7 +401,7 @@ export async function sendRxSubmissionReceived({ caseNumber, practiceName, devic
   const unmappedNote = unmappedCount > 0
     ? `<p style="margin:16px 0 0;color:#b45309;font-size:13px;">${esc(unmappedCount)} selection(s) still need a product code before this case can be sent.</p>`
     : "";
-  return send({
+  return deliver({
     to: env.ADMIN_NOTIFICATION_EMAIL,
     subject: `New Rx case — ${esc(caseNumber)}`,
     html: `
@@ -469,7 +484,7 @@ export async function sendPaymentReceipt({ to, amount, invoices = [], transactio
   const subject = wasCharged
     ? "Payment received — Diamond Orthotic Laboratory"
     : "Payment recorded — Diamond Orthotic Laboratory";
-  return send({ to, subject, html });
+  return deliver({ to, subject, html });
 }
 
 /**
@@ -522,5 +537,5 @@ export async function sendRefundReceipt({ to, amount, invoices = [], transaction
     </div>
   `;
 
-  return send({ to, subject: "Refund issued — Diamond Orthotic Laboratory", html });
+  return deliver({ to, subject: "Refund issued — Diamond Orthotic Laboratory", html });
 }

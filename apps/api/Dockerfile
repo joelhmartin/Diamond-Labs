@@ -23,6 +23,13 @@ ARG VITE_AUTHORIZE_NET_API_LOGIN=""
 ARG VITE_AUTHORIZE_NET_CLIENT_KEY=""
 ENV VITE_AUTHORIZE_NET_API_LOGIN=$VITE_AUTHORIZE_NET_API_LOGIN
 ENV VITE_AUTHORIZE_NET_CLIENT_KEY=$VITE_AUTHORIZE_NET_CLIENT_KEY
+# Staging switches. Empty defaults == the production build, unchanged:
+# VITE_APP_ENV=staging shows the banner; VITE_AUTHORIZE_NET_ENV=sandbox loads the
+# jstest Accept.js (empty/"production" keeps js.authorize.net).
+ARG VITE_APP_ENV=""
+ARG VITE_AUTHORIZE_NET_ENV=""
+ENV VITE_APP_ENV=$VITE_APP_ENV
+ENV VITE_AUTHORIZE_NET_ENV=$VITE_AUTHORIZE_NET_ENV
 RUN pnpm --filter @my-app/web build
 
 # --- Stage 2: API runtime (prod deps only) + baked-in frontend ---

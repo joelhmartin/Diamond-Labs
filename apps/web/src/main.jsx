@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App.jsx";
 import "./index.css";
+import StagingBanner from "./components/layout/StagingBanner.jsx";
 import { fetchTheme, applyTheme } from "./lib/theme.js";
 
 // Expose Authorize.net public keys to Accept.js. These must be set at build time
@@ -16,5 +17,6 @@ fetchTheme().then((t) => { if (Object.keys(t).length) applyTheme(t); });
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <App />
+    <StagingBanner />
   </StrictMode>,
 );

@@ -10,6 +10,8 @@ import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import multipart from "@fastify/multipart";
 import { env } from "./config/env.js";
+import { assertSafeConfig, assertScrubMarker, registerStagingHeaders } from "./config/app-env.js";
+import { queryClient } from "./config/database.js";
 import { reqSerializer } from "./lib/log-serializers.js";
 import project from "../../../project.config.js";
 import { errorHandler } from "./middleware/error-handler.js";
@@ -33,6 +35,10 @@ import adminPaymentRoutes from "./routes/admin-payment.routes.js";
 import { registerAllJobs } from "./jobs/definitions/index.js";
 import { registerJobTriggerRoutes } from "./jobs/triggers/http.js";
 
+// Staging boot gate: refuse to start unless sandbox payments, mail redirect and
+// Seazona-off are all configured. No-op in production/development.
+assertSafeConfig(env);
+
 const fastify = Fastify({
   logger: {
     level: env.NODE_ENV === "production" ? "info" : "debug",
@@ -51,6 +57,8 @@ const fastify = Fastify({
   // chain, letting a client spoof its source IP and bypass IP-based rate limits.
   trustProxy: 1,
 });
+
+registerStagingHeaders(fastify, env);
 
 // Treat an empty JSON body as {} instead of erroring. Several POSTs carry no
 // body and rely on cookies/headers instead (e.g. /auth/refresh, /auth/logout);
@@ -249,6 +257,8 @@ if (existsSync(webDist)) {
 // Start
 const start = async () => {
   try {
+    // Staging only: never serve a DB the scrub has not marked successful.
+    await assertScrubMarker(env, (sql) => queryClient.unsafe(sql));
     await fastify.listen({ port: env.PORT, host: "0.0.0.0" });
     console.log(`Server running on port ${env.PORT}`);
     if (env.JOBS_DEV_INTERVAL && env.NODE_ENV !== "production") {

@@ -18,6 +18,7 @@ import { users, invoicePayments, orders, orderItems, auditLog } from "../db/sche
 import { eq, and, gt, inArray, like, desc } from "drizzle-orm";
 import { createId } from "../lib/id.js";
 import { env } from "../config/env.js";
+import { testModeError } from "../config/app-env.js";
 import {
   ERROR_CODES,
   checkoutSchema,
@@ -1459,8 +1460,9 @@ export default async function paymentRoutes(fastify) {
     if (!(Number(amount) > 0) || Number(amount) > 100000) {
       return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "amount must be between 0 and 100000." } });
     }
-    if (mode !== "sandbox" && mode !== "production") {
-      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "mode must be 'sandbox' or 'production'." } });
+    const modeError = testModeError(mode, env);
+    if (modeError) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: modeError } });
     }
     if (iframeCommunicatorUrl && !/^https?:\/\//.test(iframeCommunicatorUrl)) {
       return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "iframeCommunicatorUrl must be an http(s) URL." } });
@@ -1494,8 +1496,9 @@ export default async function paymentRoutes(fastify) {
     if (!transId) {
       return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "transId is required." } });
     }
-    if (mode !== "sandbox" && mode !== "production") {
-      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "mode must be 'sandbox' or 'production'." } });
+    const modeError = testModeError(mode, env);
+    if (modeError) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: modeError } });
     }
 
     const details = await authorizenetService.getTransactionDetails(transId, mode);
