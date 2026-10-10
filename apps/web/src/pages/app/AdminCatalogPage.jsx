@@ -3,6 +3,7 @@ import { Search, Loader2, AlertCircle, Plus, Layers, Save, Pencil, Trash2, X, Ch
 import { canDeleteVariant, canDeleteOptionValue } from "@my-app/shared";
 import api from "../../config/api.js";
 import { formatCents } from "../../lib/money.js";
+import ImageUploadField from "../../components/ui/ImageUploadField.jsx";
 
 const INPUT =
   "w-full px-3.5 py-2.5 rounded-lg bg-white border border-surface-300/60 text-primary text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-icon";
@@ -187,10 +188,12 @@ function DetailsForm({ family, busy, act }) {
       <div className="grid sm:grid-cols-2 gap-3 mt-3">
         <input className={INPUT} aria-label="Name" placeholder="Name" value={d.name} onChange={set("name")} />
         <input className={INPUT} aria-label="Category" placeholder="Category" value={d.category} onChange={set("category")} />
-        <input className={INPUT} aria-label="Image URL" placeholder="Image URL" value={d.imageUrl} onChange={set("imageUrl")} />
         <select className={INPUT} aria-label="Channel" value={d.channel} onChange={set("channel")}>
           {CHANNEL_OPTIONS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
         </select>
+        <div className="sm:col-span-2">
+          <ImageUploadField label="Image" value={d.imageUrl} onChange={(url) => setD((prev) => ({ ...prev, imageUrl: url }))} />
+        </div>
         <textarea className={`${INPUT} sm:col-span-2`} aria-label="Description" placeholder="Description" rows={3} value={d.description} onChange={set("description")} />
       </div>
       {localError && <p className="text-xs text-red-600 mt-2">{localError}</p>}

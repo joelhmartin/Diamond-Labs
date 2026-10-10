@@ -109,7 +109,7 @@ Each command is shown before it runs. Everything new is named `*-staging` / `STA
      --service-account=staging-runtime@diamond-labs-prod.iam.gserviceaccount.com \
      --set-cloudsql-instances diamond-labs-prod:us-central1:diamond-labs-db \
      --allow-unauthenticated --max-instances=2 --memory=512Mi \
-     --set-env-vars "APP_ENV=staging,SEAZONA_DISABLED=true,AUTHORIZE_NET_ENV=sandbox,NODE_ENV=production,RX_GCS_BUCKET=diamond-labs-rx-files-staging,APP_URL=https://diamond-labs-api-staging-565921059210.us-central1.run.app,CORS_ORIGINS=https://diamond-labs-api-staging-565921059210.us-central1.run.app,ADMIN_NOTIFICATION_EMAIL=<staging inbox>" \
+     --set-env-vars "APP_ENV=staging,SEAZONA_DISABLED=true,AUTHORIZE_NET_ENV=sandbox,NODE_ENV=production,RX_GCS_BUCKET=diamond-labs-rx-files-staging,MEDIA_GCS_BUCKET=diamond-labs-media-staging,APP_URL=https://diamond-labs-api-staging-565921059210.us-central1.run.app,CORS_ORIGINS=https://diamond-labs-api-staging-565921059210.us-central1.run.app,ADMIN_NOTIFICATION_EMAIL=<staging inbox>" \
      --set-secrets "DATABASE_URL=STAGING_DATABASE_URL:latest,JWT_SECRET=STAGING_JWT_SECRET:latest,JWT_EXPIRY=JWT_EXPIRY:latest,REFRESH_TOKEN_EXPIRY=REFRESH_TOKEN_EXPIRY:latest,AUTHORIZE_NET_SANDBOX_API_LOGIN=STAGING_AUTHORIZE_NET_SANDBOX_API_LOGIN:latest,AUTHORIZE_NET_SANDBOX_TRANSACTION_KEY=STAGING_AUTHORIZE_NET_SANDBOX_TRANSACTION_KEY:latest,MAILGUN_API_KEY=MAILGUN_API_KEY:latest,MAILGUN_DOMAIN=MAILGUN_DOMAIN:latest,EMAIL_FROM=EMAIL_FROM:latest,PHI_ENCRYPTION_KEY=STAGING_PHI_ENCRYPTION_KEY:latest,STAGING_EMAIL_TO=STAGING_EMAIL_TO:latest"
    ```
    Then the Cloud Build trigger `deploy-staging-on-own-the-lab`: `^feat/own-the-lab$` → `cloudbuild.staging.yaml`.
@@ -138,4 +138,4 @@ Each command is shown before it runs. Everything new is named `*-staging` / `STA
 - The first image was built with a build-and-push-only config (the full pipeline would have deployed the service before the scrub).
 - Cloud SQL's SQL export carries no ownership statements, so an import as `staging_app` leaves every object owned by `staging_app`; no ownership fix-up is needed. Never use `REASSIGN OWNED BY postgres` (it also reassigns shared objects such as the production database).
 - The two Seazona alert policies were already scoped to `service_name="diamond-labs-api"`; step 8 needed no change.
-
+- 2026-10-07: product image uploads (main #50) store in `MEDIA_GCS_BUCKET`; staging has its own `gs://diamond-labs-media-staging` (private, staging-runtime objectAdmin only), set on the service.
