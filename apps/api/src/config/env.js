@@ -95,7 +95,7 @@ const envSchema = z.object({
   //
   // Also requires SEAZONA_ORDER_USER_ID to be set, or auto-push logs
   // [Seazona][RX_AUTO_PUSH_SKIPPED] and leaves the case for a human. A case
-  // whose lines don't all resolve (canPush gate) is left "new" for the admin
+  // whose lines don't all resolve (canRelease gate) is left "new" for the admin
   // queue rather than being sent partial. Any push failure lands the case in
   // "failed" for the queue, same as a manual push failure.
   //

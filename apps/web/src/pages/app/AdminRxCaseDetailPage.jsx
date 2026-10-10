@@ -34,7 +34,7 @@ import { resolutionLabel } from "../../lib/rx-case-labels.js";
  * explanation is the thing staff will complain about; naming the selection
  * that blocks it turns a dead end into a next action.
  *
- * Mirrors the server's canPush gate (case-gates.js): a case with nothing to
+ * Mirrors the server's canRelease gate (case-gates.js): a case with nothing to
  * send is refused the same as a case with an unresolved line — both read
  * "This case has no lines to send." / "Needs a product code for: …" rather
  * than a generic disabled state.
@@ -44,7 +44,7 @@ export function pushBlockedReason(lines = []) {
   if (emitting.length === 0) {
     return "This case has no lines to send.";
   }
-  // Both halves of the server's rule, deliberately. canPush blocks a line with
+  // Both halves of the server's rule, deliberately. canRelease blocks a line with
   // no seazonaCode REGARDLESS of what its status claims — it was made
   // self-sufficient precisely so a stale "confirmed" can't wave a codeless line
   // through. Mirroring only the status half would light up Push for a case the

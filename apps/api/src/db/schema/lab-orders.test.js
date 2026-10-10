@@ -47,8 +47,11 @@ test("no migration uses the 'lab' role value — it is only ever added", () => {
 });
 
 test("a remake may share its source; an original may not (partial unique index)", () => {
-  const latest = readdirSync(migrationsDir).filter((n) => n.endsWith(".sql")).sort().at(-1);
-  const sql = readFileSync(join(migrationsDir, latest), "utf8");
+  // Pin to the migration that creates the index, not "the latest file".
+  const file = readdirSync(migrationsDir).filter((n) => n.endsWith(".sql")).sort()
+    .find((n) => readFileSync(join(migrationsDir, n), "utf8").includes("lab_orders_source_idx"));
+  assert.ok(file, "a migration creates lab_orders_source_idx");
+  const sql = readFileSync(join(migrationsDir, file), "utf8");
   assert.match(sql, /CREATE UNIQUE INDEX "lab_orders_source_idx" ON "lab_orders" USING btree \("source","source_id"\) WHERE is_remake = false/);
   assert.match(sql, /CREATE UNIQUE INDEX "lab_orders_order_number_idx"/);
 });

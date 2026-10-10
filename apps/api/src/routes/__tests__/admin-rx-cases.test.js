@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import {
   DEFAULT_QUEUE_STATUSES,
   summariseLines,
-  canPush,
+  canRelease,
   overrideRowFor,
   normalizeSeazonaCode,
   CASE_STATUSES,
@@ -42,18 +42,18 @@ test("an open line that is not noteOnly counts as unmapped", () => {
 });
 
 test("a case with an unresolved line cannot be pushed", () => {
-  assert.equal(canPush([{ status: "open", noteOnly: false }]).ok, false);
+  assert.equal(canRelease([{ status: "open", noteOnly: false }]).ok, false);
 });
 
 test("a case whose only open line is noteOnly can be pushed", () => {
-  assert.equal(canPush([
+  assert.equal(canRelease([
     { status: "confirmed", noteOnly: false, seazonaCode: "2608" },
     { status: "open", noteOnly: true },
   ]).ok, true);
 });
 
 test("a case with no lines at all cannot be pushed", () => {
-  const r = canPush([]);
+  const r = canRelease([]);
   assert.equal(r.ok, false);
   assert.match(r.reason, /no lines/i);
 });
@@ -62,17 +62,17 @@ test("a case whose only line is note-only has nothing to send", () => {
   // Guards the difference between "no lines" and "no SENDABLE lines" — an
   // implementation checking lines.length instead of emitting.length passes
   // every other test here and still lets this through.
-  const r = canPush([{ status: "open", noteOnly: true }]);
+  const r = canRelease([{ status: "open", noteOnly: true }]);
   assert.equal(r.ok, false);
 });
 
 test("a line claiming to be confirmed with no code is refused, not trusted", () => {
-  // canPush must not take a line's own claim about itself at face value.
+  // canRelease must not take a line's own claim about itself at face value.
   // Nothing upstream produces this shape today (statusForLine guards the
   // write path, the resolver routes codeless rows to unmapped) — but the
   // gate is the last check before a real order reaches the lab, and it must
   // hold even if a future producer gets it wrong.
-  const r = canPush([{ seazonaCode: null, noteOnly: false, status: "confirmed", mapKey: "mod:x" }]);
+  const r = canRelease([{ seazonaCode: null, noteOnly: false, status: "confirmed", mapKey: "mod:x" }]);
   assert.equal(r.ok, false);
   assert.match(r.reason, /product code/i);
   assert.deepEqual(r.blocking, ["mod:x"]);
@@ -112,7 +112,7 @@ test("an override cannot be written without a mapKey to key it on", () => {
 
 test("overrideRowFor clears a code paired with noteOnly — note-only wins", () => {
   // A partial update can send noteOnly: true while a real seazonaCode still
-  // sits on the row from a previous edit. Both downstream readers (canPush,
+  // sits on the row from a previous edit. Both downstream readers (canRelease,
   // itemFromOverride) key off noteOnly and would silently drop the code, so
   // the persisted row must not lie about what will actually happen.
   const row = overrideRowFor({
@@ -146,9 +146,9 @@ test("normalizeSeazonaCode is null-safe when there's no code and no ruling", () 
   assert.equal(normalizeSeazonaCode({ seazonaCode: null, noteOnly: false }), null);
 });
 
-test("the six agreed states exist and nothing else", () => {
+test("the seven agreed states exist and nothing else", () => {
   assert.deepEqual([...CASE_STATUSES].sort(), [
-    "awaiting_doctor", "cancelled", "failed", "in_review", "new", "pushed",
+    "awaiting_doctor", "cancelled", "failed", "in_review", "new", "pushed", "released",
   ]);
 });
 
@@ -336,20 +336,20 @@ test("POST /admin/rx-cases/:id/push refuses with 503 SEAZONA_ORDER_USER_NOT_CONF
   assert.match(body, /reply\.code\(503\)/);
 });
 
-test("POST /admin/rx-cases/:id/push gates on canPush before claiming the case, and refuses with 422 RX_PUSH_BLOCKED (fix 2)", () => {
+test("POST /admin/rx-cases/:id/push gates on canRelease before claiming the case, and refuses with 422 RX_PUSH_BLOCKED (fix 2)", () => {
   const body = handlerSource(PUSH_ROUTE_MARKER);
-  const gateIdx = body.indexOf("canPush(lines)");
+  const gateIdx = body.indexOf("canRelease(lines)");
   const claimIdx = body.indexOf('seazonaPushStatus: "pushing"');
-  assert.ok(gateIdx >= 0, "push route should call canPush(lines) as a route-level preflight");
+  assert.ok(gateIdx >= 0, "push route should call canRelease(lines) as a route-level preflight");
   assert.ok(
     gateIdx < claimIdx,
-    "the canPush gate must run before the DB claim — a refusal must not be recorded as a push failure"
+    "the canRelease gate must run before the DB claim — a refusal must not be recorded as a push failure"
   );
   assert.match(body, /RX_PUSH_BLOCKED/);
   assert.match(body, /reply\.code\(422\)/);
 });
 
-test("POST /admin/rx-cases/:id/push still calls pushCaseToSeazona, which re-runs canPush as defence in depth", () => {
+test("POST /admin/rx-cases/:id/push still calls pushCaseToSeazona, which re-runs canRelease as defence in depth", () => {
   const body = handlerSource(PUSH_ROUTE_MARKER);
   assert.match(body, /pushCaseToSeazona\(/);
 });
@@ -404,7 +404,7 @@ test("marking manual records what was still unmapped, rather than erasing it", (
 
 test("a case with unmapped lines can still be marked manual — the gate does not apply", () => {
   const lines = [{ seazonaCode: null, noteOnly: false, status: "open", mapKey: "mod:anterior-pad" }];
-  assert.equal(canPush(lines).ok, false, "precondition: this case cannot be pushed");
+  assert.equal(canRelease(lines).ok, false, "precondition: this case cannot be pushed");
   assert.equal(manualResolution(lines, {}).status, "pushed", "but it can be recorded as done by hand");
 });
 
@@ -434,9 +434,9 @@ test("POST /admin/rx-cases/:id/mark-manual refuses 409 when the claim finds noth
   assert.match(body, /clear-push-lock/, "the 409 message should point the operator at checking Seazona first, not just say no");
 });
 
-test("POST /admin/rx-cases/:id/mark-manual does NOT call canPush — a human already created the order", () => {
+test("POST /admin/rx-cases/:id/mark-manual does NOT call canRelease — a human already created the order", () => {
   const body = handlerSource(MARK_MANUAL_ROUTE_MARKER);
-  assert.doesNotMatch(body, /canPush\(/);
+  assert.doesNotMatch(body, /canRelease\(/);
 });
 
 test("POST /admin/rx-cases/:id/mark-manual is NOT gated by refusePushedCase/isFrozen — it does its own claim, like push", () => {

@@ -1,5 +1,5 @@
 import * as seazonaService from "../seazona.service.js";
-import { canPush } from "./case-gates.js";
+import { canRelease } from "./case-gates.js";
 import { devicesForCase } from "./case-devices.js";
 import { compileNotesMulti } from "./build-order-payload.js";
 
@@ -83,7 +83,7 @@ function normalizeArch(arch) {
 }
 
 /**
- * Orchestrate ONE push attempt: gate on canPush, build the payload from the
+ * Orchestrate ONE push attempt: gate on canRelease, build the payload from the
  * stored lines, call Seazona, and translate the outcome into what the route
  * should persist. This is the actual decision that creates — or refuses to
  * create — a real order in the lab's system, so it lives here (not in the
@@ -98,7 +98,7 @@ function normalizeArch(arch) {
  * with no outcome recorded. Both are worse than an explicit `failed`.
  *
  * `contactedSeazona` distinguishes WHY a failure happened: `false` means the
- * push was refused before any network call (canPush gate, or the payload
+ * push was refused before any network call (canRelease gate, or the payload
  * failed to build) — Seazona was never contacted, so nothing was created and
  * a retry is unambiguously safe. `true` means `seazonaService.createOrder`
  * was actually invoked, whatever it returned — including the ambiguous null
@@ -114,7 +114,7 @@ function normalizeArch(arch) {
  * @returns {Promise<{ status: "pushed"|"failed", seazonaOrderId: string|null, seazonaPushError: string|null, payload: object|null, contactedSeazona: boolean }>}
  */
 export async function pushCaseToSeazona(caseRow, lines = [], { codeToId = {}, userId } = {}) {
-  const gate = canPush(lines);
+  const gate = canRelease(lines);
   if (!gate.ok) {
     return { status: "failed", seazonaOrderId: null, seazonaPushError: gate.reason, payload: null, contactedSeazona: false };
   }
@@ -166,7 +166,7 @@ export async function pushCaseToSeazona(caseRow, lines = [], { codeToId = {}, us
  *
  * - "pushed" always releases — there's nothing left to protect.
  * - "failed" releases ONLY when `contactedSeazona` is false: the push was
- *   refused before any network call (the canPush gate or a payload-build
+ *   refused before any network call (the canRelease gate or a payload-build
  *   failure), so nothing could have been created and a retry is
  *   unambiguously safe.
  * - "failed" with `contactedSeazona: true` means createOrder actually ran

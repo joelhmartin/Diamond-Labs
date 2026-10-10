@@ -9,7 +9,7 @@ import { ERROR_CODES, rxCaseSubmitSchema, rxFormSubmitSchema, buildFormDevices }
 import * as seazonaService from "../services/seazona.service.js";
 import { seedLines } from "../services/rx/case-lines.service.js";
 import { loadOverrides } from "../services/rx/code-overrides.service.js";
-import { canPush, summariseLines } from "../services/rx/case-gates.js";
+import { canRelease, summariseLines } from "../services/rx/case-gates.js";
 import { pushCaseToSeazona, shouldReleasePushLock } from "../services/rx/push-case.service.js";
 import { uploadCaseFile, deleteStoredFile, getSignedReadUrl } from "../services/storage.service.js";
 import { encryptRxPhi, decryptRxPhi } from "../services/rx/phi-crypto.js";
@@ -553,7 +553,7 @@ export default async function rxRoutes(fastify) {
     // has to go find and delete — reuses pushCaseToSeazona, the SAME send
     // path the admin queue's manual push button uses, rather than a second
     // implementation of the send. Every branch below leaves the case
-    // visible: an unresolved line leaves it "new" for the queue (canPush
+    // visible: an unresolved line leaves it "new" for the queue (canRelease
     // gate — see push-case.service.js), and any push failure leaves it
     // "failed" for the queue — it must never vanish or stay silently "new"
     // with no explanation.
@@ -581,7 +581,7 @@ export default async function rxRoutes(fastify) {
           "[Seazona][RX_AUTO_PUSH_SKIPPED] RX_LIVE_PUSH is on but SEAZONA_ORDER_USER_ID is not configured"
         );
       } else {
-        const gate = canPush(lines);
+        const gate = canRelease(lines);
         if (!gate.ok) {
           // status stays "new" — it is waiting for a person, not broken.
           request.log.info(

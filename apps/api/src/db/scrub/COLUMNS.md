@@ -64,7 +64,7 @@ Pre-check before the transaction: every plan table and column must exist live ("
 
 ## Kept (judgement calls)
 
-- users with role doctor/admin: email, name, avatar_url (role 'user' shoppers get avatar_url NULLed); all users: status/role/approval, Seazona link ids (inert: Seazona is disabled in staging).
+- users with role doctor/admin/lab: email, name, avatar_url (role 'user' shoppers get avatar_url NULLed); all users: status/role/approval, Seazona link ids (inert: Seazona is disabled in staging).
 - accounts (doctor/admin-owned): name, slug, logo_url (shopper-owned accounts get logo_url NULLed); all: owner. doctor_profiles: company name, address, phone, NPI, license. DEVIATION from the strictest reading (addresses/phones scrubbed): accepted as practice business data and public identifiers; only the free-text delivery notes go. A sole practitioner's practice address may also be a home address.
 - rx_cases: case_number, practice_name, device_key/category, first_device, records_method, physical_bite, form_type, due_date, rush, status. Non-identifying once names, DOB, contact and free text are gone. Clinical-ish (`physical_bite`) but not linkable to a person.
 - rx_code_overrides: only rows whose map_key is a KNOWN catalog-map key (from the DEVICE/MODIFICATION/ATTRIBUTE/LAB_SERVICE/GUARD/ORTHO tables, `known-map-keys.js`) are kept; every other row is DELETED. The key prefixes (`mod:`, `attr:`, `primary:`) are shared by stable slugs and by doctor-typed literals (`mod:<literal>`), so shape cannot tell them apart; this is the "not in the known set" fallback. Consequence: a real lab override on a key the tables no longer emit is also dropped. `note` and the rest of each kept row (except `seazona_name`, re-derived) are lab-staff mapping data.

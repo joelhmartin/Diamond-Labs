@@ -17,7 +17,7 @@ import { and, asc, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import {
   CASE_STATUSES,
   DEFAULT_QUEUE_STATUSES,
-  canPush,
+  canRelease,
   canTransition,
   isFrozen,
   manualResolution,
@@ -34,7 +34,7 @@ import {
 export {
   CASE_STATUSES,
   DEFAULT_QUEUE_STATUSES,
-  canPush,
+  canRelease,
   canTransition,
   isFrozen,
   manualResolution,
@@ -599,7 +599,7 @@ export default async function adminRxCasesRoutes(fastify) {
   // ───────────────────────────────────────────────────────────────────────────
   // DELETE /admin/rx-cases/:id/lines/:lineId
   // Remove a line entirely — e.g. staff added one by mistake, or the resolver
-  // produced a line that shouldn't exist. Hard delete; canPush/summariseLines
+  // produced a line that shouldn't exist. Hard delete; canRelease/summariseLines
   // simply see one fewer line on the next read.
   // ───────────────────────────────────────────────────────────────────────────
   fastify.delete("/admin/rx-cases/:id/lines/:lineId", {
@@ -776,7 +776,7 @@ export default async function adminRxCasesRoutes(fastify) {
   // The payload is built from the case's STORED lines (push-case.service.js's
   // payloadFromLines), never re-resolved from the raw device selections —
   // re-resolving here would silently discard every staff correction at the
-  // exact moment those corrections matter. canPush (also in push-case.service.js
+  // exact moment those corrections matter. canRelease (also in push-case.service.js
   // via pushCaseToSeazona) independently re-verifies a real product code exists
   // on every sendable line; it does not trust a line's own `status`.
   //
@@ -791,17 +791,17 @@ export default async function adminRxCasesRoutes(fastify) {
   // place allowed to move a case TO `pushed`.
   //
   // Two preflight checks run BEFORE the claim, in this order: (1) the
-  // SEAZONA_ORDER_USER_ID precondition, and (2) the canPush gate. Both are
+  // SEAZONA_ORDER_USER_ID precondition, and (2) the canRelease gate. Both are
   // pure refusals — no claim taken, no status/seazonaPushStatus/
   // seazonaPushError written, the case stays exactly where it was. A refusal
   // is not an attempt: "we refused to send" needs a different next action
   // from staff than "we sent it and it failed" (fix the missing config /
   // unmapped line, vs. check Seazona and maybe retry) — conflating them by
   // writing `failed` sends staff hunting for orders that were never
-  // attempted. canPush is called again inside pushCaseToSeazona as defence in
+  // attempted. canRelease is called again inside pushCaseToSeazona as defence in
   // depth for any future caller of that function.
   //
-  // All Seazona-facing decision logic (the canPush gate, payload build, and
+  // All Seazona-facing decision logic (the canRelease gate, payload build, and
   // interpreting Seazona's response) lives in pushCaseToSeazona so it stays
   // unit-testable without a Fastify harness; this route is a thin caller that
   // only does the preflight checks, the DB claim, the final write, and audit
@@ -837,7 +837,7 @@ export default async function adminRxCasesRoutes(fastify) {
       });
     }
 
-    // Precondition 2: the canPush gate, run against the case's STORED lines
+    // Precondition 2: the canRelease gate, run against the case's STORED lines
     // — loaded here, before the claim, so a refusal never takes and releases
     // a lock for a send that was never going to happen.
     const lines = await db
@@ -846,7 +846,7 @@ export default async function adminRxCasesRoutes(fastify) {
       .where(eq(rxCaseLines.caseId, caseId))
       .orderBy(asc(rxCaseLines.position));
 
-    const gate = canPush(lines);
+    const gate = canRelease(lines);
     if (!gate.ok) {
       return reply.code(422).send({
         error: {
@@ -899,7 +899,7 @@ export default async function adminRxCasesRoutes(fastify) {
       });
     }
 
-    // `lines` was already loaded above (before the claim) for the canPush
+    // `lines` was already loaded above (before the claim) for the canRelease
     // preflight — reused here rather than re-queried, same as
     // payloadFromLines' own reasoning: the stored lines at whatever moment
     // they're read are the source of truth, not a fresh re-resolve.
@@ -1003,7 +1003,7 @@ export default async function adminRxCasesRoutes(fastify) {
   // marked manual again, but tags seazonaPushStatus: "manual" so "we sent
   // this" and "someone typed it in" stay distinguishable forever.
   //
-  // Deliberately bypasses canPush — a human already created the order in
+  // Deliberately bypasses canRelease — a human already created the order in
   // Seazona, so an unresolved line here cannot stop them recording that.
   // This is the one sanctioned way past the send gate. Precisely because it
   // bypasses that gate, manualResolution captures which lines were still

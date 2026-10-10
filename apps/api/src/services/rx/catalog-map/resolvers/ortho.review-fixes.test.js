@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { resolveOrtho, orthoBuildNotes } from "./ortho.js";
 import { resolveLineItems, isDeviceLine } from "../index.js";
 import { linesForDevices } from "../../case-lines.service.js";
-import { canPush } from "../../case-gates.js";
+import { canRelease } from "../../case-gates.js";
 import { compileNotes, buildSeazonaOrderPayload } from "../../build-order-payload.js";
 import { resolveGuard } from "./guard.js";
 
@@ -31,7 +31,7 @@ test("an add-on-only ortho case seeds a blocking line and cannot be pushed", () 
     { deviceKey: "ortho-expander", deviceOptions: { upperAddOns: ["Transfer tray for composite buttons"] } },
   ]).map((l) => ({ ...l, seazonaCode: l.seazonaCode ?? null }));
   assert.ok(lines.some((l) => l.mapKey === "ortho:unspecified" && l.status === "open"));
-  assert.equal(canPush(lines).ok, false);
+  assert.equal(canRelease(lines).ok, false);
 });
 
 test("the order builder does not count ortho bands / add-ons as a device line", () => {
@@ -48,12 +48,12 @@ test("the order builder does not count ortho bands / add-ons as a device line", 
   assert.ok(warnings.some((w) => /no device line resolved/.test(w)));
 });
 
-test("canPush refuses a case whose sendable lines are only accessories — even with codes", () => {
+test("canRelease refuses a case whose sendable lines are only accessories — even with codes", () => {
   const line = (mapKey, code) => ({ mapKey, seazonaCode: code, status: "confirmed", noteOnly: false });
-  assert.equal(canPush([line("ortho:addon:transfer-tray", "2313"), line("service:model-fab", "2367")]).ok, false);
-  assert.equal(canPush([line("service:model-fab", "2367")]).ok, false, "the #42 service-only gate still holds");
-  assert.equal(canPush([line("ortho:tandem:bow", "2217"), line("ortho:addon:transfer-tray", "2313")]).ok, true);
-  assert.equal(canPush([{ mapKey: null, sourceLabel: "staff line", seazonaCode: "2217", status: "confirmed" }]).ok, true, "a staff-added line is an appliance");
+  assert.equal(canRelease([line("ortho:addon:transfer-tray", "2313"), line("service:model-fab", "2367")]).ok, false);
+  assert.equal(canRelease([line("service:model-fab", "2367")]).ok, false, "the #42 service-only gate still holds");
+  assert.equal(canRelease([line("ortho:tandem:bow", "2217"), line("ortho:addon:transfer-tray", "2313")]).ok, true);
+  assert.equal(canRelease([{ mapKey: null, sourceLabel: "staff line", seazonaCode: "2217", status: "confirmed" }]).ok, true, "a staff-added line is an appliance");
 });
 
 // ── 2. Overrides on held ortho rulings ──────────────────────────────────────

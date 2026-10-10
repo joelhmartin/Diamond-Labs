@@ -19,7 +19,7 @@ const caseRow = { seazonaClientId: "c1", patientFirst: "A", patientLast: "B", du
 
 // ─── Task 10 fix 1 — the circular import (service importing from routes/) ──
 //
-// push-case.service.js used to import canPush from admin-rx-cases.routes.js
+// push-case.service.js used to import canRelease from admin-rx-cases.routes.js
 // while that route module imported pushCaseToSeazona from this service — a
 // real cycle that survived only on ESM function hoisting, and forced any
 // service test to transitively load Fastify, drizzle, and config/database.js
@@ -27,7 +27,7 @@ const caseRow = { seazonaClientId: "c1", patientFirst: "A", patientLast: "B", du
 // case-gates.js (which imports nothing from routes/) and made the route
 // re-export them so every existing importer keeps working unchanged.
 
-test("push-case.service.js imports canPush from case-gates.js, never from routes/ — no circular import", () => {
+test("push-case.service.js imports canRelease from case-gates.js, never from routes/ — no circular import", () => {
   const path = fileURLToPath(new URL("./push-case.service.js", import.meta.url));
   const source = readFileSync(path, "utf8");
   assert.doesNotMatch(
@@ -37,8 +37,8 @@ test("push-case.service.js imports canPush from case-gates.js, never from routes
   );
   assert.match(
     source,
-    /canPush.*from\s+["']\.\/case-gates\.js["']/,
-    "push-case.service.js should import canPush from ./case-gates.js"
+    /canRelease.*from\s+["']\.\/case-gates\.js["']/,
+    "push-case.service.js should import canRelease from ./case-gates.js"
   );
 });
 
@@ -46,7 +46,7 @@ test("case-gates.js exports everything admin-rx-cases.routes.js re-exports, as t
   const expectedExports = [
     "CASE_STATUSES",
     "DEFAULT_QUEUE_STATUSES",
-    "canPush",
+    "canRelease",
     "canTransition",
     "isFrozen",
     "normalizeSeazonaCode",
@@ -167,7 +167,7 @@ describe("pushCaseToSeazona — one push attempt, decision logic only (Seazona m
     vi.clearAllMocks();
   });
 
-  it("a case that fails canPush is refused before Seazona is ever called", async () => {
+  it("a case that fails canRelease is refused before Seazona is ever called", async () => {
     const lines = [{ seazonaCode: null, name: "x", status: "open", noteOnly: false }];
     const outcome = await pushCaseToSeazona(caseRow, lines, { codeToId: {}, userId: "u1" });
     expect(outcome.status).toBe("failed");
@@ -185,7 +185,7 @@ describe("pushCaseToSeazona — one push attempt, decision logic only (Seazona m
   });
 
   it("a line whose code has no catalog id fails the push before Seazona is called", async () => {
-    // canPush only checks status/seazonaCode presence, not codeToId — so this
+    // canRelease only checks status/seazonaCode presence, not codeToId — so this
     // passes the gate but must still fail loudly at the payload-build step,
     // never silently drop the line and send a partial order.
     const lines = [{ seazonaCode: "2608", name: "DDSO Nylon", status: "confirmed", noteOnly: false }];

@@ -11,7 +11,7 @@ test("nothing blocking means no reason", () => {
   assert.equal(pushBlockedReason([{ status: "confirmed", noteOnly: false, seazonaCode: "2608" }]), null);
 });
 
-// The server's canPush deliberately does not trust a line's own `status` — it
+// The server's canRelease deliberately does not trust a line's own `status` — it
 // blocks any sendable line with no seazonaCode, whatever the status claims.
 // This helper mirrors that whole rule, not half of it: checking only `status`
 // would light Push up for a case the server then refuses with a 422, which is
@@ -33,7 +33,7 @@ test("a note-only line never blocks the push, even while still 'open'", () => {
   );
 });
 
-test("a case with nothing to send is blocked too, same as the server's canPush gate", () => {
+test("a case with nothing to send is blocked too, same as the server's canRelease gate", () => {
   assert.match(pushBlockedReason([]), /no lines to send/);
   assert.match(pushBlockedReason([{ status: "open", noteOnly: true }]), /no lines to send/);
 });
