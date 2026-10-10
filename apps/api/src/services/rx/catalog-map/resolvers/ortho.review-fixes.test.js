@@ -9,7 +9,7 @@ import { resolveOrtho, orthoBuildNotes } from "./ortho.js";
 import { resolveLineItems, isDeviceLine } from "../index.js";
 import { linesForDevices } from "../../case-lines.service.js";
 import { canRelease } from "../../case-gates.js";
-import { compileNotes, buildSeazonaOrderPayload } from "../../build-order-payload.js";
+import { compileNotes } from "../../case-notes.js";
 import { resolveGuard } from "./guard.js";
 
 // ── 1. Accessories alone are not an appliance ──────────────────────────────
@@ -39,13 +39,6 @@ test("the order builder does not count ortho bands / add-ons as a device line", 
     assert.equal(isDeviceLine(k), false, k);
   for (const k of ["ortho:tandem:bow", "ortho:upper:fixed:variety-click", "ortho:lower:mandibular:fixed:e-arch", "guard:essix-tray:any"])
     assert.equal(isDeviceLine(k), true, k);
-
-  const { ok, warnings } = buildSeazonaOrderPayload(
-    { deviceKey: "ortho-expander", deviceOptions: { upperAddOns: ["Transfer tray for composite buttons"] } },
-    { codeToId: { 2313: "id-2313" } }
-  );
-  assert.equal(ok, false);
-  assert.ok(warnings.some((w) => /no device line resolved/.test(w)));
 });
 
 test("canRelease refuses a case whose sendable lines are only accessories — even with codes", () => {

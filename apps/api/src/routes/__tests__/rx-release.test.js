@@ -32,22 +32,16 @@ test("the case detail carries the current lab order", () => {
   assert.match(body, /labOrder:/);
 });
 
-test("legacy Seazona push refuses released cases until Task 12 deletes it", () => {
-  const body = handlerSource(adminRx, 'fastify.post("/admin/rx-cases/:id/push",');
-  assert.match(body, /ne\(rxCases\.status, "released"\)/);
-});
-
 test("auto-release reuses the same gate and the same release, and never fails the doctor's submission", () => {
   const start = rx.indexOf("shouldAutoRelease(env.RX_AUTO_RELEASE)");
   assert.ok(start >= 0, "auto-release block missing");
-  const end = rx.indexOf("Auto-push under RX_LIVE_PUSH", start);
-  assert.ok(end > start, "legacy auto-push marker not found after the auto-release block");
+  const end = rx.indexOf("Notify the lab a case arrived", start);
+  assert.ok(end > start, "arrival-email marker not found after the auto-release block");
   const block = rx.slice(start, end);
   assert.match(block, /canRelease\(lines\)\.ok/);
   assert.match(block, /db\.transaction\(\(tx\) => releaseRxCase\(tx,/);
   assert.match(block, /catch \(err\)/);
   assert.match(block, /finalStatus = "released"/);
-  assert.match(rx, /finalStatus === SUBMISSION_STATUS && shouldAutoPush\(env\.RX_LIVE_PUSH\)/);
 });
 
 test("checkout creates the lab order AFTER the paid-order transaction, in its own transaction, never failing the charge", () => {

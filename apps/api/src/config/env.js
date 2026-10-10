@@ -43,12 +43,6 @@ const envSchema = z.object({
   SEAZONA_API_KEY: z.string().optional(),
   SEAZONA_SECRET: z.string().optional(),
   SEAZONA_BASE_URL: z.string().url().optional(),
-  // Lab-staff Seazona user id that catalog-order pushes are attributed to
-  // (createOrder requires a `userId`). LEFT UNSET INTENTIONALLY until the lab
-  // confirms which staff id to use — when unset, the Seazona order push does not
-  // fire (the order is still recorded locally). Never hardcode/guess this id.
-  SEAZONA_ORDER_USER_ID: z.string().optional(),
-
   // Authorize.net
   AUTHORIZE_NET_API_LOGIN: z.string().optional(),
   AUTHORIZE_NET_TRANSACTION_KEY: z.string().optional(),
@@ -61,7 +55,7 @@ const envSchema = z.object({
   // ── AutoPay ──
   // LIVE-CHARGE GATE. When false (the default) the sweep resolves balances,
   // computes allocations, and records what it WOULD charge — without touching a
-  // card. Same gated-dark pattern as RX_LIVE_PUSH. Flip only after reading a
+  // card. Gated dark, like RX_AUTO_RELEASE. Flip only after reading a
   // dry run's `would_charge` attempts.
   AUTOPAY_LIVE_RUN: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
   // Enrollment floor in dollars. An admin may override it per doctor.
@@ -90,30 +84,6 @@ const envSchema = z.object({
   // worst case of a wrong release is a job staff cancel on the board.
   RX_AUTO_RELEASE: z.string().optional(),
   MEDIA_GCS_BUCKET: z.string().optional(),
-  // Digital Rx live Seazona push gate.
-  //
-  // NOTE — this is LIVE, not a stub. B5 (2026-08-21): an earlier version of
-  // this comment described a since-deleted route (POST /rx/cases/:id/approve)
-  // that dry-ran regardless of this flag. That route is gone. Today
-  // RX_LIVE_PUSH has exactly ONE consumer: POST /rx/form-submissions
-  // (rx.routes.js, shouldAutoPush — exact string match on "true", anything
-  // else including unset resolves to off). When it's "true", a cleanly-
-  // resolved incoming case is pushed to Seazona automatically, via the SAME
-  // send path (pushCaseToSeazona) the admin queue's manual Push button uses
-  // — it really does call seazonaService.createOrder and really does create
-  // a live order in the lab's system. There is no commented-out TODO gating
-  // it further.
-  //
-  // Also requires SEAZONA_ORDER_USER_ID to be set, or auto-push logs
-  // [Seazona][RX_AUTO_PUSH_SKIPPED] and leaves the case for a human. A case
-  // whose lines don't all resolve (canRelease gate) is left "new" for the admin
-  // queue rather than being sent partial. Any push failure lands the case in
-  // "failed" for the queue, same as a manual push failure.
-  //
-  // Before flipping this to "true" in production: it will create real
-  // manufacturing orders on every clean submission, with no idempotency key
-  // on Seazona's side to catch a duplicate.
-  RX_LIVE_PUSH: z.string().optional(),
 
   // Admin
   ADMIN_NOTIFICATION_EMAIL: z.string().email().optional(),

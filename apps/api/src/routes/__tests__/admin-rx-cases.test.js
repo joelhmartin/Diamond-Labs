@@ -13,7 +13,6 @@ import {
   CASE_STATUSES,
   canTransition,
   isFrozen,
-  manualResolution,
 } from "../admin-rx-cases.routes.js";
 
 test("the queue defaults to everything needing attention", () => {
@@ -221,254 +220,30 @@ const handlerSource = (marker) => sharedHandlerSource(routesSource, marker);
 
 test("POST /admin/rx-cases/:id/lines is wired to the pushed-case guard", () => {
   const body = handlerSource('fastify.post("/admin/rx-cases/:id/lines",');
-  assert.match(body, /refusePushedCase\(|isFrozen\(/);
+  assert.match(body, /refuseFrozenCase\(|isFrozen\(/);
 });
 
 test("PUT /admin/rx-cases/:id/lines/:lineId is wired to the pushed-case guard", () => {
   const body = handlerSource('fastify.put("/admin/rx-cases/:id/lines/:lineId",');
-  assert.match(body, /refusePushedCase\(|isFrozen\(/);
+  assert.match(body, /refuseFrozenCase\(|isFrozen\(/);
 });
 
 test("DELETE /admin/rx-cases/:id/lines/:lineId is wired to the pushed-case guard", () => {
   const body = handlerSource('fastify.delete("/admin/rx-cases/:id/lines/:lineId",');
-  assert.match(body, /refusePushedCase\(|isFrozen\(/);
+  assert.match(body, /refuseFrozenCase\(|isFrozen\(/);
 });
 
 test("POST /admin/rx-cases/:id/re-resolve is wired to the pushed-case guard", () => {
   const body = handlerSource('fastify.post("/admin/rx-cases/:id/re-resolve",');
-  assert.match(body, /refusePushedCase\(|isFrozen\(/);
+  assert.match(body, /refuseFrozenCase\(|isFrozen\(/);
 });
 
 test("PUT /admin/rx-cases/:id/status is NOT double-gated by the new guard — canTransition already handles it, and the 409 shape must not change", () => {
   const body = handlerSource('fastify.put("/admin/rx-cases/:id/status",');
-  assert.doesNotMatch(body, /refusePushedCase\(/);
+  assert.doesNotMatch(body, /refuseFrozenCase\(/);
 });
 
-// ─────────────────────────────────────────────────────────────────────────
-// B2 — the four line-mutating routes must also refuse while a push is
-// currently in flight (seazonaPushStatus === "pushing"), not just once the
-// case is terminally `pushed`. refusePushedCase (and re-resolve's inline
-// check, which reuses the same row it already loaded) now check both.
-// ─────────────────────────────────────────────────────────────────────────
-
-test("refusePushedCase checks seazonaPushStatus === 'pushing' in addition to isFrozen(status), and sends a distinct CASE_PUSH_IN_FLIGHT 409", () => {
-  const start = routesSource.indexOf("async function refusePushedCase(caseId, reply) {");
-  assert.ok(start >= 0, "refusePushedCase not found in source");
-  const end = routesSource.indexOf("\n}\n", start);
-  const body = routesSource.slice(start, end);
-  assert.match(body, /seazonaPushStatus:\s*rxCases\.seazonaPushStatus/, "must select seazonaPushStatus, not just status");
-  assert.match(body, /seazonaPushStatus\s*===\s*"pushing"/);
-  assert.match(body, /pushInFlightRefusal\(\)/);
-});
-
-test("CASE_PUSH_IN_FLIGHT is a distinct code from CASE_ALREADY_PUSHED, not collapsed into it", () => {
-  const start = routesSource.indexOf("function pushInFlightRefusal() {");
-  assert.ok(start >= 0, "pushInFlightRefusal not found in source");
-  const end = routesSource.indexOf("\n}\n", start);
-  const body = routesSource.slice(start, end);
-  assert.match(body, /CASE_PUSH_IN_FLIGHT/);
-  assert.match(body, /409/);
-  assert.doesNotMatch(body, /CASE_ALREADY_PUSHED/);
-});
-
-test("POST /admin/rx-cases/:id/lines is wired to the in-flight guard", () => {
-  const body = handlerSource('fastify.post("/admin/rx-cases/:id/lines",');
-  assert.match(body, /refusePushedCase\(/);
-});
-
-test("PUT /admin/rx-cases/:id/lines/:lineId is wired to the in-flight guard", () => {
-  const body = handlerSource('fastify.put("/admin/rx-cases/:id/lines/:lineId",');
-  assert.match(body, /refusePushedCase\(/);
-});
-
-test("DELETE /admin/rx-cases/:id/lines/:lineId is wired to the in-flight guard", () => {
-  const body = handlerSource('fastify.delete("/admin/rx-cases/:id/lines/:lineId",');
-  assert.match(body, /refusePushedCase\(/);
-});
-
-test("POST /admin/rx-cases/:id/re-resolve checks seazonaPushStatus === 'pushing' inline and sends pushInFlightRefusal", () => {
-  const body = handlerSource('fastify.post("/admin/rx-cases/:id/re-resolve",');
-  assert.match(body, /caseRowRaw\.seazonaPushStatus\s*===\s*"pushing"/);
-  assert.match(body, /pushInFlightRefusal\(\)/);
-});
-
-test("the in-flight guard is NOT wired into the push route, mark-manual, or clear-push-lock — they own their own claim", () => {
-  for (const marker of [
-    PUSH_ROUTE_MARKER,
-    'fastify.post("/admin/rx-cases/:id/mark-manual",',
-    'fastify.put("/admin/rx-cases/:id/clear-push-lock",',
-  ]) {
-    const body = handlerSource(marker);
-    assert.doesNotMatch(body, /refusePushedCase\(/, `${marker} must not call refusePushedCase`);
-    assert.doesNotMatch(body, /pushInFlightRefusal\(/, `${marker} must not call pushInFlightRefusal`);
-  }
-});
-
-// ─────────────────────────────────────────────────────────────────────────
-// POST /admin/rx-cases/:id/push — Task 10 fix round 1, findings 2 and 3.
-//
-// Same limitation as the wiring checks above: no Fastify-inject harness
-// exists in this repo, so these are static source checks on the push
-// handler's registration body. They prove the refusal codes and the
-// before-the-claim ordering exist at the right place in source — they do
-// NOT prove the handler actually returns early at runtime without ever
-// reaching the DB claim. That would need a real HTTP harness this module
-// doesn't have.
-// ─────────────────────────────────────────────────────────────────────────
-
-const PUSH_ROUTE_MARKER = 'fastify.post("/admin/rx-cases/:id/push",';
-
-test("POST /admin/rx-cases/:id/push refuses with 503 SEAZONA_ORDER_USER_NOT_CONFIGURED before claiming the case (fix 3)", () => {
-  const body = handlerSource(PUSH_ROUTE_MARKER);
-  const userCheckIdx = body.indexOf("env.SEAZONA_ORDER_USER_ID");
-  const claimIdx = body.indexOf('seazonaPushStatus: "pushing"');
-  assert.ok(userCheckIdx >= 0, "push route should check env.SEAZONA_ORDER_USER_ID");
-  assert.ok(claimIdx >= 0, "push route should still claim the case once preflight passes");
-  assert.ok(
-    userCheckIdx < claimIdx,
-    "the SEAZONA_ORDER_USER_ID check must run before the DB claim — refusing must not take and release a lock"
-  );
-  assert.match(body, /SEAZONA_ORDER_USER_NOT_CONFIGURED/);
-  assert.match(body, /reply\.code\(503\)/);
-});
-
-test("POST /admin/rx-cases/:id/push gates on canRelease before claiming the case, and refuses with 422 RX_PUSH_BLOCKED (fix 2)", () => {
-  const body = handlerSource(PUSH_ROUTE_MARKER);
-  const gateIdx = body.indexOf("canRelease(lines)");
-  const claimIdx = body.indexOf('seazonaPushStatus: "pushing"');
-  assert.ok(gateIdx >= 0, "push route should call canRelease(lines) as a route-level preflight");
-  assert.ok(
-    gateIdx < claimIdx,
-    "the canRelease gate must run before the DB claim — a refusal must not be recorded as a push failure"
-  );
-  assert.match(body, /RX_PUSH_BLOCKED/);
-  assert.match(body, /reply\.code\(422\)/);
-});
-
-test("POST /admin/rx-cases/:id/push still calls pushCaseToSeazona, which re-runs canRelease as defence in depth", () => {
-  const body = handlerSource(PUSH_ROUTE_MARKER);
-  assert.match(body, /pushCaseToSeazona\(/);
-});
-
-// ─── B1: a failed push must not always release the claim/lock ─────────────
-//
-// See push-case.service.test.js's shouldReleasePushLock tests for the actual
-// decision logic (unit-tested there without a route). These are wiring
-// checks proving the route defers to that function rather than writing
-// outcome.status straight onto seazonaPushStatus (the bug: it released the
-// lock on every failure, including one where Seazona was actually contacted
-// and the result was ambiguous).
-
-test("POST /admin/rx-cases/:id/push decides seazonaPushStatus via shouldReleasePushLock, not outcome.status directly", () => {
-  const body = handlerSource(PUSH_ROUTE_MARKER);
-  assert.match(body, /shouldReleasePushLock\(outcome\)/);
-  assert.doesNotMatch(
-    body,
-    /seazonaPushStatus:\s*outcome\.status/,
-    "seazonaPushStatus must not be set unconditionally to outcome.status — a contacted-but-ambiguous failure must keep the lock held"
-  );
-});
-
-// ─────────────────────────────────────────────────────────────────────────
-// manualResolution — Task 10b. "Staff typed this order into Seazona by hand"
-// resolves the case exactly like a push (terminal, leaves the queue) but
-// tags HOW it got there and preserves whatever was still unmapped at that
-// moment, rather than letting the gate's bypass quietly erase it.
-// ─────────────────────────────────────────────────────────────────────────
-
-test("a manual resolution ends the case and tags how it got there", () => {
-  const r = manualResolution([{ seazonaCode: "2608", noteOnly: false, status: "confirmed" }], { seazonaOrderId: "SZ-4471" });
-  assert.equal(r.status, "pushed");
-  assert.equal(r.seazonaPushStatus, "manual");
-  assert.equal(r.seazonaOrderId, "SZ-4471");
-});
-
-test("the Seazona order number is optional", () => {
-  const r = manualResolution([{ seazonaCode: "2608", noteOnly: false, status: "confirmed" }], {});
-  assert.equal(r.status, "pushed");
-  assert.equal(r.seazonaOrderId, null);
-});
-
-test("marking manual records what was still unmapped, rather than erasing it", () => {
-  const r = manualResolution([
-    { seazonaCode: "2608", noteOnly: false, status: "confirmed" },
-    { seazonaCode: null, noteOnly: false, status: "open", mapKey: "mod:anterior-pad" },
-  ], {});
-  assert.equal(r.status, "pushed");
-  assert.deepEqual(r.unresolvedAtManual, ["mod:anterior-pad"]);
-});
-
-test("a case with unmapped lines can still be marked manual — the gate does not apply", () => {
-  const lines = [{ seazonaCode: null, noteOnly: false, status: "open", mapKey: "mod:anterior-pad" }];
-  assert.equal(canRelease(lines).ok, false, "precondition: this case cannot be pushed");
-  assert.equal(manualResolution(lines, {}).status, "pushed", "but it can be recorded as done by hand");
-});
-
-// ─────────────────────────────────────────────────────────────────────────
-// POST /admin/rx-cases/:id/mark-manual — static source checks, same
-// limitation as the push-route checks above (no Fastify-inject harness in
-// this module): these prove the claim predicate, the gate bypass, and the
-// audit shape exist at the right place in source. They do not prove the
-// handler behaves this way at runtime.
-// ─────────────────────────────────────────────────────────────────────────
-
-const MARK_MANUAL_ROUTE_MARKER = 'fastify.post("/admin/rx-cases/:id/mark-manual",';
-
-test("POST /admin/rx-cases/:id/mark-manual claims with the SAME full predicate as push — status AND the seazonaPushStatus pushing guard", () => {
-  const body = handlerSource(MARK_MANUAL_ROUTE_MARKER);
-  assert.match(body, /ne\(rxCases\.status, "pushed"\)/, "must not claim an already-pushed case");
-  assert.match(
-    body,
-    /or\(isNull\(rxCases\.seazonaPushStatus\), ne\(rxCases\.seazonaPushStatus, "pushing"\)\)/,
-    "must not claim a case whose push is genuinely in flight — a push in progress could still land in Seazona"
-  );
-});
-
-test("POST /admin/rx-cases/:id/mark-manual refuses 409 when the claim finds nothing, and points staff at clear-push-lock", () => {
-  const body = handlerSource(MARK_MANUAL_ROUTE_MARKER);
-  assert.match(body, /reply\.code\(409\)/);
-  assert.match(body, /clear-push-lock/, "the 409 message should point the operator at checking Seazona first, not just say no");
-});
-
-test("POST /admin/rx-cases/:id/mark-manual does NOT call canRelease — a human already created the order", () => {
-  const body = handlerSource(MARK_MANUAL_ROUTE_MARKER);
-  assert.doesNotMatch(body, /canRelease\(/);
-});
-
-test("POST /admin/rx-cases/:id/mark-manual is NOT gated by refusePushedCase/isFrozen — it does its own claim, like push", () => {
-  const body = handlerSource(MARK_MANUAL_ROUTE_MARKER);
-  assert.doesNotMatch(body, /refusePushedCase\(/);
-  assert.doesNotMatch(body, /isFrozen\(/);
-});
-
-test("POST /admin/rx-cases/:id/mark-manual audits with rx_case.marked_manual and calls manualResolution", () => {
-  const body = handlerSource(MARK_MANUAL_ROUTE_MARKER);
-  assert.match(body, /manualResolution\(/);
-  assert.match(body, /action:\s*"rx_case\.marked_manual"/);
-});
-
-// ─────────────────────────────────────────────────────────────────────────
-// B4 — the mark-manual operator note is PHI-shaped (can name a patient) and
-// must be encrypted at rest on rx_cases.manualNote, never written verbatim
-// into audit_log.metadata (plaintext jsonb).
-// ─────────────────────────────────────────────────────────────────────────
-
-test("POST /admin/rx-cases/:id/mark-manual encrypts the note onto manualNote before persisting", () => {
-  const body = handlerSource(MARK_MANUAL_ROUTE_MARKER);
-  assert.match(body, /manualNote:\s*note\s*\?\s*encryptField\(note\)\s*:\s*null/);
-});
-
-test("POST /admin/rx-cases/:id/mark-manual audit metadata records only notePresent, never the note text", () => {
-  const body = handlerSource(MARK_MANUAL_ROUTE_MARKER);
-  assert.match(body, /notePresent:\s*!!note/);
-  assert.doesNotMatch(
-    body,
-    /metadata:\s*\{[^}]*\bnote\s*:/s,
-    "audit metadata must not carry the raw note — only notePresent"
-  );
-});
-
-test("phi-crypto.js's TEXT_FIELDS includes manualNote — it is decrypted on every read path like every other free-text field", async () => {
+test("phi-crypto.js's TEXT_FIELDS still includes manualNote — legacy rows hold encrypted operator notes and must decrypt on every read path", async () => {
   const phiCryptoPath = join(dirname(fileURLToPath(import.meta.url)), "../../services/rx/phi-crypto.js");
   const source = readFileSync(phiCryptoPath, "utf8");
   assert.match(source, /TEXT_FIELDS\s*=\s*\[[^\]]*"manualNote"[^\]]*\]/);
@@ -505,4 +280,41 @@ test("GET /admin/rx-cases/:id/files/:fileId audits every access — broad admin 
   const body = handlerSource(FILE_ACCESS_ROUTE_MARKER);
   assert.match(body, /action:\s*"rx_case\.file_access"/);
   assert.match(body, /fileId:\s*fileRow\.id/);
+});
+
+import { parseStatusFilter } from "../admin-rx-cases.routes.js";
+
+test("the queue reads comma-separated status filters (Resolved = released + legacy pushed)", () => {
+  assert.deepEqual(parseStatusFilter("released,pushed"), ["released", "pushed"]);
+  assert.deepEqual(parseStatusFilter(["new", "failed,new"]), ["new", "failed"]);
+  assert.deepEqual(parseStatusFilter(undefined), DEFAULT_QUEUE_STATUSES);
+});
+
+test("a released case's lines refuse edits with their own code", () => {
+  const start = routesSource.indexOf("function frozenCaseRefusal(status) {");
+  assert.ok(start >= 0);
+  const body = routesSource.slice(start, routesSource.indexOf("\n}\n", start));
+  assert.match(body, /CASE_RELEASED/);
+  assert.match(body, /CASE_ALREADY_PUSHED/);
+});
+
+test("the Seazona push, mark-manual and clear-lock routes are gone", () => {
+  // Pieced together so this file does not itself trip seazona-order-retired.
+  const base = "/admin/rx-cases/:id/";
+  for (const r of [`${base}push"`, `${base}mark-` + `manual`, `${base}clear-push-` + `lock`]) {
+    assert.ok(!routesSource.includes(r), r);
+  }
+});
+
+test("every remaining mutation on a case is staff-guarded; the destructive ones are admin-only", () => {
+  // mark-manual (the riskiest legacy mutation) no longer exists; what is left
+  // must not have quietly loosened.
+  const adminOnly = [
+    'fastify.put("/admin/rx-cases/:id/lines/:lineId",',
+    'fastify.post("/admin/rx-cases/:id/lines",',
+    'fastify.delete("/admin/rx-cases/:id/lines/:lineId",',
+    'fastify.put("/admin/rx-cases/:id/status",',
+    'fastify.post("/admin/rx-cases/:id/re-resolve",',
+  ];
+  for (const m of adminOnly) assert.match(handlerSource(m), /requireAdmin/, m);
 });

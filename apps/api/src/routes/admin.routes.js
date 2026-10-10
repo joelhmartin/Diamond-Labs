@@ -8,7 +8,6 @@ import * as auditService from "../services/audit.service.js";
 import { roleChangeRefusal } from "../lib/staff-roles.js";
 import * as authService from "../services/auth.service.js";
 import * as emailService from "../services/email.service.js";
-import * as seazonaService from "../services/seazona.service.js";
 import { syncSeazonaProducts, EmptyRemoteError } from "../db/sync-seazona-products.js";
 import { env } from "../config/env.js";
 import { ERROR_CODES, userRoleChangeSchema } from "@my-app/shared";
@@ -192,62 +191,6 @@ export default async function adminRoutes(fastify) {
       });
     }
     return { data: { id: target.id, role: request.body.role } };
-  });
-
-  // ──────────────────────────────────────────────────────────────
-  // ORDERS
-  // ──────────────────────────────────────────────────────────────
-
-  // All orders (Seazona workflow records, with status/department/assignedTo).
-  fastify.get("/admin/orders", {
-    preHandler: [authenticate, requireAdmin],
-  }, async (request) => {
-    const [orders, clientList] = await Promise.all([
-      seazonaService.getOrders(request.query.ordered),
-      seazonaService.listClients(),
-    ]);
-    const clients = {};
-    for (const c of clientList) {
-      if (c.id) clients[c.id] = c;
-    }
-
-    // Status counts for filter chips
-    const statusCounts = {};
-    const deptCounts = {};
-    for (const o of orders) {
-      const s = o.status || "Unknown";
-      statusCounts[s] = (statusCounts[s] || 0) + 1;
-      const d = o.department || "—";
-      deptCounts[d] = (deptCounts[d] || 0) + 1;
-    }
-
-    return {
-      data: {
-        orders,
-        clients,
-        summary: {
-          count: orders.length,
-          statuses: statusCounts,
-          departments: deptCounts,
-        },
-      },
-    };
-  });
-
-  // Single order detail — includes products, files, settings, notes.
-  fastify.get("/admin/orders/:id", {
-    preHandler: [authenticate, requireAdmin],
-  }, async (request, reply) => {
-    const order = await seazonaService.getOrder(request.params.id);
-    if (!order) return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
-
-    // Best-effort client enrichment
-    let client = null;
-    if (order.clientId) {
-      client = await seazonaService.getClient(order.clientId).catch(() => null);
-    }
-
-    return { data: { order, client } };
   });
 
   // ──────────────────────────────────────────────────────────────

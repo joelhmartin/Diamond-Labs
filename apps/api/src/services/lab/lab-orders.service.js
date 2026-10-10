@@ -10,7 +10,7 @@ import { createId } from "../../lib/id.js";
 import { encryptField, decryptField } from "../../lib/crypto.js";
 import { decryptRxPhi } from "../rx/phi-crypto.js";
 import { devicesForCase } from "../rx/case-devices.js";
-import { compileNotesMulti } from "../rx/build-order-payload.js";
+import { compileNotesMulti } from "../rx/case-notes.js";
 import {
   LabOrderError, nextLabOrderNumber, planRxRelease, planShopLabOrder, planRemake,
   assertFresh, planStatusChange, planFieldChange, presentBoardCard, rushFromCase,

@@ -6,9 +6,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Send,
-  ClipboardEdit,
   RotateCcw,
-  Unlock,
   Plus,
   Trash2,
   Pencil,
@@ -25,30 +23,32 @@ import {
 import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { useAuth } from "../../hooks/useAuth.js";
-import { ROUTES } from "../../config/routes.js";
-import { resolutionLabel } from "../../lib/rx-case-labels.js";
+import { LAB_STATUS_LABELS } from "@my-app/shared";
+import { Modal } from "../../components/ui/Modal.jsx";
+import { ROUTES, labOrderPath } from "../../config/routes.js";
+import { caseStatusLabel, resolutionLabel } from "../../lib/rx-case-labels.js";
 
 // ── Pure helpers (exported for tests) ───────────────────────────────────────
 
 /**
- * Why the push button is disabled, in words. A greyed-out button with no
+ * Why the release button is disabled, in words. A greyed-out button with no
  * explanation is the thing staff will complain about; naming the selection
  * that blocks it turns a dead end into a next action.
  *
  * Mirrors the server's canRelease gate (case-gates.js): a case with nothing to
- * send is refused the same as a case with an unresolved line — both read
- * "This case has no lines to send." / "Needs a product code for: …" rather
+ * release is refused the same as a case with an unresolved line — both read
+ * "This case has no lines to release." / "Needs a product code for: …" rather
  * than a generic disabled state.
  */
-export function pushBlockedReason(lines = []) {
+export function releaseBlockedReason(lines = []) {
   const emitting = lines.filter((l) => !l.noteOnly);
   if (emitting.length === 0) {
-    return "This case has no lines to send.";
+    return "This case has no lines to release.";
   }
   // Both halves of the server's rule, deliberately. canRelease blocks a line with
   // no seazonaCode REGARDLESS of what its status claims — it was made
   // self-sufficient precisely so a stale "confirmed" can't wave a codeless line
-  // through. Mirroring only the status half would light up Push for a case the
+  // through. Mirroring only the status half would light up Release for a case the
   // server then refuses with a 422, which is the dead end this helper exists to
   // prevent.
   const blocking = emitting.filter((l) => l.status === "open" || !l.seazonaCode);
@@ -57,22 +57,12 @@ export function pushBlockedReason(lines = []) {
   return `Needs a product code for: ${names.join(", ")}`;
 }
 
-export function statusLabel(s) {
-  return {
-    new: "New",
-    in_review: "In review",
-    awaiting_doctor: "Awaiting doctor",
-    pushed: "Resolved",
-    failed: "Failed",
-    cancelled: "Cancelled",
-  }[s] || s;
-}
-
 const STATUS_COLORS = {
   new: "bg-blue-500/10 text-blue-700",
   in_review: "bg-violet-500/10 text-violet-700",
   awaiting_doctor: "bg-amber-500/10 text-amber-700",
   failed: "bg-red-500/10 text-red-600",
+  released: "bg-emerald-500/10 text-emerald-700",
   pushed: "bg-emerald-500/10 text-emerald-700",
   cancelled: "bg-gray-200 text-gray-700",
 };
@@ -561,94 +551,6 @@ function AddLineForm({ caseId, onAdded, onClose }) {
   );
 }
 
-// ── Mark-manual modal ────────────────────────────────────────────────────────
-
-function MarkManualModal({ caseId, onClose, onDone }) {
-  const [seazonaOrderId, setSeazonaOrderId] = useState("");
-  const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-
-  const submit = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await api.post(`/admin/rx-cases/${caseId}/mark-manual`, {
-        seazonaOrderId: seazonaOrderId.trim() || undefined,
-        note: note.trim() || undefined,
-      });
-      onDone(res.data.data);
-    } catch (err) {
-      setError(errMsg(err));
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <button type="button" onClick={onClose} className="absolute right-4 top-4 text-navy/30 hover:text-navy">
-          <X size={18} />
-        </button>
-
-        <h3 className="font-heading font-bold text-lg text-navy">I'll add this manually</h3>
-        <p className="mt-1 text-xs text-navy/50">
-          Use this only if you already entered this order in Seazona by hand. It marks the
-          case resolved and locks its lines — the same as a successful push, except tagged
-          "Added manually" so it's clear no order was sent from here.
-        </p>
-
-        {error && (
-          <div className="mt-4 flex items-start gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
-            <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        <div className="mt-4 space-y-3">
-          <div>
-            <label className="text-[10px] font-mono uppercase tracking-widest text-navy/40">
-              Seazona order # (optional)
-            </label>
-            <input
-              type="text"
-              className="mt-1 w-full px-3 py-2 rounded-lg border border-surface-300/60 bg-white text-sm text-navy focus:outline-none focus:border-brand-500"
-              placeholder="e.g. 10601"
-              value={seazonaOrderId}
-              onChange={(e) => setSeazonaOrderId(e.target.value)}
-              disabled={busy}
-            />
-          </div>
-          <div>
-            <label className="text-[10px] font-mono uppercase tracking-widest text-navy/40">Note (optional)</label>
-            <textarea
-              className="mt-1 w-full px-3 py-2 rounded-lg border border-surface-300/60 bg-white text-sm text-navy focus:outline-none focus:border-brand-500 resize-none"
-              rows={2}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              disabled={busy}
-            />
-          </div>
-        </div>
-
-        <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={busy} className="px-4 py-2 rounded-full text-sm font-semibold text-navy/50 hover:text-navy">
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={busy}
-            className="px-4 py-2 rounded-full text-sm font-semibold bg-navy text-white hover:bg-navy/90 transition-colors disabled:opacity-50"
-          >
-            {busy ? "Recording…" : "Confirm — mark resolved"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── File row: fetch a short-lived signed URL on click, never link the raw
 // stored pointer ─────────────────────────────────────────────────────────────
 //
@@ -742,22 +644,23 @@ export function AdminRxCaseDetailPage() {
 
   const [tab, setTab] = useState("order");
   const [addingLine, setAddingLine] = useState(false);
-  const [markManualOpen, setMarkManualOpen] = useState(false);
 
-  const [pushing, setPushing] = useState(false);
-  const [pushError, setPushError] = useState(null);
+  const [releasing, setReleasing] = useState(false);
+  const [releaseError, setReleaseError] = useState(null);
+  const [confirmLegacyOpen, setConfirmLegacyOpen] = useState(false);
+  const [labOrder, setLabOrder] = useState(null);
   const [reResolving, setReResolving] = useState(false);
   const [reResolveError, setReResolveError] = useState(null);
-  const [clearingLock, setClearingLock] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const res = await api.get(`/admin/rx-cases/${id}`);
-      const { case: c, lines: l, files: f, prescription: p } = res.data.data;
+      const { case: c, lines: l, files: f, prescription: p, labOrder: lo } = res.data.data;
       setCaseRow(c);
       setLines(l || []);
       setFiles(f || []);
       setPrescription(p || {});
+      setLabOrder(lo || null);
       setError(null);
     } catch (err) {
       setError(errMsg(err));
@@ -794,8 +697,8 @@ export function AdminRxCaseDetailPage() {
 
   const locked = caseRow.status === "pushed" || caseRow.status === "released";
   const readOnly = locked || !canEdit;
-  const isPushing = caseRow.seazonaPushStatus === "pushing";
-  const blockedReason = pushBlockedReason(lines);
+  const legacyPushUnconfirmed = caseRow.seazonaPushStatus === "pushing";
+  const blockedReason = releaseBlockedReason(lines);
   const resolution = resolutionLabel(caseRow.seazonaPushStatus);
   const patientName = `${caseRow.patientFirst || ""} ${caseRow.patientLast || ""}`.trim();
 
@@ -811,25 +714,26 @@ export function AdminRxCaseDetailPage() {
     setLines((prev) => [...prev, created]);
   };
 
-  const doPush = async () => {
-    const ok = window.confirm(
-      "This sends a REAL order to Seazona. If anything is wrong, a human has to find and delete it there — Seazona has no undo. Continue?"
-    );
-    if (!ok) return;
-    setPushing(true);
-    setPushError(null);
+  // A legacy case stuck at seazonaPushStatus "pushing" may already be in Seazona.
+  // Staff must confirm they checked before the server will release it.
+  const startRelease = () => (legacyPushUnconfirmed ? setConfirmLegacyOpen(true) : doRelease(false));
+
+  const doRelease = async (confirmNotInSeazona) => {
+    setConfirmLegacyOpen(false);
+    setReleasing(true);
+    setReleaseError(null);
     try {
-      const res = await api.post(`/admin/rx-cases/${id}/push`);
-      applyCaseUpdate(res.data.data);
-      addToast({ message: "Case pushed to Seazona.", type: "success" });
+      const res = await api.post(`/admin/rx-cases/${id}/release`, { confirmNotInSeazona });
+      const { labOrder: lo, unknownCodes } = res.data.data;
+      addToast({
+        message: `Released as order #${lo.orderNumber}.${unknownCodes.length ? ` Not in the catalog yet: ${unknownCodes.join(", ")}.` : ""}`,
+        type: "success",
+      });
+      await load();
     } catch (err) {
-      // A failed-but-attempted push still returns the updated case row
-      // (status: "failed") — reflect it so the page doesn't look stale.
-      const updated = err.response?.data?.data;
-      if (updated) applyCaseUpdate(updated);
-      setPushError(errMsg(err));
+      setReleaseError(errMsg(err));
     } finally {
-      setPushing(false);
+      setReleasing(false);
     }
   };
 
@@ -851,23 +755,6 @@ export function AdminRxCaseDetailPage() {
       setReResolveError(errMsg(err));
     } finally {
       setReResolving(false);
-    }
-  };
-
-  const doClearLock = async () => {
-    const ok = window.confirm(
-      "Only clear this if you've checked Seazona and confirmed no order exists (or the existing one is accounted for). Clearing lets this case be pushed or marked manual again — a real duplicate order is possible if one already went through. Continue?"
-    );
-    if (!ok) return;
-    setClearingLock(true);
-    try {
-      const res = await api.put(`/admin/rx-cases/${id}/clear-push-lock`);
-      applyCaseUpdate(res.data.data);
-      addToast({ message: "Push lock cleared.", type: "info" });
-    } catch (err) {
-      addToast({ message: errMsg(err), type: "error" });
-    } finally {
-      setClearingLock(false);
     }
   };
 
@@ -899,7 +786,7 @@ export function AdminRxCaseDetailPage() {
             </span>
           )}
           <span className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider ${statusColor(caseRow.status)}`}>
-            {statusLabel(caseRow.status)}
+            {caseStatusLabel(caseRow.status)}
           </span>
         </div>
       </div>
@@ -927,68 +814,33 @@ export function AdminRxCaseDetailPage() {
       {/* ── Order tab ─────────────────────────────────────────────────── */}
       {tab === "order" && (
         <div className="space-y-5">
-          {isPushing && (
-            <Banner
-              tone="warning"
-              icon={AlertCircle}
-              action={
-                canEdit && (
-                  <button
-                    type="button"
-                    disabled={clearingLock}
-                    onClick={doClearLock}
-                    className="ml-3 flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-600 text-white hover:bg-amber-700 transition-colors disabled:opacity-50"
-                  >
-                    <Unlock size={12} /> {clearingLock ? "Clearing…" : "Clear push lock"}
-                  </button>
-                )
-              }
-            >
-              A push to this case was started and never confirmed — it may have reached Seazona, or it may not
-              have. Check Seazona for an order before clearing this lock. Pushing or marking manual is disabled
-              until it's cleared.
-            </Banner>
-          )}
-
           {!locked && canEdit && (
             <div className="bg-white rounded-2xl border border-surface-300/50 p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <h2 className="font-heading font-bold text-sm text-navy mb-1">Resolve this case</h2>
+                  <h2 className="font-heading font-bold text-sm text-navy mb-1">Release to the lab</h2>
                   <p className="text-xs text-navy/50 max-w-md">
-                    Push sends a real order to Seazona. "I'll add this manually" records that you entered the
-                    order there yourself — it stays available even when Push is blocked.
+                    Puts this case on the production board as a lab order, with its lines exactly as they are now.
+                    {legacyPushUnconfirmed && " A Seazona push for this case was started and never confirmed — check Seazona for an order before releasing."}
                   </p>
                 </div>
                 <div className="flex flex-col items-end gap-1.5">
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      disabled={pushing || isPushing || !!blockedReason}
-                      onClick={doPush}
-                      title={blockedReason || undefined}
-                      className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-sm font-bold bg-brand-500 text-white hover:bg-brand-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <Send size={14} /> {pushing ? "Pushing…" : "Push to Seazona"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isPushing}
-                      onClick={() => setMarkManualOpen(true)}
-                      className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-sm font-semibold bg-white border border-navy/20 text-navy hover:border-navy/40 transition-colors disabled:opacity-40"
-                    >
-                      <ClipboardEdit size={14} /> I'll add this manually
-                    </button>
-                  </div>
-                  {blockedReason && !isPushing && (
-                    <span className="text-[11px] text-red-600 max-w-xs text-right">{blockedReason}</span>
-                  )}
+                  <button
+                    type="button"
+                    disabled={releasing || !!blockedReason}
+                    onClick={startRelease}
+                    title={blockedReason || undefined}
+                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-sm font-bold bg-brand-500 text-white hover:bg-brand-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Send size={14} /> {releasing ? "Releasing…" : "Release to lab"}
+                  </button>
+                  {blockedReason && <span className="text-[11px] text-red-600 max-w-xs text-right">{blockedReason}</span>}
                 </div>
               </div>
-              {pushError && (
+              {releaseError && (
                 <div className="mt-3 flex items-start gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
                   <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
-                  <span>{pushError}</span>
+                  <span>{releaseError}</span>
                 </div>
               )}
             </div>
@@ -996,14 +848,30 @@ export function AdminRxCaseDetailPage() {
 
           {locked && (
             <Banner tone="success" icon={CheckCircle2}>
-              This case is resolved ({resolution || "pushed"}). Its lines are locked — correct it in Seazona, not here.
-              {caseRow.seazonaOrderId && <span className="block mt-1 font-mono text-xs">Seazona order #{caseRow.seazonaOrderId}</span>}
+              {caseRow.status === "released" ? (
+                <>
+                  On the production board
+                  {labOrder && (
+                    <>
+                      {" "}as{" "}
+                      <Link to={labOrderPath(labOrder.id)} className="font-mono font-semibold underline">order #{labOrder.orderNumber}</Link>
+                      {" "}({LAB_STATUS_LABELS[labOrder.status]})
+                    </>
+                  )}
+                  . Its lines are locked — change the lab order instead.
+                </>
+              ) : (
+                <>
+                  {resolution || "Sent to Seazona (legacy)"} — sent before the lab moved to the portal. Its lines are locked; correct it in Seazona.
+                  {caseRow.seazonaOrderId && <span className="block mt-1 font-mono text-xs">Seazona order #{caseRow.seazonaOrderId}</span>}
+                </>
+              )}
             </Banner>
           )}
 
           {caseRow.status === "failed" && caseRow.seazonaPushError && (
             <Banner tone="error" icon={AlertCircle}>
-              Last push failed: {caseRow.seazonaPushError}
+              Legacy Seazona push failed: {caseRow.seazonaPushError}. Releasing to the lab replaces that push.
             </Banner>
           )}
 
@@ -1163,7 +1031,7 @@ export function AdminRxCaseDetailPage() {
             <div className="flex items-center justify-between px-3 py-2.5 bg-surface-50 rounded-lg">
               <dt className="text-xs text-navy/50">Current status</dt>
               <dd className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${statusColor(caseRow.status)}`}>
-                {statusLabel(caseRow.status)}
+                {caseStatusLabel(caseRow.status)}
               </dd>
             </div>
             {resolution && (
@@ -1174,13 +1042,13 @@ export function AdminRxCaseDetailPage() {
             )}
             {caseRow.seazonaOrderId && (
               <div className="flex items-center justify-between px-3 py-2.5 bg-surface-50 rounded-lg">
-                <dt className="text-xs text-navy/50">Seazona order #</dt>
+                <dt className="text-xs text-navy/50">Seazona order # (legacy)</dt>
                 <dd className="text-sm font-mono text-navy">{caseRow.seazonaOrderId}</dd>
               </div>
             )}
             {caseRow.seazonaPushError && (
               <div className="px-3 py-2.5 bg-red-50 rounded-lg">
-                <dt className="text-xs text-red-600/70 mb-0.5">Push error</dt>
+                <dt className="text-xs text-red-600/70 mb-0.5">Legacy push error</dt>
                 <dd className="text-sm text-red-700">{caseRow.seazonaPushError}</dd>
               </div>
             )}
@@ -1191,17 +1059,24 @@ export function AdminRxCaseDetailPage() {
         </div>
       )}
 
-      {markManualOpen && (
-        <MarkManualModal
-          caseId={id}
-          onClose={() => setMarkManualOpen(false)}
-          onDone={(updated) => {
-            applyCaseUpdate(updated);
-            setMarkManualOpen(false);
-            addToast({ message: "Case marked resolved (added manually).", type: "success" });
-          }}
-        />
-      )}
+      <Modal open={confirmLegacyOpen} onClose={() => setConfirmLegacyOpen(false)} title="Check Seazona first">
+        <p className="text-sm text-navy/70">
+          A Seazona push for this case started and was never confirmed, so an order for it may already exist there.
+          Only continue if you checked Seazona and there is no order for this case — otherwise the lab will build it twice.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={() => setConfirmLegacyOpen(false)} className="px-4 py-2 rounded-full text-sm font-semibold text-navy/50 hover:text-navy">
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => doRelease(true)}
+            className="px-4 py-2 rounded-full text-sm font-bold bg-brand-500 text-white hover:bg-brand-600 transition-colors"
+          >
+            No Seazona order exists — release
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

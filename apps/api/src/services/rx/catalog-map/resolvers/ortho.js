@@ -535,7 +535,7 @@ function matrixNote(matrix) {
  * The ortho build detail no product code carries — tandem bow setting, which
  * teeth get bands / rests / build-ups, the arch-only expansion tables (typed
  * text), digital setup and study models. One readable note fragment per
- * answered question; build-order-payload.js appends them to the order notes.
+ * answered question; case-notes.js appends them to the order notes.
  */
 export function orthoBuildNotes(o = {}) {
   const lines = [];

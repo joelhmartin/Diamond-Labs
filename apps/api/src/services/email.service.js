@@ -385,11 +385,10 @@ export async function sendOrderReceipt({
 
 /**
  * Notify the lab that a new Rx case has arrived and is ready for review.
- * Sent (soft-fail) after every successful POST /rx/form-submissions save —
- * deliberately NOT gated by RX_LIVE_PUSH. A case that auto-pushes
- * successfully leaves the admin queue immediately (DEFAULT_QUEUE_STATUSES
- * excludes "pushed"), so this email may be the only signal staff get that
- * the case exists at all — auto-push or not, the lab needs to know.
+ * Sent (soft-fail) after every successful POST /rx/form-submissions save.
+ * Sent for every submission — a case that auto-released (RX_AUTO_RELEASE)
+ * never appears in the review queue, so this may be the only signal staff get
+ * that it exists.
  *
  * No PHI: only the case number, the submitting doctor's identity, a plain
  * device summary, and an unmapped-line count travel here. Patient name,

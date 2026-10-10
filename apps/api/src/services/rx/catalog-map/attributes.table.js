@@ -8,7 +8,7 @@
  * prescriptions answered these questions (Posterior Contact n=405,
  * Anterior Contact n=346, Standard n=641). The
  * selection is design intent, so it travels in the order notes
- * (build-order-payload.js deviceOptionLines) and never as a line.
+ * (case-notes.js deviceOptionLines) and never as a line.
  *
  * Every row is status "none" — a deliberate no-op, not a gap — so a known
  * answer neither emits a line nor flags the order as unmapped. An answer that

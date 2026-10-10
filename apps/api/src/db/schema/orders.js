@@ -4,24 +4,17 @@ import { pgTable, varchar, text, numeric, jsonb, timestamp, index, uniqueIndex }
  * Local record of a guest catalog order. The customer's card has ALREADY been
  * charged by the time a row lands here (see POST /payments/checkout) — this
  * table is the authoritative local source of truth for the sale, independent of
- * any downstream Seazona push.
+ * anything downstream.
  *
  * `orderNumber` replaces the old `DOL-<last8 ts>` scheme. It is the single
  * identifier used end-to-end: generated BEFORE the charge, sent to Authorize.net
  * as the transaction `invoiceNumber`, and persisted here. Collision-resistant by
  * construction (a cuid2-derived suffix) and enforced unique at the DB level.
  *
- * Seazona push columns capture the outcome of the (gated) `createOrder` write.
- * A failed or skipped push NEVER fails checkout — the money is already taken, so
- * the local order stands and the push outcome is recorded for later reconcile.
- *   seazonaPushStatus:
- *     pending                 — eligible, push in flight / not yet attempted
- *     skipped_not_production  — AUTHORIZE_NET_ENV !== "production" (no live write)
- *     skipped_no_user         — SEAZONA_ORDER_USER_ID not configured
- *     not_applicable_guest    — order has no Seazona clientId; createOrder requires
- *                               one, so a pure guest order cannot be pushed
- *     pushed                  — createOrder succeeded; seazonaOrderId populated
- *     failed                  — createOrder returned null / threw; see push error
+ * The seazona* columns are legacy: the Seazona createOrder push that wrote
+ * them was retired in own-the-lab piece 2 and they are no longer written
+ * (piece 5 drops them). The job for the bench is the lab order
+ * (lab_orders.source = "shop_order", sourceId = orders.id).
  */
 export const orders = pgTable("orders", {
   id: varchar("id", { length: 128 }).primaryKey(),
@@ -53,14 +46,11 @@ export const orders = pgTable("orders", {
   // checkout); null = guest/base pricing.
   pricedForUserId: varchar("priced_for_user_id", { length: 128 }),
 
-  // Seazona createOrder push outcome (nullable until/unless a push runs).
+  // Legacy Seazona push outcome — see header.
   seazonaClientId: varchar("seazona_client_id", { length: 100 }),
   seazonaOrderId: varchar("seazona_order_id", { length: 128 }),
-  // Nullable with NO default — the insert ALWAYS sets this explicitly via
-  // resolveOrderPushStatus(). A stray default-"pending" row (e.g. a future direct
-  // insert that forgot to set it) would otherwise pollute reconcile sweeps that
-  // filter on seazonaPushStatus = 'pending'.
-  seazonaPushStatus: varchar("seazona_push_status", { length: 40 }),
+  // Legacy — see header.
+    seazonaPushStatus: varchar("seazona_push_status", { length: 40 }),
   seazonaPushError: text("seazona_push_error"),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

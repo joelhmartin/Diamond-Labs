@@ -1,6 +1,6 @@
 // Pure domain rules for a dental Rx case: status vocabulary, transition and
 // push gates, and the noteOnly <-> seazonaCode invariant. Deliberately
-// imports NOTHING from routes/ or the DB — services (push-case.service.js)
+// imports NOTHING from routes/ or the DB — services (lab-orders.service.js)
 // and their tests need these without pulling in Fastify, drizzle, or
 // config/database.js. admin-rx-cases.routes.js re-exports everything below
 // so every existing importer keeps working unchanged. The one import is the
@@ -39,9 +39,7 @@ export const CASE_STATUSES = [
  * `pushed` is terminal — the Seazona order already exists, so moving the
  * case back would make the portal disagree with the lab's own system about
  * what was ordered. A mistake after a push is corrected in Seazona, not
- * here. (A later "marked manually added" resolution also lands on `pushed`
- * for the same reason: it too commits the case to an order the lab
- * considers placed.)
+ * here.
  *
  * Both `from` and `to` are validated against CASE_STATUSES. A `from` outside
  * the known vocabulary is not a state anything should transition out of —
@@ -194,41 +192,6 @@ export function overrideRowFor({ mapKey, seazonaCode, seazonaName, noteOnly, con
  */
 export function statusForLine({ seazonaCode, noteOnly }) {
   return noteOnly || seazonaCode ? "confirmed" : "open";
-}
-
-/**
- * The column values for "a human already entered this in Seazona".
- *
- * Resolves the case exactly as a successful push does — same terminal
- * status, so it leaves the queue and cannot be pushed again (see
- * canTransition's docstring: `pushed` is terminal because the Seazona order
- * already exists) — but tags HOW it got there via seazonaPushStatus, so "we
- * sent this" and "someone typed it in" stay distinguishable forever.
- *
- * Deliberately ignores canRelease: a human already created the order in
- * Seazona by hand, so an unresolved line here cannot stop them recording
- * that fact — this is the one sanctioned way past the send gate. Precisely
- * because it bypasses that gate, it captures which lines were still
- * unresolved at this moment (mapKey, or the raw sourceLabel when there is
- * no mapKey to key an override on) instead of discarding them. Without
- * this, "mark manual" quietly becomes the way mapping gaps disappear — and
- * those gaps are the lab's open questions.
- *
- * @param {Array<{status: string, noteOnly?: boolean, seazonaCode?: string|null, mapKey?: string, sourceLabel?: string}>} lines
- * @param {{ seazonaOrderId?: string|null }} [opts]
- * @returns {{ status: string, seazonaPushStatus: string, seazonaOrderId: string|null, unresolvedAtManual: string[] }}
- */
-export function manualResolution(lines = [], { seazonaOrderId } = {}) {
-  const unresolved = lines
-    .filter((l) => !l.noteOnly && (l.status === "open" || !l.seazonaCode))
-    .map((l) => l.mapKey || l.sourceLabel)
-    .filter(Boolean);
-  return {
-    status: "pushed",
-    seazonaPushStatus: "manual",
-    seazonaOrderId: seazonaOrderId || null,
-    unresolvedAtManual: unresolved,
-  };
 }
 
 /**

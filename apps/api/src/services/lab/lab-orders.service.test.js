@@ -136,7 +136,7 @@ test("allocateOrderNumber takes the advisory lock before reading the max", async
 });
 
 test("build notes and the ticket banner share one rush source", async () => {
-  const { compileNotesMulti } = await import("../rx/build-order-payload.js");
+  const { compileNotesMulti } = await import("../rx/case-notes.js");
   const { rushFromCase } = await import("./lab-order-rules.js");
   const c = { rush: false, rushTier: null, formData: { rushCase: ["Yes"], rushChargeNylon: "Expedited" } };
   assert.doesNotMatch(compileNotesMulti(c, []), /RUSH/, "the raw column alone misses a live-form rush");
