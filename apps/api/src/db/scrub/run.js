@@ -13,7 +13,8 @@
 // the scrub transaction, VACUUM) empties every table in every non-system schema,
 // discovered from the live catalog, never from the plan, so it works even when the
 // plan's tables do not exist.
-import { SCRUB_PLAN, buildStatements, classSummary, assertScrubAllowed, findUnclassifiedLive, findMissingFromLive } from "./plan.js";
+import { SCRUB_PLAN, buildStatements, classSummary, assertScrubAllowed, findUnclassifiedLive, findMissingFromLive, keyOf } from "./plan.js";
+import { MARKER_RELATION } from "../../config/app-env.js";
 
 const SCHEMA_BEHIND = "schema behind code — run diamond-labs-migrate-staging before scrubbing";
 export const NOT_SCRUBBED = "[scrub] staging DB NOT scrubbed — do not serve it; drop or re-run";
@@ -21,12 +22,11 @@ export const NOT_SCRUBBED = "[scrub] staging DB NOT scrubbed — do not serve it
 // scrub leaves no marker and the server refuses to serve the database.
 const KEEP_OUT = new Set(["drizzle.__drizzle_migrations"]);
 export const SCRUB_VERSION = "staging-scrub-v1";
-const MARKER_DDL = "CREATE TABLE IF NOT EXISTS staging_seed_marker (id int primary key, scrubbed_at timestamptz not null, scrub_version text)";
+const MARKER_DDL = `CREATE TABLE IF NOT EXISTS ${MARKER_RELATION} (id int primary key, scrubbed_at timestamptz not null, scrub_version text)`;
 const MARKER_UPSERT =
-  "INSERT INTO staging_seed_marker (id, scrubbed_at, scrub_version) VALUES (1, now(), $1) " +
+  `INSERT INTO ${MARKER_RELATION} (id, scrubbed_at, scrub_version) VALUES (1, now(), $1) ` +
   "ON CONFLICT (id) DO UPDATE SET scrubbed_at = EXCLUDED.scrubbed_at, scrub_version = EXCLUDED.scrub_version";
 const fq = (schema, table) => `"${schema.replace(/"/g, '""')}"."${table.replace(/"/g, '""')}"`;
-const keyOf = (schema, table) => (schema === "public" ? table : `${schema}.${table}`);
 
 // relkind r table, p partitioned, m materialized view, f foreign table.
 const LIVE_COLUMNS_SQL = `

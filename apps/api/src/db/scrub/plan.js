@@ -1,5 +1,5 @@
 /**
- * Staging scrub plan — pure data + pure helpers (no imports, no I/O).
+ * Staging scrub plan — pure data + pure helpers (no I/O).
  *
  * Production holds PHI (medical/dental patients on Rx cases) and customer PII.
  * Every column of every table is classified here. plan.test.js fails if a
@@ -21,6 +21,7 @@
  * rows; used where the data is worthless or dangerous in staging). In a "delete"
  * table, columns are still classified, with no `set`.
  */
+import { MARKER_SCHEMA, MARKER_TABLE } from "../../config/app-env.js";
 
 const K = { class: "keep" };
 const phi = (set) => ({ class: "phi", set });
@@ -296,12 +297,15 @@ export const SCRUB_PLAN = {
   product_variant_option_values: { mode: "update", columns: { variant_id: K, option_value_id: K } },
 };
 
+/** Drift-check / KEEP_OUT key for a live relation: bare name for public, `schema.table` otherwise. */
+export const keyOf = (schema, table) => (schema === "public" ? table : `${schema}.${table}`);
+
 /**
  * Live relations the drift check ignores (bookkeeping only): migration hashes +
  * timestamps, and the scrub's own success marker (created by the scrub, never by an
  * app migration; the server refuses to serve a staging DB without it).
  */
-export const IGNORED_LIVE_TABLES = ["drizzle.__drizzle_migrations", "staging_seed_marker"];
+export const IGNORED_LIVE_TABLES = ["drizzle.__drizzle_migrations", keyOf(MARKER_SCHEMA, MARKER_TABLE)];
 
 export const COLUMN_CLASSES = ["keep", "phi", "pii", "secret", "reset"];
 

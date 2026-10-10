@@ -4,6 +4,12 @@
  * every function here is a no-op / identity, so production behaviour is unchanged.
  */
 
+// The scrub's success marker. Schema-qualified everywhere (scrub DDL/upsert, drift
+// check, boot reader) so the session search_path can never make them disagree.
+export const MARKER_SCHEMA = "public";
+export const MARKER_TABLE = "staging_seed_marker";
+export const MARKER_RELATION = `${MARKER_SCHEMA}.${MARKER_TABLE}`;
+
 export const isStaging = (env) => env?.APP_ENV === "staging";
 
 /**
@@ -38,7 +44,7 @@ export function assertSafeConfig(env) {
 
 /**
  * Serve gate. Under APP_ENV=staging the server may only run against a database the
- * scrub finished successfully: `staging_seed_marker` (written by the scrub in its
+ * scrub finished successfully: `public.staging_seed_marker` (written by the scrub in its
  * committing transaction, emptied by its fail-closed path, absent from a fresh prod
  * import) must hold row id=1. `query(sql)` is injected (resolves to rows). Any
  * missing table, missing row or query error refuses. Skipped entirely outside staging.
@@ -48,7 +54,7 @@ export async function assertScrubMarker(env, query) {
   const refuse = () => new Error("staging DB has no successful scrub marker — refusing to serve");
   let rows;
   try {
-    rows = await query("SELECT 1 FROM staging_seed_marker WHERE id = 1");
+    rows = await query(`SELECT 1 FROM ${MARKER_RELATION} WHERE id = 1`);
   } catch {
     throw refuse();
   }

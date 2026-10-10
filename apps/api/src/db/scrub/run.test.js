@@ -88,15 +88,15 @@ test("scrub creates and upserts the marker inside the committing transaction", a
   const c = fake();
   const { exitCode } = await go(c);
   assert.equal(exitCode, 0);
-  const ddl = c.log.findIndex((s) => /CREATE TABLE IF NOT EXISTS staging_seed_marker/.test(s));
-  const up = c.log.findIndex((s) => /INSERT INTO staging_seed_marker/.test(s));
+  const ddl = c.log.findIndex((s) => /CREATE TABLE IF NOT EXISTS public\.staging_seed_marker/.test(s));
+  const up = c.log.findIndex((s) => /INSERT INTO public\.staging_seed_marker/.test(s));
   assert.ok(ddl > 0 && up > ddl);
   assert.ok(up < c.log.indexOf("COMMIT"));
 });
 
 test("failed scrub: marker write rolls back and emptying does not exclude the marker", async () => {
   const relations = [...rels(Object.keys(SCRUB_PLAN)), ...rels(["staging_seed_marker"])];
-  const c = fake({ relations, failOn: (s) => (/INSERT INTO staging_seed_marker/.test(s) ? new Error("boom") : undefined) });
+  const c = fake({ relations, failOn: (s) => (/INSERT INTO public\.staging_seed_marker/.test(s) ? new Error("boom") : undefined) });
   const { exitCode } = await go(c);
   assert.equal(exitCode, 1);
   assert.ok(c.log.includes("ROLLBACK"));

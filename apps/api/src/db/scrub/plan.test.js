@@ -4,7 +4,7 @@ import { getTableColumns, getTableName, is } from "drizzle-orm";
 import { PgTable } from "drizzle-orm/pg-core";
 import * as schema from "../schema/index.js";
 import {
-  SCRUB_PLAN, COLUMN_CLASSES, buildStatements, findMissingFromLive, classSummary, assertScrubAllowed, findUnclassifiedLive,
+  SCRUB_PLAN, COLUMN_CLASSES, buildStatements, findMissingFromLive, classSummary, assertScrubAllowed, findUnclassifiedLive, keyOf,
 } from "./plan.js";
 
 const CTX = { knownMapKeys: ["mod:labial-bow"] };
@@ -189,4 +189,13 @@ test("drift check ignores only drizzle migration bookkeeping, flags other schema
 
 test("drift check ignores the scrub's staging_seed_marker table", () => {
   assert.deepEqual(findUnclassifiedLive({ staging_seed_marker: ["id", "scrubbed_at", "scrub_version"] }), []);
+});
+
+test("drift check ignores public.staging_seed_marker whatever the session search_path; other schemas are reported", () => {
+  const cols = ["id", "scrubbed_at", "scrub_version"];
+  const live = {};
+  for (const r of [{ schema: "public", table_name: "staging_seed_marker" }]) (live[keyOf(r.schema, r.table_name)] ||= []).push(...cols);
+  assert.deepEqual(findUnclassifiedLive(live), []);
+  const other = { [keyOf("other", "staging_seed_marker")]: cols };
+  assert.deepEqual(findUnclassifiedLive(other), ["table other.staging_seed_marker is not in the scrub plan"]);
 });
