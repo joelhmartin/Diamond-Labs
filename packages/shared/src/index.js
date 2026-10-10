@@ -23,6 +23,8 @@ export * from "./utils/validation.js";
 export { canDeleteVariant, canDeleteOptionValue } from "./catalog/variant-rules.js";
 
 // Rx
+export { RX_FORMS, RX_FORM_LIST, getRxForm } from "./rx/forms/index.js";
+export { groupRxAnswers, formatRxAnswer, humanizeAnswerKey } from "./rx/forms/answers.js";
 export { buildDigitalDevices, buildFormDevices, buildOrthoDevice, DEVICE_LABELS } from "./rx/form-devices.js";
 
 // Lab

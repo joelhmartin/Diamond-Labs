@@ -1,10 +1,10 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 
-import { orthoRxForm } from "./ortho-rx.form.js";
-import { ORTHO_SECTIONS, ORTHO_RECORDS_FIELDS } from "./ortho.sections.js";
-import { CASE_ID_SECTION, SUBMIT_SECTION } from "./rx-common.sections.js";
-import { digitalRxForm } from "./digital-rx.form.js";
+import { orthoRxForm } from "@my-app/shared/rx/forms/ortho-rx.form.js";
+import { ORTHO_SECTIONS, ORTHO_RECORDS_FIELDS } from "@my-app/shared/rx/forms/ortho.sections.js";
+import { CASE_ID_SECTION, SUBMIT_SECTION } from "@my-app/shared/rx/forms/rx-common.sections.js";
+import { digitalRxForm } from "@my-app/shared/rx/forms/digital-rx.form.js";
 import { allFields, visibleFields, disabledOptions, validateForm } from "./form-logic.js";
 
 // Every field the ortho appliance questions define. The resolver

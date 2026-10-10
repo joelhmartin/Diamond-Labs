@@ -21,7 +21,7 @@
  * lab's own orders look.
  *
  * Field keys and option literals are the ortho form's
- * (apps/web/src/data/forms/ortho.sections.js) as carried by the shared adapter
+ * (packages/shared/src/rx/forms/ortho.sections.js) as carried by the shared adapter
  * (packages/shared/src/rx/form-devices.js → buildOrthoDevice); a coverage test
  * reads the live form so a renamed option fails a test, not an order.
  */

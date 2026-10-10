@@ -10,7 +10,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { resolveGuard } from "./guard.js";
-import { digitalRxForm } from "../../../../../../web/src/data/forms/digital-rx.form.js";
+import { digitalRxForm } from "@my-app/shared/rx/forms/digital-rx.form.js";
 
 /** The live form definition's field for `key`. */
 function field(key) {
