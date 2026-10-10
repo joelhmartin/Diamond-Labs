@@ -53,6 +53,12 @@ test("rx.routes.js's auto-push claim uses the SAME predicate as the admin push r
   );
 });
 
+test("both push claims refuse released cases (a released case must never be pushed or overwritten)", () => {
+  const REFUSE = /ne\(rxCases\.status, "released"\),\s*\n\s*ne\(rxCases\.status, "pushed"\),\s*\n\s*or\(isNull\(rxCases\.seazonaPushStatus\), ne\(rxCases\.seazonaPushStatus, "pushing"\)\),/;
+  assert.match(adminRoutesSource, REFUSE, "admin push claim must exclude released");
+  assert.match(rxRoutesSource, REFUSE, "auto-push claim must exclude released");
+});
+
 test("rx.routes.js sets seazonaPushStatus to the 'pushing' sentinel before calling pushCaseToSeazona", () => {
   assert.match(
     rxRoutesSource,

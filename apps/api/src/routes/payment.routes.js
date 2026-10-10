@@ -210,8 +210,8 @@ async function pushOrderToSeazona({ order, lines, shipping, log }) {
  * Record a successful guest catalog charge LOCALLY (authoritative), then its lab
  * order, and attempt the gated Seazona createOrder push. The lab order is created
  * right after the paid order commits, in its own transaction: a failure is logged
- * ([LAB][SHOP_ORDER_FAILED]) for backfill, never lost money or a lost order. Mirrors `recordPaymentAndAllocations` on the doctor
- * path: SOFT-FAIL only — this never throws into checkout, because the card is already
+ * ([LAB][SHOP_ORDER_FAILED]) for backfill, never lost money or a lost order.
+ * Mirrors `recordPaymentAndAllocations` on the doctor path: SOFT-FAIL only — this never throws into checkout, because the card is already
  * charged and failing the response would invite a double-charge on retry.
  *
  * The order insert (db.transaction) and the push + push-status update each get their
@@ -293,7 +293,7 @@ async function recordGuestOrder({
       createShopLabOrder(tx, { orderId, clientUserId: pricedForUserId, quoteLines: quote.lines })
     );
   } catch (err) {
-    console.error(`[LAB][SHOP_ORDER_FAILED] order=${orderId}: ${String(err?.message || err)}`);
+    log.error({ orderId }, `[LAB][SHOP_ORDER_FAILED] order=${orderId}: ${String(err?.message || err)}`);
   }
 
   // Gated live write. Unreachable for pure guest checkout (pushStatus is never

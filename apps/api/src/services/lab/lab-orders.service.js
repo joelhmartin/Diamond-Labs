@@ -95,7 +95,11 @@ export async function releaseRxCase(tx, { caseRow, lines, byUserId = null }) {
   return { labOrder: { id: plan.labOrder.id, orderNumber }, unknownCodes: plan.unknownCodes };
 }
 
-/** The lab order for a just-paid shop order, inside the checkout transaction. */
+/**
+ * The lab order for a just-paid shop order. Runs in its own transaction right
+ * after the paid order commits (never inside it), so a failure can't roll back
+ * a charged order.
+ */
 export async function createShopLabOrder(tx, { orderId, clientUserId = null, quoteLines }) {
   const orderNumber = await allocateOrderNumber(tx);
   const plan = planShopLabOrder({ orderId, clientUserId, quoteLines, orderNumber, labOrderId: createId(), now: new Date() });

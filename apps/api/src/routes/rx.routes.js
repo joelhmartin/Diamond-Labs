@@ -638,6 +638,7 @@ export default async function rxRoutes(fastify) {
               .set({ seazonaPushStatus: "pushing", updatedAt: new Date() })
               .where(and(
                 eq(rxCases.id, caseId),
+                ne(rxCases.status, "released"),
                 ne(rxCases.status, "pushed"),
                 or(isNull(rxCases.seazonaPushStatus), ne(rxCases.seazonaPushStatus, "pushing")),
               ))
