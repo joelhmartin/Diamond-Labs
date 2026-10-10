@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { handlerSource as sharedHandlerSource } from "./_source.js";
 import {
   DEFAULT_QUEUE_STATUSES,
   summariseLines,
@@ -216,12 +217,7 @@ test("a non-pushed case is not frozen, including cancelled — that scope wideni
 const routesFilePath = join(dirname(fileURLToPath(import.meta.url)), "../admin-rx-cases.routes.js");
 const routesSource = readFileSync(routesFilePath, "utf8");
 
-function handlerSource(registrationMarker) {
-  const start = routesSource.indexOf(registrationMarker);
-  assert.ok(start >= 0, `route registration not found in source: ${registrationMarker}`);
-  const next = routesSource.indexOf("\n  fastify.", start + registrationMarker.length);
-  return routesSource.slice(start, next === -1 ? routesSource.length : next);
-}
+const handlerSource = (marker) => sharedHandlerSource(routesSource, marker);
 
 test("POST /admin/rx-cases/:id/lines is wired to the pushed-case guard", () => {
   const body = handlerSource('fastify.post("/admin/rx-cases/:id/lines",');
@@ -488,9 +484,9 @@ test("phi-crypto.js's TEXT_FIELDS includes manualNote — it is decrypted on eve
 
 const FILE_ACCESS_ROUTE_MARKER = 'fastify.get("/admin/rx-cases/:id/files/:fileId",';
 
-test("GET /admin/rx-cases/:id/files/:fileId is admin-gated, not doctor-gated", () => {
+test("GET /admin/rx-cases/:id/files/:fileId is staff-gated (admin or lab), not doctor-gated", () => {
   const body = handlerSource(FILE_ACCESS_ROUTE_MARKER);
-  assert.match(body, /preHandler:\s*\[authenticate,\s*requireAdmin\]/);
+  assert.match(body, /preHandler:\s*\[authenticate,\s*requireRole\(\.\.\.STAFF_ROLES\)\]/);
 });
 
 test("GET /admin/rx-cases/:id/files/:fileId signs the stored URL rather than returning it raw", () => {

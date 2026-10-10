@@ -27,3 +27,4 @@ export { buildDigitalDevices, buildFormDevices, buildOrthoDevice, DEVICE_LABELS 
 
 // Lab
 export * from "./lab/lab-order-status.js";
+export * from "./schemas/lab.schema.js";

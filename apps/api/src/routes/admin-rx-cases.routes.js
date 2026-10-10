@@ -1,5 +1,5 @@
 import { authenticate } from "../middleware/authenticate.js";
-import { requireAdmin } from "../middleware/require-role.js";
+import { requireAdmin, requireRole } from "../middleware/require-role.js";
 import { db } from "../config/database.js";
 import { rxCases, rxCaseLines, rxCaseFiles, rxCodeOverrides } from "../db/schema/index.js";
 import { decryptRxPhi } from "../services/rx/phi-crypto.js";
@@ -12,7 +12,7 @@ import * as auditService from "../services/audit.service.js";
 import { createId } from "../lib/id.js";
 import { encryptJson, encryptField } from "../lib/crypto.js";
 import { env } from "../config/env.js";
-import { ERROR_CODES } from "@my-app/shared";
+import { ERROR_CODES, STAFF_ROLES } from "@my-app/shared";
 import { and, asc, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import {
   CASE_STATUSES,
@@ -192,7 +192,7 @@ export default async function adminRxCasesRoutes(fastify) {
   // the filtered result in memory. Without `q`, pagination happens in SQL.
   // ───────────────────────────────────────────────────────────────────────────
   fastify.get("/admin/rx-cases", {
-    preHandler: [authenticate, requireAdmin],
+    preHandler: [authenticate, requireRole(...STAFF_ROLES)],
   }, async (request) => {
     const q = request.query || {};
     const statuses = q.status
@@ -295,7 +295,7 @@ export default async function adminRxCasesRoutes(fastify) {
   // Never log the decrypted row — patient name is PHI.
   // ───────────────────────────────────────────────────────────────────────────
   fastify.get("/admin/rx-cases/:id", {
-    preHandler: [authenticate, requireAdmin],
+    preHandler: [authenticate, requireRole(...STAFF_ROLES)],
   }, async (request, reply) => {
     const [caseRow] = await db
       .select()
@@ -356,13 +356,13 @@ export default async function adminRxCasesRoutes(fastify) {
   // belong to the case" check, same never-serve-the-raw-pointer discipline
   // (HIPAA: PHI files are never served via a public or long-lived link). The
   // one difference is the access gate — the doctor route also checks case
-  // ownership; here the admin role gate (requireAdmin) replaces that check,
-  // since an admin legitimately has no ownership constraint. Precisely
+  // ownership; here the staff role gate (admin or lab) replaces that check,
+  // since staff legitimately have no ownership constraint. Precisely
   // because that access is broad, the audit entry below is not optional —
   // it's what makes it accountable.
   // ───────────────────────────────────────────────────────────────────────────
   fastify.get("/admin/rx-cases/:id/files/:fileId", {
-    preHandler: [authenticate, requireAdmin],
+    preHandler: [authenticate, requireRole(...STAFF_ROLES)],
   }, async (request, reply) => {
     const [caseRow] = await db
       .select({ id: rxCases.id })

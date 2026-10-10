@@ -3,12 +3,15 @@ import { db } from "../config/database.js";
 import { users, accounts, memberships, products } from "../db/schema/index.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireAdmin } from "../middleware/require-role.js";
+import { validate } from "../middleware/validate.js";
+import * as auditService from "../services/audit.service.js";
+import { roleChangeRefusal } from "../lib/staff-roles.js";
 import * as authService from "../services/auth.service.js";
 import * as emailService from "../services/email.service.js";
 import * as seazonaService from "../services/seazona.service.js";
 import { syncSeazonaProducts, EmptyRemoteError } from "../db/sync-seazona-products.js";
 import { env } from "../config/env.js";
-import { ERROR_CODES } from "@my-app/shared";
+import { ERROR_CODES, userRoleChangeSchema } from "@my-app/shared";
 
 export default async function adminRoutes(fastify) {
   // ──────────────────────────────────────────────────────────────
@@ -162,6 +165,33 @@ export default async function adminRoutes(fastify) {
 
     fastify.log.info({ kind, requested: userIds.length, sent }, "admin bulk email");
     return { data: { sent, requested: userIds.length } };
+  });
+
+  // Grant or remove lab-staff access. Only user <-> lab (lib/staff-roles.js).
+  fastify.put("/admin/users/:id/role", {
+    preHandler: [authenticate, requireAdmin, validate(userRoleChangeSchema)],
+  }, async (request, reply) => {
+    const [target] = await db
+      .select({ id: users.id, role: users.role })
+      .from(users)
+      .where(eq(users.id, request.params.id));
+    if (!target) return reply.code(404).send({ error: ERROR_CODES.USER_NOT_FOUND });
+    const refusal = roleChangeRefusal({ actorId: request.user.id, target, role: request.body.role });
+    if (refusal) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: refusal } });
+    }
+    if (target.role !== request.body.role) {
+      await db.update(users).set({ role: request.body.role, updatedAt: new Date() }).where(eq(users.id, target.id));
+      auditService.logSafe({
+        userId: request.user.id,
+        action: "user.role_changed",
+        targetType: "user",
+        targetId: target.id,
+        metadata: { from: target.role, to: request.body.role },
+        ipAddress: request.ip,
+      });
+    }
+    return { data: { id: target.id, role: request.body.role } };
   });
 
   // ──────────────────────────────────────────────────────────────
