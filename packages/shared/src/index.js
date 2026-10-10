@@ -13,6 +13,7 @@ export * from "./schemas/autopay.schema.js";
 // Constants
 export * from "./constants/roles.js";
 export * from "./constants/errors.js";
+export * from "./constants/user-roles.js";
 
 // Utils
 export * from "./utils/permissions.js";
@@ -22,4 +23,11 @@ export * from "./utils/validation.js";
 export { canDeleteVariant, canDeleteOptionValue } from "./catalog/variant-rules.js";
 
 // Rx
+export { RX_FORMS, RX_FORM_LIST, getRxForm } from "./rx/forms/index.js";
+export { conditionMet, objectHasNoContent, shouldShow, sectionVisible } from "./rx/forms/conditions.js";
+export { groupRxAnswers, formatRxAnswer, humanizeAnswerKey } from "./rx/forms/answers.js";
 export { buildDigitalDevices, buildFormDevices, buildOrthoDevice, DEVICE_LABELS } from "./rx/form-devices.js";
+
+// Lab
+export * from "./lab/lab-order-status.js";
+export * from "./schemas/lab.schema.js";

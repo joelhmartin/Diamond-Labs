@@ -27,12 +27,18 @@ export const ROUTES = {
   ADMIN_RX_CASE_DETAIL: "/admin/rx-cases/:id",
   ADMIN_AUTOPAY: "/admin/autopay",
   ADMIN_JOBS: "/admin/jobs",
+  ADMIN_DEPARTMENTS: "/admin/lab/departments",
+
+  // Lab (admin + lab staff)
+  LAB_BOARD: "/lab",
+  LAB_ORDER_DETAIL: "/lab/orders/:id",
 
   // Doctor
   DOCTOR_INVOICES: "/doctor/invoices",
   DOCTOR_PAYMENTS: "/doctor/payments",
   DOCTOR_SAVED_CARDS: "/doctor/saved-cards",
   DOCTOR_AUTOPAY: "/doctor/autopay",
+  DOCTOR_CASES: "/doctor/cases",
   DOCTOR_NEW_CASE: "/app/cases/new",
 
   // Rx forms (faithful 1:1 JotForm ports)
@@ -43,6 +49,8 @@ export const ROUTES = {
   // Commerce
   CHECKOUT: "/checkout",
 };
+
+export const labOrderPath = (id) => `/lab/orders/${id}`;
 
 /**
  * Given the current user, return the URL that should serve as their "home"
@@ -55,6 +63,7 @@ export function roleHome(user) {
     if (user.approvalStatus === "pending") return ROUTES.REGISTER_PENDING;
     if (user.approvalStatus === "approved") return ROUTES.DOCTOR_INVOICES;
   }
+  if (user.role === "lab") return ROUTES.LAB_BOARD;
   // Everyone else (including admin) lands on the dashboard; the sidebar
   // surfaces role-specific sections like /admin/*.
   return ROUTES.DASHBOARD;

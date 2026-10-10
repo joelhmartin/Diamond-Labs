@@ -13,8 +13,8 @@
  * cleaned, and reported through `onWarning` — never guessed.
  */
 
-import { digitalRxForm } from "../../../web/src/data/forms/digital-rx.form.js";
-import { orthoRxForm } from "../../../web/src/data/forms/ortho-rx.form.js";
+import { digitalRxForm } from "@my-app/shared/rx/forms/digital-rx.form.js";
+import { orthoRxForm } from "@my-app/shared/rx/forms/ortho-rx.form.js";
 
 // ── Text cleanup ────────────────────────────────────────────────────────────
 

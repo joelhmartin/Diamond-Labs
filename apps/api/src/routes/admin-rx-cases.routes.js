@@ -1,28 +1,27 @@
 import { authenticate } from "../middleware/authenticate.js";
-import { requireAdmin } from "../middleware/require-role.js";
+import { requireAdmin, requireRole } from "../middleware/require-role.js";
 import { db } from "../config/database.js";
 import { rxCases, rxCaseLines, rxCaseFiles, rxCodeOverrides } from "../db/schema/index.js";
 import { decryptRxPhi } from "../services/rx/phi-crypto.js";
 import { reResolveLines, devicesForCase } from "../services/rx/case-lines.service.js";
 import { loadOverrides } from "../services/rx/code-overrides.service.js";
-import { pushCaseToSeazona, shouldReleasePushLock } from "../services/rx/push-case.service.js";
 import { getSignedReadUrl } from "../services/storage.service.js";
-import * as seazonaService from "../services/seazona.service.js";
 import * as auditService from "../services/audit.service.js";
 import { createId } from "../lib/id.js";
-import { encryptJson, encryptField } from "../lib/crypto.js";
-import { env } from "../config/env.js";
-import { ERROR_CODES } from "@my-app/shared";
-import { and, asc, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
+import { validate } from "../middleware/validate.js";
+import { ERROR_CODES, STAFF_ROLES, rxReleaseSchema, currentLabOrder } from "@my-app/shared";
+import { releaseRxCase, labOrdersForCases } from "../services/lab/lab-orders.service.js";
+import { labErrorReply } from "../services/lab/lab-errors.js";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import {
   CASE_STATUSES,
   DEFAULT_QUEUE_STATUSES,
-  canPush,
+  canRelease,
   canTransition,
   isFrozen,
-  manualResolution,
   normalizeSeazonaCode,
   overrideRowFor,
+  releaseRefusal,
   statusForLine,
   summariseLines,
 } from "../services/rx/case-gates.js";
@@ -34,102 +33,45 @@ import {
 export {
   CASE_STATUSES,
   DEFAULT_QUEUE_STATUSES,
-  canPush,
+  canRelease,
   canTransition,
   isFrozen,
-  manualResolution,
   normalizeSeazonaCode,
   overrideRowFor,
+  releaseRefusal,
   statusForLine,
   summariseLines,
 } from "../services/rx/case-gates.js";
 
-/**
- * The 409 body every pushed-case refusal sends. Pulled out on its own so
- * the re-resolve route (which already has the case row loaded, status and
- * all, before this runs) can reuse the exact same shape without a second
- * DB round trip through refusePushedCase below.
- */
-function pushedCaseRefusal() {
-  return {
-    error: {
-      code: "CASE_ALREADY_PUSHED",
-      status: 409,
-      message: "This case has already been sent to Seazona. Correct it in Seazona, not here.",
-    },
-  };
+/** The 409 every write to a frozen case's lines sends. */
+function frozenCaseRefusal(status) {
+  return status === "released"
+    ? { error: { code: "CASE_RELEASED", status: 409, message: "This case is on the production board. Change the lab order instead." } }
+    : { error: { code: "CASE_ALREADY_PUSHED", status: 409, message: "This case was sent to Seazona before the lab moved to the portal. Correct it in Seazona." } };
 }
 
 /**
- * The 409 body for B2: a push is currently running for this case. Distinct
- * from pushedCaseRefusal (CASE_ALREADY_PUSHED) on purpose — "wait or clear
- * the lock" is a different next action for staff than "this is done,
- * correct it in Seazona", and collapsing the two would send an operator
- * hunting for the wrong fix.
+ * Write guard for the routes that change a case's lines (add, edit, delete,
+ * re-resolve): a released or legacy-pushed case is frozen (isFrozen). Sends
+ * the refusal and returns true when the caller must stop; returns false —
+ * sending nothing — for an editable case AND for a missing one (each route
+ * reports its own 404). No push can be in flight any more (piece 2 retired
+ * the Seazona push), so there is no in-flight check.
  */
-function pushInFlightRefusal() {
-  return {
-    error: {
-      code: "CASE_PUSH_IN_FLIGHT",
-      status: 409,
-      message: "A push to Seazona is currently running for this case. Wait for it to finish, or use clear-push-lock if it looks stuck — do not edit the lines it was built from.",
-    },
-  };
-}
-
-/**
- * Shared write guard for the routes that mutate a case's order lines: add a
- * line, edit a line, delete a line, re-resolve. None of those routes already
- * has the case's status in hand (they load a line row, or only `id`), so
- * this does the one lookup and, if frozen or mid-push, sends the refusal and
- * returns true so the caller can stop immediately.
- *
- * Checks two things, in order:
- *   1. isFrozen(status) — the case is terminally `pushed`. Same rule as
- *      before (Task 9).
- *   2. seazonaPushStatus === "pushing" — a push is CURRENTLY in flight (B2).
- *      The order that lands was built from the pre-claim snapshot of these
- *      lines; letting staff add/edit/delete a line while that request is
- *      still running means the case can freeze as `pushed` showing lines
- *      that were never actually sent, or a staffer's attempt to stop a bad
- *      push by deleting a line does nothing to the request already in
- *      flight. Uses a distinct code (CASE_PUSH_IN_FLIGHT, not
- *      CASE_ALREADY_PUSHED) — the correct next step ("wait or clear the
- *      lock") is not "correct it in Seazona".
- *
- * Returns false — and sends nothing — both when the case is editable AND
- * when it doesn't exist at all. A missing case is each route's own 404 to
- * report (via its existing lookup), not this guard's; conflating the two
- * would blur "refused because pushed/in flight" with "doesn't exist" behind
- * the same signal.
- *
- * Deliberately NOT applied to: the push route itself and clear-push-lock
- * (Task 10 — they SET `pushed` / recover a case whose push was
- * interrupted), mark-manual (Task 10b — also lands on `pushed`, and claims
- * the same "pushing" sentinel itself), PUT .../status (already gated by
- * canTransition; do not double-gate or change its 409 shape), or either GET
- * route (a pushed case must stay fully readable — this is a write guard
- * only).
- */
-async function refusePushedCase(caseId, reply) {
-  const [caseRow] = await db
-    .select({ status: rxCases.status, seazonaPushStatus: rxCases.seazonaPushStatus })
-    .from(rxCases)
-    .where(eq(rxCases.id, caseId));
-
+async function refuseFrozenCase(caseId, reply) {
+  const [caseRow] = await db.select({ status: rxCases.status }).from(rxCases).where(eq(rxCases.id, caseId));
   if (!caseRow) return false;
-
   if (isFrozen(caseRow.status)) {
-    reply.code(409).send(pushedCaseRefusal());
+    reply.code(409).send(frozenCaseRefusal(caseRow.status));
     return true;
   }
-
-  if (caseRow.seazonaPushStatus === "pushing") {
-    reply.code(409).send(pushInFlightRefusal());
-    return true;
-  }
-
   return false;
+}
+
+/** ?status=a,b or ?status=a&status=b → statuses; none → the open queue. */
+export function parseStatusFilter(raw) {
+  if (raw == null || raw === "") return DEFAULT_QUEUE_STATUSES;
+  return [...new Set([].concat(raw).flatMap((s) => String(s).split(",")).map((s) => s.trim()).filter(Boolean))];
 }
 
 const DEFAULT_LIMIT = 50;
@@ -192,12 +134,10 @@ export default async function adminRxCasesRoutes(fastify) {
   // the filtered result in memory. Without `q`, pagination happens in SQL.
   // ───────────────────────────────────────────────────────────────────────────
   fastify.get("/admin/rx-cases", {
-    preHandler: [authenticate, requireAdmin],
+    preHandler: [authenticate, requireRole(...STAFF_ROLES)],
   }, async (request) => {
     const q = request.query || {};
-    const statuses = q.status
-      ? (Array.isArray(q.status) ? q.status : [q.status])
-      : DEFAULT_QUEUE_STATUSES;
+    const statuses = parseStatusFilter(q.status);
 
     const limit = Math.min(Number(q.limit) > 0 ? Number(q.limit) : DEFAULT_LIMIT, MAX_LIMIT);
     const offset = Number(q.offset) > 0 ? Number(q.offset) : 0;
@@ -295,7 +235,7 @@ export default async function adminRxCasesRoutes(fastify) {
   // Never log the decrypted row — patient name is PHI.
   // ───────────────────────────────────────────────────────────────────────────
   fastify.get("/admin/rx-cases/:id", {
-    preHandler: [authenticate, requireAdmin],
+    preHandler: [authenticate, requireRole(...STAFF_ROLES)],
   }, async (request, reply) => {
     const [caseRow] = await db
       .select()
@@ -306,7 +246,7 @@ export default async function adminRxCasesRoutes(fastify) {
       return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
     }
 
-    const [lines, files] = await Promise.all([
+    const [lines, files, labOrdersByCase] = await Promise.all([
       db
         .select()
         .from(rxCaseLines)
@@ -316,6 +256,7 @@ export default async function adminRxCasesRoutes(fastify) {
         .select()
         .from(rxCaseFiles)
         .where(eq(rxCaseFiles.caseId, caseRow.id)),
+      labOrdersForCases([caseRow.id]),
     ]);
 
     auditService.logSafe({
@@ -339,12 +280,14 @@ export default async function adminRxCasesRoutes(fastify) {
       });
     }
 
+    const lo = currentLabOrder(labOrdersByCase.get(caseRow.id) ?? []);
     return {
       data: {
         case: decrypted,
         lines,
         files,
         prescription: decrypted.formData,
+        labOrder: lo ? { id: lo.id, orderNumber: lo.orderNumber, status: lo.status } : null,
       },
     };
   });
@@ -356,13 +299,13 @@ export default async function adminRxCasesRoutes(fastify) {
   // belong to the case" check, same never-serve-the-raw-pointer discipline
   // (HIPAA: PHI files are never served via a public or long-lived link). The
   // one difference is the access gate — the doctor route also checks case
-  // ownership; here the admin role gate (requireAdmin) replaces that check,
-  // since an admin legitimately has no ownership constraint. Precisely
+  // ownership; here the staff role gate (admin or lab) replaces that check,
+  // since staff legitimately have no ownership constraint. Precisely
   // because that access is broad, the audit entry below is not optional —
   // it's what makes it accountable.
   // ───────────────────────────────────────────────────────────────────────────
   fastify.get("/admin/rx-cases/:id/files/:fileId", {
-    preHandler: [authenticate, requireAdmin],
+    preHandler: [authenticate, requireRole(...STAFF_ROLES)],
   }, async (request, reply) => {
     const [caseRow] = await db
       .select({ id: rxCases.id })
@@ -429,7 +372,7 @@ export default async function adminRxCasesRoutes(fastify) {
     const body = request.body || {};
     const scope = body.scope === "always" ? "always" : "once";
 
-    if (await refusePushedCase(caseId, reply)) return;
+    if (await refuseFrozenCase(caseId, reply)) return;
 
     const [existing] = await db
       .select()
@@ -535,7 +478,7 @@ export default async function adminRxCasesRoutes(fastify) {
     const caseId = request.params.id;
     const body = request.body || {};
 
-    if (await refusePushedCase(caseId, reply)) return;
+    if (await refuseFrozenCase(caseId, reply)) return;
 
     const [caseRow] = await db.select({ id: rxCases.id }).from(rxCases).where(eq(rxCases.id, caseId));
     if (!caseRow) {
@@ -599,7 +542,7 @@ export default async function adminRxCasesRoutes(fastify) {
   // ───────────────────────────────────────────────────────────────────────────
   // DELETE /admin/rx-cases/:id/lines/:lineId
   // Remove a line entirely — e.g. staff added one by mistake, or the resolver
-  // produced a line that shouldn't exist. Hard delete; canPush/summariseLines
+  // produced a line that shouldn't exist. Hard delete; canRelease/summariseLines
   // simply see one fewer line on the next read.
   // ───────────────────────────────────────────────────────────────────────────
   fastify.delete("/admin/rx-cases/:id/lines/:lineId", {
@@ -607,7 +550,7 @@ export default async function adminRxCasesRoutes(fastify) {
   }, async (request, reply) => {
     const { id: caseId, lineId } = request.params;
 
-    if (await refusePushedCase(caseId, reply)) return;
+    if (await refuseFrozenCase(caseId, reply)) return;
 
     const [existing] = await db
       .select()
@@ -724,16 +667,8 @@ export default async function adminRxCasesRoutes(fastify) {
       return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
     }
 
-    // Already have the row (status and seazonaPushStatus and all) from the
-    // select above — no need for a second refusePushedCase lookup, just the
-    // same two checks + bodies (B2: pushed is terminal, mid-push is also
-    // refused so a re-resolve can't touch lines a push is currently reading).
-    if (isFrozen(caseRowRaw.status)) {
-      return reply.code(409).send(pushedCaseRefusal());
-    }
-    if (caseRowRaw.seazonaPushStatus === "pushing") {
-      return reply.code(409).send(pushInFlightRefusal());
-    }
+    // Already have the row from the select above — no second guard lookup.
+    if (isFrozen(caseRowRaw.status)) return reply.code(409).send(frozenCaseRefusal(caseRowRaw.status));
 
     let caseRow;
     try {
@@ -768,412 +703,73 @@ export default async function adminRxCasesRoutes(fastify) {
   });
 
   // ───────────────────────────────────────────────────────────────────────────
-  // POST /admin/rx-cases/:id/push
-  // Send a reviewed case to Seazona as a real order. HIGHEST-RISK route in this
-  // module: Seazona has no idempotency key, so a duplicate push is a real
-  // order a human has to go find and delete.
+  // POST /admin/rx-cases/:id/release
+  // Release a reviewed case to the production board. Replaces the Seazona
+  // push (own-the-lab piece 2): same line gate (canRelease, formerly canPush),
+  // but the "order" is our own lab order, created in the same transaction
+  // that moves the case to `released`.
   //
-  // The payload is built from the case's STORED lines (push-case.service.js's
-  // payloadFromLines), never re-resolved from the raw device selections —
-  // re-resolving here would silently discard every staff correction at the
-  // exact moment those corrections matter. canPush (also in push-case.service.js
-  // via pushCaseToSeazona) independently re-verifies a real product code exists
-  // on every sendable line; it does not trust a line's own `status`.
-  //
-  // Double-push guard: a conditional DB update claims the row by flipping
-  // seazonaPushStatus to "pushing" in the SAME statement that checks it isn't
-  // already pushed or already mid-push (guard at the database, not the button).
-  // The claim is taken on seazonaPushStatus, NOT on `status` — `status` must
-  // only ever hold one of CASE_STATUSES, so a crash between claim and outcome
-  // can never strand a case in a value the queue and UI don't understand.
-  // Deliberately not gated by refusePushedCase/isFrozen (see that guard's
-  // docstring) — this route performs its own, stricter claim and is the one
-  // place allowed to move a case TO `pushed`.
-  //
-  // Two preflight checks run BEFORE the claim, in this order: (1) the
-  // SEAZONA_ORDER_USER_ID precondition, and (2) the canPush gate. Both are
-  // pure refusals — no claim taken, no status/seazonaPushStatus/
-  // seazonaPushError written, the case stays exactly where it was. A refusal
-  // is not an attempt: "we refused to send" needs a different next action
-  // from staff than "we sent it and it failed" (fix the missing config /
-  // unmapped line, vs. check Seazona and maybe retry) — conflating them by
-  // writing `failed` sends staff hunting for orders that were never
-  // attempted. canPush is called again inside pushCaseToSeazona as defence in
-  // depth for any future caller of that function.
-  //
-  // All Seazona-facing decision logic (the canPush gate, payload build, and
-  // interpreting Seazona's response) lives in pushCaseToSeazona so it stays
-  // unit-testable without a Fastify harness; this route is a thin caller that
-  // only does the preflight checks, the DB claim, the final write, and audit
-  // logging.
+  // Order of checks: releaseRefusal (already released / legacy pushed /
+  // cancelled / an unconfirmed legacy Seazona push) -> canRelease on the
+  // STORED lines -> transaction (claim case, allocate number, insert order,
+  // lines and event). Lab staff may release; editing lines stays admin-only.
   // ───────────────────────────────────────────────────────────────────────────
-  fastify.post("/admin/rx-cases/:id/push", {
-    preHandler: [authenticate, requireAdmin],
+  fastify.post("/admin/rx-cases/:id/release", {
+    preHandler: [authenticate, requireRole(...STAFF_ROLES), validate(rxReleaseSchema)],
   }, async (request, reply) => {
     const caseId = request.params.id;
+    const [caseRowRaw] = await db.select().from(rxCases).where(eq(rxCases.id, caseId));
+    if (!caseRowRaw) return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
 
-    const [caseRowRaw] = await db
-      .select()
-      .from(rxCases)
-      .where(eq(rxCases.id, caseId));
+    const refusal = releaseRefusal(caseRowRaw, { confirmNotInSeazona: request.body.confirmNotInSeazona === true });
+    if (refusal) return reply.code(refusal.status).send({ error: refusal.error });
 
-    if (!caseRowRaw) {
-      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
-    }
-
-    // Precondition 1: without a configured lab-staff Seazona user id, the
-    // order can't be attributed. Mirrors payment.routes.js's
-    // resolveOrderPushStatus, which refuses the sibling Seazona order path
-    // ("skipped_no_user") rather than send an order with no user or let
-    // Seazona reject it with an error nobody will recognise. No claim taken,
-    // no status written — Seazona is never called.
-    if (!env.SEAZONA_ORDER_USER_ID) {
-      return reply.code(503).send({
-        error: {
-          code: "SEAZONA_ORDER_USER_NOT_CONFIGURED",
-          status: 503,
-          message: "Seazona order user is not configured, so this order cannot be attributed. Set SEAZONA_ORDER_USER_ID before pushing.",
-        },
-      });
-    }
-
-    // Precondition 2: the canPush gate, run against the case's STORED lines
-    // — loaded here, before the claim, so a refusal never takes and releases
-    // a lock for a send that was never going to happen.
     const lines = await db
       .select()
       .from(rxCaseLines)
       .where(eq(rxCaseLines.caseId, caseId))
       .orderBy(asc(rxCaseLines.position));
-
-    const gate = canPush(lines);
+    const gate = canRelease(lines);
     if (!gate.ok) {
       return reply.code(422).send({
-        error: {
-          code: "RX_PUSH_BLOCKED",
-          status: 422,
-          message: gate.reason,
-          blocking: gate.blocking,
-        },
+        error: { code: "RX_RELEASE_BLOCKED", status: 422, message: gate.reason, blocking: gate.blocking },
       });
     }
 
-    const claimed = await db.update(rxCases)
-      .set({ seazonaPushStatus: "pushing", updatedAt: new Date() })
-      .where(and(
-        eq(rxCases.id, caseId),
-        ne(rxCases.status, "pushed"),
-        or(isNull(rxCases.seazonaPushStatus), ne(rxCases.seazonaPushStatus, "pushing")),
-      ))
-      .returning({ id: rxCases.id });
-
-    if (claimed.length === 0) {
-      return reply.code(409).send({
-        error: {
-          code: "PUSH_IN_FLIGHT_OR_DONE",
-          status: 409,
-          message: "This case has already been sent, or a push is already running.",
-        },
-      });
-    }
-
-    // From here on the row is claimed: seazonaPushStatus="pushing" until this
-    // handler writes a final outcome below. If the process dies before that
-    // write lands, the case is left stuck at "pushing" — recovered via
-    // PUT /admin/rx-cases/:id/clear-push-lock, not automatically.
     let caseRow;
     try {
       caseRow = decryptRxPhi(caseRowRaw);
     } catch (err) {
       request.log.error({ caseId, err: err.message }, "rx PHI decrypt failed");
-      await db.update(rxCases)
-        .set({
-          status: "failed",
-          seazonaPushStatus: "failed",
-          seazonaPushError: "Failed to decrypt case PHI before push.",
-          updatedAt: new Date(),
-        })
-        .where(eq(rxCases.id, caseId));
-      return reply.code(500).send({
-        error: { code: "INTERNAL_ERROR", status: 500, message: "Failed to load case." },
-      });
+      return reply.code(500).send({ error: { code: "INTERNAL_ERROR", status: 500, message: "Failed to load case." } });
     }
 
-    // `lines` was already loaded above (before the claim) for the canPush
-    // preflight — reused here rather than re-queried, same as
-    // payloadFromLines' own reasoning: the stored lines at whatever moment
-    // they're read are the source of truth, not a fresh re-resolve.
-
-    // codeToId from the live Seazona catalog — listProducts() returns [] if
-    // Seazona is unreachable (soft-fail), which then surfaces as "no catalog
-    // id for code …" warnings on every line and a failed push, same pattern
-    // the now-deleted /rx/cases/:id/approve route used before this route
-    // replaced it (see round A's commit message).
-    const products = await seazonaService.listProducts();
-    const codeToId = {};
-    for (const p of products) {
-      if (p.code) codeToId[p.code] = String(p.id);
+    let result;
+    try {
+      result = await db.transaction((tx) => releaseRxCase(tx, { caseRow, byUserId: request.user.id }));
+    } catch (err) {
+      const r = labErrorReply(err);
+      if (r) return reply.code(r.status).send(r.body);
+      throw err;
     }
 
-    const outcome = await pushCaseToSeazona(caseRow, lines, {
-      codeToId,
-      userId: env.SEAZONA_ORDER_USER_ID,
-    });
-
-    // B1 fix: a failed push does NOT always release the claim/lock —
-    // shouldReleasePushLock (push-case.service.js) makes that call from
-    // outcome.contactedSeazona, exactly the distinction it was added for.
-    // When Seazona was actually contacted and the result was ambiguous, the
-    // lock stays HELD (seazonaPushStatus stays "pushing") so a human must
-    // run clear-push-lock — checking Seazona — before any retry, rather than
-    // the queue's Push button silently re-enabling on a possible duplicate.
-    // `status` still becomes outcome.status either way, so the case stays
-    // visible and actionable in the queue — only the LOCK differs.
-    const releaseLock = shouldReleasePushLock(outcome);
-
-    const updateValues = {
-      status: outcome.status,
-      seazonaPushStatus: releaseLock ? outcome.status : "pushing",
-      seazonaOrderId: outcome.seazonaOrderId,
-      seazonaPushError: outcome.seazonaPushError,
-      updatedAt: new Date(),
-    };
-    if (outcome.status === "pushed") {
-      // PHI (embeds patientName) — encrypt at rest, same treatment the
-      // now-deleted /rx/cases/:id/approve route gave its dry-run snapshot.
-      updateValues.payloadSnapshot = encryptJson(outcome.payload);
-    }
-
-    const [updated] = await db
-      .update(rxCases)
-      .set(updateValues)
-      .where(eq(rxCases.id, caseId))
-      .returning({
-        id: rxCases.id,
-        status: rxCases.status,
-        seazonaPushStatus: rxCases.seazonaPushStatus,
-        seazonaOrderId: rxCases.seazonaOrderId,
-        seazonaPushError: rxCases.seazonaPushError,
-        updatedAt: rxCases.updatedAt,
-      });
-
-    if (outcome.status === "failed") {
-      request.log.error(
-        { caseId, error: outcome.seazonaPushError },
-        "[Seazona][RX_PUSH_FAILED] case push failed"
-      );
-    }
-
+    // No PHI: ids, the order number and lab codes only.
     auditService.logSafe({
       userId: request.user.id,
-      action: "rx_case.pushed",
+      action: "rx_case.released",
       targetType: "rx_case",
       targetId: caseId,
       metadata: {
-        outcome: outcome.status,
-        seazonaOrderId: outcome.seazonaOrderId,
-        error: outcome.seazonaPushError,
+        labOrderId: result.labOrder.id,
+        orderNumber: result.labOrder.orderNumber,
+        unknownCodes: result.unknownCodes,
+        confirmedNotInSeazona: request.body.confirmNotInSeazona === true,
       },
       ipAddress: request.ip,
     });
 
-    if (outcome.status === "failed") {
-      return reply.code(422).send({
-        error: {
-          code: "RX_PUSH_FAILED",
-          status: 422,
-          message: outcome.seazonaPushError || "Failed to push this case to Seazona.",
-        },
-        data: updated,
-      });
-    }
-
-    return { data: updated };
-  });
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // POST /admin/rx-cases/:id/mark-manual
-  // "Staff typed this order into Seazona by hand." Without this, a case
-  // staff resolved outside the portal sits in the queue forever until
-  // someone eventually pushes a duplicate — Seazona has no idempotency key,
-  // so that duplicate is a real order a human has to go find and delete.
-  //
-  // Resolves the case exactly as a successful push does (manualResolution
-  // writes status: "pushed") so it leaves the queue and cannot be pushed or
-  // marked manual again, but tags seazonaPushStatus: "manual" so "we sent
-  // this" and "someone typed it in" stay distinguishable forever.
-  //
-  // Deliberately bypasses canPush — a human already created the order in
-  // Seazona, so an unresolved line here cannot stop them recording that.
-  // This is the one sanctioned way past the send gate. Precisely because it
-  // bypasses that gate, manualResolution captures which lines were still
-  // unresolved at this moment into unresolvedAtManual, which this route
-  // writes into audit metadata alongside the Seazona order number — no PHI,
-  // only mapKeys. Otherwise this button quietly becomes how mapping gaps
-  // disappear, and those gaps are the lab's open questions.
-  //
-  // B4: the operator's free-text `note` is PHI-shaped (a natural note like
-  // "confirmed with Dr Lee re: Jane Doe's retainer" names the patient) and
-  // is persisted encrypted on rx_cases.manualNote (phi-crypto.js), NOT in
-  // audit metadata — audit_log.metadata is plaintext jsonb. The audit row
-  // records only notePresent: true/false, never the note text itself.
-  //
-  // Claim: the SAME full predicate the push route uses — status != 'pushed'
-  // AND (seazonaPushStatus is null OR != 'pushing') — not just the narrower
-  // status check the brief describes. The push route claims a case by
-  // setting seazonaPushStatus = "pushing" while leaving `status` alone, so a
-  // narrower predicate here would let mark-manual succeed while a push is
-  // genuinely in flight: whichever write lands second wins, either erasing
-  // a push that reached Seazona or getting overwritten by one that did —
-  // either way, two orders in Seazona for one case and a record showing
-  // one. Deliberately NOT gated by refusePushedCase/isFrozen (see that
-  // guard's docstring) — like push, this route performs its own claim and
-  // is allowed to move a case TO `pushed`.
-  //
-  // A claim that finds nothing is refused with 409 pointing at
-  // clear-push-lock rather than just saying no: if the case is stuck at
-  // "pushing" because a push was interrupted, papering over that with
-  // mark-manual would skip the deliberate "check Seazona before you act"
-  // step clear-push-lock exists to force.
-  // ───────────────────────────────────────────────────────────────────────────
-  fastify.post("/admin/rx-cases/:id/mark-manual", {
-    preHandler: [authenticate, requireAdmin],
-  }, async (request, reply) => {
-    const caseId = request.params.id;
-    const { seazonaOrderId, note } = request.body || {};
-
-    // Claims with the SAME "pushing" sentinel the push route uses — not the
-    // final "manual" value — so the lock is shared between the two routes.
-    // If this set the final value directly, a concurrent claim (by either
-    // route) would see seazonaPushStatus != "pushing" and slip through
-    // between this claim and the finalize write below, which is exactly the
-    // double-claim this predicate exists to prevent.
-    const claimed = await db.update(rxCases)
-      .set({ seazonaPushStatus: "pushing", updatedAt: new Date() })
-      .where(and(
-        eq(rxCases.id, caseId),
-        ne(rxCases.status, "pushed"),
-        or(isNull(rxCases.seazonaPushStatus), ne(rxCases.seazonaPushStatus, "pushing")),
-      ))
-      .returning({ id: rxCases.id });
-
-    if (claimed.length === 0) {
-      const [existing] = await db
-        .select({ id: rxCases.id })
-        .from(rxCases)
-        .where(eq(rxCases.id, caseId));
-      if (!existing) {
-        return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
-      }
-      return reply.code(409).send({
-        error: {
-          code: "MARK_MANUAL_BLOCKED",
-          status: 409,
-          message: "This case has already been resolved, or a push is currently running. If a push looks stuck, check Seazona for an order before using clear-push-lock — do not mark this manual instead.",
-        },
-      });
-    }
-
-    // From here the row is claimed. Load the stored lines to know what was
-    // still unresolved at the moment staff recorded this — same "stored
-    // lines are the source of truth" reasoning the push route uses, not a
-    // fresh re-resolve.
-    const lines = await db
-      .select()
-      .from(rxCaseLines)
-      .where(eq(rxCaseLines.caseId, caseId))
-      .orderBy(asc(rxCaseLines.position));
-
-    const resolution = manualResolution(lines, { seazonaOrderId });
-
-    const [updated] = await db
-      .update(rxCases)
-      .set({
-        status: resolution.status,
-        seazonaPushStatus: resolution.seazonaPushStatus,
-        seazonaOrderId: resolution.seazonaOrderId,
-        // B4: encrypted at rest (phi-crypto.js's TEXT_FIELDS includes
-        // manualNote) — this route encrypts the single column directly
-        // rather than routing through encryptRxPhi, same convention the
-        // push route above already uses for payloadSnapshot.
-        manualNote: note ? encryptField(note) : null,
-        updatedAt: new Date(),
-      })
-      .where(eq(rxCases.id, caseId))
-      .returning({
-        id: rxCases.id,
-        status: rxCases.status,
-        seazonaPushStatus: rxCases.seazonaPushStatus,
-        seazonaOrderId: rxCases.seazonaOrderId,
-        updatedAt: rxCases.updatedAt,
-      });
-
-    auditService.logSafe({
-      userId: request.user.id,
-      action: "rx_case.marked_manual",
-      targetType: "rx_case",
-      targetId: caseId,
-      // No PHI: mapKeys and the order number only. The operator's actual
-      // note text lives encrypted on rx_cases.manualNote (B4) — audit
-      // metadata (plaintext jsonb) records only whether one was given.
-      metadata: {
-        unresolvedAtManual: resolution.unresolvedAtManual,
-        seazonaOrderId: resolution.seazonaOrderId,
-        notePresent: !!note,
-      },
-      ipAddress: request.ip,
+    return reply.code(201).send({
+      data: { caseId, status: "released", labOrder: result.labOrder, unknownCodes: result.unknownCodes },
     });
-
-    return { data: updated };
-  });
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // PUT /admin/rx-cases/:id/clear-push-lock
-  // Recover a case whose push was interrupted — the process died between the
-  // claim above and its outcome write, leaving seazonaPushStatus stuck at
-  // "pushing" (which blocks every future push attempt via the claim's WHERE).
-  // Resets seazonaPushStatus to null so the case can be retried.
-  //
-  // Deliberately NOT automatic / on a timer: an interrupted push may well have
-  // reached Seazona even though this process never recorded the outcome — a
-  // human must check Seazona before a second attempt, or risk a real duplicate
-  // order. This route only clears the lock; it does not touch `status`,
-  // seazonaOrderId, or the case's lines.
-  // ───────────────────────────────────────────────────────────────────────────
-  fastify.put("/admin/rx-cases/:id/clear-push-lock", {
-    preHandler: [authenticate, requireAdmin],
-  }, async (request, reply) => {
-    const caseId = request.params.id;
-
-    const [existing] = await db
-      .select({ id: rxCases.id, seazonaPushStatus: rxCases.seazonaPushStatus })
-      .from(rxCases)
-      .where(eq(rxCases.id, caseId));
-
-    if (!existing) {
-      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
-    }
-
-    const [updated] = await db
-      .update(rxCases)
-      .set({ seazonaPushStatus: null, updatedAt: new Date() })
-      .where(eq(rxCases.id, caseId))
-      .returning({
-        id: rxCases.id,
-        status: rxCases.status,
-        seazonaPushStatus: rxCases.seazonaPushStatus,
-        updatedAt: rxCases.updatedAt,
-      });
-
-    auditService.logSafe({
-      userId: request.user.id,
-      action: "rx_case.push_lock_cleared",
-      targetType: "rx_case",
-      targetId: caseId,
-      metadata: { previousSeazonaPushStatus: existing.seazonaPushStatus },
-      ipAddress: request.ip,
-    });
-
-    return { data: updated };
   });
 }

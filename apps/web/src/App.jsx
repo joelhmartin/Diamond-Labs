@@ -35,11 +35,15 @@ import { AdminClientPricingPage } from "./pages/app/AdminClientPricingPage.jsx";
 import { AdminAutoPayPage } from "./pages/app/AdminAutoPayPage.jsx";
 import { AdminJobsPage } from "./pages/app/AdminJobsPage.jsx";
 import { AdminOrdersPage } from "./pages/app/AdminOrdersPage.jsx";
-import { AdminOrderDetailPage } from "./pages/app/AdminOrderDetailPage.jsx";
+import { AdminDepartmentsPage } from "./pages/app/AdminDepartmentsPage.jsx";
+import { MyCasesPage } from "./pages/doctor/MyCasesPage.jsx";
 import { AdminRxMappingPage } from "./pages/app/AdminRxMappingPage.jsx";
 import { AdminRxCasesPage } from "./pages/app/AdminRxCasesPage.jsx";
 import { AdminRxCaseDetailPage } from "./pages/app/AdminRxCaseDetailPage.jsx";
 import { RequireAdmin } from "./guards/RequireAdmin.jsx";
+import { RequireStaff } from "./guards/RequireStaff.jsx";
+import { LabBoardPage } from "./pages/lab/LabBoardPage.jsx";
+import { LabOrderDetailPage } from "./pages/lab/LabOrderDetailPage.jsx";
 
 // Marketing pages
 import { HomePage } from "./pages/marketing/Home.jsx";
@@ -220,12 +224,16 @@ function AppRoutes() {
           <Route path="/admin/invoices" element={<AdminInvoicesPage />} />
           <Route path="/admin/payments" element={<AdminPaymentsPage />} />
           <Route path="/admin/orders" element={<AdminOrdersPage />} />
-          <Route path="/admin/orders/:id" element={<AdminOrderDetailPage />} />
+          <Route path="/admin/lab/departments" element={<AdminDepartmentsPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />
           <Route path="/admin/users/:userId/pricing" element={<AdminClientPricingPage />} />
           <Route path="/admin/autopay" element={<AdminAutoPayPage />} />
           <Route path="/admin/jobs" element={<AdminJobsPage />} />
           <Route path="/admin/rx-mapping" element={<AdminRxMappingPage />} />
+        </Route>
+        <Route element={<RequireStaff />}>
+          <Route path="/lab" element={<LabBoardPage />} />
+          <Route path="/lab/orders/:id" element={<LabOrderDetailPage />} />
           <Route path="/admin/rx-cases" element={<AdminRxCasesPage />} />
           <Route path="/admin/rx-cases/:id" element={<AdminRxCaseDetailPage />} />
         </Route>
@@ -238,6 +246,7 @@ function AppRoutes() {
           <Route path="payments" element={<PaymentsPage />} />
           <Route path="saved-cards" element={<SavedCardsPage />} />
           <Route path="autopay" element={<AutoPayPage />} />
+          <Route path="cases" element={<MyCasesPage />} />
         </Route>
       </Route>
 

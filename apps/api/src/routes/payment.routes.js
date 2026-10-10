@@ -17,6 +17,7 @@ import { redis } from "../config/redis.js";
 import { users, invoicePayments, orders, orderItems, auditLog } from "../db/schema/index.js";
 import { eq, and, gt, inArray, like, desc } from "drizzle-orm";
 import { createId } from "../lib/id.js";
+import { createShopLabOrder } from "../services/lab/lab-orders.service.js";
 import { env } from "../config/env.js";
 import { testModeError } from "../config/app-env.js";
 import {
@@ -148,75 +149,13 @@ function generateOrderNumber() {
 }
 
 /**
- * Decide whether a recorded catalog order may be pushed to Seazona via
- * createOrder, and if not, why. Gated behind the SAME production condition the
- * rest of the payment code uses (env.AUTHORIZE_NET_ENV === "production") PLUS a
- * configured lab-staff userId. A guest order with no Seazona clientId cannot be
- * pushed at all — Seazona's createOrder requires a clientId.
- *
- * Returns a `seazonaPushStatus` value; "pending" means "eligible — go ahead".
- * For the current public guest checkout `seazonaClientId` is always null, so this
- * never returns "pending" there (it resolves to a skip/not-applicable status and
- * Seazona is never called). The "pending"→push path is built correct-by-
- * construction for a future order that carries a Seazona clientId.
- */
-function resolveOrderPushStatus({ seazonaClientId }) {
-  if (env.AUTHORIZE_NET_ENV !== "production") return "skipped_not_production";
-  if (!env.SEAZONA_ORDER_USER_ID) return "skipped_no_user";
-  if (!seazonaClientId) return "not_applicable_guest";
-  return "pending";
-}
-
-/**
- * Push a recorded order to Seazona via createOrder. The caller must have already
- * confirmed eligibility (resolveOrderPushStatus === "pending"). NEVER throws —
- * the customer is already charged, so a push failure is captured and reported,
- * never surfaced. Returns { status, seazonaOrderId, error }.
- */
-async function pushOrderToSeazona({ order, lines, shipping, log }) {
-  // Every line must carry a Seazona product id to be pushable.
-  const unmapped = lines.filter((l) => !l.seazonaProductId);
-  if (unmapped.length) {
-    const msg = `Order has ${unmapped.length} line(s) with no mapped Seazona product id.`;
-    log.warn(
-      { orderNumber: order.orderNumber, unmapped: unmapped.map((l) => l.catalogId) },
-      `catalog order Seazona push skipped — ${msg}`
-    );
-    return { status: "failed", seazonaOrderId: null, error: msg };
-  }
-  try {
-    const res = await seazonaService.createOrder({
-      clientId: order.seazonaClientId,
-      patientName: shipping.name || order.email,
-      due: null,
-      // Physical catalog goods (accessories/supplies) — no upper/lower arch.
-      items: lines.map((l) => ({ id: l.seazonaProductId, arch: null })),
-      notes: `DOL catalog order ${order.orderNumber} — ship to ${shipping.name}, ${shipping.address1}, ${shipping.city} ${shipping.state} ${shipping.postalCode}`.slice(0, 500),
-      userId: env.SEAZONA_ORDER_USER_ID,
-    });
-    // createOrder returns null on any non-2xx (see seazona.service.js).
-    const seazonaOrderId = res?.orderId != null ? String(res.orderId) : null;
-    if (!seazonaOrderId) {
-      return { status: "failed", seazonaOrderId: null, error: "Seazona createOrder returned no orderId." };
-    }
-    return { status: "pushed", seazonaOrderId, error: null };
-  } catch (err) {
-    return { status: "failed", seazonaOrderId: null, error: String(err?.message || err).slice(0, 1000) };
-  }
-}
-
-/**
- * Record a successful guest catalog charge LOCALLY (authoritative) and attempt the
- * gated Seazona createOrder push. Mirrors `recordPaymentAndAllocations` on the doctor
- * path: SOFT-FAIL only — this never throws into checkout, because the card is already
- * charged and failing the response would invite a double-charge on retry.
- *
- * The order insert (db.transaction) and the push + push-status update each get their
- * OWN try/catch so their failures log DISTINCT messages: the order can be recorded
- * even if the downstream push leg fails, and the two must not be conflated.
- *
- * Returns `{ orderRecordFailed }` so the handler can detect the idempotency-degraded
- * case (order insert AND result-cache write both failing in the same request).
+ * Record a successful guest catalog charge LOCALLY (authoritative), then its lab
+ * order. The lab order is created right after the paid order commits, in its own
+ * transaction: a failure is logged ([LAB][SHOP_ORDER_FAILED]) for backfill, never
+ * a lost payment or a lost order. SOFT-FAIL only — this never throws into
+ * checkout, because the card is already charged and failing the response would
+ * invite a double-charge on retry. Returns `{ orderRecordFailed }` so the handler
+ * can detect the idempotency-degraded case.
  */
 async function recordGuestOrder({
   orderId,
@@ -230,15 +169,6 @@ async function recordGuestOrder({
   lines,
   log,
 }) {
-  // Single source of truth for this order's Seazona client. Guest catalog checkout
-  // has no Seazona client (createOrder requires one), so this is null and the push
-  // resolves to `not_applicable_guest`. A future client-linked flow changes ONLY
-  // this assignment — it is then COUPLED through to resolveOrderPushStatus, the
-  // persisted orders.seazonaClientId column, AND pushOrderToSeazona, all of which
-  // read this one value. Don't reintroduce hardcoded nulls downstream.
-  const seazonaClientId = null; // guest catalog checkout has no Seazona client; see Phase 3c finding
-  const pushStatus = resolveOrderPushStatus({ seazonaClientId });
-
   try {
     await db.transaction(async (tx) => {
       await tx.insert(orders).values({
@@ -255,8 +185,6 @@ async function recordGuestOrder({
         authCode: result.authCode || null,
         status: "paid",
         pricedForUserId,
-        seazonaClientId,
-        seazonaPushStatus: pushStatus,
       });
       await tx.insert(orderItems).values(
         lines.map((l) => ({
@@ -282,55 +210,30 @@ async function recordGuestOrder({
     return { orderRecordFailed: true };
   }
 
-  // Gated live write. Unreachable for pure guest checkout (pushStatus is never
-  // "pending" when seazonaClientId is null) — built for a future client-linked
-  // order. Never executed in dev (skipped_not_production). The order is ALREADY
-  // recorded above, so the push + push-status update get their OWN nested try/catch:
-  // a failure here means "order persisted, push state needs reconcile", which is a
-  // DIFFERENT condition from "failed to record the order".
-  if (pushStatus === "pending") {
-    let push;
-    try {
-      push = await pushOrderToSeazona({
-        order: { orderNumber, email, seazonaClientId },
-        lines,
-        shipping,
-        log,
-      });
-      await db
-        .update(orders)
-        .set({
-          seazonaOrderId: push.seazonaOrderId,
-          seazonaPushStatus: push.status,
-          seazonaPushError: push.error,
-          updatedAt: new Date(),
-        })
-        .where(eq(orders.id, orderId));
-      if (push.status === "pushed") {
-        log.info({ orderNumber, seazonaOrderId: push.seazonaOrderId }, "catalog order pushed to Seazona");
-      } else {
-        log.error({ orderNumber, error: push.error }, "catalog order Seazona push failed — order recorded locally, needs manual reconcile");
-      }
-    } catch (pushErr) {
-      log.error(
-        { pushErr, orderNumber, transactionId: result.transactionId, seazonaOrderId: push?.seazonaOrderId || null },
-        "Seazona push or push-status update failed after order was recorded — order persisted; reconcile push state"
-      );
-    }
-  } else {
-    log.info({ orderNumber, pushStatus }, "catalog order recorded — Seazona push not attempted");
+  // The job for the bench. Deliberately OUTSIDE the paid-order transaction: the
+  // card is already charged, so a DB error here must never roll back the order row.
+  // No PHI or card data in the log line.
+  try {
+    await db.transaction((tx) =>
+      createShopLabOrder(tx, { orderId, clientUserId: pricedForUserId, quoteLines: quote.lines })
+    );
+  } catch (err) {
+    log.error({ orderId }, `[LAB][SHOP_ORDER_FAILED] order=${orderId}: ${String(err?.message || err)}`);
   }
+
+  log.info({ orderNumber }, "catalog order recorded");
 
   return { orderRecordFailed: false };
 }
 
 /**
- * Quote lines → the line shape orders, receipts and the Seazona push use.
- * Dollars for the receipt/push; cents + priceSource for the order record.
+ * Quote lines → the line shape orders and receipts use.
+ * Dollars for the receipt; cents + priceSource for the order record.
  */
 export function checkoutLinesFromQuote(quote) {
   return quote.lines.map((l) => ({
     variantId: l.variantId,
+    code: l.code ?? null,
     catalogId: l.catalogId,
     seazonaProductId: l.legacySeazonaProductId,
     name: l.name,
@@ -460,8 +363,8 @@ export default async function paymentRoutes(fastify) {
             email,
           };
 
-          // Record the order LOCALLY (authoritative) + attempt the gated Seazona
-          // push. Never throws (the card is already charged).
+          // Record the order and its lab order LOCALLY (authoritative).
+          // Never throws (the card is already charged).
           const orderId = createId();
           const rec = await recordGuestOrder({
             orderId, orderNumber, email, phone, shipping,

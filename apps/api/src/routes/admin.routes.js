@@ -3,12 +3,13 @@ import { db } from "../config/database.js";
 import { users, accounts, memberships, products } from "../db/schema/index.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireAdmin } from "../middleware/require-role.js";
+import { validate } from "../middleware/validate.js";
+import * as auditService from "../services/audit.service.js";
 import * as authService from "../services/auth.service.js";
 import * as emailService from "../services/email.service.js";
-import * as seazonaService from "../services/seazona.service.js";
 import { syncSeazonaProducts, EmptyRemoteError } from "../db/sync-seazona-products.js";
 import { env } from "../config/env.js";
-import { ERROR_CODES } from "@my-app/shared";
+import { ERROR_CODES, userRoleChangeSchema, roleChangeRefusal } from "@my-app/shared";
 
 export default async function adminRoutes(fastify) {
   // ──────────────────────────────────────────────────────────────
@@ -164,60 +165,42 @@ export default async function adminRoutes(fastify) {
     return { data: { sent, requested: userIds.length } };
   });
 
-  // ──────────────────────────────────────────────────────────────
-  // ORDERS
-  // ──────────────────────────────────────────────────────────────
-
-  // All orders (Seazona workflow records, with status/department/assignedTo).
-  fastify.get("/admin/orders", {
-    preHandler: [authenticate, requireAdmin],
-  }, async (request) => {
-    const [orders, clientList] = await Promise.all([
-      seazonaService.getOrders(request.query.ordered),
-      seazonaService.listClients(),
-    ]);
-    const clients = {};
-    for (const c of clientList) {
-      if (c.id) clients[c.id] = c;
-    }
-
-    // Status counts for filter chips
-    const statusCounts = {};
-    const deptCounts = {};
-    for (const o of orders) {
-      const s = o.status || "Unknown";
-      statusCounts[s] = (statusCounts[s] || 0) + 1;
-      const d = o.department || "—";
-      deptCounts[d] = (deptCounts[d] || 0) + 1;
-    }
-
-    return {
-      data: {
-        orders,
-        clients,
-        summary: {
-          count: orders.length,
-          statuses: statusCounts,
-          departments: deptCounts,
-        },
-      },
-    };
-  });
-
-  // Single order detail — includes products, files, settings, notes.
-  fastify.get("/admin/orders/:id", {
-    preHandler: [authenticate, requireAdmin],
+  // Grant or remove lab-staff access. Only user <-> lab (ROLE_CHANGE_CHOICES in @my-app/shared).
+  fastify.put("/admin/users/:id/role", {
+    preHandler: [authenticate, requireAdmin, validate(userRoleChangeSchema)],
   }, async (request, reply) => {
-    const order = await seazonaService.getOrder(request.params.id);
-    if (!order) return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
-
-    // Best-effort client enrichment
-    let client = null;
-    if (order.clientId) {
-      client = await seazonaService.getClient(order.clientId).catch(() => null);
+    const [target] = await db
+      .select({ id: users.id, role: users.role })
+      .from(users)
+      .where(eq(users.id, request.params.id));
+    if (!target) return reply.code(404).send({ error: ERROR_CODES.USER_NOT_FOUND });
+    const refusal = roleChangeRefusal({ actorId: request.user.id, target, role: request.body.role });
+    if (refusal) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: refusal } });
     }
-
-    return { data: { order, client } };
+    if (target.role !== request.body.role) {
+      // Conditional on the role we validated: a doctor approval or admin
+      // promotion that landed since the select must not be overwritten.
+      const changed = await db
+        .update(users)
+        .set({ role: request.body.role, updatedAt: new Date() })
+        .where(and(eq(users.id, target.id), eq(users.role, target.role)))
+        .returning({ id: users.id });
+      if (changed.length === 0) {
+        return reply.code(409).send({
+          error: { ...ERROR_CODES.VALIDATION_ERROR, code: "ROLE_CHANGED", status: 409, message: "This user's role changed while you were editing. Reload and try again." },
+        });
+      }
+      auditService.logSafe({
+        userId: request.user.id,
+        action: "user.role_changed",
+        targetType: "user",
+        targetId: target.id,
+        metadata: { from: target.role, to: request.body.role },
+        ipAddress: request.ip,
+      });
+    }
+    return { data: { id: target.id, role: request.body.role } };
   });
 
   // ──────────────────────────────────────────────────────────────

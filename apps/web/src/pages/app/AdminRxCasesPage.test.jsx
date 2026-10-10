@@ -1,11 +1,12 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { statusLabel, queueBadge } from "./AdminRxCasesPage.jsx";
+import { queueBadge } from "./AdminRxCasesPage.jsx";
+import { caseStatusLabel } from "../../lib/rx-case-labels.js";
 
 test("every case status has a human label", () => {
-  for (const s of ["new", "in_review", "awaiting_doctor", "pushed", "failed", "cancelled"]) {
-    assert.ok(statusLabel(s), `no label for ${s}`);
-    assert.notEqual(statusLabel(s), s);
+  for (const s of ["new", "in_review", "awaiting_doctor", "released", "pushed", "failed", "cancelled"]) {
+    assert.ok(caseStatusLabel(s), `no label for ${s}`);
+    assert.notEqual(caseStatusLabel(s), s);
   }
 });
 

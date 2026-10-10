@@ -66,9 +66,9 @@ function findRow(rows, literal, device) {
  * - A confirmed noteOnly ruling: the lab decided this selection is a build
  *   instruction, not a charged product (see admin-rx-cases.routes.js's
  *   overrideRowFor). Emits a line with `noteOnly: true` and no code — never
- *   a phantom "confirmed" product line, because canPush and the order-payload
+ *   a phantom "confirmed" product line, because canRelease and the order-payload
  *   builder both key off `noteOnly` to keep this out of priced/sendable
- *   items (see admin-rx-cases.routes.js's canPush and case-lines.service.js).
+ *   items (see admin-rx-cases.routes.js's canRelease and case-lines.service.js).
  *
  * A third, invalid shape — no code AND not noteOnly — claims a resolved
  * mapping to nothing. Returns null so the caller falls back to `unmapped`

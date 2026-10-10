@@ -30,7 +30,7 @@ process.env.JWT_SECRET ||= "replay-harness-placeholder-not-a-real-secret";
 
 const { buildFormDevices } = await import("@my-app/shared");
 const { linesForDevices } = await import("../../src/services/rx/case-lines.service.js");
-const { canPush } = await import("../../src/services/rx/case-gates.js");
+const { canRelease } = await import("../../src/services/rx/case-gates.js");
 const { jotformToPortalAnswers, portalFormType } = await import("./translate.js");
 const { compareLines } = await import("./compare.js");
 const { renderReport } = await import("./report.js");
@@ -54,7 +54,7 @@ const results = cases.map((c, index) => {
   const formData = jotformToPortalAnswers(c.form, c.answers, { onWarning: (w) => warnings.push(w) });
   const devices = buildFormDevices(portalFormType(c.form), formData);
   const lines = linesForDevices(devices, { overrides, formData });
-  const gate = canPush(lines);
+  const gate = canRelease(lines);
   return {
     index,
     form: c.form,
