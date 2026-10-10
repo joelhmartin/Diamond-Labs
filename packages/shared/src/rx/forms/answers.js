@@ -5,6 +5,8 @@
  * never dropped — they print under "Other answers".
  */
 
+import { shouldShow, sectionVisible } from "./conditions.js";
+
 // Display-only and file fields: nothing a technician reads as an answer.
 const SKIP_TYPES = new Set(["heading", "static", "image", "fileUpload", "signature", "artboard", "divider"]);
 
@@ -64,10 +66,13 @@ export function groupRxAnswers(form, answers = {}) {
   const seen = new Set();
   for (const section of form?.sections ?? []) {
     const items = [];
+    const sectionShown = sectionVisible(section, answers);
     for (const field of section.fields ?? []) {
       if (!field.key || seen.has(field.key)) continue;
-      seen.add(field.key);
+      seen.add(field.key); // hidden fields still count as "seen" so a stale answer isn't re-listed under Other
       if (SKIP_TYPES.has(field.type)) continue;
+      // The web form submits every answer, including ones a later change hid; the lab shouldn't read those.
+      if (!sectionShown || !shouldShow(field, answers)) continue;
       const value = formatRxAnswer(withOptionLabels(field, answers?.[field.key]));
       if (value) items.push({ key: field.key, label: cleanLabel(field.label || humanizeAnswerKey(field.key)), value });
     }

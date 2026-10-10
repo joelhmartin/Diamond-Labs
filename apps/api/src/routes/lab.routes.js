@@ -1,12 +1,14 @@
 import {
   ERROR_CODES, STAFF_ROLES, labOrderListQuerySchema, labStatusChangeSchema, labFieldChangeSchema, labRemakeSchema,
-  labDepartmentCreateSchema, labDepartmentUpdateSchema,
+  labDepartmentCreateSchema, labDepartmentUpdateSchema, groupRxAnswers, getRxForm,
 } from "@my-app/shared";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireRole, requireAdmin } from "../middleware/require-role.js";
 import { validate, validateQuery } from "../middleware/validate.js";
 import * as labOrdersService from "../services/lab/lab-orders.service.js";
 import * as departmentsService from "../services/lab/departments.service.js";
+import { buildTicketModel } from "../services/lab/ticket-model.js";
+import { renderTicketPdf } from "../services/lab/ticket-pdf.js";
 import { labErrorReply } from "../services/lab/lab-errors.js";
 import * as auditService from "../services/audit.service.js";
 
@@ -50,6 +52,29 @@ export default async function labRoutes(fastify) {
     return { data: detail };
   });
 
+  // The work ticket: built on request from live data and never stored — it
+  // carries the patient's name. Every print is audit-logged (ids only).
+  fastify.get("/lab/orders/:id/ticket.pdf", { preHandler: STAFF }, async (request, reply) => {
+    let pdf;
+    let orderNumber;
+    try {
+      const detail = await labOrdersService.getLabOrderDetail(request.params.id);
+      if (!detail) return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+      const answerGroups = detail.rxCase ? groupRxAnswers(getRxForm(detail.rxCase.formType), detail.rxCase.formData) : [];
+      pdf = await renderTicketPdf(buildTicketModel(detail, { answerGroups, generatedAt: new Date() }));
+      orderNumber = detail.order.orderNumber;
+    } catch (err) {
+      // Never echo the error: decrypt/render failures can carry PHI context.
+      request.log.error({ labOrderId: request.params.id, err: err.message }, "work ticket render failed");
+      return reply.code(500).send({ error: { ...ERROR_CODES.INTERNAL_ERROR, message: "Failed to build the work ticket." } });
+    }
+    audit(request, "lab_order.ticket_printed", request.params.id, { orderNumber });
+    return reply
+      .header("Content-Type", "application/pdf")
+      .header("Content-Disposition", `inline; filename="work-ticket-${orderNumber}.pdf"`)
+      .header("Cache-Control", "no-store")
+      .send(pdf);
+  });
   fastify.post("/lab/orders/:id/status", { preHandler: [...STAFF, validate(labStatusChangeSchema)] }, (request, reply) =>
     run(reply, async () => {
       const { order } = await labOrdersService.changeStatus(request.params.id, { ...request.body, byUserId: request.user.id });

@@ -53,3 +53,11 @@ test("lab staff can read Rx cases and their files; editing stays admin-only", ()
     assert.match(handlerSource(rxSource, marker), /requireAdmin\]/, marker);
   }
 });
+
+test("the work ticket is staff-only, never cached, and audit-logged", () => {
+  const body = handlerSource(labSource, 'fastify.get("/lab/orders/:id/ticket.pdf",');
+  assert.match(body, /STAFF/);
+  assert.match(body, /"Cache-Control", "no-store"/);
+  assert.match(body, /lab_order\.ticket_printed/);
+  assert.match(body, /application\/pdf/);
+});

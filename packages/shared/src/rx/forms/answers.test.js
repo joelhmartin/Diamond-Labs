@@ -88,3 +88,16 @@ test("the real forms are registered and group a real answer by label", () => {
   const select = groups.find((g) => g.id === "select-device");
   assert.equal(select.items[0].value, "DDSO — Diamond Digital Sleep Orthotic");
 });
+
+test("answers to fields the form hides (showIf false) are not printed, nor leaked under Other", () => {
+  const f = { sections: [
+    { id: "s", heading: "S", fields: [
+      { type: "radio", key: "rushCase", label: "Rush?" },
+      { type: "text", key: "rushNote", label: "Rush note", showIf: { key: "rushCase", equals: "Yes" } },
+    ] },
+    { id: "hid", heading: "Hidden section", showIf: { key: "rushCase", equals: "Yes" }, fields: [{ type: "text", key: "inHidden", label: "X" }] },
+  ] };
+  const groups = groupRxAnswers(f, { rushCase: "No", rushNote: "stale", inHidden: "stale" });
+  assert.deepEqual(groups.map((g) => g.items.map((i) => i.key)), [["rushCase"]]);
+  assert.equal(groupRxAnswers(f, { rushCase: "Yes", rushNote: "fast" })[0].items.length, 2);
+});

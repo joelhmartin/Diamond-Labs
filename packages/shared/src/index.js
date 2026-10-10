@@ -24,6 +24,7 @@ export { canDeleteVariant, canDeleteOptionValue } from "./catalog/variant-rules.
 
 // Rx
 export { RX_FORMS, RX_FORM_LIST, getRxForm } from "./rx/forms/index.js";
+export { conditionMet, objectHasNoContent, shouldShow, sectionVisible } from "./rx/forms/conditions.js";
 export { groupRxAnswers, formatRxAnswer, humanizeAnswerKey } from "./rx/forms/answers.js";
 export { buildDigitalDevices, buildFormDevices, buildOrthoDevice, DEVICE_LABELS } from "./rx/form-devices.js";
 

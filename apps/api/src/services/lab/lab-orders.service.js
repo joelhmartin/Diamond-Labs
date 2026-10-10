@@ -13,7 +13,7 @@ import { devicesForCase } from "../rx/case-devices.js";
 import { compileNotesMulti } from "../rx/build-order-payload.js";
 import {
   LabOrderError, nextLabOrderNumber, planRxRelease, planShopLabOrder, planRemake,
-  assertFresh, planStatusChange, planFieldChange, presentBoardCard,
+  assertFresh, planStatusChange, planFieldChange, presentBoardCard, rushFromCase,
 } from "./lab-order-rules.js";
 
 // Serialises order-number allocation: held until the transaction ends, so two
@@ -226,7 +226,7 @@ export async function getLabOrderDetail(id, now = new Date()) {
         formType: c.formType,
         formData: c.formData ?? {},
         generalComments: c.generalComments ?? null,
-        buildNotes: compileNotesMulti(c, devicesForCase(c)) || null,
+        buildNotes: compileNotesMulti({ ...c, ...rushFromCase(c) }, devicesForCase(c)) || null,
         submittedAt: c.createdAt,
       };
       files = await db
