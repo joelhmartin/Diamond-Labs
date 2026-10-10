@@ -78,6 +78,7 @@ const envSchema = z.object({
 
   // Google Cloud Storage
   RX_GCS_BUCKET: z.string().optional(),
+  MEDIA_GCS_BUCKET: z.string().optional(),
   // Digital Rx live Seazona push gate.
   //
   // NOTE — this is LIVE, not a stub. B5 (2026-08-21): an earlier version of

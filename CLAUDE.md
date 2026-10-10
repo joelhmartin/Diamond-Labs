@@ -132,6 +132,12 @@ Source of truth for clients (doctors), invoices, orders, and recorded payments. 
 - **Content-Type:** `application/json` on every request — applied AFTER caller headers in the wrapper so it (and `Authorization`) can't be overridden.
 - **Wrapper:** `apps/api/src/services/seazona.service.js` — `requestRaw()` returns `{ ok, status, data }`; the `request()` convenience wrapper returns `data` (or `null` on any failure; `[]` for list helpers). On non-2xx/network error it logs a `[Seazona] … → <status>` line (matched by the GCP alert) and never throws — routes must handle `null`/empty. Reachability-aware helpers `getInvoicesResult()` / `getAllInvoicesResult()` return `{ reachable, invoices }` so callers can tell "unreachable" from "empty"; `checkHealth()` backs `GET /api/v1/health/seazona`.
 
+**🛑 Rate limit — Seazona blocks the whole host IP when it's exceeded** (`403 API access is temporarily disabled for this host`; it has happened twice: Aug and Oct 2026, the second time from bulk history pulls). Documented limit is **60 requests/minute**, and it's shared by everything on that IP. Rules:
+- **Never call Seazona except through `seazona.service.js`** — it enforces the 60/min limit. No raw `fetch`/`curl` loops, no hand-rolled wrappers in scripts.
+- **One stream at a time.** Never run two Seazona-calling processes in parallel.
+- **Anything over ~100 requests needs the user's OK first**, with the request count and how long it will take at 60/min.
+- **Never bulk-call from Cloud Run/prod** — a block there takes down the live portal.
+
 **Endpoints (use exactly these paths — 404s on small variations):**
 
 | Method | Path | Notes |

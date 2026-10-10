@@ -17,6 +17,7 @@ import project from "../../../project.config.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import authRoutes from "./routes/auth.routes.js";
 import healthRoutes from "./routes/health.routes.js";
+import mediaRoutes from "./routes/media.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import accountRoutes from "./routes/account.routes.js";
 import memberRoutes from "./routes/member.routes.js";
@@ -200,6 +201,8 @@ await fastify.register(rateLimit, {
   // in dev.
   allowList: (request) =>
     !request.url.startsWith(project.api.prefix) ||
+    // Public product images are static assets in all but location.
+    (request.method === "GET" && request.url.startsWith(`${project.api.prefix}/media/`)) ||
     (env.NODE_ENV !== "production" && ["127.0.0.1", "::1"].includes(request.ip)),
 });
 
@@ -208,6 +211,7 @@ fastify.setErrorHandler(errorHandler);
 
 // Routes
 await fastify.register(healthRoutes, { prefix: "/api/v1" });
+await fastify.register(mediaRoutes, { prefix: "/api/v1" });
 await fastify.register(authRoutes, { prefix: "/api/v1/auth" });
 
 await fastify.register(userRoutes, { prefix: "/api/v1/user" });
