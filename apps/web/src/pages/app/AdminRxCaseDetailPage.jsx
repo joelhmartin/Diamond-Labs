@@ -23,7 +23,7 @@ import {
 import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { useAuth } from "../../hooks/useAuth.js";
-import { LAB_STATUS_LABELS } from "@my-app/shared";
+import { LAB_STATUS_LABELS, isStaffRole } from "@my-app/shared";
 import { Modal } from "../../components/ui/Modal.jsx";
 import { ROUTES, labOrderPath } from "../../config/routes.js";
 import { caseStatusLabel, resolutionLabel } from "../../lib/rx-case-labels.js";
@@ -702,8 +702,6 @@ export function AdminRxCaseDetailPage() {
   const resolution = resolutionLabel(caseRow.seazonaPushStatus);
   const patientName = `${caseRow.patientFirst || ""} ${caseRow.patientLast || ""}`.trim();
 
-  const applyCaseUpdate = (patch) => setCaseRow((prev) => ({ ...prev, ...patch }));
-
   const handleLineSaved = (updated) => {
     setLines((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
   };
@@ -814,7 +812,7 @@ export function AdminRxCaseDetailPage() {
       {/* ── Order tab ─────────────────────────────────────────────────── */}
       {tab === "order" && (
         <div className="space-y-5">
-          {!locked && canEdit && (
+          {!locked && caseRow.status !== "cancelled" && isStaffRole(user?.role) && (
             <div className="bg-white rounded-2xl border border-surface-300/50 p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>

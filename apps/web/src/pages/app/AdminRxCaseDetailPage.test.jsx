@@ -1,4 +1,5 @@
 import { test } from "vitest";
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { releaseBlockedReason } from "./AdminRxCaseDetailPage.jsx";
 import { caseStatusLabel } from "../../lib/rx-case-labels.js";
@@ -43,4 +44,13 @@ test("every case status has a human label", () => {
   for (const s of ["new", "in_review", "awaiting_doctor", "released", "pushed", "failed", "cancelled"]) {
     assert.ok(caseStatusLabel(s), `no label for ${s}`);
   }
+});
+
+// Source pin: lab-role staff can USE Release; only admins edit lines. The card
+// must stay on the staff check (not canEdit) and stay hidden for cancelled cases.
+test("the Release card is staff-gated, hidden when cancelled; line editing stays admin-only", () => {
+  const src = readFileSync(new URL("./AdminRxCaseDetailPage.jsx", import.meta.url), "utf8");
+  assert.match(src, /\{!locked && caseRow\.status !== "cancelled" && isStaffRole\(user\?\.role\) && \(/);
+  assert.match(src, /const canEdit = user\?\.role === "admin"/);
+  assert.match(src, /const readOnly = locked \|\| !canEdit/);
 });

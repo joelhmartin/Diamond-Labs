@@ -221,7 +221,7 @@ async function recordGuestOrder({
     log.error({ orderId }, `[LAB][SHOP_ORDER_FAILED] order=${orderId}: ${String(err?.message || err)}`);
   }
 
-  log.info({ orderNumber }, "catalog order recorded with its lab order");
+  log.info({ orderNumber }, "catalog order recorded");
 
   return { orderRecordFailed: false };
 }
