@@ -2,6 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   LabOrderError, nextLabOrderNumber, parseDueDate, rushFromCase, planRxRelease, planShopLabOrder, planRemake,
+  assertFresh, planStatusChange, planFieldChange, initialsFor, presentBoardCard,
 } from "./lab-order-rules.js";
 
 const now = new Date("2026-10-07T15:00:00Z");
@@ -148,4 +149,124 @@ test("a remake is a new received order for the same case, pointing back at the o
 test("only a shipped order can be remade, and only with a reason", () => {
   assert.throws(() => planRemake({ original: { ...shipped, status: "in_production" }, originalLines: [], reason: "x", orderNumber: 1, labOrderId: "x", now }), isCode("INVALID"));
   assert.throws(() => planRemake({ original: shipped, originalLines: [], reason: "   ", orderNumber: 1, labOrderId: "x", now }), isCode("REASON_REQUIRED"));
+});
+
+
+const order = {
+  id: "lo-1", orderNumber: 100245, status: "received", heldFrom: null, holdReason: null, version: 3,
+  startedAt: null, assigneeUserId: null, departmentId: null, dueDate: "2026-10-21", labNotes: null,
+};
+
+// Review Focus 1.
+test("a move made from a stale view is refused, not applied over someone else's", () => {
+  assert.throws(() => assertFresh(order, 2), isCode("STALE"));
+  assert.throws(() => assertFresh(order, undefined), isCode("STALE"));
+  assert.throws(() => assertFresh(order, "3"), isCode("STALE"));
+  assert.doesNotThrow(() => assertFresh(order, 3));
+  const { patch } = planStatusChange(order, "in_production", { now });
+  assert.equal(patch.version, 4, "every change bumps the version the next writer must quote");
+});
+
+test("an illegal move is refused with the moves that are allowed", () => {
+  assert.throws(() => planStatusChange(order, "shipped", { now }), (err) =>
+    isCode("INVALID_TRANSITION")(err) && err.allowed.join() === "in_production,on_hold,cancelled"
+    && /can't move from Received to Shipped/.test(err.message));
+});
+
+test("starting production stamps startedAt once; shipping and cancelling stamp theirs", () => {
+  const start = planStatusChange(order, "in_production", { byUserId: "u1", now });
+  assert.equal(start.patch.startedAt, now);
+  assert.deepEqual(start.event, { labOrderId: "lo-1", type: "status", from: "received", to: "in_production", byUserId: "u1", note: null, at: now });
+  const back = planStatusChange({ ...order, status: "quality_check", startedAt: new Date("2026-10-01") }, "in_production", { now });
+  assert.ok(!("startedAt" in back.patch), "a QC bounce keeps the original start");
+  assert.equal(planStatusChange({ ...order, status: "ready_to_ship" }, "shipped", { now }).patch.shippedAt, now);
+  assert.equal(planStatusChange(order, "cancelled", { reason: "Doctor withdrew", now }).patch.cancelledAt, now);
+});
+
+test("hold needs a reason, remembers where it was, and resume returns there and clears it", () => {
+  assert.throws(() => planStatusChange(order, "on_hold", { reason: "  ", now }), isCode("REASON_REQUIRED"));
+  const hold = planStatusChange({ ...order, status: "quality_check" }, "on_hold", { reason: " Waiting on bite ", byUserId: "u1", now });
+  assert.equal(hold.patch.holdReason, "Waiting on bite");
+  assert.equal(hold.patch.heldFrom, "quality_check");
+  assert.equal(hold.event.type, "hold");
+  assert.equal(hold.event.note, "Waiting on bite");
+  const held = { ...order, status: "on_hold", heldFrom: "quality_check", holdReason: "Waiting on bite" };
+  assert.throws(() => planStatusChange(held, "in_production", { now }), isCode("INVALID_TRANSITION"));
+  const resume = planStatusChange(held, "quality_check", { now });
+  assert.equal(resume.patch.holdReason, null);
+  assert.equal(resume.patch.heldFrom, null);
+  assert.equal(resume.event.type, "status");
+  assert.throws(() => planStatusChange(held, "cancelled", { now }), isCode("REASON_REQUIRED"));
+  assert.equal(planStatusChange(held, "cancelled", { reason: "Patient moved", now }).patch.status, "cancelled");
+});
+
+test("assign, department and due changes are recorded with before and after", () => {
+  const a = planFieldChange(order, "assign", "tech-1", { byUserId: "u1", now });
+  assert.deepEqual(a.patch, { assigneeUserId: "tech-1", version: 4, updatedAt: now });
+  assert.deepEqual(a.event, { labOrderId: "lo-1", type: "assign", from: null, to: "tech-1", byUserId: "u1", note: null, at: now });
+  assert.equal(planFieldChange(order, "department", "dep-1", { now }).patch.departmentId, "dep-1");
+  const due = planFieldChange(order, "due", "2026-10-25", { now });
+  assert.deepEqual([due.event.from, due.event.to], ["2026-10-21", "2026-10-25"]);
+  assert.equal(planFieldChange(order, "due", "", { now }).patch.dueDate, null, "clearing is allowed");
+  assert.throws(() => planFieldChange(order, "due", "2026-02-30", { now }), isCode("INVALID"));
+});
+
+test("an unchanged value is a no-op, not an event", () => {
+  assert.equal(planFieldChange(order, "due", "2026-10-21", { now }), null);
+  assert.equal(planFieldChange(order, "assign", null, { now }), null);
+});
+
+test("lab notes are recorded without copying the text into the history", () => {
+  const n = planFieldChange(order, "notes", "Patient name on the box: Jane", { byUserId: "u1", now });
+  assert.equal(n.patch.labNotes, "Patient name on the box: Jane");
+  assert.equal(n.event.type, "note");
+  assert.equal(n.event.note, "Lab notes updated");
+});
+
+test("a shipped or cancelled order only takes notes", () => {
+  const done = { ...order, status: "shipped" };
+  assert.throws(() => planFieldChange(done, "assign", "tech-1", { now }), isCode("INVALID"));
+  assert.throws(() => planFieldChange(done, "due", "2026-12-01", { now }), isCode("INVALID"));
+  assert.equal(planFieldChange(done, "notes", "Shipped UPS", { now }).patch.labNotes, "Shipped UPS");
+  assert.throws(() => planFieldChange(order, "price", 5, { now }), isCode("INVALID"));
+});
+
+test("initials for the card", () => {
+  assert.equal(initialsFor("Maria Lopez"), "ML");
+  assert.equal(initialsFor("  cher "), "C");
+  assert.equal(initialsFor("Ana Maria de la Cruz"), "AC");
+  assert.equal(initialsFor(null), null);
+});
+
+test("a board card summarises the job without staff-only text", () => {
+  const card = presentBoardCard(
+    {
+      order: { ...order, status: "in_production", rush: true, rushTier: "Expedited", isRemake: false, assigneeUserId: "tech-1", source: "rx_case", sourceId: "case-1", receivedAt: now, holdReason: "enc:v1:xyz", dueDate: "2026-10-01" },
+      caseNumber: "RX-ABC", practiceName: "Lee Dental", shopOrderNumber: null, shipping: null, clientName: "Dr Lee", assigneeName: "Maria Lopez",
+    },
+    [
+      { name: "DDSO Nylon", qty: 1, noteOnly: false },
+      { name: "Wrap distal", qty: 1, noteOnly: true },
+      { name: "Model fabrication", qty: 1, noteOnly: false },
+      { name: "Bite block", qty: 2, noteOnly: false },
+    ],
+    "2026-10-07",
+  );
+  assert.equal(card.reference, "RX-ABC");
+  assert.equal(card.practice, "Lee Dental");
+  assert.equal(card.deviceSummary, "DDSO Nylon, Model fabrication +1");
+  assert.equal(card.assigneeInitials, "ML");
+  assert.equal(card.overdue, true);
+  assert.equal(card.rush, true);
+  assert.ok(!("holdReason" in card) && !("labNotes" in card));
+});
+
+test("a shop card falls back from practice to the buyer's account, then the ship-to name", () => {
+  const base = { order: { ...order, source: "shop_order", sourceId: "ord-1" }, caseNumber: null, practiceName: null, shopOrderNumber: "DOL-ABC", assigneeName: null };
+  assert.equal(presentBoardCard({ ...base, clientName: "Dr Lee", shipping: { name: "Front desk" } }, [], "2026-10-07").practice, "Dr Lee");
+  const guest = presentBoardCard({ ...base, clientName: null, shipping: { name: "Pat Smith" } }, [{ name: "Retainer case", qty: 2, noteOnly: false }], "2026-10-07");
+  assert.equal(guest.practice, "Pat Smith");
+  assert.equal(guest.reference, "DOL-ABC");
+  assert.equal(guest.deviceSummary, "2× Retainer case");
+  assert.equal(guest.assigneeInitials, null);
 });

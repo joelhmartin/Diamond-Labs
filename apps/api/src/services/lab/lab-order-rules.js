@@ -1,3 +1,4 @@
+import { allowedNextStatuses, reasonRequiredFor, isTerminalLabStatus, isOverdue, LAB_STATUS_LABELS } from "@my-app/shared";
 import { canRelease } from "../rx/case-gates.js";
 
 /**
@@ -145,4 +146,119 @@ export function planRemake({ original, originalLines, reason, orderNumber, labOr
     { labOrderId: original.id, type: "note", from: null, to: null, byUserId, note: `Remake created: #${orderNumber}`, at: now },
   ];
   return { labOrder, lines, events };
+}
+
+// ── Production moves ───────────────────────────────────────────────────────
+
+/** The client must have seen the version it is changing (optimistic concurrency). */
+export function assertFresh(order, expectedVersion) {
+  if (!Number.isInteger(expectedVersion) || expectedVersion !== order.version) {
+    throw new LabOrderError("STALE", "This order changed — reload.");
+  }
+}
+
+const label = (s) => LAB_STATUS_LABELS[s] ?? s;
+
+/** A status move → the row patch and its event. Every rule comes from the shared table. */
+export function planStatusChange(order, to, { reason, byUserId = null, now }) {
+  const allowed = allowedNextStatuses(order.status, { heldFrom: order.heldFrom });
+  if (!allowed.includes(to)) {
+    throw new LabOrderError(
+      "INVALID_TRANSITION",
+      `Order #${order.orderNumber} can't move from ${label(order.status)} to ${label(to)}.`,
+      { allowed },
+    );
+  }
+  const note = typeof reason === "string" ? reason.trim() : "";
+  if (reasonRequiredFor(to) && !note) {
+    throw new LabOrderError("REASON_REQUIRED", to === "on_hold" ? "Say why this order is on hold." : "Say why this order is cancelled.");
+  }
+  const patch = { status: to, version: order.version + 1, updatedAt: now };
+  if (order.status === "on_hold") { patch.holdReason = null; patch.heldFrom = null; }
+  if (to === "on_hold") { patch.holdReason = note; patch.heldFrom = order.status; }
+  if (to === "in_production" && !order.startedAt) patch.startedAt = now;
+  if (to === "shipped") patch.shippedAt = now;
+  if (to === "cancelled") patch.cancelledAt = now;
+  const event = {
+    labOrderId: order.id, type: to === "on_hold" ? "hold" : "status",
+    from: order.status, to, byUserId, note: note || null, at: now,
+  };
+  return { patch, event };
+}
+
+const FIELDS = {
+  assign: { column: "assigneeUserId", event: "assign" },
+  department: { column: "departmentId", event: "department" },
+  due: { column: "dueDate", event: "due" },
+  notes: { column: "labNotes", event: "note" },
+};
+export const LAB_FIELDS = Object.keys(FIELDS);
+
+/**
+ * One field edit → patch + event, or null when nothing changes. A shipped or
+ * cancelled order only takes notes. Lab notes never copy their text into the
+ * history (the note itself is the record).
+ */
+export function planFieldChange(order, field, rawValue, { byUserId = null, now }) {
+  const spec = FIELDS[field];
+  if (!spec) throw new LabOrderError("INVALID", `Unknown field: ${field}`);
+  if (field !== "notes" && isTerminalLabStatus(order.status)) {
+    throw new LabOrderError("INVALID", `Order #${order.orderNumber} is ${label(order.status).toLowerCase()} — only its notes can change.`);
+  }
+  let value = typeof rawValue === "string" ? rawValue.trim() : rawValue;
+  if (value === "" || value === undefined) value = null;
+  if (field === "due" && value !== null && !parseDueDate(value)) {
+    throw new LabOrderError("INVALID", "Due date must be a real date (YYYY-MM-DD).");
+  }
+  const before = order[spec.column] ?? null;
+  if (before === value) return null;
+  const patch = { [spec.column]: value, version: order.version + 1, updatedAt: now };
+  const event = field === "notes"
+    ? { labOrderId: order.id, type: "note", from: null, to: null, byUserId, note: "Lab notes updated", at: now }
+    : { labOrderId: order.id, type: spec.event, from: before, to: value, byUserId, note: null, at: now };
+  return { patch, event };
+}
+
+// ── Board cards ────────────────────────────────────────────────────────────
+
+export function initialsFor(name) {
+  const parts = String(name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return null;
+  const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
+  return `${parts[0][0]}${last}`.toUpperCase();
+}
+
+function summarise(lines) {
+  const names = lines.filter((l) => !l.noteOnly).map((l) => (l.qty > 1 ? `${l.qty}× ${l.name}` : l.name));
+  if (names.length === 0) return "—";
+  return names.length > 2 ? `${names.slice(0, 2).join(", ")} +${names.length - 2}` : names.join(", ");
+}
+
+/**
+ * One card on the production board. Built from an allow-list: hold reasons
+ * and lab notes (encrypted on the row) never reach the list endpoint.
+ */
+export function presentBoardCard(row, lines = [], todayIso) {
+  const o = row.order;
+  return {
+    id: o.id,
+    orderNumber: o.orderNumber,
+    source: o.source,
+    sourceId: o.sourceId,
+    reference: o.source === "rx_case" ? (row.caseNumber ?? null) : (row.shopOrderNumber ?? null),
+    status: o.status,
+    heldFrom: o.heldFrom ?? null,
+    version: o.version,
+    practice: row.practiceName || row.clientName || row.shipping?.name || "—",
+    deviceSummary: summarise(lines),
+    dueDate: o.dueDate ?? null,
+    rush: Boolean(o.rush),
+    rushTier: o.rushTier ?? null,
+    isRemake: Boolean(o.isRemake),
+    departmentId: o.departmentId ?? null,
+    assigneeUserId: o.assigneeUserId ?? null,
+    assigneeInitials: initialsFor(row.assigneeName),
+    overdue: isOverdue(o.dueDate, o.status, todayIso),
+    receivedAt: o.receivedAt,
+  };
 }
