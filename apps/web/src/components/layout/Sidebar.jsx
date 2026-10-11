@@ -15,8 +15,11 @@ import {
   Repeat,
   Clock,
   ArrowLeft,
+  LayoutGrid,
+  Building2,
 } from "lucide-react";
 import { brand } from "../../config/brand.js";
+import { isStaffRole } from "@my-app/shared";
 import { ROUTES } from "../../config/routes.js";
 import { usePermission } from "../../hooks/usePermission.js";
 import { useAuth } from "../../hooks/useAuth.js";
@@ -28,16 +31,21 @@ const mainItems = [
   { label: "Settings",  to: ROUTES.SETTINGS,    icon: Settings,        permission: "settings:read" },
 ];
 
+const staffItems = [
+  { label: "Production", to: ROUTES.LAB_BOARD,      icon: LayoutGrid },
+  { label: "Rx Cases",   to: ROUTES.ADMIN_RX_CASES, icon: ClipboardCheck },
+];
+
 const adminItems = [
   { label: "Invoices",   to: ROUTES.ADMIN_INVOICES,    icon: FileText },
   { label: "Payments",   to: ROUTES.ADMIN_PAYMENTS,    icon: CreditCard },
   { label: "AutoPay",    to: ROUTES.ADMIN_AUTOPAY,     icon: Repeat },
   { label: "Jobs",       to: ROUTES.ADMIN_JOBS,        icon: Clock },
   { label: "Orders",     to: ROUTES.ADMIN_ORDERS,      icon: ClipboardList },
+  { label: "Departments", to: ROUTES.ADMIN_DEPARTMENTS, icon: Building2 },
   { label: "Users",      to: ROUTES.ADMIN_USERS,       icon: UserCog },
   { label: "Products",   to: ROUTES.ADMIN_PRODUCTS,    icon: Package },
   { label: "Rx Mapping", to: ROUTES.ADMIN_RX_MAPPING,  icon: FlaskConical },
-  { label: "Rx Cases",   to: ROUTES.ADMIN_RX_CASES,    icon: ClipboardCheck },
 ];
 
 function NavItem({ to, icon: Icon, label }) {
@@ -64,6 +72,7 @@ export function Sidebar() {
   const { can } = usePermission();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
+  const isStaff = isStaffRole(user?.role);
 
   return (
     <aside className="flex h-screen w-64 flex-col border-r border-gray-200 bg-white">
@@ -81,6 +90,17 @@ export function Sidebar() {
           if (item.permission && !can(item.permission)) return null;
           return <NavItem key={item.to} {...item} />;
         })}
+
+        {isStaff && (
+          <>
+            <div className="px-3 pt-6 pb-2 text-[10px] font-mono uppercase tracking-widest text-gray-400">
+              Lab
+            </div>
+            {staffItems.map((item) => (
+              <NavItem key={item.to} {...item} />
+            ))}
+          </>
+        )}
 
         {isAdmin && (
           <>

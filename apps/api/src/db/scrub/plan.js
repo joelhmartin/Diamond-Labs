@@ -270,6 +270,39 @@ export const SCRUB_PLAN = {
       created_at: K, updated_at: K,
     },
   },
+  // Lab orders (own-the-lab piece 2). Staff-typed free text (hold reason, lab notes,
+  // event notes) can name a patient and is encrypted at rest in prod: replaced, never decrypted.
+  lab_departments: { mode: "update", columns: { id: K, name: K, position: K, active: K, created_at: K, updated_at: K } },
+  lab_orders: {
+    mode: "update",
+    columns: {
+      id: K, order_number: K, source: K, source_id: K, client_user_id: K, status: K, held_from: K,
+      department_id: K, assignee_user_id: K, due_date: K, rush: K, rush_tier: K, is_remake: K, remake_of_order_id: K,
+      hold_reason: phi("NULL"),
+      lab_notes: phi("NULL"),
+      version: K, received_at: K, started_at: K, shipped_at: K, cancelled_at: K, created_at: K, updated_at: K,
+    },
+  },
+  lab_order_lines: {
+    mode: "update",
+    columns: {
+      id: K, lab_order_id: K, position: K, variant_id: K, code: K,
+      // Snapshot of a product name, but an instruction line's name is staff/doctor-typed text:
+      // re-derived from the catalog by code, 'Line' when unknown (same rule as rx_case_lines.name).
+      name: phi(`LEFT(COALESCE(${catalogNameFor('"lab_order_lines"."code"')}, 'Line'), 255)`),
+      arch: K, qty: K, note_only: K,
+      source_label: phi("NULL"), // copies the doctor's free-form "Other" device text
+      created_at: K,
+    },
+  },
+  lab_order_events: {
+    mode: "update",
+    columns: {
+      id: K, lab_order_id: K, type: K, from_value: K, to_value: K, by_user_id: K,
+      note: phi("NULL"), // staff-typed free text, encrypted at rest
+      at: K,
+    },
+  },
   app_theme: { mode: "update", columns: { id: K, tokens: K, updated_by: K, updated_at: K } },
   products: {
     mode: "update",

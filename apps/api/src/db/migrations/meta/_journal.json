@@ -190,6 +190,13 @@
       "when": 1791260110678,
       "tag": "0026_spicy_network",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791662636425,
+      "tag": "0027_blue_wrecking_crew",
+      "breakpoints": true
     }
   ]
 }

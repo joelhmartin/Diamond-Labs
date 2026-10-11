@@ -9,7 +9,7 @@ import {
 //
 // Apply encryptRxPhi() to the values object at EVERY write path and
 // decryptRxPhi() to any row loaded from the DB at EVERY read path. Consumers
-// that read PHI off a case row (build-order-payload, order-diff) must be handed
+// that read PHI off a case row (case-notes, the lab order detail, the work ticket) must be handed
 // a DECRYPTED row so they keep seeing plaintext.
 //
 // crypto.js is passthrough for values lacking the `enc:v1:` prefix, so

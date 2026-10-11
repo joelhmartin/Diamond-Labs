@@ -1,18 +1,26 @@
 /**
- * How a resolved Rx case got resolved. `status` collapses "we sent it to
- * Seazona" and "staff entered it in Seazona by hand" to the same terminal
- * `pushed` value — `seazonaPushStatus` is the field that keeps them visually
- * distinguishable.
- *
- * Shared by the case detail page and the case queue list page so the tag
- * reads identically in both places. Lives here — not in either page — so
- * neither page has to import it from the other.
- *
- * @param {string|null|undefined} seazonaPushStatus
- * @returns {string|null}
+ * Rx case labels, shared by the case queue and the case page so a status
+ * reads the same everywhere. `released` = on the production board (own-the-
+ * lab piece 2). `pushed` and the `seazonaPushStatus` tags are legacy: cases
+ * sent to Seazona before the lab moved to the portal.
  */
+export const CASE_STATUS_LABELS = {
+  new: "New",
+  in_review: "In review",
+  awaiting_doctor: "Awaiting doctor",
+  released: "Released to lab",
+  pushed: "Sent to Seazona (legacy)",
+  failed: "Push failed (legacy)",
+  cancelled: "Cancelled",
+};
+
+export function caseStatusLabel(s) {
+  return CASE_STATUS_LABELS[s] || s;
+}
+
+/** How a legacy case reached Seazona: pushed by us, or typed in by hand. */
 export function resolutionLabel(seazonaPushStatus) {
-  if (seazonaPushStatus === "pushed") return "Sent to Seazona";
-  if (seazonaPushStatus === "manual") return "Added manually";
+  if (seazonaPushStatus === "pushed") return "Sent to Seazona (legacy)";
+  if (seazonaPushStatus === "manual") return "Added to Seazona by hand (legacy)";
   return null;
 }

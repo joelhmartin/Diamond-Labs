@@ -1,31 +1,33 @@
 import { test } from "vitest";
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
-import { pushBlockedReason, statusLabel } from "./AdminRxCaseDetailPage.jsx";
+import { releaseBlockedReason } from "./AdminRxCaseDetailPage.jsx";
+import { caseStatusLabel } from "../../lib/rx-case-labels.js";
 
-test("the push button explains why it is disabled, rather than just being grey", () => {
-  const reason = pushBlockedReason([{ status: "open", noteOnly: false, sourceLabel: "Anterior Pad" }]);
+test("the release button explains why it is disabled, rather than just being grey", () => {
+  const reason = releaseBlockedReason([{ status: "open", noteOnly: false, sourceLabel: "Anterior Pad" }]);
   assert.match(reason, /Anterior Pad/);
 });
 
 test("nothing blocking means no reason", () => {
-  assert.equal(pushBlockedReason([{ status: "confirmed", noteOnly: false, seazonaCode: "2608" }]), null);
+  assert.equal(releaseBlockedReason([{ status: "confirmed", noteOnly: false, seazonaCode: "2608" }]), null);
 });
 
-// The server's canPush deliberately does not trust a line's own `status` — it
+// The server's canRelease deliberately does not trust a line's own `status` — it
 // blocks any sendable line with no seazonaCode, whatever the status claims.
 // This helper mirrors that whole rule, not half of it: checking only `status`
-// would light Push up for a case the server then refuses with a 422, which is
+// would light Release up for a case the server then refuses with a 422, which is
 // exactly the dead end the helper exists to prevent.
 test("a line claiming 'confirmed' with no product code still blocks", () => {
   assert.match(
-    pushBlockedReason([{ status: "confirmed", noteOnly: false, sourceLabel: "Anterior Pad" }]),
+    releaseBlockedReason([{ status: "confirmed", noteOnly: false, sourceLabel: "Anterior Pad" }]),
     /Anterior Pad/,
   );
 });
 
-test("a note-only line never blocks the push, even while still 'open'", () => {
+test("a note-only line never blocks the release, even while still 'open'", () => {
   assert.equal(
-    pushBlockedReason([
+    releaseBlockedReason([
       { status: "confirmed", noteOnly: false, seazonaCode: "2608" },
       { status: "open", noteOnly: true },
     ]),
@@ -33,13 +35,22 @@ test("a note-only line never blocks the push, even while still 'open'", () => {
   );
 });
 
-test("a case with nothing to send is blocked too, same as the server's canPush gate", () => {
-  assert.match(pushBlockedReason([]), /no lines to send/);
-  assert.match(pushBlockedReason([{ status: "open", noteOnly: true }]), /no lines to send/);
+test("a case with nothing to send is blocked too, same as the server's canRelease gate", () => {
+  assert.match(releaseBlockedReason([]), /no lines to release/);
+  assert.match(releaseBlockedReason([{ status: "open", noteOnly: true }]), /no lines to release/);
 });
 
 test("every case status has a human label", () => {
-  for (const s of ["new", "in_review", "awaiting_doctor", "pushed", "failed", "cancelled"]) {
-    assert.ok(statusLabel(s), `no label for ${s}`);
+  for (const s of ["new", "in_review", "awaiting_doctor", "released", "pushed", "failed", "cancelled"]) {
+    assert.ok(caseStatusLabel(s), `no label for ${s}`);
   }
+});
+
+// Source pin: lab-role staff can USE Release; only admins edit lines. The card
+// must stay on the staff check (not canEdit) and stay hidden for cancelled cases.
+test("the Release card is staff-gated, hidden when cancelled; line editing stays admin-only", () => {
+  const src = readFileSync(new URL("./AdminRxCaseDetailPage.jsx", import.meta.url), "utf8");
+  assert.match(src, /\{!locked && caseRow\.status !== "cancelled" && isStaffRole\(user\?\.role\) && \(/);
+  assert.match(src, /const canEdit = user\?\.role === "admin"/);
+  assert.match(src, /const readOnly = locked \|\| !canEdit/);
 });

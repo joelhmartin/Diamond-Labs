@@ -7,7 +7,8 @@
     ".": "./src/index.js",
     "./schemas/*": "./src/schemas/*",
     "./constants/*": "./src/constants/*",
-    "./utils/*": "./src/utils/*"
+    "./utils/*": "./src/utils/*",
+    "./rx/*": "./src/rx/*"
   },
   "scripts": {
     "test": "vitest run"

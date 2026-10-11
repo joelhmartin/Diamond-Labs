@@ -1,7 +1,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 
-import { digitalRxForm } from "./digital-rx.form.js";
+import { digitalRxForm } from "@my-app/shared/rx/forms/digital-rx.form.js";
 import { allFields, visibleFields, disabledOptions, validateForm } from "./form-logic.js";
 
 // The complete set of field types this porting layer is allowed to emit.

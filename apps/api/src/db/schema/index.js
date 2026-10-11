@@ -21,3 +21,4 @@ export {
   productFamilies, productOptions, productOptionValues, productVariants, productVariantOptionValues,
 } from "./catalog.js";
 export { clientPrices } from "./client-prices.js";
+export { labDepartments, labOrders, labOrderLines, labOrderEvents } from "./lab-orders.js";

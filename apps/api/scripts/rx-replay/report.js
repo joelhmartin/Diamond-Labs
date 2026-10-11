@@ -97,7 +97,7 @@ export function renderReport(rows, { input, overrides = 0 } = {}) {
   out.push("## Overall", "");
   out.push(`- **Exact** (generated == billed, nothing held): ${h.exact}/${h.n} = **${pct(h.exact, h.n)}** (${pct(h.exactStrictArch, h.n)} if arch-less lines must also agree on arch)`);
   out.push(`- **Every generated line is on the lab's order**: ${h.subset}/${h.n} = **${pct(h.subset, h.n)}**`);
-  out.push(`- **Pushable** (canPush ok — no open lines, has an appliance): ${h.pushable}/${h.n} = **${pct(h.pushable, h.n)}**`);
+  out.push(`- **Pushable** (canRelease ok — no open lines, has an appliance): ${h.pushable}/${h.n} = **${pct(h.pushable, h.n)}**`);
   out.push(`- **Held** for staff: ${h.held}/${h.n} = **${pct(h.held, h.n)}**`);
   out.push(`- Pushable AND exact: ${h.pushableExact}/${h.n} = ${pct(h.pushableExact, h.n)}; pushable but carrying a line the lab did not bill: ${h.pushableWrong}/${h.n} = ${pct(h.pushableWrong, h.n)}`);
   out.push(`- Exact once lab variance is set aside (every difference is something the form cannot know): ${h.exact + varianceOnly}/${h.n} = **${pct(h.exact + varianceOnly, h.n)}**`);

@@ -12,8 +12,7 @@ beforeAll(() => {
 const phi = await import("./phi-crypto.js");
 const { encryptRxPhi, decryptRxPhi } = phi;
 const { isEncrypted } = await import("../../lib/crypto.js");
-const { buildSeazonaOrderPayload } = await import("./build-order-payload.js");
-const { DEVICE_ROWS } = await import("./catalog-map/devices.table.js");
+const { compileNotes } = await import("./case-notes.js");
 
 const plaintextRow = {
   id: "case-1",
@@ -79,19 +78,10 @@ describe("rx phi-crypto helpers", () => {
     expect(dec.deviceOptions).toBe(null);
   });
 
-  it("build-order-payload receives PLAINTEXT after decrypting an encrypted row", () => {
-    // Build a valid codeToId from the real device table so the pipeline resolves.
-    const codeToId = {};
-    for (const row of DEVICE_ROWS) if (row.code) codeToId[row.code] = `id-${row.code}`;
-
-    const encrypted = encryptRxPhi(plaintextRow);
-    // Simulate the route boundary: decrypt what came out of the DB, THEN build.
-    const decrypted = decryptRxPhi(encrypted);
-    const { payload } = buildSeazonaOrderPayload(decrypted, { codeToId, userId: "lab-staff-1" });
-
-    assert.equal(payload.patientName, "Jane Doe"); // plaintext names
-    assert.match(payload.notes, /Occlusal Contact: Posterior/); // plaintext deviceOptions
-    assert.match(payload.notes, /cover 1st molar to 1st molar/); // plaintext generalComments
-    assert.equal(payload.clientId, "client-1");
+  it("case notes receive PLAINTEXT after decrypting an encrypted row", () => {
+    const decrypted = decryptRxPhi(encryptRxPhi(plaintextRow));
+    const notes = compileNotes(decrypted);
+    assert.match(notes, /Occlusal Contact: Posterior/); // plaintext deviceOptions
+    assert.match(notes, /cover 1st molar to 1st molar/); // plaintext generalComments
   });
 });

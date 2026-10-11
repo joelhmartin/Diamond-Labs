@@ -42,7 +42,7 @@ export const rxCases = pgTable("rx_cases", {
   // PHI — Seazona order payload captured at approval (embeds patientName).
   // Encrypted at rest via phi-crypto.js; stored as text (was jsonb).
   payloadSnapshot: text("payload_snapshot"),
-  // PHI (B4) — the free-text note an operator enters on POST .../mark-manual
+  // PHI (B4) — the free-text note an operator enters via the retired mark-manual action (legacy data)
   // ("staff typed this order into Seazona by hand"). Previously written
   // verbatim into audit_log.metadata (plaintext jsonb) on the strength of a
   // comment claiming it carried no PHI; nothing enforced that. Encrypted at

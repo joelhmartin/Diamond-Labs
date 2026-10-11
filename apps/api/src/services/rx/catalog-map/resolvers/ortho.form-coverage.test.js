@@ -11,7 +11,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import { buildFormDevices } from "@my-app/shared";
 import { resolveOrtho, ORTHO_ROWS, orthoBuildNotes } from "./ortho.js";
-import { ORTHO_SECTIONS } from "../../../../../../web/src/data/forms/ortho.sections.js";
+import { ORTHO_SECTIONS } from "@my-app/shared/rx/forms/ortho.sections.js";
 
 const ROW_KEYS = new Set(ORTHO_ROWS.map((r) => r.mapKey));
 

@@ -9,7 +9,7 @@ import {
   isStoneModelDevice, orthoArches,
 } from "./lab-services.js";
 import { resolveCaseServices } from "./index.js";
-import { digitalRxForm } from "../../../../../web/src/data/forms/digital-rx.form.js";
+import { digitalRxForm } from "@my-app/shared/rx/forms/digital-rx.form.js";
 
 const ONE = [{ deviceKey: "ddso", deviceOptions: { baseMaterial: "NYLON" } }];
 const OD = (baseMaterial) => ({ deviceKey: "olmos-day", deviceOptions: { baseMaterial } });

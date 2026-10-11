@@ -316,6 +316,7 @@ export async function getInvoice(id) {
   return request(`v1/invoices/${encodeURIComponent(id)}`);
 }
 
+// Read-only; kept for own-the-lab piece 5's historical order import.
 /**
  * Get orders ordered since the given ISO timestamp. Same gotcha as invoices:
  * the `ordered` query param is required, empty = 400.
@@ -329,19 +330,6 @@ export async function getOrders(ordered) {
 /** Get a single order with products, files, settings. */
 export async function getOrder(id) {
   return request(`v1/orders/${encodeURIComponent(id)}`);
-}
-
-/**
- * Create an order for a client.
- *   items: [{ id: <seazonaProductId>, arch: 1 (upper) | 2 (lower) | null }]
- *   userId: a Seazona user id (lab staff) — see listUsers().
- * Returns { orderId } on success, null on failure.
- */
-export async function createOrder({ clientId, patientName, due, items, notes, userId }) {
-  return request("v1/orders/", {
-    method: "POST",
-    body: JSON.stringify({ clientId, patientName, due, items, notes, userId }),
-  });
 }
 
 /**

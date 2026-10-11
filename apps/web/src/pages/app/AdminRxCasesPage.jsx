@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import api from "../../config/api.js";
 import { ROUTES } from "../../config/routes.js";
-import { resolutionLabel } from "../../lib/rx-case-labels.js";
+import { caseStatusLabel, resolutionLabel } from "../../lib/rx-case-labels.js";
 
 const INPUT =
   "w-full px-3.5 py-2.5 rounded-lg bg-white border border-surface-300/60 text-primary text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-icon";
@@ -20,33 +20,16 @@ const INPUT =
 // and deliberately excluded, mirroring the backend's DEFAULT_QUEUE_STATUSES.
 const QUEUE_STATUSES = ["new", "in_review", "awaiting_doctor", "failed"];
 
-// The one resolved status this page offers a path to: cases the lab already
-// finished, either by pushing to Seazona or by recording a manual add
-// (resolutionLabel tells those two apart). Excluded from the default fetch
-// (matching the backend's DEFAULT_QUEUE_STATUSES), so it's fetched
-// separately, on demand, when staff actually ask to see resolved work.
-const RESOLVED_STATUS = "pushed";
-
-/**
- * Human label for a case status. Exported (and pure) so it's directly
- * testable without rendering the page.
- */
-export function statusLabel(s) {
-  return {
-    new: "New",
-    in_review: "In review",
-    awaiting_doctor: "Awaiting doctor",
-    pushed: "Pushed",
-    failed: "Failed",
-    cancelled: "Cancelled",
-  }[s] || s;
-}
+// Resolved work: released to the lab, or sent to Seazona before the cutover (legacy).
+const RESOLVED_FILTER = "resolved";
+const RESOLVED_STATUSES = ["released", "pushed"];
 
 const STATUS_COLORS = {
   new: "bg-blue-500/10 text-blue-700",
   in_review: "bg-violet-500/10 text-violet-700",
   awaiting_doctor: "bg-amber-500/10 text-amber-700",
   failed: "bg-red-500/10 text-red-600",
+  released: "bg-emerald-500/10 text-emerald-700",
   pushed: "bg-emerald-500/10 text-emerald-700",
   cancelled: "bg-gray-200 text-gray-700",
 };
@@ -103,7 +86,7 @@ export function AdminRxCasesPage() {
 
   // Merges rows into `cases` by id rather than replacing the array — called
   // by both the initial mount (open queue) and, lazily, the Resolved filter
-  // pill (RESOLVED_STATUS rows), and neither fetch should stomp the other's
+  // pill (resolved rows), and neither fetch should stomp the other's
   // results.
   const mergeCases = (rows) => {
     setCases((prev) => {
@@ -138,7 +121,7 @@ export function AdminRxCasesPage() {
     setResolvedLoading(true);
     try {
       const res = await api.get("/admin/rx-cases", {
-        params: { limit: 200, status: RESOLVED_STATUS },
+        params: { limit: 200, status: RESOLVED_STATUSES.join(",") },
       });
       mergeCases(res.data.data || []);
       setResolvedLoaded(true);
@@ -189,7 +172,7 @@ export function AdminRxCasesPage() {
       // also be sitting in `cases` once the Resolved pill has been used.
       if (statusFilter === "all") {
         if (!QUEUE_STATUSES.includes(c.status)) return false;
-      } else if (c.status !== statusFilter) {
+      } else if (statusFilter === RESOLVED_FILTER ? !RESOLVED_STATUSES.includes(c.status) : c.status !== statusFilter) {
         return false;
       }
       if (!q) return true;
@@ -262,22 +245,22 @@ export function AdminRxCasesPage() {
                   active ? "bg-navy text-white" : `${statusColor(s)} hover:bg-navy/10`
                 }`}
               >
-                {statusLabel(s)} ({count})
+                {caseStatusLabel(s)} ({count})
               </button>
             );
           })}
           <button
             type="button"
             onClick={() => {
-              setStatusFilter(RESOLVED_STATUS);
+              setStatusFilter(RESOLVED_FILTER);
               loadResolved();
             }}
             className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold transition-all ${
-              statusFilter === RESOLVED_STATUS ? "bg-navy text-white" : `${statusColor(RESOLVED_STATUS)} hover:bg-navy/10`
+              statusFilter === RESOLVED_FILTER ? "bg-navy text-white" : `${statusColor("released")} hover:bg-navy/10`
             }`}
           >
             {resolvedLoading && <Loader2 size={11} className="animate-spin" />}
-            Resolved{resolvedLoaded ? ` (${statusCounts[RESOLVED_STATUS] || 0})` : ""}
+            Resolved{resolvedLoaded ? ` (${RESOLVED_STATUSES.reduce((n, s) => n + (statusCounts[s] || 0), 0)})` : ""}
           </button>
         </div>
       </div>
@@ -348,7 +331,7 @@ export function AdminRxCasesPage() {
                     <td className="px-4 py-3">
                       <div className="flex flex-col items-start gap-1">
                         <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${statusColor(c.status)}`}>
-                          {statusLabel(c.status)}
+                          {caseStatusLabel(c.status)}
                         </span>
                         {resolutionLabel(c.seazonaPushStatus) && (
                           <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-700">

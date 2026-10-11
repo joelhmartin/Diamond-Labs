@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 
 import { rxFormSubmitSchema, buildDigitalDevices } from "@my-app/shared";
 import { linesForDevices } from "../../services/rx/case-lines.service.js";
-import { shouldAutoPush } from "../rx.routes.js";
 
 test("valid payload parses", () => {
   const result = rxFormSubmitSchema.safeParse({
@@ -89,11 +88,8 @@ test("a prescription with an unmappable selection still yields a line, flagged o
   assert.ok(lines.some((l) => l.status === "open"));
 });
 
-test("auto-push is off unless RX_LIVE_PUSH is exactly 'true'", () => {
-  assert.equal(shouldAutoPush(undefined), false);
-  assert.equal(shouldAutoPush("false"), false);
-  assert.equal(shouldAutoPush("1"), false);
-  assert.equal(shouldAutoPush("TRUE"), false);
-  assert.equal(shouldAutoPush(""), false);
-  assert.equal(shouldAutoPush("true"), true);
+test("auto-release is off unless RX_AUTO_RELEASE is exactly 'true'", async () => {
+  const { shouldAutoRelease } = await import("../rx.routes.js");
+  assert.equal(shouldAutoRelease("true"), true);
+  for (const v of [undefined, "", "1", "TRUE", "yes", "false"]) assert.equal(shouldAutoRelease(v), false, String(v));
 });

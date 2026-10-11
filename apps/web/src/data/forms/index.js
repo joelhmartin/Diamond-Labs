@@ -1,21 +1,5 @@
 /**
- * Form registry — the doctor-facing Rx forms: the digital Rx (sleep / TMD /
- * guard devices) and the orthodontic Rx.
- *
- * Each definition embeds its own { slug, jotformId, title, route }.
- * `FORM_LIST` preserves chooser display order.
+ * Form registry for the web app. The definitions live in packages/shared
+ * (src/rx/forms) so the API can group answers exactly as the form does.
  */
-
-import { digitalRxForm } from "./digital-rx.form.js";
-import { orthoRxForm } from "./ortho-rx.form.js";
-
-export const FORMS = {
-  digital: digitalRxForm,
-  ortho: orthoRxForm,
-};
-
-export const FORM_LIST = [digitalRxForm, orthoRxForm];
-
-export function getForm(slug) {
-  return FORMS[slug] || null;
-}
+export { RX_FORMS as FORMS, RX_FORM_LIST as FORM_LIST, getRxForm as getForm } from "@my-app/shared";

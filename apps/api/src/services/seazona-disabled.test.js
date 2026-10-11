@@ -36,7 +36,6 @@ test("disabled: every exported entry point makes zero network calls and resolves
   assert.equal(await seazona.getInvoice(1), null);
   assert.deepEqual(await seazona.getOrders(), []);
   assert.equal(await seazona.getOrder(1), null);
-  assert.equal(await seazona.createOrder({ clientId: 1, items: [] }), null);
   assert.equal(await seazona.createPayment({ clientId: 1, amount: 1 }), null);
   assert.equal(await seazona.getPayment(1), null);
   assert.deepEqual(await seazona.listProducts(), []);

@@ -1,7 +1,10 @@
 import { pgTable, varchar, timestamp, boolean, pgEnum, index, text } from "drizzle-orm/pg-core";
 
 export const userStatusEnum = pgEnum("user_status", ["active", "suspended", "deleted"]);
-export const userRoleEnum = pgEnum("user_role", ["user", "doctor", "admin"]);
+// `lab` (own-the-lab piece 2): technicians — production board, order detail,
+// Rx cases (read + release), case files and work tickets. Never pricing,
+// payments, users or the catalog editor. Admins can do everything lab can.
+export const userRoleEnum = pgEnum("user_role", ["user", "doctor", "admin", "lab"]);
 export const approvalStatusEnum = pgEnum("approval_status", ["not_required", "pending", "approved", "rejected"]);
 
 export const users = pgTable("users", {

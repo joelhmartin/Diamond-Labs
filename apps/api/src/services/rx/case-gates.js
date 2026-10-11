@@ -1,6 +1,6 @@
 // Pure domain rules for a dental Rx case: status vocabulary, transition and
 // push gates, and the noteOnly <-> seazonaCode invariant. Deliberately
-// imports NOTHING from routes/ or the DB — services (push-case.service.js)
+// imports NOTHING from routes/ or the DB — services (lab-orders.service.js)
 // and their tests need these without pulling in Fastify, drizzle, or
 // config/database.js. admin-rx-cases.routes.js re-exports everything below
 // so every existing importer keeps working unchanged. The one import is the
@@ -25,9 +25,12 @@ export const DEFAULT_QUEUE_STATUSES = ["new", "in_review", "awaiting_doctor", "f
  * wrote was not one the queue selected. rx-status-vocabulary.test.js pins
  * all three together; if you add or rename a status here, that test is
  * where a drift will surface.
+ *
+ * `released` = on the production board (own-the-lab piece 2); `pushed` is
+ * legacy (sent to Seazona before the cutover) and no new case enters it.
  */
 export const CASE_STATUSES = [
-  "new", "in_review", "awaiting_doctor", "pushed", "failed", "cancelled",
+  "new", "in_review", "awaiting_doctor", "released", "pushed", "failed", "cancelled",
 ];
 
 /**
@@ -36,20 +39,22 @@ export const CASE_STATUSES = [
  * `pushed` is terminal — the Seazona order already exists, so moving the
  * case back would make the portal disagree with the lab's own system about
  * what was ordered. A mistake after a push is corrected in Seazona, not
- * here. (A later "marked manually added" resolution also lands on `pushed`
- * for the same reason: it too commits the case to an order the lab
- * considers placed.)
+ * here.
  *
  * Both `from` and `to` are validated against CASE_STATUSES. A `from` outside
  * the known vocabulary is not a state anything should transition out of —
  * checking only `to` would let an unknown or `undefined` origin (e.g. a
  * caller that forgot to load the current status, or a status a future
  * producer misspells) through as `true`.
+ *
+ * `released` is entered only through POST /admin/rx-cases/:id/release, which
+ * also creates the lab order; `pushed` is legacy-only.
  */
 export function canTransition(from, to) {
   if (!CASE_STATUSES.includes(from)) return false;
   if (!CASE_STATUSES.includes(to)) return false;
-  if (from === "pushed") return false;
+  if (isFrozen(from)) return false;
+  if (to === "released" || to === "pushed") return false;
   return true;
 }
 
@@ -66,7 +71,7 @@ export function canTransition(from, to) {
  * Pure and exported so it's directly testable without a database.
  */
 export function isFrozen(status) {
-  return status === "pushed";
+  return status === "pushed" || status === "released";
 }
 
 /**
@@ -90,10 +95,10 @@ export function summariseLines(lines = []) {
 }
 
 /**
- * Whether a case may be pushed. Exported and pure so the gate is testable
- * without a database or a live Seazona client.
+ * Whether a case may be released to the lab. Exported and pure so the gate
+ * is testable without a database.
  *
- * The invariant this protects: never send Seazona a partial order.
+ * The invariant this protects: never release a partial job.
  *
  * - A `noteOnly` line never blocks — it's a doctor selection the lab has
  *   ruled is a build instruction rather than a charged product; it travels
@@ -113,10 +118,10 @@ export function summariseLines(lines = []) {
  * @param {Array<{status: string, noteOnly?: boolean, seazonaCode?: string|null, mapKey?: string, sourceLabel?: string}>} lines
  * @returns {{ ok: boolean, reason?: string, blocking?: Array<string|undefined> }}
  */
-export function canPush(lines = []) {
+export function canRelease(lines = []) {
   const emitting = lines.filter((l) => !l.noteOnly);
   if (emitting.length === 0) {
-    return { ok: false, reason: "This case has no lines to send." };
+    return { ok: false, reason: "This case has no lines to release." };
   }
   const blocking = emitting.filter((l) => l.status === "open" || !l.seazonaCode);
   if (blocking.length > 0) {
@@ -142,7 +147,7 @@ export function canPush(lines = []) {
  * The single source of truth for the noteOnly ⇄ seazonaCode invariant: a
  * note-only ruling wins and the code is cleared. `noteOnly: true` is an
  * explicit statement that the line is a build instruction, not a charged
- * product — and both downstream readers already behave that way (canPush
+ * product — and both downstream readers already behave that way (canRelease
  * filters noteOnly lines out of the sendable set; itemFromOverride checks
  * noteOnly first and emits `code: null`). Storing a code alongside
  * noteOnly: true would just be a value neither reader will ever honour, so
@@ -183,43 +188,39 @@ export function overrideRowFor({ mapKey, seazonaCode, seazonaName, noteOnly, con
 /**
  * A line is "confirmed" once it has a real code or the lab has ruled it's a
  * note-only instruction — either way staff resolved it. Otherwise it's still
- * "open" and blocks a push (see canPush).
+ * "open" and blocks a push (see canRelease).
  */
 export function statusForLine({ seazonaCode, noteOnly }) {
   return noteOnly || seazonaCode ? "confirmed" : "open";
 }
 
 /**
- * The column values for "a human already entered this in Seazona".
+ * Why a case can't be released right now, or null. Runs BEFORE the line gate
+ * (canRelease) — these refusals don't depend on the lines.
  *
- * Resolves the case exactly as a successful push does — same terminal
- * status, so it leaves the queue and cannot be pushed again (see
- * canTransition's docstring: `pushed` is terminal because the Seazona order
- * already exists) — but tags HOW it got there via seazonaPushStatus, so "we
- * sent this" and "someone typed it in" stay distinguishable forever.
+ * A case left at seazonaPushStatus "pushing" had a Seazona push start and
+ * never confirm: the order may exist there. clear-push-lock is gone (piece
+ * 2), so the human check it forced moves here — release is refused until the
+ * request says staff checked Seazona (confirmNotInSeazona: true).
  *
- * Deliberately ignores canPush: a human already created the order in
- * Seazona by hand, so an unresolved line here cannot stop them recording
- * that fact — this is the one sanctioned way past the send gate. Precisely
- * because it bypasses that gate, it captures which lines were still
- * unresolved at this moment (mapKey, or the raw sourceLabel when there is
- * no mapKey to key an override on) instead of discarding them. Without
- * this, "mark manual" quietly becomes the way mapping gaps disappear — and
- * those gaps are the lab's open questions.
- *
- * @param {Array<{status: string, noteOnly?: boolean, seazonaCode?: string|null, mapKey?: string, sourceLabel?: string}>} lines
- * @param {{ seazonaOrderId?: string|null }} [opts]
- * @returns {{ status: string, seazonaPushStatus: string, seazonaOrderId: string|null, unresolvedAtManual: string[] }}
+ * @returns {null | { status: 409, error: { code: string, status: 409, message: string } }}
  */
-export function manualResolution(lines = [], { seazonaOrderId } = {}) {
-  const unresolved = lines
-    .filter((l) => !l.noteOnly && (l.status === "open" || !l.seazonaCode))
-    .map((l) => l.mapKey || l.sourceLabel)
-    .filter(Boolean);
-  return {
-    status: "pushed",
-    seazonaPushStatus: "manual",
-    seazonaOrderId: seazonaOrderId || null,
-    unresolvedAtManual: unresolved,
-  };
+export function releaseRefusal(caseRow, { confirmNotInSeazona = false } = {}) {
+  const refuse = (code, message) => ({ status: 409, error: { code, status: 409, message } });
+  if (caseRow.status === "released") {
+    return refuse("CASE_ALREADY_RELEASED", "This case is already on the production board.");
+  }
+  if (caseRow.status === "pushed") {
+    return refuse("CASE_ALREADY_PUSHED", "This case was sent to Seazona before the lab moved to the portal. It is tracked there.");
+  }
+  if (caseRow.status === "cancelled") {
+    return refuse("CASE_CANCELLED", "This case is cancelled. Move it back to In review before releasing it.");
+  }
+  if (caseRow.seazonaPushStatus === "pushing" && !confirmNotInSeazona) {
+    return refuse(
+      "LEGACY_PUSH_UNCONFIRMED",
+      "A Seazona push for this case started and was never confirmed. Check Seazona for an order first; if there is none, release again and confirm.",
+    );
+  }
+  return null;
 }

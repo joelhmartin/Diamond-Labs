@@ -131,10 +131,10 @@ test("re-resolve does not collide positions when a manual line sits at a non-zer
 test("an 'always' note-only ruling survives a resolve as a non-blocking, non-product line", async () => {
   // Pins the whole path an admin's "always" + noteOnly resolution travels:
   // overrideRowFor (admin-rx-cases.routes.js) -> the shape loadOverrides()
-  // would hand back from that DB row -> linesForDevices -> canPush. Each
+  // would hand back from that DB row -> linesForDevices -> canRelease. Each
   // link is unit-tested elsewhere; this composes them the way production
   // actually will.
-  const { overrideRowFor, canPush } = await import("../../routes/admin-rx-cases.routes.js");
+  const { overrideRowFor, canRelease } = await import("../../routes/admin-rx-cases.routes.js");
 
   const overrideRow = overrideRowFor({
     mapKey: "mod:wrap-distal",
@@ -164,7 +164,7 @@ test("an 'always' note-only ruling survives a resolve as a non-blocking, non-pro
   assert.equal(wrapLine.seazonaCode, null, "a note-only ruling must never invent a code");
 
   assert.equal(
-    canPush(lines).ok,
+    canRelease(lines).ok,
     true,
     "a note-only line must never block the push — it is a build instruction, not an unresolved product"
   );
