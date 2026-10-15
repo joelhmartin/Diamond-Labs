@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ConfirmButton } from "../ui/ConfirmButton.jsx";
 import { X, AlertCircle, Loader2 } from "lucide-react";
 import api from "../../config/api.js";
 import { useToast } from "../ui/Toast.jsx";
@@ -154,15 +155,15 @@ export function RefundPaymentModal({ onClose, presetTransactionId = "", payment 
           >
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={submit}
+          <ConfirmButton
+            onConfirm={submit}
             disabled={!valid}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold bg-brand-500 text-white hover:bg-brand-600 transition-all disabled:opacity-50"
+            confirmLabel={hasBreakdown ? `Click again to refund ${formatCents(sel.totalCents)}` : "Click again to refund"}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold bg-brand-500 text-white hover:bg-brand-600 transition-all"
           >
             {submitting && <Loader2 size={12} className="animate-spin" />}
             Issue refund
-          </button>
+          </ConfirmButton>
         </div>
       </div>
     </div>

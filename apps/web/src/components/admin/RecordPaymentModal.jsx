@@ -31,6 +31,24 @@ export function RecordPaymentModal({ clientUserId, clientName, onClose, onRecord
   const inFlight = useRef(false);
   const [err, setErr] = useState(null);
 
+  const close = () => {
+    if (!inFlight.current) onClose();
+  };
+  // Escape closes this modal only (never while a submit is in flight). Registered
+  // on window in the capture phase and stopped there, so the drawer's own
+  // document-level Escape handler underneath never sees it.
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      closeRef.current();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+
   useEffect(() => {
     api.get(`/admin/clients/${clientUserId}/invoices`, { params: { open: "true" } })
       .then((res) => setInvoices(sortOldestFirst(res.data.data || [])))
@@ -66,9 +84,9 @@ export function RecordPaymentModal({ clientUserId, clientName, onClose, onRecord
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={(e) => { e.stopPropagation(); onClose(); }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={(e) => { e.stopPropagation(); close(); }}>
       <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <button type="button" onClick={onClose} className="absolute right-4 top-4 text-navy/30 hover:text-navy" aria-label="Close"><X size={18} /></button>
+        <button type="button" onClick={close} className="absolute right-4 top-4 text-navy/30 hover:text-navy" aria-label="Close"><X size={18} /></button>
         <h3 className="font-heading text-lg font-bold text-navy">Record a payment</h3>
         <p className="mt-1 text-xs text-navy/50">
           {clientName ? `${clientName} · ` : ""}open balance {invoices ? formatCents(openCents) : "…"}. No card is charged.
@@ -127,7 +145,7 @@ export function RecordPaymentModal({ clientUserId, clientName, onClose, onRecord
         )}
 
         <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-full px-4 py-2.5 text-xs font-semibold text-navy/60 hover:bg-surface-100">Cancel</button>
+          <button type="button" onClick={close} className="rounded-full px-4 py-2.5 text-xs font-semibold text-navy/60 hover:bg-surface-100">Cancel</button>
           <button type="button" onClick={submit} disabled={!valid}
             className="flex items-center gap-1.5 rounded-full bg-brand-500 px-4 py-2.5 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-50">
             {submitting && <Loader2 size={12} className="animate-spin" />} Record {amountCents ? formatCents(amountCents) : "payment"}

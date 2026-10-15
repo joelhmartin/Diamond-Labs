@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, FileDown, Loader2 } from "lucide-react";
 import api from "../../config/api.js";
@@ -67,11 +67,17 @@ export function AdminInvoiceDetailPage() {
   const [notes, setNotes] = useState("");
   const [recording, setRecording] = useState(false);
 
+  // Staff notes are seeded once per invoice: a reload after a line edit or a
+  // stale-version 409 must not wipe text that hasn't been saved yet.
+  const notesSeededFor = useRef(null);
   const load = useCallback(async () => {
     try {
       const res = await api.get(`/admin/invoices/${id}`);
       setData(res.data.data);
-      setNotes(res.data.data.invoice.notes ?? "");
+      if (notesSeededFor.current !== id) {
+        notesSeededFor.current = id;
+        setNotes(res.data.data.invoice.notes ?? "");
+      }
       setFailed(false);
     } catch {
       setFailed(true);
