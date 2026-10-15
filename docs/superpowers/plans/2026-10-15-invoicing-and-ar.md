@@ -34,7 +34,13 @@ Each item is a load-bearing claim in the spec that is wrong or incomplete agains
    - `0029` is a `drizzle-kit generate --custom` backfill: `round(applied_amount * 100)`. Precedent: `0017_rx_case_status_backfill.sql`.
    - `0030` (Task 8) sets `applied_cents NOT NULL` and drops `applied_amount`, once no code reads it.
    drizzle's migrator runs all pending migrations in one transaction, so production sees one atomic change.
-6. **Invoice ownership moves from the practice to the doctor user.** Today the ledger and the caps are keyed by `seazonaClientId`, because several portal logins can share one practice (`invoice-ledger.service.js` header). Local invoices belong to `clientUserId`, the doctor whose case it is: the same owner lab orders and My cases use. A second login of the same practice will no longer see the first login's invoices. There is no local "practice" entity to key on, so the plan follows the spec. The PR body flags it as a product decision for the user.
+6. **Ownership is the doctor user; visibility and payment rights stay with the practice.** The spec keys invoices by `clientUserId` (the doctor whose case it is), as lab orders and My cases are keyed. But today several portal logins share one practice through `seazonaClientId`, and every login sees and can pay the practice's invoices (`invoice-ledger.service.js` header). Narrowing that to one user would take invoices away from front-desk logins. The plan therefore keeps:
+   - **Ownership:** `invoices.clientUserId`.
+   - **Visibility and payment rights:** one shared predicate, `canActOnInvoice(user, invoice, ownerSeazonaClientId)` (`services/billing/invoice-rules.js`). It is true when `invoice.clientUserId === user.id`, or when both `user.seazonaClientId` and the owner's `seazonaClientId` are non-null and equal. A null on either side matches the owner only.
+   - **Where it applies:** every doctor path, which is the list, detail, PDF, statement, `verifyAllocations` (every card payment and manual payment), and AutoPay's open-invoice read.
+   - **Doctor list and statement scope:** every user sharing the requester's `seazonaClientId`, or just the requester when theirs is null (`practiceUserIds`, ledger service).
+   - **The balance cap:** still per invoice id (`paidCentsByInvoice`), so the old "second login re-pays an invoice" bug can't return.
+   - **Admin AR and admin statements:** stay per `clientUserId`. Grouping AR rows by practice where `seazonaClientId` is shared is **deferred**: every AR row action (invoice filter, statement PDF, statement email) is per user, so grouping needs a practice key threaded through those endpoints. That belongs with a real practice entity, which is piece 5's (it imports Seazona's clients).
 7. **The shop invoice copies the checkout quote, not `order_items`.** `createShopLabOrder` runs with the in-memory quote that `order_items` was written from (same values). Lines and totals are copied, never recomputed, so the invoice always equals the charge. A test proves `computeTotals` agrees with `priceLines` for shop-shaped lines.
 8. **The display/strict ledger split goes away.** Soft-fail balance reads existed because invoices came from Seazona and the ledger from our DB. Now both live in the same database. A ledger error fails the request (500) instead of rendering every invoice as unpaid.
 9. **"The ship always succeeds" needs a savepoint.** The spec keeps the bench unblocked only for unpriced lines. A DB error while issuing would still roll back the ship, because it runs in the same transaction. The plan issues and voids inside `tx.transaction(...)` (a savepoint). A failure logs `[BILLING][ISSUE_FAILED]` / `[BILLING][VOID_FAILED]`, and the move still commits.
@@ -62,6 +68,13 @@ Each item is a load-bearing claim in the spec that is wrong or incomplete agains
 - **Migrations come only from `cd apps/api && pnpm db:generate`** (and `pnpm drizzle-kit generate --custom` for the one data backfill). Expect `0028_*`, `0029_invoice_payments_applied_cents.sql`, `0030_*`. Never hand-number a migration or edit a generated one. The custom file is written by hand by design.
 - **Staging scrub.** Every new column is classified in `apps/api/src/db/scrub/plan.js` and `COLUMNS.md` (`plan.test.js` fails otherwise). Staff free text (`invoices.notes`, `invoices.void_reason`, `invoice_lines.price_note`, `invoice_payments.note`) is encrypted at rest (`lib/crypto.js`) and scrubbed as `phi`.
 - **Source files stay under 1,000 lines** (excluding blanks and comments). `payment.routes.js` (1,414) is split first (Task 1), before anything edits it.
+- **Functions stay under 150 lines; a React component under 300 including its markup** (excluding blanks, comments and tests). Split along a real seam (a handler, a sub-component, a step). A genuinely long orchestrator that is only a list of step calls may opt out with a comment saying why.
+  - Every function written in this plan's code blocks was checked against this limit.
+  - The one that crossed it, `invoicePaymentRoutes` (157), is split into three module-level handlers, `chargeSaved`, `hostedToken` and `hostedComplete`, plus a three-line registration (Task 6).
+  - The largest that remain: `PaymentModal` (~175, a component), `AdminInvoiceDetailPage` (~145, a component), `refundRoutes` (~130) and `processEnrollment` (~112).
+  - Task 1 moves existing code verbatim, so it doesn't apply this rule. Two long functions it moves:
+    - the old refund handler, which Task 6 rewrites to ~130 lines;
+    - the checkout handler, which this piece only touches for one call. Splitting it is a follow-up.
 - **One implementation per job.** Reuse rather than copy:
   - `withInvoiceLocks` / `withIdempotency`;
   - `allocateOldestFirst`, `unitPriceFor`, `pctOfCents`;
@@ -101,7 +114,10 @@ These are the five input classes most likely to bite a real user, each pinned to
 
 1. **A card payment and a staff action hit the same invoice at once** (a doctor paying while staff void, credit or record a check). They are serialized by `withInvoiceLocks`. A void is refused once any payment has landed. Pinned by the `planVoid` "has payments" test in **Task 4**, the void/credit/manual-payment lock source test in **Task 9**, and the in-lock `verifyAllocations` cap test in **Task 6**.
 2. **Shipping a job whose invoice can't be issued** (an unpriced line, or a DB hiccup while issuing). The move to `shipped` must still commit, and the invoice stays draft under "Needs a price". Pinned by the `planIssue` unpriced test in **Task 4**, and the `billingFollowUp` savepoint test plus the `issueForShippedLabOrder` unpriced test in **Task 5**.
-3. **A doctor opens an invoice that is a draft, or is someone else's.** The answer is 404. The doctor view never carries staff notes, price notes, the void reason, ledger references or transaction ids. Pinned by the `doctorInvoiceView` allow-list test in **Task 8** and the doctor-route source test in **Task 8**.
+3. **A second login of the same practice, another practice, or a draft.** The same-practice login sees and can pay the invoice. Another practice, or a null `seazonaClientId` on either side (unless it's the owner), gets 404 / 403. A draft is 404 for everyone. The doctor view never carries staff notes, price notes, the void reason, ledger references or transaction ids. Pinned by:
+   - the `canActOnInvoice` tests in **Task 4**;
+   - the practice `verifyAllocations` and `openInvoicesForClient` tests in **Task 6**;
+   - the `doctorInvoiceView` allow-list test and the doctor-route source test in **Task 8**.
 4. **Dates at the edges of the lab's day and month.** A payment at 11:30 pm Chicago on Oct 31 belongs to October's statement. A backdated manual payment can't predate its invoice. Pinned by the statement-model timezone test in **Task 10** and the `planManualPayment` date tests in **Task 9**.
 5. **Seazona-era ledger rows** (`invoice_id` null, `seazona_invoice_id` set). They must still show in payment history and refund correctly after deploy. Pinned by the legacy-row `summarizePayments` test and the refund reversal-key test in **Task 6**.
 
@@ -1305,6 +1321,7 @@ Co-Authored-By: Claude <implementer model> <noreply@anthropic.com>"
   - `planIssue(invoice, lines, { now, termsDays, issueDateIso }) → { patch }`;
   - `planVoid(invoice, { paidCents, reason, now }) → { patch }`;
   - `deriveBalance(invoice, paidCents) → { paidCents, balanceCents, paid }`: **the** balance rule.
+  - `canActOnInvoice(user, invoice, ownerSeazonaClientId) → boolean`: **the** doctor visibility and payment-rights rule (Spec correction 6).
 - Produces (API `services/billing/aging.js`):
   - `AGING_KEYS`;
   - `daysPastDue(dueDate, asOfIso)`, `agingKeyFor(dueDate, asOfIso)`;
@@ -1396,7 +1413,7 @@ import assert from "node:assert/strict";
 import { priceLines } from "../../lib/pricing.js";
 import {
   InvoiceError, addDaysIso, computeTotals, hasUnpriced, asRemakeLines, planDraftInvoice, planShopInvoice,
-  assertFreshInvoice, planLineEdit, planIssue, planVoid, deriveBalance,
+  assertFreshInvoice, planLineEdit, planIssue, planVoid, deriveBalance, canActOnInvoice,
 } from "./invoice-rules.js";
 import { invoiceErrorReply } from "./invoice-errors.js";
 
@@ -1557,6 +1574,18 @@ test("balance = total − (payments + credits − refunds); a void owes nothing;
   assert.equal(deriveBalance({ status: "draft", totalCents: 10000 }, 0).paid, false);
   assert.deepEqual(deriveBalance({ status: "void", totalCents: 10000 }, 0), { paidCents: 0, balanceCents: 0, paid: false });
   assert.throws(() => deriveBalance(issued, 12.5), TypeError);
+});
+
+test("practice visibility: the owner, or a login of the same practice — nobody else", () => {
+  const invoice = { clientUserId: "doc1" };
+  assert.equal(canActOnInvoice({ id: "doc1", seazonaClientId: null }, invoice, null), true, "the owner always");
+  assert.equal(canActOnInvoice({ id: "frontdesk", seazonaClientId: "c1" }, invoice, "c1"), true, "a same-practice second login");
+  assert.equal(canActOnInvoice({ id: "other", seazonaClientId: "c2" }, invoice, "c1"), false, "another practice");
+  assert.equal(canActOnInvoice({ id: "frontdesk", seazonaClientId: null }, invoice, "c1"), false, "null on the user's side");
+  assert.equal(canActOnInvoice({ id: "frontdesk", seazonaClientId: "c1" }, invoice, null), false, "null on the owner's side");
+  assert.equal(canActOnInvoice({ id: "x", seazonaClientId: null }, invoice, null), false, "two nulls are not a match");
+  assert.equal(canActOnInvoice({ id: "doc1" }, { clientUserId: null }, null), false, "a guest invoice is nobody's to see");
+  assert.equal(canActOnInvoice(null, invoice, "c1"), false);
 });
 
 test("invoice errors map to the status a screen can act on", () => {
@@ -1996,6 +2025,25 @@ export function deriveBalance(invoice, paidCents = 0) {
   if (invoice.status === "void") return { paidCents, balanceCents: 0, paid: false };
   const balanceCents = invoice.totalCents - paidCents;
   return { paidCents, balanceCents, paid: invoice.status === "issued" && balanceCents <= 0 };
+}
+
+/**
+ * THE doctor visibility and payment-rights rule. An invoice is owned by one
+ * doctor (clientUserId), but every portal login of the same practice may see
+ * and pay it, as they could when invoices lived in Seazona. A practice is a
+ * shared, non-null seazonaClientId until piece 5 brings a real practice
+ * entity. A null on either side matches the owner only. Used by every doctor
+ * read (list, detail, PDF, statement), every payment (verifyAllocations) and
+ * AutoPay.
+ *
+ * @param {{ id: string, seazonaClientId?: string|null }} user  the requester (or the doctor being charged)
+ * @param {{ clientUserId: string|null }} invoice
+ * @param {string|null} ownerSeazonaClientId  the owning doctor's seazonaClientId
+ */
+export function canActOnInvoice(user, invoice, ownerSeazonaClientId) {
+  if (!user?.id || !invoice?.clientUserId) return false;
+  if (invoice.clientUserId === user.id) return true;
+  return Boolean(user.seazonaClientId) && Boolean(ownerSeazonaClientId) && String(user.seazonaClientId) === String(ownerSeazonaClientId);
 }
 ```
 
@@ -2854,7 +2902,8 @@ Co-Authored-By: Claude <implementer model> <noreply@anthropic.com>"
   - `services/billing/ledger.service.js`:
     - `paidCentsByInvoice(invoiceIds, database) → Map<id, cents>`;
     - `withBalances(invoiceRows, database) → rows + { paidCents, balanceCents, paid }`;
-    - `openInvoicesForClient(clientUserId, database) → [{ id, invoiceNumber, balanceCents, dueDate, issuedOn }]` (issued, balance > 0, oldest due first);
+    - `practiceUserIds(user, database) → string[]`: every doctor sharing the user's non-null `seazonaClientId`, else `[user.id]`;
+    - `openInvoicesForClient(user: { id, seazonaClientId }, database) → [{ id, invoiceNumber, balanceCents, dueDate, issuedOn }]`: issued, balance > 0, oldest due first, across the user's practice, filtered by `canActOnInvoice`;
     - `ledgerRowsForInvoice(invoiceId, database)`;
     - `listPaymentsForUser(userId)`, `listAllPayments({ userId })` (shop checkouts excluded).
     Every read throws on a DB error.
@@ -2864,7 +2913,7 @@ Co-Authored-By: Claude <implementer model> <noreply@anthropic.com>"
   - `lib/refund-plan.js`: `invoiceKeysOf(row)`, `planRefund(originalRows, allocations?) → { totalCents | null, rows } | { error }`.
   - `services/payment-recording.service.js`:
     - `recordPaymentAndAllocations({ user, amountCents, transactionId, allocations: [{ invoiceId, invoiceNumber, amountCents }], source, wasCharged, auditAction, actorUserId, paidOn, reference }) → { ledgerWriteFailed }` (never throws);
-    - `verifyAllocations(allocations, user, { enforceCap, database }) → null | { kind: "forbidden" | "validation", message }`.
+    - `verifyAllocations(allocations, user, { enforceCap, database }) → null | { kind: "forbidden" | "validation", message }`. Ownership is `canActOnInvoice` (practice-wide); the cap stays per invoice id.
   - `@my-app/shared`:
     - `allocationSchema` is `{ invoiceId, amountCents }`;
     - `chargeSavedSchema` is `{ paymentProfileId, amountCents, allocations }`;
@@ -2913,16 +2962,35 @@ test("withBalances attaches the one balance rule", async () => {
 test("a client's open invoices: issued, still owing, oldest due first, with the lab-local issue date", async () => {
   const db = fakeTx({ selects: [
     [
-      { id: "late", invoiceNumber: 500002, status: "issued", totalCents: 5000, dueDate: "2026-11-30", issuedAt: new Date("2026-10-31T04:30:00Z") },
-      { id: "early", invoiceNumber: 500001, status: "issued", totalCents: 8000, dueDate: "2026-10-30", issuedAt: new Date("2026-09-30T15:00:00Z") },
-      { id: "paid", invoiceNumber: 500003, status: "issued", totalCents: 1000, dueDate: "2026-10-01", issuedAt: new Date("2026-09-01T15:00:00Z") },
+      { id: "late", clientUserId: "doc1", invoiceNumber: 500002, status: "issued", totalCents: 5000, dueDate: "2026-11-30", issuedAt: new Date("2026-10-31T04:30:00Z") },
+      { id: "early", clientUserId: "doc1", invoiceNumber: 500001, status: "issued", totalCents: 8000, dueDate: "2026-10-30", issuedAt: new Date("2026-09-30T15:00:00Z") },
+      { id: "paid", clientUserId: "doc1", invoiceNumber: 500003, status: "issued", totalCents: 1000, dueDate: "2026-10-01", issuedAt: new Date("2026-09-01T15:00:00Z") },
     ],
     [{ invoiceId: "paid", paid: "1000" }, { invoiceId: "early", paid: "3000" }],
   ] });
-  const open = await ledger.openInvoicesForClient("doc1", db);
+  const open = await ledger.openInvoicesForClient({ id: "doc1", seazonaClientId: null }, db);
   assert.deepEqual(open.map((i) => [i.id, i.balanceCents]), [["early", 5000], ["late", 5000]]);
   assert.equal(open[1].issuedOn, "2026-10-30", "04:30 UTC on Oct 31 is still Oct 30 in Chicago");
-  await assert.rejects(ledger.openInvoicesForClient(null, db), /clientUserId is required/);
+  await assert.rejects(ledger.openInvoicesForClient(null, db), /a client is required/);
+});
+
+test("practice: a second login's open invoices include the practice's; another practice's are filtered out", async () => {
+  const issuedAt = new Date("2026-10-01T15:00:00Z");
+  const db = fakeTx({ selects: [
+    [{ id: "doc1" }, { id: "frontdesk" }], // users sharing seazonaClientId c1
+    [
+      { id: "mine", clientUserId: "doc1", ownerSeazonaClientId: "c1", invoiceNumber: 500001, status: "issued", totalCents: 1000, dueDate: "2026-10-31", issuedAt },
+      { id: "stray", clientUserId: "x", ownerSeazonaClientId: "c2", invoiceNumber: 500002, status: "issued", totalCents: 1000, dueDate: "2026-10-31", issuedAt },
+    ],
+    [],
+  ] });
+  const open = await ledger.openInvoicesForClient({ id: "frontdesk", seazonaClientId: "c1" }, db);
+  assert.deepEqual(open.map((i) => i.id), ["mine"]);
+});
+
+test("practiceUserIds: the requester alone when they have no practice key; never without the requester", async () => {
+  assert.deepEqual(await ledger.practiceUserIds({ id: "solo", seazonaClientId: null }, fakeTx()), ["solo"]);
+  assert.deepEqual(await ledger.practiceUserIds({ id: "fd", seazonaClientId: "c1" }, fakeTx({ selects: [[{ id: "doc1" }]] })), ["doc1", "fd"]);
 });
 
 test("shop checkouts stay out of payment history (and so out of the refund screen)", () => {
@@ -3055,7 +3123,7 @@ let invoiceRows = [];
 vi.mock("../config/database.js", () => ({
   db: {
     insert: () => ({ values: async (v) => { if (insertFails) throw new Error("db down"); inserted.push(...v); } }),
-    select: () => ({ from: () => ({ where: async () => invoiceRows }) }),
+    select: () => ({ from: () => ({ leftJoin: () => ({ where: async () => invoiceRows }) }) }),
   },
 }));
 let paid = new Map();
@@ -3125,7 +3193,28 @@ test("audit carries amounts, the source and invoice numbers only", async () => {
   });
 });
 
-const inv = (over = {}) => ({ id: "inv1", invoiceNumber: 500001, clientUserId: "doc1", status: "issued", totalCents: 30000, ...over });
+const inv = (over = {}) => ({ id: "inv1", invoiceNumber: 500001, clientUserId: "doc1", ownerSeazonaClientId: "c1", status: "issued", totalCents: 30000, ...over });
+
+test("verifyAllocations: a second login of the same practice may pay; another practice may not", async () => {
+  invoiceRows = [inv()];
+  assert.equal(await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], { id: "frontdesk", seazonaClientId: "c1" }), null);
+  assert.equal((await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], { id: "other", seazonaClientId: "c2" })).kind, "forbidden");
+});
+
+test("verifyAllocations: a null practice key on either side matches the owner only", async () => {
+  invoiceRows = [inv()];
+  assert.equal((await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], { id: "frontdesk", seazonaClientId: null })).kind, "forbidden");
+  invoiceRows = [inv({ ownerSeazonaClientId: null })];
+  assert.equal((await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], { id: "frontdesk", seazonaClientId: "c1" })).kind, "forbidden");
+  assert.equal(await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], doctor), null, "the owner, with no practice key");
+});
+
+test("verifyAllocations: the practice shares one cap per invoice — a second login can't re-pay", async () => {
+  invoiceRows = [inv()];
+  paid = new Map([["inv1", 30000]]); // the first login paid in full
+  const again = await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], { id: "frontdesk", seazonaClientId: "c1" }, { enforceCap: true });
+  assert.equal(again.kind, "validation");
+});
 
 test("verifyAllocations: someone else's invoice and a missing one read the same (403)", async () => {
   invoiceRows = [inv({ clientUserId: "doc2" })];
@@ -3238,10 +3327,11 @@ Expected: FAIL. The ledger and refund-plan modules don't exist; the summary and 
 ```js
 import { and, asc, eq, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
 import { isoDateIn, LAB_TIMEZONE, SHOP_PAYMENT_SOURCE } from "@my-app/shared";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "../../config/database.js";
-import { invoices, invoicePayments } from "../../db/schema/index.js";
+import { invoices, invoicePayments, users } from "../../db/schema/index.js";
 import { summarizePayments } from "../../lib/payment-summary.js";
-import { deriveBalance } from "./invoice-rules.js";
+import { deriveBalance, canActOnInvoice } from "./invoice-rules.js";
 import { openLedgerRow } from "./invoice-crypto.js";
 
 /**
@@ -3272,21 +3362,42 @@ export async function withBalances(invoiceRows, database = db) {
 }
 
 const LAST_DAY = "9999-12-31";
+const owner = alias(users, "owner");
 
 /**
- * What a payment can be applied to: the client's issued invoices that still
- * owe, oldest due first (undated last), each with its lab-local issue date.
+ * The doctors whose invoices `user` may see and pay: everyone sharing the
+ * user's non-null seazonaClientId (one practice), else just the user. Always
+ * includes the user. See canActOnInvoice (Spec correction 6).
  */
-export async function openInvoicesForClient(clientUserId, database = db) {
-  if (!clientUserId) throw new Error("invoice ledger: clientUserId is required");
+export async function practiceUserIds(user, database = db) {
+  if (!user?.seazonaClientId) return [user.id];
+  const rows = await database
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.seazonaClientId, String(user.seazonaClientId)), eq(users.role, "doctor")));
+  return [...new Set([...rows.map((r) => r.id), user.id])];
+}
+
+/**
+ * What a payment by (or for) `client` can be applied to: the practice's
+ * issued invoices that still owe, oldest due first (undated last), each with
+ * its lab-local issue date. Filtered through canActOnInvoice, the same rule
+ * verifyAllocations enforces.
+ * @param {{ id: string, seazonaClientId?: string|null }} client
+ */
+export async function openInvoicesForClient(client, database = db) {
+  if (!client?.id) throw new Error("invoice ledger: a client is required");
+  const ids = await practiceUserIds(client, database);
   const rows = await database
     .select({
-      id: invoices.id, invoiceNumber: invoices.invoiceNumber, status: invoices.status,
+      id: invoices.id, clientUserId: invoices.clientUserId, ownerSeazonaClientId: owner.seazonaClientId,
+      invoiceNumber: invoices.invoiceNumber, status: invoices.status,
       totalCents: invoices.totalCents, dueDate: invoices.dueDate, issuedAt: invoices.issuedAt,
     })
     .from(invoices)
-    .where(and(eq(invoices.clientUserId, clientUserId), eq(invoices.status, "issued")));
-  const balanced = await withBalances(rows, database);
+    .leftJoin(owner, eq(owner.id, invoices.clientUserId))
+    .where(and(inArray(invoices.clientUserId, ids), eq(invoices.status, "issued")));
+  const balanced = await withBalances(rows.filter((r) => canActOnInvoice(client, r, r.ownerSeazonaClientId)), database);
   return balanced
     .filter((i) => i.balanceCents > 0)
     .map((i) => ({
@@ -3461,15 +3572,18 @@ export function planRefund(originalRows, allocations) {
 `apps/api/src/services/payment-recording.service.js` (whole file):
 
 ```js
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/database.js";
-import { invoices, invoicePayments } from "../db/schema/index.js";
+import { invoices, invoicePayments, users } from "../db/schema/index.js";
 import { createId } from "../lib/id.js";
 import { formatCents } from "../lib/money.js";
 import { sendPaymentReceipt } from "./email.service.js";
 import * as auditService from "./audit.service.js";
 import { paidCentsByInvoice } from "./billing/ledger.service.js";
-import { deriveBalance } from "./billing/invoice-rules.js";
+import { deriveBalance, canActOnInvoice } from "./billing/invoice-rules.js";
+
+const owner = alias(users, "owner");
 
 /**
  * After money moved (a captured card charge) or was received (a manual
@@ -3562,8 +3676,9 @@ export async function recordPaymentAndAllocations({
 }
 
 /**
- * Check a payment's allocations against our invoices: each one exists, belongs
- * to the payer (`clientUserId === user.id`), is issued, appears once, and (with
+ * Check a payment's allocations against our invoices: each one exists, may be
+ * paid by this user (canActOnInvoice: the owner, or a login of the same
+ * practice), is issued, appears once, and (with
  * `enforceCap`) is not paid past its balance after payments, credits and
  * refunds. Backfills `invoiceNumber`. Returns null when all good, else
  * { kind: "forbidden" | "validation", message } (→ 403 / 422).
@@ -3582,9 +3697,10 @@ export async function verifyAllocations(allocations, user, { enforceCap = false,
     ? await database
         .select({
           id: invoices.id, invoiceNumber: invoices.invoiceNumber, clientUserId: invoices.clientUserId,
-          status: invoices.status, totalCents: invoices.totalCents,
+          ownerSeazonaClientId: owner.seazonaClientId, status: invoices.status, totalCents: invoices.totalCents,
         })
         .from(invoices)
+        .leftJoin(owner, eq(owner.id, invoices.clientUserId))
         .where(inArray(invoices.id, ids))
     : [];
   const byId = new Map(rows.map((r) => [r.id, r]));
@@ -3592,7 +3708,8 @@ export async function verifyAllocations(allocations, user, { enforceCap = false,
   for (const a of allocations) {
     const inv = byId.get(String(a.invoiceId));
     // Not found and not yours read the same, so invoice ids can't be probed.
-    if (!inv || inv.clientUserId !== user.id) {
+    // The cap below stays per invoice id, so a second login can't re-pay.
+    if (!inv || !canActOnInvoice(user, inv, inv.ownerSeazonaClientId)) {
       return { kind: "forbidden", message: `Invoice ${a.invoiceNumber || a.invoiceId} is not on this account.` };
     }
     a.invoiceNumber = String(inv.invoiceNumber);
@@ -3706,207 +3823,203 @@ const HOSTED_BINDING_TTL = 30 * 60;
 
 const sumCentsOf = (allocations) => allocations.reduce((s, a) => s + a.amountCents, 0);
 
+// Requires an Idempotency-Key header (H1/L5): the frontend mints one per submit.
+async function chargeSaved(request, reply) {
+  const { paymentProfileId, amountCents, allocations } = request.body;
+  const customerProfileId = request.user.authorizeNetCustomerProfileId;
+
+  const idempotencyKey = request.headers["idempotency-key"] || null;
+  if (!idempotencyKey) {
+    return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "An Idempotency-Key header is required." } });
+  }
+  if (!customerProfileId) {
+    return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "No saved-card profile on file for this account." } });
+  }
+  // Ownership (no cap) runs OUTSIDE the idempotency replay path: every request,
+  // a replay included, must first prove the invoices are the caller's, so a
+  // guessed key can't replay another doctor's result.
+  const own = await verifyAllocations(allocations, request.user);
+  if (own) return sendAllocationError(reply, own);
+
+  let outcome;
+  try {
+    outcome = await withIdempotency(
+      redis,
+      `charge-saved:${request.user.id}:${idempotencyKey}`,
+      async () =>
+        // D1: two different keys hitting one invoice must not both pass the cap.
+        withInvoiceLocks(
+          redis,
+          allocations.map((a) => a.invoiceId),
+          async () => {
+            const capErr = await verifyAllocations(allocations, request.user, { enforceCap: true });
+            if (capErr) throw Object.assign(new Error("allocation_error"), { allocationError: capErr });
+            const result = await authorizenetService.chargeCustomerProfile({
+              customerProfileId,
+              paymentProfileId,
+              amount: toDecimalString(amountCents),
+              invoiceNumber: allocations[0].invoiceNumber,
+            });
+            const { ledgerWriteFailed } = await recordPaymentAndAllocations({
+              user: request.user,
+              amountCents,
+              transactionId: result.transactionId,
+              allocations,
+              source: "doctor_card",
+            });
+            return { ...result, amountCents, ...(ledgerWriteFailed ? { ledgerWriteFailed: true } : {}) };
+          },
+          { log: request.log }
+        ),
+      { log: request.log }
+    );
+  } catch (err) {
+    if (err?.allocationError) return sendAllocationError(reply, err.allocationError);
+    if (err instanceof InvoiceLockedError) return sendInvoiceLockedError(reply);
+    if (err instanceof ChargeInProgressError) return reply.code(409).send({ error: ERROR_CODES.CHARGE_IN_PROGRESS });
+    request.log.warn({ userId: request.user.id, err: String(err?.message || err) }, "charge-saved failed");
+    return chargeErrorReply(reply, err);
+  }
+  return { data: outcome.result };
+}
+
+// A new card on Authorize.net's hosted page. The amount is the allocation
+// sum, baked into the token server-side; the mode follows AUTHORIZE_NET_ENV.
+async function hostedToken(request, reply) {
+  const { allocations, iframeCommunicatorUrl, saveCard } = request.body || {};
+  if (iframeCommunicatorUrl && !/^https?:\/\//.test(iframeCommunicatorUrl)) {
+    return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "iframeCommunicatorUrl must be an http(s) URL." } });
+  }
+  const v = await verifyAllocations(allocations, request.user);
+  if (v) return sendAllocationError(reply, v);
+  const amountCents = sumCentsOf(allocations);
+
+  // Save-card: create the CIM profile lazily so the gateway has a customer
+  // to attach the new card to.
+  const customerProfileId = saveCard ? await ensureCustomerProfile(request.user) : undefined;
+
+  // C2: bind the transaction to THIS doctor and THIS token. hosted-complete
+  // records only a transaction whose order.invoiceNumber matches a binding
+  // owned by the caller, and records the allocations bound here.
+  const refId = `H${createId().slice(0, 14)}`;
+  await redis.set(
+    `rxpay:hosted:${refId}`,
+    JSON.stringify({ userId: request.user.id, allocations, amountCents }),
+    "EX",
+    HOSTED_BINDING_TTL
+  );
+
+  const result = await authorizenetService.getHostedPaymentPageToken({
+    amount: toDecimalString(amountCents),
+    // order.invoiceNumber round-trips through getTransactionDetails; the refId does not reliably.
+    invoiceNumber: refId,
+    description: `Diamond Labs — invoice(s): ${allocations.map((a) => a.invoiceNumber).join(", ")}`.slice(0, 255),
+    refId,
+    iframeCommunicatorUrl,
+    customerProfileId,
+    allowSaveCard: Boolean(saveCard),
+  });
+  if (!result?.token) {
+    await redis.del(`rxpay:hosted:${refId}`).catch(() => {});
+    return reply.code(502).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Could not get a payment form token." } });
+  }
+  return { data: { token: result.token, formUrl: result.formUrl, refId, amountCents } };
+}
+
+// Finalize a hosted payment: verify what Authorize.net captured, then record
+// the ledger. Idempotent on transId. A saved card lives at the gateway under
+// the doctor's CIM profile; nothing to store here.
+async function hostedComplete(request, reply) {
+  const { transId, refId, allocations } = request.body;
+
+  const existing = await db.select().from(invoicePayments).where(eq(invoicePayments.transactionId, String(transId)));
+  if (existing.length) return { data: { transId, alreadyRecorded: true, rows: existing.length } };
+
+  // C2 (a): the binding must exist and be the caller's.
+  const binding = safeParse(await redis.get(`rxpay:hosted:${refId}`));
+  if (!binding || String(binding.userId) !== String(request.user.id)) {
+    return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: "Payment session not found or does not belong to your account." } });
+  }
+  // Record what the token was issued for, never caller-supplied allocations.
+  const boundAllocations = Array.isArray(binding.allocations) && binding.allocations.length ? binding.allocations : allocations;
+
+  const details = await authorizenetService.getTransactionDetails(transId);
+  if (!details) return reply.code(404).send({ error: { ...ERROR_CODES.NOT_FOUND, message: "Transaction not found." } });
+
+  // C2 (b): the captured transaction carries our binding token.
+  if (String(details.orderInvoiceNumber) !== String(refId) && String(details.refId) !== String(refId)) {
+    return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: "Transaction does not match the issued payment session." } });
+  }
+  // C2 (c): only an approved, captured or settled transaction is recordable.
+  const SETTLED_OR_PENDING = new Set(["capturedPendingSettlement", "settledSuccessfully"]);
+  if (String(details.responseCode) !== "1" || !SETTLED_OR_PENDING.has(String(details.transactionStatus))) {
+    return reply.code(422).send({
+      error: { ...ERROR_CODES.VALIDATION_ERROR, message: `Transaction is not in a recordable state (status: ${details.transactionStatus || "unknown"}).` },
+    });
+  }
+  // C2 (d): captured amount = the bound allocation sum, to the cent.
+  const capturedCents = toCents(details.amount);
+  const boundCents = sumCentsOf(boundAllocations);
+  if (capturedCents !== boundCents) {
+    return reply.code(422).send({
+      error: { ...ERROR_CODES.VALIDATION_ERROR, message: `Allocation total (${formatCents(boundCents)}) does not match the captured amount (${formatCents(capturedCents)}).` },
+    });
+  }
+
+  // D1: lock the bound invoices across cap check → ledger write.
+  let recorded;
+  try {
+    recorded = await withInvoiceLocks(
+      redis,
+      boundAllocations.map((a) => a.invoiceId),
+      async () => {
+        const v = await verifyAllocations(boundAllocations, request.user, { enforceCap: true });
+        if (v) return { allocationError: v };
+        return {
+          result: await recordPaymentAndAllocations({
+            user: request.user,
+            amountCents: capturedCents,
+            transactionId: String(transId),
+            allocations: boundAllocations,
+            source: "doctor_hosted",
+          }),
+        };
+      },
+      { log: request.log }
+    );
+  } catch (err) {
+    if (err instanceof InvoiceLockedError) return sendInvoiceLockedError(reply);
+    throw err;
+  }
+  if (recorded.allocationError) return sendAllocationError(reply, recorded.allocationError);
+
+  // One-time use.
+  await redis.del(`rxpay:hosted:${refId}`).catch(() => {});
+  return {
+    data: {
+      transId,
+      amountCents: capturedCents,
+      status: details.status,
+      recorded: true,
+      ...(recorded.result.ledgerWriteFailed ? { ledgerWriteFailed: true } : {}),
+    },
+  };
+}
+
 /**
  * A doctor pays their invoices: with a saved card (charge-saved), or a new card
  * on Authorize.net's hosted page (hosted-token → hosted-complete, SAQ A).
  * Allocations are [{ invoiceId, amountCents }] against OUR invoices. Every
- * request first proves the invoices are the caller's (verifyAllocations); the
- * balance cap is re-checked inside the per-invoice locks, right before money
- * moves or is recorded. Dollars appear only on the Authorize.net wire
- * (toDecimalString out, toCents back).
+ * request first proves the caller may pay them (verifyAllocations →
+ * canActOnInvoice); the balance cap is re-checked inside the per-invoice locks,
+ * right before money moves or is recorded. Dollars appear only on the
+ * Authorize.net wire (toDecimalString out, toCents back). The three handlers
+ * are module functions (the function-length rule); registration is at the end.
  */
 export default async function invoicePaymentRoutes(fastify) {
-  // Requires an Idempotency-Key header (H1/L5): the frontend mints one per submit.
-  fastify.post("/payments/charge-saved", {
-    ...CHARGE_RATE_LIMIT,
-    preHandler: [authenticate, requireApprovedDoctor, validate(chargeSavedSchema)],
-  }, async (request, reply) => {
-    const { paymentProfileId, amountCents, allocations } = request.body;
-    const customerProfileId = request.user.authorizeNetCustomerProfileId;
-
-    const idempotencyKey = request.headers["idempotency-key"] || null;
-    if (!idempotencyKey) {
-      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "An Idempotency-Key header is required." } });
-    }
-    if (!customerProfileId) {
-      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "No saved-card profile on file for this account." } });
-    }
-    // Ownership (no cap) runs OUTSIDE the idempotency replay path: every request,
-    // a replay included, must first prove the invoices are the caller's, so a
-    // guessed key can't replay another doctor's result.
-    const own = await verifyAllocations(allocations, request.user);
-    if (own) return sendAllocationError(reply, own);
-
-    let outcome;
-    try {
-      outcome = await withIdempotency(
-        redis,
-        `charge-saved:${request.user.id}:${idempotencyKey}`,
-        async () =>
-          // D1: two different keys hitting one invoice must not both pass the cap.
-          withInvoiceLocks(
-            redis,
-            allocations.map((a) => a.invoiceId),
-            async () => {
-              const capErr = await verifyAllocations(allocations, request.user, { enforceCap: true });
-              if (capErr) throw Object.assign(new Error("allocation_error"), { allocationError: capErr });
-              const result = await authorizenetService.chargeCustomerProfile({
-                customerProfileId,
-                paymentProfileId,
-                amount: toDecimalString(amountCents),
-                invoiceNumber: allocations[0].invoiceNumber,
-              });
-              const { ledgerWriteFailed } = await recordPaymentAndAllocations({
-                user: request.user,
-                amountCents,
-                transactionId: result.transactionId,
-                allocations,
-                source: "doctor_card",
-              });
-              return { ...result, amountCents, ...(ledgerWriteFailed ? { ledgerWriteFailed: true } : {}) };
-            },
-            { log: fastify.log }
-          ),
-        { log: fastify.log }
-      );
-    } catch (err) {
-      if (err?.allocationError) return sendAllocationError(reply, err.allocationError);
-      if (err instanceof InvoiceLockedError) return sendInvoiceLockedError(reply);
-      if (err instanceof ChargeInProgressError) return reply.code(409).send({ error: ERROR_CODES.CHARGE_IN_PROGRESS });
-      fastify.log.warn({ userId: request.user.id, err: String(err?.message || err) }, "charge-saved failed");
-      return chargeErrorReply(reply, err);
-    }
-    return { data: outcome.result };
-  });
-
-  // A new card on Authorize.net's hosted page. The amount is the allocation
-  // sum, baked into the token server-side; the mode follows AUTHORIZE_NET_ENV.
-  fastify.post("/payments/hosted-token", {
-    ...CHARGE_RATE_LIMIT,
-    preHandler: [authenticate, requireApprovedDoctor, validate(hostedTokenSchema)],
-  }, async (request, reply) => {
-    const { allocations, iframeCommunicatorUrl, saveCard } = request.body || {};
-    if (iframeCommunicatorUrl && !/^https?:\/\//.test(iframeCommunicatorUrl)) {
-      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "iframeCommunicatorUrl must be an http(s) URL." } });
-    }
-    const v = await verifyAllocations(allocations, request.user);
-    if (v) return sendAllocationError(reply, v);
-    const amountCents = sumCentsOf(allocations);
-
-    // Save-card: create the CIM profile lazily so the gateway has a customer
-    // to attach the new card to.
-    const customerProfileId = saveCard ? await ensureCustomerProfile(request.user) : undefined;
-
-    // C2: bind the transaction to THIS doctor and THIS token. hosted-complete
-    // records only a transaction whose order.invoiceNumber matches a binding
-    // owned by the caller, and records the allocations bound here.
-    const refId = `H${createId().slice(0, 14)}`;
-    await redis.set(
-      `rxpay:hosted:${refId}`,
-      JSON.stringify({ userId: request.user.id, allocations, amountCents }),
-      "EX",
-      HOSTED_BINDING_TTL
-    );
-
-    const result = await authorizenetService.getHostedPaymentPageToken({
-      amount: toDecimalString(amountCents),
-      // order.invoiceNumber round-trips through getTransactionDetails; the refId does not reliably.
-      invoiceNumber: refId,
-      description: `Diamond Labs — invoice(s): ${allocations.map((a) => a.invoiceNumber).join(", ")}`.slice(0, 255),
-      refId,
-      iframeCommunicatorUrl,
-      customerProfileId,
-      allowSaveCard: Boolean(saveCard),
-    });
-    if (!result?.token) {
-      await redis.del(`rxpay:hosted:${refId}`).catch(() => {});
-      return reply.code(502).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Could not get a payment form token." } });
-    }
-    return { data: { token: result.token, formUrl: result.formUrl, refId, amountCents } };
-  });
-
-  // Finalize a hosted payment: verify what Authorize.net captured, then record
-  // the ledger. Idempotent on transId. A saved card lives at the gateway under
-  // the doctor's CIM profile; nothing to store here.
-  fastify.post("/payments/hosted-complete", {
-    ...CHARGE_RATE_LIMIT,
-    preHandler: [authenticate, requireApprovedDoctor, validate(hostedCompleteSchema)],
-  }, async (request, reply) => {
-    const { transId, refId, allocations } = request.body;
-
-    const existing = await db.select().from(invoicePayments).where(eq(invoicePayments.transactionId, String(transId)));
-    if (existing.length) return { data: { transId, alreadyRecorded: true, rows: existing.length } };
-
-    // C2 (a): the binding must exist and be the caller's.
-    const binding = safeParse(await redis.get(`rxpay:hosted:${refId}`));
-    if (!binding || String(binding.userId) !== String(request.user.id)) {
-      return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: "Payment session not found or does not belong to your account." } });
-    }
-    // Record what the token was issued for, never caller-supplied allocations.
-    const boundAllocations = Array.isArray(binding.allocations) && binding.allocations.length ? binding.allocations : allocations;
-
-    const details = await authorizenetService.getTransactionDetails(transId);
-    if (!details) return reply.code(404).send({ error: { ...ERROR_CODES.NOT_FOUND, message: "Transaction not found." } });
-
-    // C2 (b): the captured transaction carries our binding token.
-    if (String(details.orderInvoiceNumber) !== String(refId) && String(details.refId) !== String(refId)) {
-      return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: "Transaction does not match the issued payment session." } });
-    }
-    // C2 (c): only an approved, captured or settled transaction is recordable.
-    const SETTLED_OR_PENDING = new Set(["capturedPendingSettlement", "settledSuccessfully"]);
-    if (String(details.responseCode) !== "1" || !SETTLED_OR_PENDING.has(String(details.transactionStatus))) {
-      return reply.code(422).send({
-        error: { ...ERROR_CODES.VALIDATION_ERROR, message: `Transaction is not in a recordable state (status: ${details.transactionStatus || "unknown"}).` },
-      });
-    }
-    // C2 (d): captured amount = the bound allocation sum, to the cent.
-    const capturedCents = toCents(details.amount);
-    const boundCents = sumCentsOf(boundAllocations);
-    if (capturedCents !== boundCents) {
-      return reply.code(422).send({
-        error: { ...ERROR_CODES.VALIDATION_ERROR, message: `Allocation total (${formatCents(boundCents)}) does not match the captured amount (${formatCents(capturedCents)}).` },
-      });
-    }
-
-    // D1: lock the bound invoices across cap check → ledger write.
-    let recorded;
-    try {
-      recorded = await withInvoiceLocks(
-        redis,
-        boundAllocations.map((a) => a.invoiceId),
-        async () => {
-          const v = await verifyAllocations(boundAllocations, request.user, { enforceCap: true });
-          if (v) return { allocationError: v };
-          return {
-            result: await recordPaymentAndAllocations({
-              user: request.user,
-              amountCents: capturedCents,
-              transactionId: String(transId),
-              allocations: boundAllocations,
-              source: "doctor_hosted",
-            }),
-          };
-        },
-        { log: fastify.log }
-      );
-    } catch (err) {
-      if (err instanceof InvoiceLockedError) return sendInvoiceLockedError(reply);
-      throw err;
-    }
-    if (recorded.allocationError) return sendAllocationError(reply, recorded.allocationError);
-
-    // One-time use.
-    await redis.del(`rxpay:hosted:${refId}`).catch(() => {});
-    return {
-      data: {
-        transId,
-        amountCents: capturedCents,
-        status: details.status,
-        recorded: true,
-        ...(recorded.result.ledgerWriteFailed ? { ledgerWriteFailed: true } : {}),
-      },
-    };
-  });
+  fastify.post("/payments/charge-saved", { ...CHARGE_RATE_LIMIT, preHandler: [authenticate, requireApprovedDoctor, validate(chargeSavedSchema)] }, chargeSaved);
+  fastify.post("/payments/hosted-token", { ...CHARGE_RATE_LIMIT, preHandler: [authenticate, requireApprovedDoctor, validate(hostedTokenSchema)] }, hostedToken);
+  fastify.post("/payments/hosted-complete", { ...CHARGE_RATE_LIMIT, preHandler: [authenticate, requireApprovedDoctor, validate(hostedCompleteSchema)] }, hostedComplete);
 }
 ```
 
@@ -4196,7 +4309,7 @@ The allocator moves to `packages/shared` so the pay screens (Tasks 12–13) prev
 - Modify: `apps/api/src/jobs/definitions/autopay.job.test.js`, `packages/shared/src/index.js`
 
 **Interfaces:**
-- Consumes (Task 6): `openInvoicesForClient(clientUserId) → [{ id, invoiceNumber, balanceCents, dueDate, issuedOn }]`; `verifyAllocations`, `recordPaymentAndAllocations` (cents).
+- Consumes (Task 6): `openInvoicesForClient(user) → [{ id, invoiceNumber, balanceCents, dueDate, issuedOn }]` (practice-wide, through `canActOnInvoice`); `verifyAllocations`, `recordPaymentAndAllocations` (cents).
 - Produces (from `@my-app/shared`):
   - `resolveChargeCents({ enrolledCents, totalBalanceCents }) → cents` (replaces `resolveChargeAmount`);
   - `sortOldestFirst(invoices) → invoices` (due date ascending, undated last, then invoice number);
@@ -4354,7 +4467,7 @@ const invoices = [
     const enrollment2 = { ...enrollment, id: "e2", userId: "u2" };
     dueRows = [{ enrollment, doctor }, { enrollment: enrollment2, doctor: doctor2 }];
     await runAutopaySweep({ dryRun: false, now, runId: "r1" });
-    expect(ledgerOpenInvoicesForClient.mock.calls.map((c) => c[0])).toEqual(["u1", "u2"]);
+    expect(ledgerOpenInvoicesForClient.mock.calls.map((c) => [c[0].id, c[0].seazonaClientId])).toEqual([["u1", "c1"], ["u2", "c1"]]);
   });
 ```
 
@@ -4566,7 +4679,8 @@ async function updateEnrollment(id, patch, log) {
  */
 async function resolveOpenInvoices(doctor) {
   try {
-    return { kind: "ok", invoices: await openInvoicesForClient(doctor.id) };
+    // The enrolled doctor's practice-wide open invoices (canActOnInvoice).
+    return { kind: "ok", invoices: await openInvoicesForClient(doctor) };
   } catch (err) {
     return { kind: "ledger_error", error: err };
   }
@@ -4735,6 +4849,8 @@ export async function runAutopaySweep({ dryRun = true, now = new Date(), log, ru
         id: users.id,
         email: users.email,
         name: users.name,
+        // The practice key: AutoPay pays what the doctor may pay (canActOnInvoice).
+        seazonaClientId: users.seazonaClientId,
         authorizeNetCustomerProfileId: users.authorizeNetCustomerProfileId,
       },
     })
@@ -4854,8 +4970,8 @@ Co-Authored-By: Claude <implementer model> <noreply@anthropic.com>"
   - `services/billing/invoice-queries.js`:
     - `INVOICE_LIST_LIMIT = 500`;
     - `listInvoices({ status, needsPrice, clientUserId, number }) → { invoices: [{ id, invoiceNumber, kind, status, clientUserId, clientName, practice, labOrderId, labOrderNumber, issuedAt, dueDate, totalCents, paidCents, balanceCents, needsPrice }], truncated }`;
-    - `listClientInvoices(clientUserId, { includeDrafts, openOnly }) → [{ id, invoiceNumber, kind, status, labOrderNumber, caseNumber, patientInitials, issuedAt, dueDate, totalCents, paidCents, balanceCents }]`;
-    - `getInvoiceDetail(id, { withActivity }) → { invoice (opened, with balance), lines (opened), payments (opened ledger rows), labOrder: { id, orderNumber, source, status, isRemake, caseNumber, patientName, shopOrderNumber } | null, client: { id, name, email, accountNumber, practice, address1, address2, city, state, zip } | null, activity? }`.
+    - `listClientInvoices(clientUserIds: string[], { includeDrafts, openOnly }) → [{ id, invoiceNumber, kind, status, labOrderNumber, caseNumber, patientInitials, issuedAt, dueDate, totalCents, paidCents, balanceCents }]`;
+    - `getInvoiceDetail(id, { withActivity }) → { invoice (opened, with balance), lines (opened), payments (opened ledger rows), labOrder: { id, orderNumber, source, status, isRemake, caseNumber, patientName, shopOrderNumber } | null, client: { id, name, email, accountNumber, seazonaClientId, practice, address1, address2, city, state, zip } | null, activity? }`. Doctor routes check `canActOnInvoice(request.user, detail.invoice, detail.client?.seazonaClientId)`.
   - `services/billing/invoice-views.js`:
     - `ledgerEntryKind(row) → "payment" | "credit" | "refund"`;
     - `doctorInvoiceRow(row)`, `doctorInvoiceView(detail)`, `adminInvoiceView(detail)`.
@@ -4948,13 +5064,14 @@ const admin = read("../admin-invoice.routes.js");
 const index = read("../../index.js");
 const markersOf = (src) => [...src.matchAll(/\n  fastify\.(get|post|patch|put|delete)\("([^"]+)",/g)].map((m) => `fastify.${m[1]}("${m[2]}",`);
 
-test("doctor invoice routes are approved-doctor only, scoped to the caller, and never show a draft", () => {
+test("doctor invoice routes are approved-doctor only, scoped to the caller's practice, and never show a draft", () => {
   assert.match(doctor, /const DOCTOR = \[authenticate, requireApprovedDoctor\]/);
   for (const m of markersOf(doctor)) assert.match(handlerSource(doctor, m), /preHandler: (DOCTOR|\[\.\.\.DOCTOR)/, m);
-  assert.match(handlerSource(doctor, 'fastify.get("/invoices",'), /listClientInvoices\(request\.user\.id\)/);
+  assert.match(handlerSource(doctor, 'fastify.get("/invoices",'), /listClientInvoices\(await practiceUserIds\(request\.user\)\)/);
   const detail = handlerSource(doctor, 'fastify.get("/invoices/:id",');
-  assert.match(detail, /detail\.invoice\.clientUserId !== request\.user\.id/);
-  assert.match(detail, /detail\.invoice\.status === "draft"/);
+  assert.match(detail, /mayRead\(request\.user, detail\)/);
+  assert.match(doctor, /canActOnInvoice\(user, detail\.invoice, detail\.client\?\.seazonaClientId \?\? null\)/, "one shared predicate");
+  assert.match(doctor, /detail\.invoice\.status !== "draft"/);
   assert.match(detail, /doctorInvoiceView\(detail\)/);
   assert.match(detail, /"invoice\.read"/);
   assert.doesNotMatch(doctor, /seazona/i);
@@ -5181,11 +5298,13 @@ export async function listInvoices(filters = {}, database = db) {
 }
 
 /**
- * One client's invoices, newest first. Doctors get issued and void ones
- * (includeDrafts false); `openOnly` is what a payment can be applied to.
+ * The invoices of a set of clients, newest first: one doctor (admin), or a
+ * doctor's whole practice (practiceUserIds; Spec correction 6). Doctors get
+ * issued and void ones (includeDrafts false); `openOnly` is what a payment
+ * can be applied to.
  */
-export async function listClientInvoices(clientUserId, { includeDrafts = false, openOnly = false } = {}, database = db) {
-  const conds = [eq(invoices.clientUserId, clientUserId)];
+export async function listClientInvoices(clientUserIds, { includeDrafts = false, openOnly = false } = {}, database = db) {
+  const conds = [inArray(invoices.clientUserId, clientUserIds)];
   if (openOnly) conds.push(eq(invoices.status, "issued"));
   else if (!includeDrafts) conds.push(ne(invoices.status, "draft"));
   const rows = await database
@@ -5248,7 +5367,7 @@ export async function getInvoiceDetail(id, { withActivity = false } = {}, databa
   const [row] = await database
     .select({
       invoice: invoices, clientName: client.name, clientEmail: client.email,
-      accountNumber: client.seazonaAccountNumber, profile: doctorProfiles,
+      accountNumber: client.seazonaAccountNumber, clientSeazonaClientId: client.seazonaClientId, profile: doctorProfiles,
     })
     .from(invoices)
     .leftJoin(client, eq(client.id, invoices.clientUserId))
@@ -5263,6 +5382,8 @@ export async function getInvoiceDetail(id, { withActivity = false } = {}, databa
   const clientBlock = invoice.clientUserId
     ? {
         id: invoice.clientUserId, name: row.clientName ?? null, email: row.clientEmail ?? null, accountNumber: row.accountNumber ?? null,
+        // The practice key, for canActOnInvoice. Never part of a doctor-facing view.
+        seazonaClientId: row.clientSeazonaClientId ?? null,
         practice: p?.companyName ?? null, address1: p?.address1 ?? null, address2: p?.address2 ?? null,
         city: p?.city ?? null, state: p?.state ?? null, zip: p?.zip ?? null,
       }
@@ -5285,17 +5406,25 @@ import { ERROR_CODES } from "@my-app/shared";
 import * as auditService from "../services/audit.service.js";
 import { listClientInvoices, getInvoiceDetail } from "../services/billing/invoice-queries.js";
 import { doctorInvoiceRow, doctorInvoiceView } from "../services/billing/invoice-views.js";
+import { practiceUserIds } from "../services/billing/ledger.service.js";
+import { canActOnInvoice } from "../services/billing/invoice-rules.js";
 
 /**
- * A doctor's own invoices, from our tables (own-the-lab piece 3). Scoped to
- * request.user.id; a draft is not a bill and is never shown; every response
- * is built from an allow-list (invoice-views.js).
+ * A doctor's invoices, from our tables (own-the-lab piece 3). A doctor sees
+ * their practice's invoices: canActOnInvoice is the one rule (Spec correction
+ * 6). A draft is not a bill and is never shown. Every response is built from
+ * an allow-list (invoice-views.js).
  */
 export const DOCTOR = [authenticate, requireApprovedDoctor];
 
+/** May this doctor read (and so download or pay) this invoice? */
+function mayRead(user, detail) {
+  return Boolean(detail) && detail.invoice.status !== "draft" && canActOnInvoice(user, detail.invoice, detail.client?.seazonaClientId ?? null);
+}
+
 export default async function invoiceRoutes(fastify) {
   fastify.get("/invoices", { preHandler: DOCTOR }, async (request) => ({
-    data: (await listClientInvoices(request.user.id)).map(doctorInvoiceRow),
+    data: (await listClientInvoices(await practiceUserIds(request.user))).map(doctorInvoiceRow),
   }));
 
   fastify.get("/invoices/:id", { preHandler: DOCTOR }, async (request, reply) => {
@@ -5307,9 +5436,7 @@ export default async function invoiceRoutes(fastify) {
       request.log.error({ invoiceId: request.params.id, err: err.message }, "invoice detail failed");
       return reply.code(500).send({ error: { ...ERROR_CODES.INTERNAL_ERROR, message: "Failed to load invoice." } });
     }
-    if (!detail || detail.invoice.clientUserId !== request.user.id || detail.invoice.status === "draft") {
-      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
-    }
+    if (!mayRead(request.user, detail)) return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
     // The invoice carries the patient's name: every read is audited (ids only).
     auditService.logSafe({ userId: request.user.id, action: "invoice.read", targetType: "invoice", targetId: detail.invoice.id, ipAddress: request.ip });
     return { data: doctorInvoiceView(detail) };
@@ -5352,7 +5479,7 @@ export default async function adminInvoiceRoutes(fastify) {
 
   // One client's invoices: the drawer, Record payment and the AR row link.
   fastify.get("/admin/clients/:userId/invoices", { preHandler: [...ADMIN, validateQuery(clientInvoicesQuerySchema)] }, async (request) => ({
-    data: await listClientInvoices(request.params.userId, { includeDrafts: !request.query.open, openOnly: request.query.open }),
+    data: await listClientInvoices([request.params.userId], { includeDrafts: !request.query.open, openOnly: request.query.open }),
   }));
 }
 ```
@@ -5583,7 +5710,7 @@ test("recordCredit: a ledger row with a sealed reason, a credit: id and no card"
 test("recordManualPayment: oldest-first, re-verified under the lock, recorded as received (not charged)", async () => {
   const db = fakeTx({ selects: [
     [{ id: "doc1", email: "d@x.com", name: "Dr", role: "doctor" }],
-    [{ id: "a", invoiceNumber: 500001, status: "issued", totalCents: 20000, dueDate: "2026-09-30", issuedAt: new Date("2026-08-31T15:00:00Z") }],
+    [{ id: "a", clientUserId: "doc1", invoiceNumber: 500001, status: "issued", totalCents: 20000, dueDate: "2026-09-30", issuedAt: new Date("2026-08-31T15:00:00Z") }],
     [],
   ] });
   const out = await actions.recordManualPayment({
@@ -5601,7 +5728,7 @@ test("recordManualPayment: a race lost under the lock is refused, nothing record
   verifyResult = { kind: "validation", message: "exceeds its balance" };
   const db = fakeTx({ selects: [
     [{ id: "doc1", email: "d@x.com", role: "doctor" }],
-    [{ id: "a", invoiceNumber: 500001, status: "issued", totalCents: 20000, dueDate: null, issuedAt: new Date("2026-08-31T15:00:00Z") }],
+    [{ id: "a", clientUserId: "doc1", invoiceNumber: 500001, status: "issued", totalCents: 20000, dueDate: null, issuedAt: new Date("2026-08-31T15:00:00Z") }],
     [],
   ] });
   await assert.rejects(actions.recordManualPayment({ clientUserId: "doc1", method: "cash", amountCents: 100, paidOn: "2026-09-15", byUserId: "a1" }, db), isCode("OVERPAY"));
@@ -5868,11 +5995,12 @@ export function recordCredit(id, { amountCents, reason, byUserId }, database = d
  */
 export async function recordManualPayment({ clientUserId, method, reference = null, amountCents, paidOn, allocations, byUserId }, database = db) {
   const [client] = await database
-    .select({ id: users.id, email: users.email, name: users.name, role: users.role })
+    .select({ id: users.id, email: users.email, name: users.name, role: users.role, seazonaClientId: users.seazonaClientId })
     .from(users)
     .where(eq(users.id, clientUserId));
   if (!client || client.role !== "doctor") throw new InvoiceError("NOT_FOUND", "Client not found.");
-  const openInvoices = await openInvoicesForClient(clientUserId, database);
+  // Practice-wide, as a doctor paying online would see (canActOnInvoice).
+  const openInvoices = await openInvoicesForClient(client, database);
   const planned = planManualPayment({ openInvoices, amountCents, allocations, paidOn, todayIso: isoDateIn(LAB_TIMEZONE, new Date()) });
 
   return underInvoiceLocks(planned.map((a) => a.invoiceId), async () => {
@@ -6240,10 +6368,9 @@ In `apps/api/src/routes/__tests__/lab-routes.test.js`, replace the body of `"the
 Append to `apps/api/src/routes/__tests__/billing-routes.test.js`:
 
 ```js
-test("invoice PDFs: the doctor's own and never a draft; admins any; never cached; audited", () => {
+test("invoice PDFs: the doctor's practice's and never a draft; admins any; never cached; audited", () => {
   const mine = handlerSource(doctor, 'fastify.get("/invoices/:id/pdf",');
-  assert.match(mine, /detail\.invoice\.clientUserId !== request\.user\.id/);
-  assert.match(mine, /detail\.invoice\.status === "draft"/);
+  assert.match(mine, /mayRead\(request\.user, detail\)/);
   assert.match(mine, /sendPdf\(reply, pdf, model\.filename\)/);
   assert.match(mine, /"invoice\.pdf_downloaded"/);
   const staff = handlerSource(admin, 'fastify.get("/admin/invoices/:id/pdf",');
@@ -6767,9 +6894,7 @@ import { sendPdf } from "./pdf-reply.js";
     let model;
     try {
       const detail = await getInvoiceDetail(request.params.id);
-      if (!detail || detail.invoice.clientUserId !== request.user.id || detail.invoice.status === "draft") {
-        return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
-      }
+      if (!mayRead(request.user, detail)) return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
       model = buildInvoiceModel(detail.invoice, detail.lines, detail.client, detail.labOrder, { generatedAt: new Date() });
       pdf = await renderInvoicePdf(model);
     } catch (err) {
@@ -6836,9 +6961,9 @@ Co-Authored-By: Claude <implementer model> <noreply@anthropic.com>"
 - Produces:
   - `statements.service.js`:
     - `loadClient(clientUserId) → { id, name, email, accountNumber, practice, address1, address2, city, state, zip } | null` (doctors only);
-    - `loadStatementActivity(clientUserId) → { invoices, payments }`;
-    - `statementFor(clientUserId, month, { generatedAt }) → { client, model } | null`;
-    - `statementPdfFor(clientUserId, month) → { model, pdf } | null`;
+    - `loadStatementActivity(clientUserIds: string[]) → { invoices, payments }`;
+    - `statementFor(clientUserId, month, { generatedAt, clientUserIds }) → { client, model } | null`: billed to `clientUserId`, covering `clientUserIds` (default `[clientUserId]`; a doctor's statement passes their practice);
+    - `statementPdfFor(clientUserId, month, { clientUserIds }) → { model, pdf } | null`;
     - `listReceivables({ pastDueOnly }) → { rows, totals, asOf }`.
   - `email.service.js`:
     - `sendInvoiceNotice({ to, invoiceId, invoiceNumber, totalCents, balanceCents, dueDate }) → boolean`;
@@ -6956,10 +7081,10 @@ test("AR, client statements and notices are admin-only and audited; nothing pati
   assert.match(index, /await fastify\.register\(receivablesRoutes, \{ prefix: "\/api\/v1" \}\)/);
 });
 
-test("a doctor downloads only their own statement", () => {
+test("a doctor's statement covers their practice, through the shared practice rule", () => {
   const body = handlerSource(doctor, 'fastify.get("/invoices/statement.pdf",');
   assert.match(body, /\.\.\.DOCTOR, validateQuery\(statementQuerySchema\)/);
-  assert.match(body, /statementPdfFor\(request\.user\.id, request\.query\.month\)/);
+  assert.match(body, /statementPdfFor\(request\.user\.id, request\.query\.month, \{ clientUserIds: await practiceUserIds\(request\.user\) \}\)/);
   assert.match(body, /"statement\.downloaded"/);
 });
 ```
@@ -7004,8 +7129,8 @@ export async function loadClient(clientUserId, database = db) {
   };
 }
 
-/** Every money event on a client's account (statement-model's `activity`). Drafts carry none. */
-export async function loadStatementActivity(clientUserId, database = db) {
+/** Every money event on these clients' invoices (statement-model's `activity`). Drafts carry none. */
+export async function loadStatementActivity(clientUserIds, database = db) {
   const invs = await database
     .select({
       id: invoices.id, invoiceNumber: invoices.invoiceNumber, status: invoices.status, totalCents: invoices.totalCents,
@@ -7013,7 +7138,7 @@ export async function loadStatementActivity(clientUserId, database = db) {
     })
     .from(invoices)
     .leftJoin(labOrders, eq(labOrders.id, invoices.labOrderId))
-    .where(and(eq(invoices.clientUserId, clientUserId), ne(invoices.status, "draft")));
+    .where(and(inArray(invoices.clientUserId, clientUserIds), ne(invoices.status, "draft")));
   const ids = invs.map((i) => i.id);
   const payments = ids.length
     ? await database
@@ -7027,24 +7152,31 @@ export async function loadStatementActivity(clientUserId, database = db) {
   return { invoices: invs, payments };
 }
 
-/** A client's statement model for a month, or null when the user isn't a doctor. */
-export async function statementFor(clientUserId, month, { generatedAt = new Date() } = {}, database = db) {
+/**
+ * A statement for a month, billed to `clientUserId`, covering `clientUserIds`:
+ * just that doctor (admin), or their whole practice (a doctor's own download;
+ * Spec correction 6). Null when the user isn't a doctor.
+ */
+export async function statementFor(clientUserId, month, { generatedAt = new Date(), clientUserIds = [clientUserId] } = {}, database = db) {
   const client = await loadClient(clientUserId, database);
   if (!client) return null;
-  const model = buildStatementModel(client, await loadStatementActivity(clientUserId, database), { month }, { generatedAt });
+  const model = buildStatementModel(client, await loadStatementActivity(clientUserIds, database), { month }, { generatedAt });
   return { client, model };
 }
 
 /** The statement PDF (built on request, never stored), or null when the user isn't a doctor. */
-export async function statementPdfFor(clientUserId, month, database = db) {
-  const out = await statementFor(clientUserId, month, {}, database);
+export async function statementPdfFor(clientUserId, month, { clientUserIds } = {}, database = db) {
+  const out = await statementFor(clientUserId, month, { clientUserIds }, database);
   return out ? { model: out.model, pdf: await renderStatementPdf(out.model) } : null;
 }
 
 /**
  * Admin › Accounts receivable as of the lab's today: every issued client
  * invoice with its paid total (one grouped query), the balance from the one
- * rule (deriveBalance), aged and grouped per client.
+ * rule (deriveBalance), aged and grouped per client (clientUserId). Grouping
+ * by practice where seazonaClientId is shared is deferred to piece 5's
+ * practice entity: every row action (invoice filter, statement PDF, statement
+ * email) is per user today. Spec correction 6.
  */
 export async function listReceivables({ pastDueOnly = false } = {}, database = db) {
   const rows = await database
@@ -7187,7 +7319,7 @@ export default async function receivablesRoutes(fastify) {
   fastify.get("/invoices/statement.pdf", { preHandler: [...DOCTOR, validateQuery(statementQuerySchema)] }, async (request, reply) => {
     let out;
     try {
-      out = await statementPdfFor(request.user.id, request.query.month);
+      out = await statementPdfFor(request.user.id, request.query.month, { clientUserIds: await practiceUserIds(request.user) });
     } catch (err) {
       request.log.error({ err: err.message }, "statement pdf failed");
       return reply.code(500).send({ error: { ...ERROR_CODES.INTERNAL_ERROR, message: "Failed to build the statement." } });
@@ -9405,7 +9537,7 @@ Piece 3 of retiring Seazona, API half (spec: docs/superpowers/specs/2026-10-15-i
 - payment.routes.js (1,414 lines) is split along its seams first, as a pure move.
 
 Decisions for review:
-- Invoice ownership is the doctor user (clientUserId), as for lab orders. Today a second login sharing one Seazona client sees the same invoices; after this it sees only its own. Changing that needs a local "practice" concept.
+- Invoice ownership is the doctor user (clientUserId), as for lab orders. Visibility and payment rights keep today's practice behaviour through one predicate, canActOnInvoice: the owner, or any login sharing the owner's non-null seazonaClientId. The balance cap is per invoice, so a second login can't re-pay. Admin AR stays per user; grouping by practice is deferred to piece 5's practice entity.
 - AUTOPAY_LIVE_RUN is untouched. The out-of-band precondition is retired because staff payments now land in our ledger.
 
 Cutover notes:
@@ -9479,7 +9611,7 @@ Address findings in one batch per PR, run Step 1 again, and push once per review
   - Testing list: totals, remake zeroing, unpriced, transitions, edit planning, balance, cents allocation, aging boundaries, statement month boundary in the lab timezone, models, PDF smoke, source-inspection routes, the createPayment / getInvoice guard. All present.
 - **Placeholders:** none. Every code step has its code. The one `N` in the PR body is filled from a command in the same task.
 - **Names used across tasks:**
-  - `deriveBalance`, `paidCentsByInvoice`, `withBalances`, `openInvoicesForClient`;
+  - `deriveBalance`, `canActOnInvoice`, `practiceUserIds`, `paidCentsByInvoice`, `withBalances`, `openInvoicesForClient(user)`;
   - `allocateOldestFirst` (`@my-app/shared`, cents), `recordPaymentAndAllocations({ amountCents, … })`, `verifyAllocations`;
   - `auditInvoice`, `loadLines`, `getInvoiceDetail`, `buildInvoiceModel`, `buildStatementModel`, `statementPdfFor`, `sendPdf`, `ADMIN`, `DOCTOR`;
   - `useInvoiceAllocation` (`payTotalCents`, `totalBalanceCents`), `openPdf(api, path, params)`.
