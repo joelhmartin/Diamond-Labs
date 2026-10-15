@@ -19,11 +19,11 @@ const order = (id, minutesAgo = 60) => ({
 });
 const item = (over = {}) => ({ variantId: "v1", name: "Splint", qty: 2, unitPrice: "50.00", lineTotal: "100.00", taxable: true, priceSource: "client", ...over });
 
-// db.select() answers in call order: candidates, then labbed ids; each order's tx then reads
-// (lock, existing lab order, items, variants).
-function harness({ candidates, labbed = [], perOrder = [] }) {
+// db.select() answers in call order: the missing-order query (anti-join is in SQL; the not-exists
+// subquery is built but never awaited), then each order's tx reads (lock, existing lab order, items, variants).
+function harness({ candidates, perOrder = [] }) {
   const tx = fakeTx({ selects: perOrder.flat() });
-  const top = fakeTx({ selects: [candidates, labbed] });
+  const top = fakeTx({ selects: [candidates, []] });
   return { database: { select: top.select, transaction: (fn) => fn(tx) }, tx, top };
 }
 const perOrder = (existing, items, variants = [{ id: "v1", code: "2608" }]) => [[], existing, items, variants];
@@ -44,19 +44,26 @@ describe("repairMissingShopLabOrders", () => {
     }]);
   });
 
-  it("skips orders that already have a lab order (found up front, and again under the row lock)", async () => {
-    const upFront = harness({ candidates: [order("o1")], labbed: [{ sourceId: "o1" }] });
-    expect(await repairMissingShopLabOrders({ now, database: upFront.database })).toMatchObject({ checked: 1, missing: 0, repaired: 0 });
+  it("skips orders that already have a lab order (the anti-join is in SQL, and re-checked under the row lock)", async () => {
+    const src = (await import("node:fs")).readFileSync(new URL("./shop-order-repair.service.js", import.meta.url), "utf8");
+    expect(src).toMatch(/not exists \(select 1 from \$\{labOrders\}/);
     const raced = harness({ candidates: [order("o2")], perOrder: [perOrder([{ id: "lo9" }], [])] });
     expect(await repairMissingShopLabOrders({ now, database: raced.database })).toMatchObject({ missing: 1, repaired: 0, alreadyHadLabOrder: 1 });
     expect(createShopLabOrder).not.toHaveBeenCalled();
+  });
+
+  it("reads a bounded batch and reports capped when more remain", async () => {
+    const many = Array.from({ length: 201 }, (_, i) => order(`o${i}`));
+    const { database } = harness({ candidates: many });
+    const out = await repairMissingShopLabOrders({ now, dryRun: true, database });
+    expect(out).toMatchObject({ missing: 200, capped: true });
   });
 
   it("asks only for orders older than the cutoff, so a checkout in flight is not raced", async () => {
     const { database, top } = harness({ candidates: [] });
     await repairMissingShopLabOrders({ now, olderThanMinutes: 15, database });
     const whereCall = top.log.filter((e) => e.op === "select");
-    expect(whereCall).toHaveLength(1); // no second query when nothing is a candidate
+    expect(whereCall).toHaveLength(1);
     const src = (await import("node:fs")).readFileSync(new URL("./shop-order-repair.service.js", import.meta.url), "utf8");
     expect(src).toMatch(/lt\(orders\.createdAt, new Date\(now\.getTime\(\) - olderThanMinutes \* 60_000\)\)/);
   });

@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, lt, gte } from "drizzle-orm";
+import { and, asc, eq, inArray, lt, gte, sql } from "drizzle-orm";
 import { db } from "../../config/database.js";
 import { env } from "../../config/env.js";
 import { orders, orderItems, labOrders, productVariants } from "../../db/schema/index.js";
@@ -61,16 +61,14 @@ export async function repairMissingShopLabOrders({
 } = {}) {
   const conds = [eq(orders.status, "paid"), lt(orders.createdAt, new Date(now.getTime() - olderThanMinutes * 60_000))];
   if (since) conds.push(gte(orders.createdAt, new Date(since)));
-  const candidates = await database.select().from(orders).where(and(...conds)).orderBy(asc(orders.createdAt));
-  const labbed = candidates.length
-    ? await database.select({ sourceId: labOrders.sourceId }).from(labOrders)
-        .where(and(eq(labOrders.source, "shop_order"), eq(labOrders.isRemake, false), inArray(labOrders.sourceId, candidates.map((o) => o.id))))
-    : [];
-  const have = new Set(labbed.map((r) => r.sourceId));
-  const missing = candidates.filter((o) => !have.has(o.id));
+  // The anti-join runs in SQL and the read is bounded: paid orders already carrying a lab order
+  // (the vast majority) are never loaded. One extra row tells us the sweep was capped.
+  conds.push(sql`not exists (select 1 from ${labOrders} where ${labOrders.source} = 'shop_order' and ${labOrders.isRemake} = false and ${labOrders.sourceId} = ${orders.id})`);
+  const found = await database.select().from(orders).where(and(...conds)).orderBy(asc(orders.createdAt)).limit(SWEEP_LIMIT + 1);
+  const missing = found.slice(0, SWEEP_LIMIT);
 
-  const summary = { dryRun, checked: candidates.length, missing: missing.length, repaired: 0, skippedPreLabOrders: 0, alreadyHadLabOrder: 0, failed: 0, capped: false };
-  for (const order of missing.slice(0, SWEEP_LIMIT)) {
+  const summary = { dryRun, checked: missing.length, missing: missing.length, repaired: 0, skippedPreLabOrders: 0, alreadyHadLabOrder: 0, failed: 0, capped: found.length > SWEEP_LIMIT };
+  for (const order of missing) {
     try {
       const outcome = dryRun ? "dry" : await database.transaction((tx) => repairOne(tx, order));
       if (outcome === "repaired") summary.repaired += 1;
@@ -81,6 +79,5 @@ export async function repairMissingShopLabOrders({
       log.error(`[LAB][SHOP_ORDER_REPAIR_FAILED] order=${order.id}: ${String(err?.message || err)}`);
     }
   }
-  summary.capped = missing.length > SWEEP_LIMIT;
   return summary;
 }
