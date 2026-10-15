@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
 import { isoDateIn, LAB_TIMEZONE, SHOP_PAYMENT_SOURCE, sortOldestFirst } from "@my-app/shared";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../../config/database.js";
@@ -32,6 +32,33 @@ export async function paidCentsByInvoice(invoiceIds, database = db) {
 export async function withBalances(invoiceRows, database = db) {
   const paid = await paidCentsByInvoice(invoiceRows.map((i) => i.id), database);
   return invoiceRows.map((inv) => ({ ...inv, ...deriveBalance(inv, paid.get(inv.id) ?? 0) }));
+}
+
+/**
+ * Every issued client invoice that still owes, with paid/balance attached.
+ * Paid is summed in SQL (a grouped subquery joined on invoice id), so nothing
+ * scales with the invoice count: no id list, no fully-paid invoice loaded.
+ * The balance still comes from deriveBalance; the SQL filter only drops
+ * invoices deriveBalance would report as settled.
+ */
+export async function openReceivableInvoices(database = db) {
+  const totals = database
+    .select({ invoiceId: invoicePayments.invoiceId, paid: sql`coalesce(sum(${invoicePayments.appliedCents}), 0)`.as("paid") })
+    .from(invoicePayments)
+    .groupBy(invoicePayments.invoiceId)
+    .as("paid_totals");
+  const paidSql = sql`coalesce(${totals.paid}, 0)`;
+  const rows = await database
+    .select({
+      id: invoices.id, clientUserId: invoices.clientUserId, status: invoices.status, totalCents: invoices.totalCents, dueDate: invoices.dueDate,
+      paid: sql`${paidSql}`.as("paid_cents"),
+    })
+    .from(invoices)
+    .leftJoin(totals, eq(totals.invoiceId, invoices.id))
+    .where(and(eq(invoices.status, "issued"), isNotNull(invoices.clientUserId), sql`${invoices.totalCents} - ${paidSql} > 0`));
+  return rows
+    .map(({ paid, ...inv }) => ({ ...inv, ...deriveBalance(inv, Number(paid)) }))
+    .filter((i) => i.balanceCents > 0);
 }
 
 const owner = alias(users, "owner");

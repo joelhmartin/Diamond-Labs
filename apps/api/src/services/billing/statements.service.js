@@ -1,8 +1,8 @@
-import { and, eq, inArray, isNotNull, ne } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import { isoDateIn, LAB_TIMEZONE } from "@my-app/shared";
 import { db } from "../../config/database.js";
 import { invoices, invoicePayments, labOrders, users, doctorProfiles } from "../../db/schema/index.js";
-import { withBalances } from "./ledger.service.js";
+import { openReceivableInvoices } from "./ledger.service.js";
 import { buildReceivables } from "./aging.js";
 import { buildStatementModel } from "./statement-model.js";
 import { renderStatementPdf } from "./billing-pdf.js";
@@ -72,17 +72,13 @@ export async function statementPdfFor(clientUserId, month, { clientUserIds } = {
 /**
  * Admin › Accounts receivable as of the lab's today: every issued client
  * invoice, its balance from the ledger's one paid-sum and balance rule
- * (withBalances), aged and grouped per client (clientUserId). Grouping by
+ * (deriveBalance, summed in SQL by openReceivableInvoices), aged and grouped per client (clientUserId). Grouping by
  * practice where seazonaClientId is shared is deferred to piece 5's practice
  * entity: every row action (invoice filter, statement PDF, statement email)
  * is per user today. Spec correction 6.
  */
 export async function listReceivables({ pastDueOnly = false } = {}, database = db) {
-  const issued = await database
-    .select({ id: invoices.id, clientUserId: invoices.clientUserId, status: invoices.status, totalCents: invoices.totalCents, dueDate: invoices.dueDate })
-    .from(invoices)
-    .where(and(eq(invoices.status, "issued"), isNotNull(invoices.clientUserId)));
-  const open = (await withBalances(issued, database)).filter((i) => i.balanceCents > 0);
+  const open = await openReceivableInvoices(database);
   const ids = [...new Set(open.map((i) => i.clientUserId))];
   const clients = ids.length
     ? await database

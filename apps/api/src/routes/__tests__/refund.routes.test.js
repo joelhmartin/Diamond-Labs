@@ -54,6 +54,19 @@ beforeEach(() => {
 });
 
 describe("POST /admin/payments/refund money handling", () => {
+  it("refuses a manual payment before any guard row or gateway call", async () => {
+    for (const source of ["admin_check", "admin_cash", "admin_ach", "admin_other"]) {
+      selectQueue = [[{ ...original("a", 30000), source }], [], [{ id: "doc1" }]];
+      const res = await refund({ transactionId: "tx1" });
+      expect(res.statusCode).toBe(422);
+      expect(res.json().error.message).toMatch(/credit, not a card refund/);
+    }
+    selectQueue = [[{ ...original("a", 30000), source: null, transactionId: "OFFLINE-9" }], [], []];
+    expect((await refund({ transactionId: "OFFLINE-9" })).statusCode).toBe(422);
+    expect(inserted).toHaveLength(0);
+    expect(voidOrRefund).not.toHaveBeenCalled();
+  });
+
   it("sends a partial refund to the gateway as a decimal string, not a float division", async () => {
     // 1,000,000.07 / 100 style drift cannot happen: the amount is formatted from integer cents.
     selectQueue[0] = [original("a", 30007)];

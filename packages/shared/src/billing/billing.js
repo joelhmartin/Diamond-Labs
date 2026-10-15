@@ -18,6 +18,8 @@ export const MANUAL_PAYMENT_METHODS = ["check", "cash", "ach", "other"];
 export const MANUAL_PAYMENT_LABELS = { check: "Check", cash: "Cash", ach: "ACH", other: "Other" };
 /** A manual payment's ledger source: admin_check | admin_cash | admin_ach | admin_other. */
 export const manualPaymentSource = (method) => `admin_${method}`;
+/** True for a ledger source written by a manual payment (check / cash / ACH / other). */
+export const isManualPaymentSource = (source) => MANUAL_PAYMENT_METHODS.some((m) => manualPaymentSource(m) === source);
 
 /** A staff credit / write-off: allocated like a payment, never sent to a card processor. */
 export const CREDIT_SOURCE = "credit";
