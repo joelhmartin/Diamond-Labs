@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { priceLines } from "../../lib/pricing.js";
 import {
   InvoiceError, addDaysIso, computeTotals, hasUnpriced, asRemakeLines, planDraftInvoice, planShopInvoice,
-  assertFreshInvoice, planLineEdit, planIssue, planVoid, deriveBalance, canActOnInvoice,
+  assertFreshInvoice, planLineEdit, planIssue, planVoid, deriveBalance, canActOnInvoice, planCredit, planManualPayment,
 } from "./invoice-rules.js";
 import { invoiceErrorReply } from "./invoice-errors.js";
 
@@ -211,4 +211,45 @@ test("editing: a negative price on a non-adjustment update is refused", () => {
     () => planLineEdit(draft(), [line()], { op: "update", lineId: "l1", unitCents: -500, reason: "oops" }, { now, ...TAX }),
     isCode("INVALID"),
   );
+});
+
+test("credit: an issued invoice, a reason, and no more than is owed", () => {
+  const issued = draft({ status: "issued" });
+  assert.deepEqual(planCredit(issued, { amountCents: 2500, reason: " shade mismatch ", balanceCents: 10000 }), { reason: "shade mismatch" });
+  assert.throws(() => planCredit(issued, { amountCents: 2500, reason: " ", balanceCents: 10000 }), isCode("REASON_REQUIRED"));
+  assert.throws(() => planCredit(issued, { amountCents: 10001, reason: "x", balanceCents: 10000 }), isCode("OVERPAY"));
+  assert.throws(() => planCredit(draft(), { amountCents: 100, reason: "x", balanceCents: 10000 }), isCode("INVALID_TRANSITION"));
+  assert.throws(() => planCredit(issued, { amountCents: 0, reason: "x", balanceCents: 10000 }), isCode("INVALID"));
+});
+
+const open = [
+  { id: "a", invoiceNumber: 500001, balanceCents: 20000, dueDate: "2026-09-30", issuedOn: "2026-08-31" },
+  { id: "b", invoiceNumber: 500002, balanceCents: 30000, dueDate: "2026-10-30", issuedOn: "2026-09-30" },
+];
+
+test("manual payment: oldest-first by default; overpaying the open balance is refused", () => {
+  assert.deepEqual(planManualPayment({ openInvoices: open, amountCents: 25000, paidOn: "2026-10-14", todayIso: "2026-10-15" }), [
+    { invoiceId: "a", invoiceNumber: "500001", amountCents: 20000 },
+    { invoiceId: "b", invoiceNumber: "500002", amountCents: 5000 },
+  ]);
+  assert.throws(() => planManualPayment({ openInvoices: open, amountCents: 50001, paidOn: "2026-10-14", todayIso: "2026-10-15" }), isCode("OVERPAY"));
+});
+
+test("manual payment: chosen invoices must be open, once each, within balance, adding up", () => {
+  const chosen = planManualPayment({ openInvoices: open, amountCents: 30000, allocations: [{ invoiceId: "b", amountCents: 30000 }], paidOn: "2026-10-14", todayIso: "2026-10-15" });
+  assert.deepEqual(chosen, [{ invoiceId: "b", invoiceNumber: "500002", amountCents: 30000 }]);
+  const pay = (allocations, amountCents) => () => planManualPayment({ openInvoices: open, amountCents, allocations, paidOn: "2026-10-14", todayIso: "2026-10-15" });
+  assert.throws(pay([{ invoiceId: "zzz", amountCents: 100 }], 100), isCode("INVALID"));
+  assert.throws(pay([{ invoiceId: "a", amountCents: 20001 }], 20001), isCode("OVERPAY"));
+  assert.throws(pay([{ invoiceId: "a", amountCents: 100 }, { invoiceId: "a", amountCents: 100 }], 200), isCode("INVALID"));
+  assert.throws(pay([{ invoiceId: "a", amountCents: 100 }], 200), isCode("INVALID"));
+});
+
+test("manual payment: the received date can't be in the future or before the invoice was issued", () => {
+  const pay = (paidOn, allocations) => () => planManualPayment({ openInvoices: open, amountCents: 1000, allocations, paidOn, todayIso: "2026-10-15" });
+  assert.throws(pay("2026-10-16"), (e) => isCode("INVALID")(e) && /future/.test(e.message));
+  assert.throws(pay("2026-09-29", [{ invoiceId: "b", amountCents: 1000 }]), (e) => isCode("INVALID")(e) && /#500002/.test(e.message));
+  assert.doesNotThrow(pay("2026-09-30", [{ invoiceId: "b", amountCents: 1000 }]), "the issue day itself is fine");
+  assert.throws(pay("10/14/2026"), isCode("INVALID"));
+  assert.throws(pay("2026-02-30"), isCode("INVALID"), "a date that doesn't exist");
 });

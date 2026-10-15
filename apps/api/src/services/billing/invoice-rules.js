@@ -1,4 +1,4 @@
-import { INVOICE_LINE_KINDS } from "@my-app/shared";
+import { INVOICE_LINE_KINDS, allocateOldestFirst } from "@my-app/shared";
 import { assertCents, formatCents, mulCents, pctOfCents, sumCents } from "../../lib/money.js";
 
 /**
@@ -249,4 +249,69 @@ export function canActOnInvoice(user, invoice, ownerSeazonaClientId) {
   if (!user?.id || !invoice?.clientUserId) return false;
   if (invoice.clientUserId === user.id) return true;
   return Boolean(user.seazonaClientId) && Boolean(ownerSeazonaClientId) && String(user.seazonaClientId) === String(ownerSeazonaClientId);
+}
+
+/** A credit (write-off) on an issued invoice: a reason, and no more than is owed. */
+export function planCredit(invoice, { amountCents, reason, balanceCents }) {
+  if (invoice.status !== "issued") {
+    throw new InvoiceError("INVALID_TRANSITION", `Invoice #${invoice.invoiceNumber} is ${invoice.status} — only an issued invoice can be credited.`);
+  }
+  const why = trimmed(reason);
+  if (!why) throw new InvoiceError("REASON_REQUIRED", "Say why this credit is being given.");
+  assertCents(amountCents, "amountCents");
+  if (amountCents <= 0) throw new InvoiceError("INVALID", "A credit must be more than $0.00.");
+  if (amountCents > balanceCents) {
+    throw new InvoiceError("OVERPAY", `A credit of ${formatCents(amountCents)} is more than the ${formatCents(Math.max(0, balanceCents))} owed.`);
+  }
+  return { reason: why };
+}
+
+/**
+ * A manual payment (check, cash, ACH, other) → its allocations. Staff-chosen
+ * allocations must each be an open invoice, once, within its balance, and add
+ * up to the payment; otherwise oldest-first (allocateOldestFirst, shared with
+ * AutoPay and the pay screens). Overpaying is refused: there is no unapplied
+ * credit in this piece. The received date may not be in the future, nor before
+ * an allocated invoice was issued (the statement would show a payment against
+ * an invoice that didn't exist yet).
+ *
+ * @param {Array<{ id, invoiceNumber, balanceCents, dueDate, issuedOn }>} openInvoices  ledger.openInvoicesForClient
+ */
+export function planManualPayment({ openInvoices, amountCents, allocations, paidOn, todayIso }) {
+  assertCents(amountCents, "amountCents");
+  if (amountCents <= 0) throw new InvoiceError("INVALID", "A payment must be more than $0.00.");
+  if (!ISO.test(paidOn ?? "") || addDaysIso(paidOn, 0) !== paidOn) throw new InvoiceError("INVALID", "The payment date must be YYYY-MM-DD.");
+  if (paidOn > todayIso) throw new InvoiceError("INVALID", "The payment date can't be in the future.");
+
+  const byId = new Map(openInvoices.map((i) => [i.id, i]));
+  let planned;
+  if (allocations?.length) {
+    const seen = new Set();
+    planned = allocations.map((a) => {
+      const inv = byId.get(a.invoiceId);
+      if (!inv) throw new InvoiceError("INVALID", "That invoice isn't open on this client's account.");
+      if (seen.has(a.invoiceId)) throw new InvoiceError("INVALID", `Invoice #${inv.invoiceNumber} appears more than once.`);
+      seen.add(a.invoiceId);
+      assertCents(a.amountCents, "allocation amountCents");
+      if (a.amountCents <= 0) throw new InvoiceError("INVALID", "Each allocation must be more than $0.00.");
+      if (a.amountCents > inv.balanceCents) {
+        throw new InvoiceError("OVERPAY", `${formatCents(a.amountCents)} is more than the ${formatCents(inv.balanceCents)} owed on invoice #${inv.invoiceNumber}.`);
+      }
+      return { invoiceId: inv.id, invoiceNumber: String(inv.invoiceNumber), amountCents: a.amountCents };
+    });
+    if (sumCents(planned.map((a) => a.amountCents)) !== amountCents) throw new InvoiceError("INVALID", "Allocations must add up to the payment.");
+  } else {
+    const { allocations: auto, totalAllocatedCents } = allocateOldestFirst(openInvoices, amountCents);
+    if (totalAllocatedCents < amountCents) {
+      throw new InvoiceError("OVERPAY", `${formatCents(amountCents)} is more than this client's open balance of ${formatCents(totalAllocatedCents)}.`);
+    }
+    planned = auto;
+  }
+  for (const a of planned) {
+    const inv = byId.get(a.invoiceId);
+    if (inv.issuedOn && paidOn < inv.issuedOn) {
+      throw new InvoiceError("INVALID", `The payment date is before invoice #${inv.invoiceNumber} was issued (${inv.issuedOn}).`);
+    }
+  }
+  return planned;
 }

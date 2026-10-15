@@ -37,3 +37,20 @@ test("the server registers the billing routes", () => {
   assert.match(index, /await fastify\.register\(adminInvoiceRoutes, \{ prefix: "\/api\/v1" \}\)/);
   assert.match(index, /await fastify\.register\(invoiceRoutes, \{ prefix: "\/api\/v1" \}\)/);
 });
+
+test("staff actions validate their bodies and map invoice errors to replies", () => {
+  const cases = [
+    ['fastify.patch("/admin/invoices/:id/lines",', /validate\(invoiceEditSchema\)/, /editDraft\(/],
+    ['fastify.post("/admin/invoices/:id/issue",', /validate\(invoiceIssueSchema\)/, /issueInvoice\(/],
+    ['fastify.post("/admin/invoices/:id/void",', /validate\(invoiceVoidSchema\)/, /voidInvoice\(/],
+    ['fastify.post("/admin/invoices/:id/credit",', /validate\(invoiceCreditSchema\)/, /recordCredit\(/],
+    ['fastify.post("/admin/clients/:userId/payments",', /validate\(manualPaymentSchema\)/, /recordManualPayment\(/],
+  ];
+  for (const [marker, schema, call] of cases) {
+    const body = handlerSource(admin, marker);
+    assert.match(body, schema, marker);
+    assert.match(body, call, marker);
+    assert.match(body, /byUserId: request\.user\.id/, marker);
+  }
+  assert.match(admin, /invoiceErrorReply\(err\)/);
+});
