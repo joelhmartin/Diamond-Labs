@@ -16,10 +16,13 @@ const ALLOWED = new Set(["apps/api/src/services/seazona.service.js"]);
 const SELF = fileURLToPath(import.meta.url);
 
 const FORBIDDEN = [
-  /\bcreatePayment\b/, /\bgetInvoice\b/, /\bgetInvoices\b/, /\bgetInvoicesResult\b/, /\bgetAllInvoicesResult\b/,
+  /\bcreatePayment\b/, /\bgetInvoice\b/, /\bgetInvoices\b/, /\bgetAllInvoices\b/, /v1\/invoices/, /\bgetInvoicesResult\b/, /\bgetAllInvoicesResult\b/,
   /writeToSeazona/, /recordInSeazona/, /buildInvoiceReference/, /SEAZONA_CLIENT_NOT_LINKED/, /seazonaUnavailable/,
   /PAYMENT_WRITE_FAILED/, /getClientPaidMap/, /invoice-ledger\.service/,
 ];
+
+/** The forbidden patterns a source text trips (exported shape for the negative test below). */
+const violations = (text) => FORBIDDEN.filter((re) => re.test(text)).map(String);
 
 function* files(dir) {
   for (const name of readdirSync(dir)) {
@@ -37,8 +40,18 @@ test("nothing outside seazona.service.js reads invoices from or writes payments 
       const rel = relative(repo, file);
       if (ALLOWED.has(rel)) continue;
       const text = readFileSync(file, "utf8");
-      for (const re of FORBIDDEN) if (re.test(text)) hits.push(`${rel}: ${re}`);
+      for (const v of violations(text)) hits.push(`${rel}: ${v}`);
     }
   }
   assert.deepEqual(hits, []);
+});
+
+test("the matcher flags every forbidden form (the guard fails when it should)", () => {
+  const samples = [
+    "createPayment(x)", "getInvoice(1)", "getInvoices()", "getInvoicesResult()", "getAllInvoicesResult()", "getAllInvoices()",
+    "writeToSeazona", "recordInSeazona", "buildInvoiceReference", "SEAZONA_CLIENT_NOT_LINKED", "seazonaUnavailable",
+    "PAYMENT_WRITE_FAILED", "getClientPaidMap", "invoice-ledger.service", 'fetch(base + "v1/invoices/?lastModified=")',
+  ];
+  for (const sample of samples) assert.ok(violations(sample).length > 0, `not flagged: ${sample}`);
+  assert.deepEqual(violations("listInvoices(); openInvoice(row)"), [], "our own invoice code is not flagged");
 });
