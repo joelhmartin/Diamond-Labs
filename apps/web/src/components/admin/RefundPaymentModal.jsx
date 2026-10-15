@@ -52,7 +52,7 @@ export function RefundPaymentModal({ onClose, presetTransactionId = "", payment 
       const verb = d.action === "void" ? "Void" : "Refund";
       addToast(
         d.ledgerWriteFailed
-          ? { message: `${verb} of ${formatCents(d.amountCents)} succeeded at the gateway, but the ledger needs manual reconciliation (txn ${trimmedTxn}).`, type: "warning" }
+          ? { message: `${verb} of ${formatCents(d.amountCents)} succeeded and the invoices are updated, but its gateway reference wasn't saved — ask a developer to reconcile txn ${trimmedTxn}.`, type: "warning" }
           : { message: `${d.action === "void" ? "Voided" : "Refunded"} ${formatCents(d.amountCents)} (txn ${trimmedTxn}).`, type: "success" }
       );
       onDone?.();
