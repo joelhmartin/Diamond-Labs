@@ -3,6 +3,8 @@ import * as auditService from "../services/audit.service.js";
 import { getInvoiceDetail } from "../services/billing/invoice-queries.js";
 import { buildInvoiceModel } from "../services/billing/invoice-model.js";
 import { renderInvoicePdf } from "../services/billing/billing-pdf.js";
+import { sendInvoiceNotice } from "../services/email.service.js";
+import { statementPdfFor } from "../services/billing/statements.service.js";
 import { sendPdf } from "./pdf-reply.js";
 
 /**
@@ -61,5 +63,53 @@ export function invoicePdfHandler({ mayRead }) {
     }
     auditService.logSafe({ userId: request.user.id, action: "invoice.pdf_downloaded", targetType: "invoice", targetId: detail.invoice.id, metadata: { invoiceNumber: model.invoiceNumber }, ipAddress: request.ip });
     return sendPdf(reply, pdf, model.filename);
+  };
+}
+
+/**
+ * A monthly statement PDF, for either audience; only the scope differs.
+ *   scope(request) → { clientUserId, clientUserIds? }  (may be async)
+ *     doctor: the requester, covering their whole practice (practiceUserIds)
+ *     admin:  any doctor, named in the URL, covering just them
+ * No such doctor answers 404. Built on request, never stored; audited with
+ * ids and the month only.
+ */
+export function statementPdfHandler({ scope }) {
+  return async (request, reply) => {
+    let out;
+    let clientUserId;
+    try {
+      const s = await scope(request);
+      clientUserId = s.clientUserId;
+      out = await statementPdfFor(clientUserId, request.query.month, { clientUserIds: s.clientUserIds });
+    } catch (err) {
+      request.log.error({ clientUserId, err: err.message }, "statement pdf failed");
+      return reply.code(500).send({ error: { ...ERROR_CODES.INTERNAL_ERROR, message: "Failed to build the statement." } });
+    }
+    if (!out) return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    auditService.logSafe({ userId: request.user.id, action: "statement.downloaded", targetType: "user", targetId: clientUserId, metadata: { month: request.query.month }, ipAddress: request.ip });
+    return sendPdf(reply, out.pdf, out.model.filename);
+  };
+}
+
+/**
+ * Staff presses "Email invoice": a short notice (number, amount, due date,
+ * portal link) to the client. Only an issued invoice with a client email;
+ * nothing clinical and no PDF leaves the system. Audited with ids only.
+ */
+export function invoiceEmailHandler() {
+  return async (request, reply) => {
+    const detail = await loadReadableInvoice(request, reply, () => true, { failure: "Failed to email the invoice." });
+    if (!detail) return reply;
+    const { invoice, client } = detail;
+    const refuse = (message) => reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message } });
+    if (invoice.status !== "issued") return refuse("Only an issued invoice can be emailed.");
+    if (!client?.email) return refuse("This client has no email address on file.");
+    const sent = await sendInvoiceNotice({
+      to: client.email, invoiceId: invoice.id, invoiceNumber: invoice.invoiceNumber,
+      totalCents: invoice.totalCents, balanceCents: invoice.balanceCents, dueDate: invoice.dueDate,
+    });
+    auditService.logSafe({ userId: request.user.id, action: "invoice.emailed", targetType: "invoice", targetId: invoice.id, metadata: { invoiceNumber: invoice.invoiceNumber, sent }, ipAddress: request.ip });
+    return { data: { sent } };
   };
 }

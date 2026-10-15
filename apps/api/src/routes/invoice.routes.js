@@ -4,7 +4,9 @@ import { listClientInvoices } from "../services/billing/invoice-queries.js";
 import { doctorInvoiceRow, doctorInvoiceView } from "../services/billing/invoice-views.js";
 import { practiceUserIds } from "../services/billing/ledger.service.js";
 import { canActOnInvoice } from "../services/billing/invoice-rules.js";
-import { invoiceDetailHandler, invoicePdfHandler } from "./invoice-detail.handler.js";
+import { validateQuery } from "../middleware/validate.js";
+import { statementQuerySchema } from "@my-app/shared";
+import { invoiceDetailHandler, invoicePdfHandler, statementPdfHandler } from "./invoice-detail.handler.js";
 
 /**
  * A doctor's invoices, from our tables (own-the-lab piece 3). A doctor sees
@@ -28,4 +30,10 @@ export default async function invoiceRoutes(fastify) {
 
   // Printable copy of the same invoice, same access rule: built on request, never stored.
   fastify.get("/invoices/:id/pdf", { preHandler: DOCTOR }, invoicePdfHandler({ mayRead }));
+
+  // The doctor's monthly statement for their practice: no drafts, no patient names, never cached.
+  // Registered beside /invoices/:id; Fastify matches the static path first.
+  fastify.get("/invoices/statement.pdf", { preHandler: [...DOCTOR, validateQuery(statementQuerySchema)] }, statementPdfHandler({
+    scope: async (request) => ({ clientUserId: request.user.id, clientUserIds: await practiceUserIds(request.user) }),
+  }));
 }

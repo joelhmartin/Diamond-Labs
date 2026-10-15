@@ -9,7 +9,7 @@ import * as actions from "../services/billing/invoice-actions.service.js";
 import { invoiceErrorReply } from "../services/billing/invoice-errors.js";
 import { listInvoices, listClientInvoices } from "../services/billing/invoice-queries.js";
 import { adminInvoiceView } from "../services/billing/invoice-views.js";
-import { invoiceDetailHandler, invoicePdfHandler } from "./invoice-detail.handler.js";
+import { invoiceDetailHandler, invoicePdfHandler, invoiceEmailHandler } from "./invoice-detail.handler.js";
 
 /** Billing is admin-only: the lab role sees no money. */
 export const ADMIN = [authenticate, requireAdmin];
@@ -65,4 +65,7 @@ export default async function adminInvoiceRoutes(fastify) {
   // "Record payment" on a client: check, cash, ACH or other.
   fastify.post("/admin/clients/:userId/payments", { preHandler: [...ADMIN, validate(manualPaymentSchema)] }, (request, reply) =>
     run(reply, () => actions.recordManualPayment({ clientUserId: request.params.userId, ...request.body, byUserId: request.user.id }), 201));
+
+  // Staff-triggered notice: number, amount, due date, portal link. No PDF, no clinical data.
+  fastify.post("/admin/invoices/:id/email", { preHandler: ADMIN }, invoiceEmailHandler());
 }

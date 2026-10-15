@@ -65,3 +65,32 @@ test("invoice PDFs: one shared handler; the doctor's practice's and never a draf
   assert.doesNotMatch(pdf, /patientName/, "the filename and audit never carry the patient");
   assert.match(read("../pdf-reply.js"), /"Cache-Control", "no-store"/);
 });
+
+const receivables = read("../receivables.routes.js");
+
+test("AR, client statements and notices are admin-only and audited; nothing patient-bearing is emailed", () => {
+  assert.match(receivables, /import \{ ADMIN \} from "\.\/admin-invoice\.routes\.js"/);
+  for (const m of markersOf(receivables)) assert.match(handlerSource(receivables, m), /preHandler: \[\.\.\.ADMIN/, m);
+  assert.match(handlerSource(receivables, 'fastify.get("/admin/receivables",'), /validateQuery\(receivablesQuerySchema\)/);
+  const pdf = handlerSource(receivables, 'fastify.get("/admin/clients/:userId/statement.pdf",');
+  assert.match(pdf, /statementPdfHandler\(\{/, "the one shared statement handler");
+  assert.match(pdf, /clientUserId: request\.params\.userId/);
+  assert.match(handlerSource(receivables, 'fastify.post("/admin/clients/:userId/statement/email",'), /"statement\.emailed"/);
+  assert.match(handlerSource(admin, 'fastify.post("/admin/invoices/:id/email",'), /invoiceEmailHandler\(\)/);
+  const mail = handler.slice(handler.indexOf("export function invoiceEmailHandler"));
+  assert.match(mail, /"invoice\.emailed"/);
+  assert.match(mail, /invoice\.status !== "issued"/);
+  assert.doesNotMatch(mail, /patient/i);
+  assert.match(index, /await fastify\.register\(receivablesRoutes, \{ prefix: "\/api\/v1" \}\)/);
+});
+
+test("one statement handler serves both audiences; a doctor's covers their practice, through the shared practice rule", () => {
+  assert.match(handler, /export function statementPdfHandler\(\{ scope \}\)/);
+  assert.match(handler, /sendPdf\(reply, out\.pdf, out\.model\.filename\)/);
+  assert.match(handler, /"statement\.downloaded"/);
+  const body = handlerSource(doctor, 'fastify.get("/invoices/statement.pdf",');
+  assert.match(body, /\.\.\.DOCTOR, validateQuery\(statementQuerySchema\)/);
+  assert.match(body, /statementPdfHandler\(/);
+  assert.match(body, /clientUserIds: await practiceUserIds\(request\.user\)/);
+  assert.doesNotMatch(doctor + receivables, /statementPdfFor|sendPdf/, "no near-duplicate handler");
+});

@@ -1,6 +1,7 @@
 import { mailgun } from "../config/email.js";
 import { env } from "../config/env.js";
 import { stagingRewrite } from "../config/app-env.js";
+import { formatUsDate } from "@my-app/shared";
 import { formatCents } from "../lib/money.js";
 
 /**
@@ -538,4 +539,38 @@ export async function sendRefundReceipt({ to, amountCents, invoices = [], transa
   `;
 
   return deliver({ to, subject: "Refund issued — Diamond Orthotic Laboratory", html });
+}
+
+/**
+ * "You have an invoice" — sent only when staff press Email invoice (never
+ * automatically). A short notice: amount, due date and a portal link. No PDF
+ * and no clinical data travel by email; the doctor downloads the PDF in the portal.
+ */
+export async function sendInvoiceNotice({ to, invoiceId, invoiceNumber, totalCents, balanceCents, dueDate }) {
+  if (!to) return false;
+  const url = `${env.APP_URL}/doctor/invoices/${encodeURIComponent(invoiceId)}`;
+  const html = `
+    <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a2733;">
+      <h1 style="font-size:20px;margin:0 0 12px;">Invoice #${esc(invoiceNumber)}</h1>
+      <p style="margin:0 0 6px;">Total: <strong>${formatCents(totalCents)}</strong></p>
+      <p style="margin:0 0 6px;">Balance due: <strong>${formatCents(Math.max(0, balanceCents))}</strong></p>
+      <p style="margin:0 0 20px;">Due: <strong>${esc(formatUsDate(dueDate) || "on receipt")}</strong></p>
+      <p style="margin:0 0 24px;"><a href="${url}" style="display:inline-block;padding:12px 24px;background:#13AEEF;color:#fff;text-decoration:none;border-radius:999px;font-weight:600;">View and pay invoice</a></p>
+      <p style="margin:0;font-size:12px;color:#8a98a6;">Sign in to the Diamond Orthotic Laboratory portal to download the PDF.</p>
+    </div>`;
+  return deliver({ to, subject: `Invoice #${invoiceNumber} — Diamond Orthotic Laboratory`, html });
+}
+
+/** "Your statement is ready" — staff-triggered; the closing balance and a portal link only. */
+export async function sendStatementNotice({ to, monthLabel, closingCents }) {
+  if (!to) return false;
+  const url = `${env.APP_URL}/doctor/invoices`;
+  const html = `
+    <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a2733;">
+      <h1 style="font-size:20px;margin:0 0 12px;">Your ${esc(monthLabel)} statement</h1>
+      <p style="margin:0 0 20px;">Balance at the end of the month: <strong>${formatCents(closingCents)}</strong></p>
+      <p style="margin:0 0 24px;"><a href="${url}" style="display:inline-block;padding:12px 24px;background:#13AEEF;color:#fff;text-decoration:none;border-radius:999px;font-weight:600;">View invoices and statements</a></p>
+      <p style="margin:0;font-size:12px;color:#8a98a6;">Sign in to the Diamond Orthotic Laboratory portal to download the statement.</p>
+    </div>`;
+  return deliver({ to, subject: `${monthLabel} statement — Diamond Orthotic Laboratory`, html });
 }
