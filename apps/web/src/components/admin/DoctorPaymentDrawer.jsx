@@ -20,7 +20,8 @@ import {
 import api from "../../config/api.js";
 import { useToast } from "../ui/Toast.jsx";
 import { HostedAddCardForm } from "../doctor/HostedAddCardForm.jsx";
-import { useInvoiceAllocation, balanceOf, idOf } from "../../hooks/useInvoiceAllocation.js";
+import { useInvoiceAllocation } from "../../hooks/useInvoiceAllocation.js";
+import { formatCents } from "../../lib/money.js";
 // Reused rather than reinvented — the exact same flow AdminInvoicesPage.jsx
 // uses per-invoice-row to record a payment staff already took directly in
 // Seazona.
@@ -70,15 +71,14 @@ function ChargePanel({ invoices, cards, cardsUnavailable, doctorUserId, onSucces
   );
   const [processing, setProcessing] = useState(false);
 
-  // Card actions reload `cards` without remounting this panel. If the selected
-  // card was deleted, the <select> would show another card while state still
-  // holds the old id — the admin sees one card and the request charges another.
+  // Card actions reload `cards` without remounting this panel; if the selected
+  // card was deleted, fall back so the <select> and the charge agree.
   useEffect(() => {
     if (cards.some((c) => c.paymentProfileId === selectedCard)) return;
     setSelectedCard((cards.find((c) => c.isDefault) || cards[0])?.paymentProfileId || "");
   }, [cards, selectedCard]);
 
-  const { ordered, alloc, targetStr, totalBalance, handleTargetChange, setRow, payTotal, allocations, canPay } =
+  const { ordered, alloc, targetStr, totalBalanceCents, handleTargetChange, setRow, payTotalCents, allocations, canPay } =
     useInvoiceAllocation(invoices);
 
   const charge = async () => {
@@ -92,15 +92,13 @@ function ChargePanel({ invoices, cards, cardsUnavailable, doctorUserId, onSucces
     }
     setProcessing(true);
     try {
-      // Fresh key per submit attempt — a duplicate click / retry must not
-      // double-charge the doctor's card (backend requires the header).
-      const idempotencyKey = crypto.randomUUID();
+      // Fresh key per submit: a duplicate click or retry must not double-charge.
       await api.post(
         `/admin/users/${doctorUserId}/payments/charge-saved`,
-        { paymentProfileId: selectedCard, amount: payTotal, allocations },
-        { headers: { "Idempotency-Key": idempotencyKey } }
+        { paymentProfileId: selectedCard, amountCents: payTotalCents, allocations },
+        { headers: { "Idempotency-Key": crypto.randomUUID() } }
       );
-      addToast({ message: `Charged ${formatUSD(payTotal)}.`, type: "success" });
+      addToast({ message: `Charged ${formatCents(payTotalCents)}.`, type: "success" });
       onSuccess?.();
     } catch (err) {
       if (isGatewayError(err)) {
@@ -120,39 +118,36 @@ function ChargePanel({ invoices, cards, cardsUnavailable, doctorUserId, onSucces
       <div className="flex items-center gap-2">
         <span className="text-navy/40">$</span>
         <input
-          type="number"
-          min="0"
-          step="0.01"
+          type="text"
+          inputMode="decimal"
           value={targetStr}
           onChange={(e) => handleTargetChange(e.target.value)}
           disabled={processing}
+          aria-label="Amount to charge"
           className={`${INPUT} w-28`}
         />
-        <span className="text-xs text-navy/40">applied oldest-first · balance {formatUSD(totalBalance)}</span>
+        <span className="text-xs text-navy/40">applied oldest-first · balance {formatCents(totalBalanceCents)}</span>
       </div>
 
       <div className="max-h-40 space-y-1 overflow-y-auto">
-        {ordered.map((inv) => {
-          const bal = balanceOf(inv);
-          const applied = Number(alloc[idOf(inv)] || 0);
-          return (
-            <div key={idOf(inv)} className="flex items-center gap-2 text-sm">
-              <span className="w-20 shrink-0 font-mono text-xs text-navy/60">#{inv.invoiceNumber || idOf(inv)}</span>
-              <span className="w-16 shrink-0 text-xs text-navy/40">{formatUSD(bal)}</span>
-              <span className="text-navy/20">→</span>
-              <input
-                type="number"
-                min="0"
-                max={bal}
-                step="0.01"
-                value={applied}
-                onChange={(e) => setRow(inv, e.target.value)}
-                disabled={processing}
-                className={`${INPUT} w-24 !py-1`}
-              />
-            </div>
-          );
-        })}
+        {ordered.map((inv) => (
+          <div key={inv.id} className="flex items-center gap-2 text-sm">
+            <span className="w-20 shrink-0 font-mono text-xs text-navy/60">#{inv.invoiceNumber}</span>
+            <span className="w-20 shrink-0 text-xs text-navy/40">{formatCents(inv.balanceCents)}</span>
+            <span className="text-navy/20">→</span>
+            <input
+              type="number"
+              min="0"
+              max={inv.balanceCents / 100}
+              step="0.01"
+              value={(alloc[inv.id] ?? 0) / 100}
+              onChange={(e) => setRow(inv, e.target.value)}
+              disabled={processing}
+              aria-label={`Amount for invoice ${inv.invoiceNumber}`}
+              className={`${INPUT} w-24 !py-1`}
+            />
+          </div>
+        ))}
       </div>
 
       <select
@@ -179,7 +174,7 @@ function ChargePanel({ invoices, cards, cardsUnavailable, doctorUserId, onSucces
         className="flex w-full items-center justify-center gap-1.5 rounded-full bg-brand-500 px-4 py-2.5 text-xs font-semibold text-white transition-all hover:bg-brand-600 disabled:opacity-50"
       >
         {processing && <Loader2 size={12} className="animate-spin" />}
-        Charge {formatUSD(payTotal)}
+        Charge {formatCents(payTotalCents)}
       </button>
     </div>
   );
@@ -191,11 +186,7 @@ function ChargePanel({ invoices, cards, cardsUnavailable, doctorUserId, onSucces
  * (including the admin-only floor override). Opened from AdminAutoPayPage's
  * "Manage" row action and AdminUsersPage's "Payments" row action.
  *
- * `doctor` — { userId, name, email, accountNumber }. `accountNumber` is used
- * to match this doctor's invoices out of the lab-wide /admin/invoices list
- * (there's no per-doctor invoice endpoint) — the seazonaClientId itself isn't
- * always known by callers (e.g. the AutoPay list doesn't select it), so we
- * match on the Seazona account number instead, which every caller has.
+ * `doctor` — { userId, name, email, accountNumber }; invoices load from GET /admin/clients/:userId/invoices.
  */
 export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount: minAmountProp }) {
   // Floor shown in the AutoPay form: the caller's value when it has one (the
@@ -275,28 +266,20 @@ export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount: min
     }
   }, [doctor.userId]);
 
-  // There's no per-doctor invoice endpoint — /admin/invoices returns every
-  // invoice in the lab. Filter to this doctor by matching the Seazona
-  // account number embedded in the client record.
+  // This doctor's open invoices, from our ledger.
   const loadInvoices = useCallback(async () => {
     setInvoicesLoading(true);
     try {
-      const { data } = await api.get("/admin/invoices");
-      const clients = data.data?.clients || {};
-      const list = (data.data?.invoices || []).filter((inv) => {
-        if (!doctor.accountNumber) return false;
-        const client = clients[inv.clientId];
-        return client?.accountNumber && String(client.accountNumber) === String(doctor.accountNumber);
-      });
-      setInvoices(list);
-      setInvoicesUnavailable(Boolean(data.meta?.seazonaUnavailable));
+      const { data } = await api.get(`/admin/clients/${doctor.userId}/invoices`, { params: { open: "true" } });
+      setInvoices(data.data || []);
+      setInvoicesUnavailable(false);
     } catch {
       setInvoicesUnavailable(true);
     } finally {
       setInvoicesLoading(false);
       setInvoiceGen((n) => n + 1);
     }
-  }, [doctor.accountNumber]);
+  }, [doctor.userId]);
 
   useEffect(() => {
     load();
@@ -436,7 +419,7 @@ export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount: min
     }
   };
 
-  const payableInvoices = invoices.filter((inv) => !inv.portalPaid);
+  const payableInvoices = invoices.filter((inv) => inv.balanceCents > 0);
   const canPause = enrollment?.enabled && enrollment.status === "active";
   const canResume = enrollment?.enabled && enrollment.status === "paused";
 
@@ -578,14 +561,12 @@ export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount: min
 
               {/* ── Charge a card ── */}
               <SectionCard title="Charge a card" icon={Banknote}>
-                {!doctor.accountNumber ? (
-                  <p className="text-xs text-navy/40">This doctor isn't linked to a Seazona client — nothing to charge.</p>
-                ) : invoicesLoading ? (
+                {invoicesLoading ? (
                   <div className="flex items-center gap-2 py-4 text-xs text-navy/40">
                     <Loader2 size={14} className="animate-spin" /> Loading invoices…
                   </div>
                 ) : invoicesUnavailable ? (
-                  <p className="text-xs text-amber-700">Seazona is unreachable — the invoice list may be incomplete.</p>
+                  <p className="text-xs text-amber-700">Couldn't load this doctor's invoices — try again.</p>
                 ) : payableInvoices.length === 0 ? (
                   <p className="text-xs text-navy/40">No open invoices for this doctor.</p>
                 ) : (
@@ -629,15 +610,15 @@ export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount: min
                     >
                       <option value="">Select an invoice…</option>
                       {payableInvoices.map((inv) => (
-                        <option key={idOf(inv)} value={idOf(inv)}>
-                          #{inv.invoiceNumber || idOf(inv)} — {formatUSD(balanceOf(inv))} due
+                        <option key={inv.id} value={inv.id}>
+                          #{inv.invoiceNumber} — {formatCents(inv.balanceCents)} due
                         </option>
                       ))}
                     </select>
                     <button
                       type="button"
                       disabled={!offlineInvoiceId}
-                      onClick={() => setOfflineModalInvoice(payableInvoices.find((inv) => idOf(inv) === offlineInvoiceId))}
+                      onClick={() => setOfflineModalInvoice(payableInvoices.find((inv) => inv.id === offlineInvoiceId))}
                       className="whitespace-nowrap rounded-full bg-surface-100 px-3 py-1.5 text-xs font-semibold text-navy/70 hover:bg-surface-200 disabled:opacity-50"
                     >
                       Record

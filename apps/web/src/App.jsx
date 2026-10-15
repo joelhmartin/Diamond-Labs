@@ -69,6 +69,7 @@ import { CartWidget } from "./components/marketing/CartWidget.jsx";
 
 // Doctor pages
 import { InvoicesPage } from "./pages/doctor/InvoicesPage.jsx";
+import { InvoiceDetailPage } from "./pages/doctor/InvoiceDetailPage.jsx";
 import { PaymentsPage } from "./pages/doctor/PaymentsPage.jsx";
 import { SavedCardsPage } from "./pages/doctor/SavedCardsPage.jsx";
 import AutoPayPage from "./pages/doctor/AutoPayPage.jsx";
@@ -243,6 +244,7 @@ function AppRoutes() {
       <Route path="/doctor" element={<RequireDoctor />}>
         <Route element={<DoctorShell />}>
           <Route path="invoices" element={<InvoicesPage />} />
+          <Route path="invoices/:id" element={<InvoiceDetailPage />} />
           <Route path="payments" element={<PaymentsPage />} />
           <Route path="saved-cards" element={<SavedCardsPage />} />
           <Route path="autopay" element={<AutoPayPage />} />

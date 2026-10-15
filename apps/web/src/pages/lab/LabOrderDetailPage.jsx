@@ -6,7 +6,8 @@ import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { Modal } from "../../components/ui/Modal.jsx";
 import { ROUTES, labOrderPath } from "../../config/routes.js";
-import { describeEvent, errorText, blobErrorText, isStale, openInNewTab } from "../../lib/lab-board.js";
+import { describeEvent } from "../../lib/lab-board.js";
+import { errorText, blobErrorText, isStale, openInNewTab, openPdf } from "../../lib/requests.js";
 
 const INPUT =
   "w-full px-3 py-2 rounded-lg bg-white border border-surface-300/60 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10";
@@ -156,12 +157,7 @@ export function LabOrderDetailPage() {
       if (res) navigate(labOrderPath(res.data.data.labOrder.id));
     });
   const printTicket = () =>
-    openInNewTab(async () => {
-      const res = await api.get(`/lab/orders/${order.id}/ticket.pdf`, { responseType: "blob" });
-      const url = URL.createObjectURL(res.data);
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      return url;
-    }).catch(async (err) => addToast({ message: await blobErrorText(err), type: "error" }));
+    openPdf(api, `/lab/orders/${order.id}/ticket.pdf`).catch(async (err) => addToast({ message: await blobErrorText(err), type: "error" }));
   const openFile = (fileId) =>
     openInNewTab(async () => (await api.get(`/admin/rx-cases/${rxCase.id}/files/${fileId}`)).data.data.url)
       .catch((err) => addToast({ message: errorText(err), type: "error" }));
