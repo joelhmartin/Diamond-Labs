@@ -31,3 +31,6 @@ export { buildDigitalDevices, buildFormDevices, buildOrthoDevice, DEVICE_LABELS 
 // Lab
 export * from "./lab/lab-order-status.js";
 export * from "./schemas/lab.schema.js";
+
+// Money (integer cents)
+export * from "./money.js";

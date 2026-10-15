@@ -1,2 +1,2 @@
-const USD = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
-export const formatCents = (cents) => USD.format(cents / 100);
+// The one money implementation lives in @my-app/shared (packages/shared/src/money.js).
+export { formatCents, parseMoneyInput } from "@my-app/shared";

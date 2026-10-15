@@ -22,7 +22,8 @@ test("every mutation is conditional on the version the caller saw (no lost updat
 });
 
 test("order numbers are allocated under a transaction-scoped advisory lock", () => {
-  assert.match(source, /pg_advisory_xact_lock\(\d+\)/);
+  assert.match(source, /allocateSequenceNumber\(tx, \{\s*lockId: LAB_ORDER_NUMBER_LOCK/);
+  assert.equal(mod.LAB_ORDER_NUMBER_LOCK, 7300421);
 });
 
 test("a release claims the case before inserting, so a double click can't make two jobs", () => {

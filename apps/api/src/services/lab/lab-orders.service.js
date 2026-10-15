@@ -9,16 +9,13 @@ import {
 import { createId } from "../../lib/id.js";
 import { encryptField, decryptField } from "../../lib/crypto.js";
 import { decryptRxPhi } from "../rx/phi-crypto.js";
+import { allocateSequenceNumber } from "../sequence.service.js";
 import { devicesForCase } from "../rx/case-devices.js";
 import { compileNotesMulti } from "../rx/case-notes.js";
 import {
-  LabOrderError, nextLabOrderNumber, planRxRelease, planShopLabOrder, planRemake,
+  LabOrderError, planRxRelease, planShopLabOrder, planRemake,
   assertFresh, planStatusChange, planFieldChange, presentBoardCard, rushFromCase,
 } from "./lab-order-rules.js";
-
-// Serialises order-number allocation: held until the transaction ends, so two
-// concurrent releases/checkouts can never read the same max.
-const ORDER_NUMBER_LOCK = sql.raw("select pg_advisory_xact_lock(7300421)");
 
 const SHIPPED_VISIBLE_DAYS = 14;
 
@@ -47,10 +44,13 @@ function openEvent(e) {
   return { ...e, note: e.note == null ? null : decryptField(e.note) };
 }
 
-export async function allocateOrderNumber(tx) {
-  await tx.execute(ORDER_NUMBER_LOCK);
-  const [row] = await tx.select({ max: sql`max(${labOrders.orderNumber})` }).from(labOrders);
-  return nextLabOrderNumber(row?.max == null ? null : Number(row.max), env.LAB_ORDER_NUMBER_START);
+// Serialises order-number allocation (services/sequence.service.js).
+export const LAB_ORDER_NUMBER_LOCK = 7300421;
+
+export function allocateOrderNumber(tx) {
+  return allocateSequenceNumber(tx, {
+    lockId: LAB_ORDER_NUMBER_LOCK, table: labOrders, column: labOrders.orderNumber, start: env.LAB_ORDER_NUMBER_START,
+  });
 }
 
 async function variantIdsForCodes(tx, codes) {

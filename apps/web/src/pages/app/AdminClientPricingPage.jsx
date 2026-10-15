@@ -3,8 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Loader2, Trash2, CheckCircle } from "lucide-react";
 import api from "../../config/api.js";
 import { ROUTES } from "../../config/routes.js";
-import { formatCents } from "../../lib/money.js";
-import { parsePriceInput } from "./AdminCatalogPage.jsx";
+import { formatCents, parseMoneyInput } from "../../lib/money.js";
 
 const INPUT =
   "w-full px-3.5 py-2.5 rounded-lg bg-white border border-surface-300/60 text-primary text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-icon";
@@ -74,7 +73,7 @@ export function AdminClientPricingPage() {
   }
 
   async function save() {
-    const priceCents = parsePriceInput(pick.price);
+    const priceCents = parseMoneyInput(pick.price);
     if (priceCents == null) { setError("Enter a price in dollars, e.g. 405.00"); return; }
     if (await call(() => api.put(`/admin/clients/${userId}/prices/${pick.variantId}`, { priceCents }))) {
       setPick({ variantId: "", price: "" });
