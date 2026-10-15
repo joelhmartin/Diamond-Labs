@@ -2,8 +2,8 @@
  * Response shapes for invoice reads. The doctor's are explicit allow-lists
  * (the doctorCaseView pattern), so a staff column added later never reaches a
  * doctor by default: staff notes, price notes and sources, the void reason,
- * ledger references, credit reasons and transaction ids stay staff-only. The
- * refund write-ahead guard row (0 cents) is bookkeeping and shown to no one.
+ * ledger references, credit reasons and transaction ids stay staff-only. Zero-cent
+ * ledger rows are bookkeeping and shown to no one.
  */
 
 /** What a ledger row is, to a person reading the invoice. */

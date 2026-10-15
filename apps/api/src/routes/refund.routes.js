@@ -7,10 +7,10 @@ import * as auditService from "../services/audit.service.js";
 import { db } from "../config/database.js";
 import { redis } from "../config/redis.js";
 import { users, invoicePayments } from "../db/schema/index.js";
-import { and, eq, gt, isNull, notInArray, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, notInArray, or } from "drizzle-orm";
 import { createId } from "../lib/id.js";
 import { toDecimalString } from "../lib/money.js";
-import { OFFLINE_PREFIX } from "../lib/payment-summary.js";
+import { OFFLINE_PREFIX, REFUND_PENDING_PREFIX } from "../lib/payment-summary.js";
 import { planRefund, invoiceKeysOf } from "../lib/refund-plan.js";
 import { ERROR_CODES, refundSchema, SHOP_PAYMENT_SOURCE, CREDIT_SOURCE, isManualPaymentSource } from "@my-app/shared";
 import { withIdempotency, ChargeInProgressError, extractDeclineMessage } from "../lib/payment-helpers.js";
@@ -27,7 +27,7 @@ export default async function refundRoutes(fastify) {
   // FULL (no allocations) or PARTIAL by invoice slice (settled charges only).
   // ONE reversal per charge: the double-refund guard rejects a second one.
   //
-  // Concurrency: guard + gateway reversal + ledger + receipt run inside
+  // Concurrency: guard + write-ahead reversal rows + gateway reversal + receipt run inside
   // withIdempotency keyed on the charge's transaction id. Nothing after the
   // gateway call may throw out of the locked fn, so a successful reversal is
   // always cached rather than followed by a lock release that permits a re-refund.
@@ -53,7 +53,7 @@ export default async function refundRoutes(fastify) {
     }
 
     // 1b. A manual payment (check / cash / ACH / other, or a legacy OFFLINE- id) never
-    //     touched the card gateway: refuse before any guard row is written or the
+    //     touched the card gateway: refuse before any reversal row is written or the
     //     gateway is called. Staff reverse these with a credit.
     if (txid.startsWith(OFFLINE_PREFIX) || originalRows.some((r) => isManualPaymentSource(r.source))) {
       return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Manual payments are reversed with a credit, not a card refund." } });
@@ -81,17 +81,16 @@ export default async function refundRoutes(fastify) {
             ? (await db.select().from(users).where(eq(users.id, originalRows[0].userId)))[0] || null
             : null;
 
-          // 3c. WRITE-AHEAD guard: a durable double-refund marker before touching
-          //     the gateway, rolled back only if the gateway definitely moved no money.
-          const guardRowId = createId();
-          await db.insert(invoicePayments).values({
-            id: guardRowId,
-            ...invoiceKeysOf(originalRows[0]),
-            userId: originalRows[0].userId ?? null,
-            appliedCents: 0,
-            transactionId: `REFUND-PENDING-${txid}`,
-            refundsTransactionId: txid,
-          });
+          // 3c. WRITE-AHEAD: the reversal rows themselves (real negative amounts, a pending
+          //     transaction id) are written BEFORE the gateway call, so they are both the
+          //     durable double-refund marker and the ledger entry. Nothing has to be rebuilt
+          //     after the money moves. Rolled back only if the gateway definitely moved no money.
+          const pendingTxnId = `${REFUND_PENDING_PREFIX}${txid}`;
+          const reversalRows = plan.rows.map((r) => ({
+            id: createId(), ...r, transactionId: pendingTxnId, refundsTransactionId: txid, source: "refund",
+          }));
+          const reversalIds = reversalRows.map((r) => r.id);
+          await db.insert(invoicePayments).values(reversalRows);
 
           // 3d. Reverse at the gateway (void if unsettled, refund if settled).
           //     Dollars only on the wire.
@@ -101,11 +100,11 @@ export default async function refundRoutes(fastify) {
           } catch (gwErr) {
             const definitivelyNoMoneyMoved = !!gwErr.refundErrorKind || !!gwErr.authNetResponse;
             if (definitivelyNoMoneyMoved) {
-              await db.delete(invoicePayments).where(eq(invoicePayments.id, guardRowId)).catch(() => {});
+              await db.delete(invoicePayments).where(inArray(invoicePayments.id, reversalIds)).catch(() => {});
               throw gwErr;
             }
             console.error(
-              `[PAYMENT][REFUND_UNCERTAIN] reversal of charge ${txid} failed without a definitive gateway response — the charge MAY already be reversed; guard row ${guardRowId} kept to block a retry, manual reconcile required ` +
+              `[PAYMENT][REFUND_UNCERTAIN] reversal of charge ${txid} failed without a definitive gateway response — the charge MAY already be reversed; the pending reversal rows ${reversalIds.join(",")} were kept (they block a retry and already reopen the invoices), manual reconcile required ` +
                 JSON.stringify({ transactionId: txid, error: String(gwErr?.message || gwErr).slice(0, 300) })
             );
             throw Object.assign(gwErr, { refundUncertain: true });
@@ -116,23 +115,21 @@ export default async function refundRoutes(fastify) {
           // Derived from the plan (what OUR ledger reverses), not parsed back from the gateway amount.
           const refundedCents = -plan.rows.reduce((sum, r) => sum + r.appliedCents, 0);
 
-          // 4. Reverse OUR ledger: rows that sum to exactly what was reversed.
-          const reversalRows = plan.rows.map((r) => ({
-            id: createId(), ...r, transactionId: refundTxnId, refundsTransactionId: txid, source: "refund",
-          }));
+          // 4. Stamp the real refund transaction id on the rows already written. If this fails
+          //    the ledger AMOUNTS are already right; only the id is stale (the charge reads as
+          //    "refund pending" until reconciled).
           let ledgerWriteFailed = false;
           try {
-            await db.insert(invoicePayments).values(reversalRows);
+            await db.update(invoicePayments).set({ transactionId: refundTxnId }).where(inArray(invoicePayments.id, reversalIds));
           } catch (ledgerErr) {
             ledgerWriteFailed = true;
             console.error(
-              `[PAYMENT][REFUND_LEDGER_WRITE_FAILED] refund/void ${refundTxnId} for charge ${txid} succeeded at Authorize.net but the ledger reversal insert failed — manual reconcile required ` +
+              `[PAYMENT][REFUND_LEDGER_WRITE_FAILED] refund/void ${refundTxnId} for charge ${txid} succeeded at Authorize.net; the ledger reversal rows are in place but still carry the pending transaction id — manual reconcile required ` +
                 JSON.stringify({
                   transactionId: txid, refundTransactionId: refundTxnId, action: result.action, amountCents: refundedCents,
                   invoices: reversalRows.map(invoiceRef), error: String(ledgerErr?.message || ledgerErr).slice(0, 300),
                 })
             );
-            // The write-ahead guard row (3c) already blocks a re-refund.
           }
 
           // 5. Refund receipt (soft-fail).
@@ -183,7 +180,7 @@ export default async function refundRoutes(fastify) {
       if (err instanceof ChargeInProgressError) return reply.code(409).send({ error: ERROR_CODES.CHARGE_IN_PROGRESS });
       if (err?.refundErrorKind === "not_found") return reply.code(404).send({ error: { ...ERROR_CODES.NOT_FOUND, message: err.message } });
       if (err?.refundErrorKind === "validation") return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: err.message } });
-      // Outcome unknown: tell the admin NOT to retry (the guard row stays).
+      // Outcome unknown: tell the admin NOT to retry (the pending reversal rows stay).
       if (err?.refundUncertain) return reply.code(ERROR_CODES.REFUND_UNCERTAIN.status).send({ error: ERROR_CODES.REFUND_UNCERTAIN });
       fastify.log.warn({ transactionId: txid, err: String(err?.message || err) }, "refund gateway call failed");
       // A refund/void gateway error is not a card decline.

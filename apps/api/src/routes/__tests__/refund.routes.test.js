@@ -19,11 +19,15 @@ vi.mock("../../config/redis.js", () => ({
 // select() answers come off a queue in call order: original rows, existing refund, doctor.
 let selectQueue = [];
 const inserted = [];
+// Every write, in call order, so a test can assert what happened before/after the gateway call.
+const ops = [];
+let updateFails = false;
 vi.mock("../../config/database.js", () => ({
   db: {
     select: () => ({ from: () => ({ where: async () => selectQueue.shift() ?? [] }) }),
-    insert: () => ({ values: async (v) => { inserted.push(v); } }),
-    delete: () => ({ where: async () => {} }),
+    insert: () => ({ values: async (v) => { inserted.push(v); ops.push("insert"); } }),
+    update: () => ({ set: (v) => ({ where: async () => { if (updateFails) throw new Error("db down"); ops.push({ update: v }); } }) }),
+    delete: () => ({ where: async () => { ops.push("delete"); } }),
   },
 }));
 
@@ -34,6 +38,8 @@ vi.mock("../../services/email.service.js", () => ({ sendRefundReceipt: async (a)
 const audits = [];
 vi.mock("../../services/audit.service.js", () => ({ logSafe: async (e) => { audits.push(e); } }));
 
+const { ERROR_CODES } = await import("@my-app/shared");
+const ERROR_UNCERTAIN_STATUS = ERROR_CODES.REFUND_UNCERTAIN.status;
 const { default: refundRoutes } = await import("../refund.routes.js");
 
 const original = (invoiceId, appliedCents) => ({ id: `p-${invoiceId}`, userId: "doc1", invoiceId, invoiceNumber: `N${invoiceId}`, appliedCents, transactionId: "tx1", source: "doctor_card" });
@@ -48,9 +54,10 @@ async function refund(body) {
 
 beforeEach(() => {
   selectQueue = [[original("a", 30000), original("b", 12550)], [], [{ id: "doc1", email: "d@x.com" }]];
-  inserted.length = 0; receipts.length = 0; audits.length = 0; lockStore.clear();
+  inserted.length = 0; ops.length = 0; updateFails = false; receipts.length = 0; audits.length = 0; lockStore.clear();
   voidOrRefund.mockReset();
   vi.spyOn(console, "log").mockImplementation(() => {});
+  vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 describe("POST /admin/payments/refund money handling", () => {
@@ -85,5 +92,41 @@ describe("POST /admin/payments/refund money handling", () => {
     expect(receipts[0].amountCents).toBe(42550);
     expect(audits[0].metadata.amountCents).toBe(42550);
     expect(inserted.at(-1).map((r) => r.appliedCents)).toEqual([-30000, -12550]);
+  });
+
+  it("writes the reversal rows BEFORE the gateway call, then stamps the real refund id", async () => {
+    voidOrRefund.mockImplementation(async () => {
+      ops.push("gateway");
+      return { action: "refund", transactionId: "rf1" };
+    });
+    const res = await refund({ transactionId: "tx1", allocations: [{ invoiceId: "a", amountCents: 4000 }] });
+    expect(res.statusCode).toBe(200);
+    expect(ops).toEqual(["insert", "gateway", { update: { transactionId: "rf1" } }]);
+    expect(inserted).toHaveLength(1);
+    expect(inserted[0]).toMatchObject([{ appliedCents: -4000, transactionId: "REFUND-PENDING-tx1", refundsTransactionId: "tx1", source: "refund", invoiceId: "a" }]);
+  });
+
+  it("deletes the pending rows when the gateway definitively moved no money", async () => {
+    voidOrRefund.mockRejectedValue(Object.assign(new Error("declined"), { refundErrorKind: "validation" }));
+    const res = await refund({ transactionId: "tx1" });
+    expect(res.statusCode).toBe(422);
+    expect(ops).toEqual(["insert", "delete"]);
+  });
+
+  it("keeps the pending rows when the outcome is uncertain", async () => {
+    voidOrRefund.mockRejectedValue(new Error("socket hang up"));
+    const res = await refund({ transactionId: "tx1" });
+    expect(res.statusCode).toBe(ERROR_UNCERTAIN_STATUS);
+    expect(ops).toEqual(["insert"]);
+  });
+
+  it("a failed id stamp leaves correct amounts in place and flags the response", async () => {
+    voidOrRefund.mockResolvedValue({ action: "refund", transactionId: "rf1" });
+    updateFails = true;
+    const res = await refund({ transactionId: "tx1" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data).toMatchObject({ amountCents: 42550, ledgerWriteFailed: true });
+    expect(ops).toEqual(["insert"]);
+    expect(inserted[0].map((r) => r.appliedCents)).toEqual([-30000, -12550]);
   });
 });

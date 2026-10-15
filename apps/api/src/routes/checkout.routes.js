@@ -64,8 +64,9 @@ function generateOrderNumber() {
 /**
  * Record a successful guest catalog charge LOCALLY (authoritative), then its lab
  * order. The lab order is created right after the paid order commits, in its own
- * transaction: a failure is logged ([LAB][SHOP_ORDER_FAILED]) for backfill, never
- * a lost payment or a lost order. SOFT-FAIL only — this never throws into
+ * transaction: a failure is logged ([LAB][SHOP_ORDER_FAILED]) and the
+ * shop-lab-orders-repair job (jobs/definitions) creates what is missing from the
+ * stored paid order, never a lost payment or a lost order. SOFT-FAIL only — this never throws into
  * checkout, because the card is already charged and failing the response would
  * invite a double-charge on retry. Returns `{ orderRecordFailed }` so the handler
  * can detect the idempotency-degraded case.
@@ -131,7 +132,7 @@ async function recordGuestOrder({
       createShopLabOrder(tx, { orderId, clientUserId: pricedForUserId, quote, transactionId: result.transactionId })
     );
   } catch (err) {
-    log.error({ orderId }, `[LAB][SHOP_ORDER_FAILED] order=${orderId}: ${String(err?.message || err)}`);
+    log.error({ orderId }, `[LAB][SHOP_ORDER_FAILED] order=${orderId}: ${String(err?.message || err)} — the shop-lab-orders-repair sweep will create the lab order and invoice`);
   }
 
   log.info({ orderNumber }, "catalog order recorded");
