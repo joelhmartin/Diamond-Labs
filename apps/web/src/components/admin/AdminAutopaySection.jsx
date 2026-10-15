@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { autopayEnrollSchema } from "@my-app/shared";
+import { autopayEnrollSchema, autopayAdminEnrollSchema } from "@my-app/shared";
 import { Loader2, AlertTriangle, PauseCircle, PlayCircle, Repeat } from "lucide-react";
 import api from "../../config/api.js";
 import { useToast } from "../ui/Toast.jsx";
@@ -63,8 +63,9 @@ export function AdminAutopaySection({ doctorUserId, enrollment, cards, cardsUnav
   const onSubmit = async (form) => {
     setGatewayError(false);
     const override = overrideStr.trim() === "" ? null : Number(overrideStr);
-    if (override != null && (!(override > 0) || Number.isNaN(override))) {
-      addToast({ message: "Floor override must be a positive number.", type: "error" });
+    // Same bounds as the server's admin schema (positive, capped), so a bad value is caught here, not as a bare 422.
+    if (override != null && !autopayAdminEnrollSchema.shape.minAmountOverride.safeParse(override).success) {
+      addToast({ message: "Floor override must be a positive number no greater than 100,000.", type: "error" });
       return;
     }
     try {

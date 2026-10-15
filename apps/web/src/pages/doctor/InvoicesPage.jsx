@@ -27,6 +27,9 @@ export function InvoicesPage() {
       setInvoices(data.data || []);
       setLoadFailed(false);
     } catch {
+      // Don't leave pre-refresh balances on screen (and payable) after a failed refresh.
+      setInvoices([]);
+      setSelected(new Set());
       setLoadFailed(true);
       addToast({ message: "Failed to load invoices", type: "error" });
     } finally {
@@ -112,7 +115,11 @@ export function InvoicesPage() {
                     <tr key={inv.id} onClick={() => toggle(inv)}
                       className={canPay ? (isSelected ? "cursor-pointer bg-brand-50" : "cursor-pointer hover:bg-gray-50") : "bg-gray-50/50"}>
                       <td className="px-4 py-3">
-                        {canPay && isSelected ? <CheckSquare className="h-4 w-4 text-brand-600" /> : <Square className={`h-4 w-4 ${canPay ? "text-gray-300" : "text-gray-200"}`} />}
+                        <button type="button" onClick={(e) => { e.stopPropagation(); toggle(inv); }} disabled={!canPay}
+                          aria-pressed={canPay && isSelected} aria-label={`Select invoice ${inv.invoiceNumber} for payment`}
+                          className="rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-not-allowed">
+                          {canPay && isSelected ? <CheckSquare className="h-4 w-4 text-brand-600" /> : <Square className={`h-4 w-4 ${canPay ? "text-gray-300" : "text-gray-200"}`} />}
+                        </button>
                       </td>
                       <td className="px-4 py-3 font-medium">
                         <Link to={doctorInvoicePath(inv.id)} onClick={(e) => e.stopPropagation()} className="text-brand-700 hover:underline">

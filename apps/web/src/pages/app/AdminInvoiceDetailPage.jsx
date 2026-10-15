@@ -67,23 +67,32 @@ export function AdminInvoiceDetailPage() {
   const [notes, setNotes] = useState("");
   const [recording, setRecording] = useState(false);
 
-  // Staff notes are seeded once per invoice: a reload after a line edit or a
-  // stale-version 409 must not wipe text that hasn't been saved yet.
-  const notesSeededFor = useRef(null);
+  // Staff notes follow the server until the admin types: a reload (after a line edit, a stale-version
+  // 409, or another admin's change) refreshes untouched notes but never wipes unsaved local text.
+  const notesDirty = useRef(false);
+  // Only the newest load may write state, so a late response for a previous invoice can't replace this one.
+  const loadSeq = useRef(0);
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     try {
       const res = await api.get(`/admin/invoices/${id}`);
+      if (seq !== loadSeq.current) return;
       setData(res.data.data);
-      if (notesSeededFor.current !== id) {
-        notesSeededFor.current = id;
-        setNotes(res.data.data.invoice.notes ?? "");
-      }
+      if (!notesDirty.current) setNotes(res.data.data.invoice.notes ?? "");
       setFailed(false);
     } catch {
-      setFailed(true);
+      if (seq === loadSeq.current) setFailed(true);
     }
   }, [id]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    // New route id: drop the previous invoice (and its unsaved notes) before loading this one.
+    setData(null);
+    setFailed(false);
+    setNotes("");
+    notesDirty.current = false;
+    load();
+    return () => { loadSeq.current += 1; };
+  }, [load]);
 
   // Run one action, toast the outcome, reload. Resolves true when it applied.
   const act = async (fn, success) => {
@@ -103,7 +112,8 @@ export function AdminInvoiceDetailPage() {
   };
 
   if (failed) return <div className="p-8 text-sm text-red-600">Couldn't load this invoice.</div>;
-  if (!data) return <div className="flex h-64 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-navy/30" /></div>;
+  // Never render (or act on) a different invoice than the one the URL names.
+  if (!data || String(data.invoice.id) !== String(id)) return <div className="flex h-64 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-navy/30" /></div>;
 
   const { invoice, lines, payments, labOrder, client, activity } = data;
   const draft = invoice.status === "draft";
@@ -156,9 +166,9 @@ export function AdminInvoiceDetailPage() {
         {draft && (
           <section className="rounded-2xl border border-surface-300/50 bg-white p-4">
             <h2 className="mb-2 text-sm font-semibold text-navy">Staff notes</h2>
-            <textarea className={`${INPUT} h-24 w-full`} value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={5000} aria-label="Staff notes" />
+            <textarea className={`${INPUT} h-24 w-full`} value={notes} onChange={(e) => { notesDirty.current = true; setNotes(e.target.value); }} maxLength={5000} aria-label="Staff notes" />
             <button type="button" className={`${PILL} mt-2 bg-surface-100 text-navy disabled:opacity-50`} disabled={busy || notes === (invoice.notes ?? "")}
-              onClick={() => edit({ op: "notes", notes: notes || null })}>Save notes</button>
+              onClick={async () => { if (await edit({ op: "notes", notes: notes || null })) notesDirty.current = false; }}>Save notes</button>
           </section>
         )}
         {issued && <CreditPanel invoice={invoice} busy={busy} act={act} />}

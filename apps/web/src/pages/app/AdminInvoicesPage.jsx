@@ -32,15 +32,24 @@ export function AdminInvoicesPage() {
 
   // Only the newest request may set state: a slow earlier one must not overwrite a later filter.
   const seq = useRef(0);
+  const trimmedNumber = number.trim();
+  const numberInvalid = trimmedNumber !== "" && !/^[1-9]\d{0,9}$/.test(trimmedNumber);
   const load = async () => {
     const mine = ++seq.current;
+    // A search that isn't a positive invoice number matches nothing; don't fall back to the unfiltered list.
+    if (numberInvalid) {
+      setRows([]);
+      setTruncated(false);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const query = {};
       if (status) query.status = status;
       if (needsPrice) query.needsPrice = "true";
       if (clientUserId) query.clientUserId = clientUserId;
-      if (/^\d+$/.test(number.trim())) query.number = number.trim();
+      if (trimmedNumber) query.number = trimmedNumber;
       const res = await api.get("/admin/invoices", { params: query });
       if (mine !== seq.current) return;
       setRows(res.data.data.invoices);
@@ -76,7 +85,8 @@ export function AdminInvoicesPage() {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy/30" />
-          <input className={`${INPUT} w-52 pl-8`} placeholder="Invoice number" inputMode="numeric" value={number} onChange={(e) => setNumber(e.target.value)} />
+          <input className={`${INPUT} w-52 pl-8`} placeholder="Invoice number" inputMode="numeric" value={number} onChange={(e) => setNumber(e.target.value)} aria-invalid={numberInvalid} aria-label="Invoice number" />
+          {numberInvalid && <p className="absolute left-0 top-full mt-1 whitespace-nowrap text-xs text-red-600" role="alert">Enter a positive invoice number.</p>}
         </div>
         <select className={INPUT} value={status} onChange={(e) => setFilter("status", e.target.value)} aria-label="Status">
           <option value="">All statuses</option>

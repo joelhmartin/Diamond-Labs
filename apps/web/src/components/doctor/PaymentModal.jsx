@@ -5,6 +5,8 @@ import { useToast } from "../ui/Toast.jsx";
 import { AllocationRows } from "../billing/AllocationRows.jsx";
 import { HostedPaymentForm } from "./HostedPaymentForm.jsx";
 import { useInvoiceAllocation } from "../../hooks/useInvoiceAllocation.js";
+import { useAttemptKey } from "../../hooks/useAttemptKey.js";
+import { chargeSignature } from "../../lib/idempotency.js";
 import { formatCents } from "../../lib/money.js";
 import api from "../../config/api.js";
 
@@ -22,6 +24,7 @@ export function PaymentModal({ invoices, onClose, onSuccess }) {
   const [launched, setLaunched] = useState(false); // hosted card form shown?
   const [saveCard, setSaveCard] = useState(false);
   const { addToast } = useToast();
+  const attemptKey = useAttemptKey();
 
   const { ordered, alloc, targetStr, totalBalanceCents, handleTargetChange, setRow, payTotalCents, allocations, canPay } =
     useInvoiceAllocation(invoices);
@@ -48,12 +51,15 @@ export function PaymentModal({ invoices, onClose, onSuccess }) {
     }
     setProcessing(true);
     try {
-      // One idempotency key per submit, so a double click or retry can't double-charge.
+      // One key per charge attempt: a retry after a timeout/error reuses it so the server dedupes;
+      // it rotates only when the card/amount/allocations change or the charge succeeds.
+      const key = attemptKey.keyFor(chargeSignature({ selectedCard, payTotalCents, allocations }));
       await api.post(
         "/payments/charge-saved",
         { paymentProfileId: selectedCard, amountCents: payTotalCents, allocations },
-        { headers: { "Idempotency-Key": crypto.randomUUID() } }
+        { headers: { "Idempotency-Key": key } }
       );
+      attemptKey.reset();
       onSuccess();
     } catch (err) {
       addToast({ message: err.response?.data?.error?.message || "Payment failed", type: "error" });
@@ -65,7 +71,8 @@ export function PaymentModal({ invoices, onClose, onSuccess }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
       <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
-        <button onClick={onClose} className="absolute right-4 top-4 text-gray-400 hover:text-gray-600" aria-label="Close">
+        {/* Stays open while a saved-card charge is in flight, so a late success can't close a re-opened modal. */}
+        <button onClick={onClose} disabled={processing} className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 disabled:opacity-40" aria-label="Close">
           <X className="h-5 w-5" />
         </button>
 

@@ -39,6 +39,11 @@ export function RefundPaymentModal({ onClose, presetTransactionId = "", payment 
   const locked = Boolean(presetTransactionId);
   const valid = trimmedTxn.length > 0 && !submitting && (!hasBreakdown || (sel.anySelected && sel.allValid));
 
+  // Every close path (backdrop, X, Cancel) goes through this: never unmount mid-request.
+  const close = () => { if (!submitting) onClose(); };
+  // Any edit to what would be refunded remounts the confirm button, so an armed click can't submit a changed selection.
+  const selectionKey = `${trimmedTxn}|${lines.map((l) => `${l.include ? 1 : 0}:${l.amountStr}`).join(",")}`;
+
   const submit = async () => {
     if (!valid) return;
     setSubmitting(true);
@@ -67,7 +72,7 @@ export function RefundPaymentModal({ onClose, presetTransactionId = "", payment 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
-      onClick={onClose}
+      onClick={close}
     >
       <div
         className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
@@ -75,8 +80,10 @@ export function RefundPaymentModal({ onClose, presetTransactionId = "", payment 
       >
         <button
           type="button"
-          onClick={onClose}
-          className="absolute right-4 top-4 text-navy/30 hover:text-navy"
+          onClick={close}
+          disabled={submitting}
+          aria-label="Close"
+          className="absolute right-4 top-4 text-navy/30 hover:text-navy disabled:opacity-40"
         >
           <X size={18} />
         </button>
@@ -149,13 +156,14 @@ export function RefundPaymentModal({ onClose, presetTransactionId = "", payment 
         <div className="mt-5 flex justify-end gap-2">
           <button
             type="button"
-            onClick={onClose}
+            onClick={close}
             disabled={submitting}
             className="px-4 py-2.5 rounded-full text-xs font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all disabled:opacity-50"
           >
             Cancel
           </button>
           <ConfirmButton
+            key={selectionKey}
             onConfirm={submit}
             disabled={!valid}
             confirmLabel={hasBreakdown ? `Click again to refund ${formatCents(sel.totalCents)}` : "Click again to refund"}

@@ -5,6 +5,8 @@ import { useToast } from "../ui/Toast.jsx";
 import { AllocationRows } from "../billing/AllocationRows.jsx";
 import { SectionCard, InvoicesGate, DRAWER_INPUT as INPUT } from "./PaymentSectionCard.jsx";
 import { useInvoiceAllocation } from "../../hooks/useInvoiceAllocation.js";
+import { useAttemptKey } from "../../hooks/useAttemptKey.js";
+import { chargeSignature } from "../../lib/idempotency.js";
 import { formatCents } from "../../lib/money.js";
 import { apiErrorMessage as errMsg, isGatewayError } from "../../lib/requests.js";
 
@@ -21,6 +23,7 @@ function ChargePanel({ invoices, cards, cardsUnavailable, doctorUserId, onSucces
   const { addToast } = useToast();
   const [selectedCard, setSelectedCard] = useState(() => (cards.find((c) => c.isDefault) || cards[0])?.paymentProfileId || "");
   const [processing, setProcessing] = useState(false);
+  const attemptKey = useAttemptKey();
 
   // Card actions reload `cards` without remounting this panel; if the selected
   // card was deleted, fall back so the <select> and the charge agree.
@@ -39,12 +42,15 @@ function ChargePanel({ invoices, cards, cardsUnavailable, doctorUserId, onSucces
     if (!canPay) return addToast({ message: "Enter an amount to charge.", type: "error" });
     setProcessing(true);
     try {
-      // Fresh key per submit: a duplicate click or retry must not double-charge.
+      // One key per charge attempt: a retry after a timeout/error reuses it so the server dedupes;
+      // it rotates only when the card/amount/allocations change or the charge succeeds.
+      const key = attemptKey.keyFor(chargeSignature({ selectedCard, payTotalCents, allocations }));
       await api.post(
         `/admin/users/${doctorUserId}/payments/charge-saved`,
         { paymentProfileId: selectedCard, amountCents: payTotalCents, allocations },
-        { headers: { "Idempotency-Key": crypto.randomUUID() } }
+        { headers: { "Idempotency-Key": key } }
       );
+      attemptKey.reset();
       addToast({ message: `Charged ${formatCents(payTotalCents)}.`, type: "success" });
       onSuccess?.();
     } catch (err) {
