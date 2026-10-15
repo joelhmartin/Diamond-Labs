@@ -7,7 +7,7 @@ import { handlerSource } from "./_source.js";
 const read = (p) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), "utf8");
 const adminRx = read("../admin-rx-cases.routes.js");
 const rx = read("../rx.routes.js");
-const payment = read("../payment.routes.js");
+const payment = read("../checkout.routes.js");
 
 const RELEASE = 'fastify.post("/admin/rx-cases/:id/release",';
 

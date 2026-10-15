@@ -21,7 +21,7 @@ import {
   sendAllocationError,
   sendInvoiceLockedError,
   chargeErrorReply,
-} from "./payment.routes.js";
+} from "./payment-replies.js";
 import {
   withIdempotency,
   ChargeInProgressError,

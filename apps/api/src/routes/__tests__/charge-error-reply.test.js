@@ -4,7 +4,7 @@ import { describe, it, expect } from "vitest";
 process.env.DATABASE_URL ||= "postgres://u:p@localhost:5432/test";
 process.env.JWT_SECRET ||= "test-jwt-secret-that-is-at-least-32-chars";
 
-const { chargeErrorReply } = await import("../payment.routes.js");
+const { chargeErrorReply } = await import("../payment-replies.js");
 
 function fakeReply() {
   const r = { statusCode: null, body: null };
