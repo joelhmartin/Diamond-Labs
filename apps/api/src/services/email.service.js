@@ -1,6 +1,7 @@
 import { mailgun } from "../config/email.js";
 import { env } from "../config/env.js";
 import { stagingRewrite } from "../config/app-env.js";
+import { formatCents } from "../lib/money.js";
 
 /**
  * Dispatch an email through Mailgun's HTTP API. Returns `true` when the message
@@ -426,10 +427,10 @@ export async function sendRxSubmissionReceived({ caseNumber, practiceName, devic
  *
  * `wasCharged` (default true) distinguishes an actual card charge from an
  * admin recording a payment that was already taken by other means (check,
- * cash, or entered directly in Seazona) — pass `false` for the latter so the
+ * cash, or ACH) — pass `false` for the latter so the
  * copy never tells a doctor their card was charged when it wasn't.
  */
-export async function sendPaymentReceipt({ to, amount, invoices = [], transactionId, date, wasCharged = true }) {
+export async function sendPaymentReceipt({ to, amountCents, invoices = [], transactionId, date, wasCharged = true }) {
   if (!to) return false;
   const when = (date instanceof Date ? date : new Date()).toLocaleDateString("en-US", {
     year: "numeric",
@@ -441,7 +442,7 @@ export async function sendPaymentReceipt({ to, amount, invoices = [], transactio
       (i) => `
         <tr>
           <td style="padding:10px 12px;border-bottom:1px solid #eef1f4;color:#1a2733;">Invoice ${esc(i.number)}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #eef1f4;color:#1a2733;text-align:right;">${money(i.amount)}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #eef1f4;color:#1a2733;text-align:right;">${formatCents(i.amountCents)}</td>
         </tr>`
     )
     .join("");
@@ -449,7 +450,7 @@ export async function sendPaymentReceipt({ to, amount, invoices = [], transactio
   const heading = wasCharged ? "Payment received" : "Payment recorded";
   const intro = wasCharged
     ? `Thank you — your payment to Diamond Orthotic Laboratory was processed on ${when}.`
-    : `We've recorded a payment of ${money(amount)} on your Diamond Orthotic Laboratory account, applied on ${when}. Your card was not charged through the portal for this payment.`;
+    : `We've recorded a payment of ${formatCents(amountCents)} on your Diamond Orthotic Laboratory account, applied on ${when}. Your card was not charged through the portal for this payment.`;
   const totalLabel = wasCharged ? "Total charged" : "Total recorded";
 
   const html = `
@@ -467,7 +468,7 @@ export async function sendPaymentReceipt({ to, amount, invoices = [], transactio
         <tfoot>
           <tr>
             <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${totalLabel}</td>
-            <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${money(amount)}</td>
+            <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${formatCents(amountCents)}</td>
           </tr>
         </tfoot>
       </table>
@@ -491,7 +492,7 @@ export async function sendPaymentReceipt({ to, amount, invoices = [], transactio
  * payment. Mirrors sendPaymentReceipt. `invoices` are { number, amount } per
  * invoice the refund was applied against (amount is the positive refunded value).
  */
-export async function sendRefundReceipt({ to, amount, invoices = [], transactionId, date }) {
+export async function sendRefundReceipt({ to, amountCents, invoices = [], transactionId, date }) {
   if (!to) return false;
   const when = (date instanceof Date ? date : new Date()).toLocaleDateString("en-US", {
     year: "numeric",
@@ -503,7 +504,7 @@ export async function sendRefundReceipt({ to, amount, invoices = [], transaction
       (i) => `
         <tr>
           <td style="padding:10px 12px;border-bottom:1px solid #eef1f4;color:#1a2733;">Invoice ${esc(i.number)}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #eef1f4;color:#1a2733;text-align:right;">${money(i.amount)}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #eef1f4;color:#1a2733;text-align:right;">${formatCents(i.amountCents)}</td>
         </tr>`
     )
     .join("");
@@ -523,7 +524,7 @@ export async function sendRefundReceipt({ to, amount, invoices = [], transaction
         <tfoot>
           <tr>
             <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">Total refunded</td>
-            <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${money(amount)}</td>
+            <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${formatCents(amountCents)}</td>
           </tr>
         </tfoot>
       </table>

@@ -1,7 +1,7 @@
 import { authenticate } from "../middleware/authenticate.js";
 import { requireApprovedDoctor, requireAdmin } from "../middleware/require-role.js";
 import * as authorizenetService from "../services/authorizenet.service.js";
-import { listPaymentsForUser, listAllPayments } from "../services/invoice-ledger.service.js";
+import { listPaymentsForUser, listAllPayments } from "../services/billing/ledger.service.js";
 import { db } from "../config/database.js";
 import { users, auditLog } from "../db/schema/index.js";
 import { eq, and, inArray, like, desc } from "drizzle-orm";
@@ -71,7 +71,6 @@ export default async function paymentRoutes(fastify) {
           String(p.transactionId).toLowerCase().includes(needle) ||
           (p.doctorName || "").toLowerCase().includes(needle) ||
           (p.doctorEmail || "").toLowerCase().includes(needle) ||
-          (p.seazonaClientId || "").toLowerCase().includes(needle) ||
           p.invoices.some((inv) => String(inv.invoiceNumber || "").toLowerCase().includes(needle))
       );
     }

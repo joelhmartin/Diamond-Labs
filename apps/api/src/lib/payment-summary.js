@@ -1,28 +1,26 @@
 /**
- * Pure payment-ledger aggregation — no DB, no env, no I/O — so the (fiddly)
- * grouping/status logic is unit-testable in isolation. The DB-bound readers in
- * `services/invoice-ledger.service.js` fetch rows and delegate the shaping here.
+ * Pure payment-ledger aggregation (no DB, no env, no I/O), so the fiddly
+ * grouping and status logic is unit-tested in isolation. The ledger service
+ * (services/billing/ledger.service.js) fetches rows and delegates here.
+ * Money is integer cents.
  */
 
-import { round2 } from "./money.js";
-
 export const REFUND_PENDING_PREFIX = "REFUND-PENDING-";
-// Offline payments (admin "record offline payment") have no Authorize.net
-// transaction behind them — their transactionId is an `OFFLINE-<id>` sentinel.
-// They must NOT be gateway-refundable; reversing one would just 404 at the gateway.
+// A manual payment (staff record a check, cash, ACH) has no Authorize.net
+// transaction behind it: its transactionId is an `OFFLINE-<id>` sentinel.
 export const OFFLINE_PREFIX = "OFFLINE-";
+// A staff credit / write-off: `credit:<rowId>`. Never sent to a card processor.
+export const CREDIT_PREFIX = "credit:";
+
+/** The invoice a ledger row applies to: the local invoice, or (Seazona-era rows) the Seazona invoice id. */
+export const ledgerInvoiceKey = (r) => r.invoiceId ?? r.seazonaInvoiceId ?? null;
 
 /**
- * Collapse raw `invoice_payments` rows into transaction-level payment summaries.
- *
- * A "payment" is keyed by the ORIGINAL charge's transaction id:
- *   • charge rows have `refundsTransactionId == null` and their own transactionId;
- *   • reversal rows carry `refundsTransactionId == <original charge txn id>` and a
- *     NEGATIVE appliedAmount. The refund write-ahead guard row is a special
- *     reversal with appliedAmount 0 and a `REFUND-PENDING-<txid>` transactionId.
- *
- * @param {Array<object>} rows — invoice_payments rows
- * @returns {Array<object>} summaries, newest charge first
+ * Collapse invoice_payments rows into one summary per ORIGINAL transaction.
+ * Charge rows have no refundsTransactionId; reversal rows carry
+ * refundsTransactionId = the charge's id and a NEGATIVE appliedCents. The
+ * refund write-ahead guard is a reversal with 0 cents and a REFUND-PENDING id.
+ * @returns {Array<object>} newest first
  */
 export function summarizePayments(rows) {
   const groups = new Map();
@@ -36,70 +34,47 @@ export function summarizePayments(rows) {
 
   const summaries = [];
   for (const { chargeTxn, charge, reversals } of groups.values()) {
-    const gross = round2(charge.reduce((s, r) => s + Number(r.appliedAmount), 0));
-    // Reversal applied amounts are <= 0; `refunded` is the positive magnitude.
-    const refunded = round2(-reversals.reduce((s, r) => s + Number(r.appliedAmount), 0));
-    const net = round2(gross - refunded);
-
-    const realReversals = reversals.filter(
-      (r) => !String(r.transactionId).startsWith(REFUND_PENDING_PREFIX)
-    );
-    const hasPendingGuard = reversals.some((r) =>
-      String(r.transactionId).startsWith(REFUND_PENDING_PREFIX)
-    );
+    const grossCents = charge.reduce((s, r) => s + r.appliedCents, 0);
+    const refundedCents = reversals.reduce((s, r) => s - r.appliedCents, 0); // not -(sum): that is -0 with no reversals
+    const netCents = grossCents - refundedCents;
+    const realReversals = reversals.filter((r) => !String(r.transactionId).startsWith(REFUND_PENDING_PREFIX));
+    const hasPendingGuard = reversals.some((r) => String(r.transactionId).startsWith(REFUND_PENDING_PREFIX));
 
     let status;
     if (hasPendingGuard && !realReversals.length) status = "refund_pending";
-    else if (realReversals.length && net <= 0.005) status = "refunded";
+    else if (realReversals.length && netCents <= 0) status = "refunded";
     else if (realReversals.length) status = "partially_refunded";
     else status = "paid";
 
-    // An offline (manually-recorded) payment has no gateway transaction behind it.
     const offline = String(chargeTxn).startsWith(OFFLINE_PREFIX);
-
-    // Refundable only when there's a real gateway transaction, no reversal/guard
-    // row (the refund route's double-refund guard rejects any charge that already
-    // has a refunds row), and a positive balance to reverse.
-    const refundable = !offline && reversals.length === 0 && gross > 0.005;
+    const credit = String(chargeTxn).startsWith(CREDIT_PREFIX);
+    // Refundable only with a real gateway transaction, no reversal or guard row
+    // yet (the refund route's double-refund guard), and money to give back.
+    const refundable = !offline && !credit && reversals.length === 0 && grossCents > 0;
 
     const sourceRows = charge.length ? charge : reversals;
-    const createdAt = sourceRows.reduce(
-      (min, r) => (r.createdAt && (!min || r.createdAt < min) ? r.createdAt : min),
-      null
-    );
-
-    // Where this payment came from: doctor_card | doctor_hosted | admin_card |
-    // admin_offline | autopay. Null on rows written before the column existed.
-    // Carried through so payment history can distinguish an unattended AutoPay
-    // charge from one a person initiated — without it the `source` column is
-    // written but never readable, and every history view looks identical.
-    const source = sourceRows[0]?.source || null;
+    const createdAt = sourceRows.reduce((min, r) => (r.createdAt && (!min || r.createdAt < min) ? r.createdAt : min), null);
 
     summaries.push({
       transactionId: chargeTxn,
       userId: sourceRows[0]?.userId || null,
-      seazonaClientId: sourceRows[0]?.seazonaClientId || null,
-      source,
-      gross,
-      refunded,
-      net,
+      // doctor_card | doctor_hosted | admin_card | autopay | admin_check |
+      // admin_cash | admin_ach | admin_other | credit (admin_offline on
+      // Seazona-era rows; null before the column existed).
+      source: sourceRows[0]?.source || null,
+      grossCents,
+      refundedCents,
+      netCents,
       status,
       refundable,
       offline,
+      credit,
       createdAt,
       refundTransactionId: realReversals[0]?.transactionId || null,
-      invoices: charge.map((r) => ({
-        invoiceNumber: r.invoiceNumber || null,
-        seazonaInvoiceId: r.seazonaInvoiceId,
-        amount: round2(Number(r.appliedAmount)),
-      })),
+      invoices: charge.map((r) => ({ invoiceId: ledgerInvoiceKey(r), invoiceNumber: r.invoiceNumber || null, amountCents: r.appliedCents })),
     });
   }
 
-  summaries.sort((a, b) => {
-    const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-    const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-    return tb - ta;
-  });
+  summaries.sort((a, b) => (b.createdAt ? new Date(b.createdAt).getTime() : 0) - (a.createdAt ? new Date(a.createdAt).getTime() : 0));
   return summaries;
 }

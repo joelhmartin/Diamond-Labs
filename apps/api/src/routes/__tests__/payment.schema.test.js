@@ -9,103 +9,48 @@ import {
 } from "@my-app/shared";
 
 describe("allocationSchema", () => {
-  it("accepts a valid allocation", () => {
-    expect(allocationSchema.safeParse({ invoiceId: "abc", amount: 12.5 }).success).toBe(true);
-    expect(allocationSchema.safeParse({ invoiceId: "abc", invoiceNumber: "1001", amount: 0.01 }).success).toBe(true);
-  });
-  it("rejects a missing/empty invoiceId", () => {
-    expect(allocationSchema.safeParse({ invoiceId: "", amount: 5 }).success).toBe(false);
-    expect(allocationSchema.safeParse({ amount: 5 }).success).toBe(false);
-  });
-  it("rejects non-positive and over-cap amounts", () => {
-    expect(allocationSchema.safeParse({ invoiceId: "a", amount: 0 }).success).toBe(false);
-    expect(allocationSchema.safeParse({ invoiceId: "a", amount: -1 }).success).toBe(false);
-    expect(allocationSchema.safeParse({ invoiceId: "a", amount: 100000.01 }).success).toBe(false);
-  });
-  it("rejects more than 2 decimal places", () => {
-    expect(allocationSchema.safeParse({ invoiceId: "a", amount: 10.001 }).success).toBe(false);
-    expect(allocationSchema.safeParse({ invoiceId: "a", amount: 10.99 }).success).toBe(true);
+  it("is a local invoice id and integer cents", () => {
+    expect(allocationSchema.safeParse({ invoiceId: "inv1", amountCents: 1250 }).success).toBe(true);
+    expect(allocationSchema.safeParse({ invoiceId: "inv1", amountCents: 12.5 }).success).toBe(false);
+    expect(allocationSchema.safeParse({ invoiceId: "", amountCents: 5 }).success).toBe(false);
+    expect(allocationSchema.safeParse({ invoiceId: "a", amountCents: 0 }).success).toBe(false);
+    expect(allocationSchema.safeParse({ invoiceId: "a", amountCents: 10_000_001 }).success).toBe(false);
   });
 });
 
 describe("chargeSavedSchema", () => {
-  const ok = {
-    paymentProfileId: "pp_1",
-    amount: 30,
-    allocations: [
-      { invoiceId: "a", amount: 10 },
-      { invoiceId: "b", amount: 20 },
-    ],
-  };
-  it("accepts a body whose allocations sum to amount", () => {
+  const ok = { paymentProfileId: "pp_1", amountCents: 3000, allocations: [{ invoiceId: "a", amountCents: 1000 }, { invoiceId: "b", amountCents: 2000 }] };
+  it("accepts allocations that sum exactly to the charge", () => {
     expect(chargeSavedSchema.safeParse(ok).success).toBe(true);
+    expect(chargeSavedSchema.safeParse({ ...ok, amountCents: 2999 }).success).toBe(false);
   });
-  it("rejects when allocations do not sum to amount", () => {
-    expect(chargeSavedSchema.safeParse({ ...ok, amount: 25 }).success).toBe(false);
-  });
-  it("tolerates sub-cent float drift in the sum", () => {
-    const r = chargeSavedSchema.safeParse({
-      paymentProfileId: "pp",
-      amount: 0.3,
-      allocations: [{ invoiceId: "a", amount: 0.1 }, { invoiceId: "b", amount: 0.2 }],
-    });
-    expect(r.success).toBe(true);
+  it("refuses the same invoice twice", () => {
+    expect(chargeSavedSchema.safeParse({ ...ok, allocations: [{ invoiceId: "a", amountCents: 1500 }, { invoiceId: "a", amountCents: 1500 }] }).success).toBe(false);
   });
   it("requires a paymentProfileId and at least one allocation", () => {
-    expect(chargeSavedSchema.safeParse({ amount: 10, allocations: [{ invoiceId: "a", amount: 10 }] }).success).toBe(false);
-    expect(chargeSavedSchema.safeParse({ paymentProfileId: "p", amount: 10, allocations: [] }).success).toBe(false);
+    expect(chargeSavedSchema.safeParse({ amountCents: 10, allocations: [{ invoiceId: "a", amountCents: 10 }] }).success).toBe(false);
+    expect(chargeSavedSchema.safeParse({ paymentProfileId: "p", amountCents: 10, allocations: [] }).success).toBe(false);
   });
 });
 
-describe("hostedTokenSchema", () => {
-  it("requires at least one allocation and passes through extra fields", () => {
-    const r = hostedTokenSchema.safeParse({
-      allocations: [{ invoiceId: "a", amount: 5 }],
-      saveCard: true,
-      iframeCommunicatorUrl: "https://x/IFrameCommunicator.html",
-    });
+describe("hostedTokenSchema / hostedCompleteSchema", () => {
+  it("carry cents allocations; extra token fields pass through", () => {
+    const r = hostedTokenSchema.safeParse({ allocations: [{ invoiceId: "a", amountCents: 500 }], saveCard: true, iframeCommunicatorUrl: "https://x/IFrameCommunicator.html" });
     expect(r.success).toBe(true);
     expect(r.data.saveCard).toBe(true);
-    expect(r.data.iframeCommunicatorUrl).toContain("IFrameCommunicator");
-  });
-  it("rejects an empty allocation list", () => {
     expect(hostedTokenSchema.safeParse({ allocations: [] }).success).toBe(false);
-  });
-});
-
-describe("hostedCompleteSchema", () => {
-  it("requires transId, refId and allocations", () => {
-    expect(
-      hostedCompleteSchema.safeParse({ transId: "t1", refId: "Habc", allocations: [{ invoiceId: "a", amount: 5 }] }).success
-    ).toBe(true);
-    expect(hostedCompleteSchema.safeParse({ transId: "t1", allocations: [{ invoiceId: "a", amount: 5 }] }).success).toBe(false);
-    expect(hostedCompleteSchema.safeParse({ refId: "H", allocations: [{ invoiceId: "a", amount: 5 }] }).success).toBe(false);
+    expect(hostedCompleteSchema.safeParse({ transId: "t1", refId: "Habc", allocations: [{ invoiceId: "a", amountCents: 500 }] }).success).toBe(true);
+    expect(hostedCompleteSchema.safeParse({ transId: "t1", allocations: [{ invoiceId: "a", amountCents: 500 }] }).success).toBe(false);
   });
 });
 
 describe("refundSchema", () => {
-  it("accepts a transactionId alone (full reversal)", () => {
+  it("full reversal with a transaction id alone; partial with cents slices", () => {
     expect(refundSchema.safeParse({ transactionId: "1234567890" }).success).toBe(true);
-  });
-  it("requires a non-empty transactionId", () => {
-    expect(refundSchema.safeParse({}).success).toBe(false);
     expect(refundSchema.safeParse({ transactionId: "" }).success).toBe(false);
-  });
-  it("accepts partial allocations", () => {
-    expect(
-      refundSchema.safeParse({
-        transactionId: "t",
-        allocations: [{ invoiceId: "a", amount: 40 }, { invoiceId: "b", amount: 10.5 }],
-      }).success
-    ).toBe(true);
-  });
-  it("rejects an empty allocations array (must omit for full, or send ≥1)", () => {
+    expect(refundSchema.safeParse({ transactionId: "t", allocations: [{ invoiceId: "a", amountCents: 4000 }] }).success).toBe(true);
     expect(refundSchema.safeParse({ transactionId: "t", allocations: [] }).success).toBe(false);
-  });
-  it("rejects an allocation with a missing invoiceId or bad amount", () => {
-    expect(refundSchema.safeParse({ transactionId: "t", allocations: [{ amount: 5 }] }).success).toBe(false);
-    expect(refundSchema.safeParse({ transactionId: "t", allocations: [{ invoiceId: "a", amount: 0 }] }).success).toBe(false);
-    expect(refundSchema.safeParse({ transactionId: "t", allocations: [{ invoiceId: "a", amount: 10.001 }] }).success).toBe(false);
+    expect(refundSchema.safeParse({ transactionId: "t", allocations: [{ invoiceId: "a", amountCents: 10.5 }] }).success).toBe(false);
   });
 });
 

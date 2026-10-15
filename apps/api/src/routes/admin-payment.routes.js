@@ -13,10 +13,8 @@ import { eq, desc } from "drizzle-orm";
 import { env } from "../config/env.js";
 import { listJobs } from "../jobs/registry.js";
 import { runJob, JobLockedError } from "../jobs/runner.js";
-import {
-  verifyAllocations,
-  recordPaymentAndAllocations,
-} from "../services/payment-recording.service.js";
+import { verifyAllocations } from "../services/payment-recording.service.js";
+import { chargeSavedCardAndRecord } from "../services/card-charge.service.js";
 import {
   sendAllocationError,
   sendInvoiceLockedError,
@@ -398,7 +396,7 @@ export default async function adminPaymentRoutes(fastify) {
       // 404 treatment as a missing/non-doctor target — don't confirm the id
       // belongs to a real, pending account via a different error shape.
       if (doctor.approvalStatus !== "approved") return notFound(reply);
-      const { paymentProfileId, amount, allocations } = request.body;
+      const { paymentProfileId, amountCents, allocations } = request.body;
       const customerProfileId = doctor.authorizeNetCustomerProfileId;
 
       const idempotencyKey = request.headers["idempotency-key"] || null;
@@ -407,9 +405,6 @@ export default async function adminPaymentRoutes(fastify) {
       }
       if (!customerProfileId) {
         return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "No saved-card profile on file for this doctor." } });
-      }
-      if (!doctor.seazonaClientId) {
-        return reply.code(400).send({ error: ERROR_CODES.SEAZONA_CLIENT_NOT_LINKED });
       }
 
       // Ownership (no cap) runs outside the idempotency replay path — every
@@ -428,25 +423,15 @@ export default async function adminPaymentRoutes(fastify) {
           withInvoiceLocks(
             redis,
             allocations.map((a) => a.invoiceId),
-            async () => {
-              const capErr = await verifyAllocations(allocations, doctor, { enforceCap: true });
-              if (capErr) throw Object.assign(new Error("allocation_error"), { allocationError: capErr });
-
-              const result = await authorizenetService.chargeCustomerProfile({
+            () =>
+              chargeSavedCardAndRecord({
+                payer: doctor,
                 customerProfileId,
                 paymentProfileId,
-                amount,
-                invoiceNumber: allocations[0]?.invoiceNumber || allocations[0]?.invoiceId || undefined,
-              });
-              const { seazonaPaymentId, ledgerWriteFailed } = await recordPaymentAndAllocations({
-                user: doctor,
-                amount,
-                transactionId: result.transactionId,
+                amountCents,
                 allocations,
                 source: "admin_card",
-              });
-              return { ...result, seazonaPaymentId, ...(ledgerWriteFailed ? { ledgerWriteFailed: true } : {}) };
-            },
+              }),
             { log: request.log }
           ),
         { log: request.log }
@@ -460,10 +445,9 @@ export default async function adminPaymentRoutes(fastify) {
         targetType: "user",
         targetId: doctor.id,
         metadata: {
-          amount,
+          amountCents,
           transactionId: outcome.result.transactionId,
           invoices: allocations.map((a) => a.invoiceNumber || a.invoiceId),
-          seazonaPaymentId: outcome.result.seazonaPaymentId || null,
         },
         ipAddress: request.ip,
       });

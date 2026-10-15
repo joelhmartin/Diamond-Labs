@@ -1,281 +1,138 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { test, vi, beforeEach } from "vitest";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
-process.env.DATABASE_URL ||= "postgres://u:p@localhost:5432/test";
-process.env.JWT_SECRET ||= "test-jwt-secret-that-is-at-least-32-chars";
-
-// `env` is parsed once at import time in the real config/env.js (frozen for
-// the life of the process), so tests that need to flip AUTHORIZE_NET_ENV
-// mid-suite must mock the module with a mutable object rather than relying on
-// process.env + vi.stubEnv (which would have no effect after the real module
-// already parsed it).
-const envMock = { AUTHORIZE_NET_ENV: "production" };
-vi.mock("../config/env.js", () => ({ env: envMock }));
-
-const seazonaCreatePayment = vi.fn(async () => ({ id: "sp1" }));
-vi.mock("./seazona.service.js", () => ({
-  createPayment: (...args) => seazonaCreatePayment(...args),
-}));
-
-const insertedRows = [];
+const inserted = [];
+let insertFails = false;
+let invoiceRows = [];
 vi.mock("../config/database.js", () => ({
   db: {
-    insert: () => ({
-      values: async (rows) => {
-        insertedRows.push(...(Array.isArray(rows) ? rows : [rows]));
-      },
-    }),
+    insert: () => ({ values: async (v) => { if (insertFails) throw new Error("db down"); inserted.push(...v); } }),
+    select: () => ({ from: () => ({ leftJoin: () => ({ where: async () => invoiceRows }) }) }),
   },
 }));
+let paid = new Map();
+vi.mock("./billing/ledger.service.js", () => ({ paidCentsByInvoice: async () => paid }));
+const receipts = [];
+vi.mock("./email.service.js", () => ({ sendPaymentReceipt: async (args) => { receipts.push(args); return true; } }));
+const audits = [];
+vi.mock("./audit.service.js", () => ({ logSafe: (e) => { audits.push(e); }, log: async () => {} }));
 
-vi.mock("../db/schema/index.js", () => ({ invoicePayments: {} }));
-
-const sendPaymentReceipt = vi.fn(async () => true);
-vi.mock("./email.service.js", () => ({
-  sendPaymentReceipt: (...args) => sendPaymentReceipt(...args),
-}));
-
-const auditEntries = [];
-vi.mock("./audit.service.js", () => ({
-  logSafe: async (entry) => {
-    auditEntries.push(entry);
-  },
-}));
-
-const { recordPaymentAndAllocations } = await import("./payment-recording.service.js");
-
-const doctor = {
-  id: "u1",
-  email: "doc@example.com",
-  seazonaClientId: "c1",
-  seazonaAccountNumber: "acct-1",
-};
-
-const allocations = [{ invoiceId: "i1", invoiceNumber: "1001", amount: 100 }];
+const { recordPaymentAndAllocations, verifyAllocations } = await import("./payment-recording.service.js");
+const source = readFileSync(fileURLToPath(new URL("./payment-recording.service.js", import.meta.url)), "utf8");
 
 beforeEach(() => {
-  envMock.AUTHORIZE_NET_ENV = "production";
-  seazonaCreatePayment.mockClear();
-  seazonaCreatePayment.mockImplementation(async () => ({ id: "sp1" }));
-  insertedRows.length = 0;
-  sendPaymentReceipt.mockClear();
-  auditEntries.length = 0;
+  inserted.length = 0; receipts.length = 0; audits.length = 0;
+  insertFails = false; invoiceRows = []; paid = new Map();
 });
 
-describe("recordPaymentAndAllocations — never throws after a charge", () => {
-  it("still writes the local ledger when the Seazona write rejects", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    seazonaCreatePayment.mockRejectedValueOnce(new SyntaxError("Unexpected end of JSON input"));
-    const result = await recordPaymentAndAllocations({
-      user: doctor,
-      amount: 100,
-      transactionId: "tx1",
-      allocations,
-      source: "autopay",
-    });
-    expect(result).toEqual({ seazonaPaymentId: null, ledgerWriteFailed: false });
-    expect(insertedRows).toHaveLength(1);
-    expect(insertedRows[0]).toMatchObject({ transactionId: "tx1", source: "autopay" });
-  });
+const doctor = { id: "doc1", email: "d@x.com" };
+const allocations = () => [
+  { invoiceId: "inv1", invoiceNumber: "500001", amountCents: 30000 },
+  { invoiceId: "inv2", invoiceNumber: "500002", amountCents: 12550 },
+];
+
+test("one ledger row per allocated invoice, in cents, against the local invoice", async () => {
+  const out = await recordPaymentAndAllocations({ user: doctor, amountCents: 42550, transactionId: "tx1", allocations: allocations(), source: "doctor_card" });
+  assert.deepEqual(out, { ledgerWriteFailed: false });
+  assert.deepEqual(inserted.map((r) => [r.userId, r.invoiceId, r.invoiceNumber, r.appliedCents, r.transactionId, r.source]), [
+    ["doc1", "inv1", "500001", 30000, "tx1", "doctor_card"],
+    ["doc1", "inv2", "500002", 12550, "tx1", "doctor_card"],
+  ]);
+  assert.equal(receipts[0].amountCents, 42550);
+  assert.deepEqual(receipts[0].invoices, [{ number: "500001", amountCents: 30000 }, { number: "500002", amountCents: 12550 }]);
 });
 
-describe("recordPaymentAndAllocations — existing callers unaffected", () => {
-  it("defaults write to Seazona in production with a clientId (unchanged existing behavior)", async () => {
-    const result = await recordPaymentAndAllocations({
-      user: doctor,
-      amount: 100,
-      transactionId: "tx1",
-      allocations,
-      source: "doctor_card",
-    });
-    expect(seazonaCreatePayment).toHaveBeenCalledTimes(1);
-    expect(result.seazonaPaymentId).toBe("sp1");
+test("manual payments carry their received date and reference", async () => {
+  await recordPaymentAndAllocations({
+    user: doctor, amountCents: 30000, transactionId: "OFFLINE-x", allocations: allocations().slice(0, 1),
+    source: "admin_check", wasCharged: false, paidOn: "2026-10-14", reference: "1042",
   });
+  assert.deepEqual([inserted[0].paidOn, inserted[0].reference], ["2026-10-14", "1042"]);
+  assert.equal(receipts[0].wasCharged, false);
+});
 
-  it("defaults the receipt email to the charged copy (wasCharged: true)", async () => {
-    await recordPaymentAndAllocations({
-      user: doctor,
-      amount: 100,
-      transactionId: "tx1",
-      allocations,
-      source: "doctor_card",
-    });
-    expect(sendPaymentReceipt).toHaveBeenCalledTimes(1);
-    expect(sendPaymentReceipt.mock.calls[0][0]).toMatchObject({ wasCharged: true });
-  });
+test("nothing is written to Seazona — our ledger is the system of record", () => {
+  assert.doesNotMatch(source, /seazonaService|seazona\.service/);
+});
 
-  it("defaults the audit action to payment.charge with the paying user as actor", async () => {
-    await recordPaymentAndAllocations({
-      user: doctor,
-      amount: 100,
-      transactionId: "tx1",
-      allocations,
-      source: "doctor_card",
-    });
-    expect(auditEntries).toHaveLength(1);
-    expect(auditEntries[0]).toMatchObject({ action: "payment.charge", userId: "u1" });
-  });
+test("a ledger failure after a charge is reported, never thrown; the charged doctor still gets a receipt", async () => {
+  insertFails = true;
+  const out = await recordPaymentAndAllocations({ user: doctor, amountCents: 42550, transactionId: "tx1", allocations: allocations(), source: "doctor_card" });
+  assert.deepEqual(out, { ledgerWriteFailed: true });
+  assert.equal(receipts.length, 1);
+  assert.equal(audits[0].metadata.ledgerWriteFailed, true);
+});
 
-  it("still gates the Seazona write on sandbox env, regardless of writeToSeazona's default", async () => {
-    envMock.AUTHORIZE_NET_ENV = "sandbox";
-    await recordPaymentAndAllocations({
-      user: doctor,
-      amount: 100,
-      transactionId: "tx1",
-      allocations,
-      source: "doctor_card",
-    });
-    expect(seazonaCreatePayment).not.toHaveBeenCalled();
-  });
+test("a manual record that failed to save sends no receipt (nothing was recorded)", async () => {
+  insertFails = true;
+  await recordPaymentAndAllocations({ user: doctor, amountCents: 30000, transactionId: "OFFLINE-x", allocations: allocations().slice(0, 1), source: "admin_cash", wasCharged: false });
+  assert.equal(receipts.length, 0);
+});
 
-  it("still gates the Seazona write on the user having a seazonaClientId", async () => {
-    await recordPaymentAndAllocations({
-      user: { ...doctor, seazonaClientId: null },
-      amount: 100,
-      transactionId: "tx1",
-      allocations,
-      source: "doctor_card",
-    });
-    expect(seazonaCreatePayment).not.toHaveBeenCalled();
-  });
-
-  it("always writes the local ledger row regardless of writeToSeazona", async () => {
-    await recordPaymentAndAllocations({
-      user: doctor,
-      amount: 100,
-      transactionId: "tx1",
-      allocations,
-      source: "doctor_card",
-    });
-    expect(insertedRows).toHaveLength(1);
-    expect(insertedRows[0]).toMatchObject({ source: "doctor_card", transactionId: "tx1" });
+test("audit carries amounts, the source and invoice numbers only", async () => {
+  await recordPaymentAndAllocations({ user: doctor, amountCents: 42550, transactionId: "tx1", allocations: allocations(), source: "autopay", actorUserId: "admin1", auditAction: "payment.manual_recorded" });
+  assert.deepEqual(audits[0], {
+    userId: "admin1", action: "payment.manual_recorded", targetType: "transaction", targetId: "tx1",
+    metadata: { amountCents: 42550, source: "autopay", invoices: ["500001", "500002"], ledgerWriteFailed: false },
   });
 });
 
-describe("recordPaymentAndAllocations — writeToSeazona:false (admin offline default)", () => {
-  it("makes NO Seazona call even in production with a clientId", async () => {
-    const result = await recordPaymentAndAllocations({
-      user: doctor,
-      amount: 100,
-      transactionId: "OFFLINE-abc",
-      allocations,
-      source: "admin_offline",
-      writeToSeazona: false,
-    });
-    expect(seazonaCreatePayment).not.toHaveBeenCalled();
-    expect(result.seazonaPaymentId).toBeNull();
-  });
+const inv = (over = {}) => ({ id: "inv1", invoiceNumber: 500001, clientUserId: "doc1", ownerSeazonaClientId: "c1", status: "issued", totalCents: 30000, ...over });
 
-  it("still writes the local ledger row", async () => {
-    await recordPaymentAndAllocations({
-      user: doctor,
-      amount: 100,
-      transactionId: "OFFLINE-abc",
-      allocations,
-      source: "admin_offline",
-      writeToSeazona: false,
-    });
-    expect(insertedRows).toHaveLength(1);
-    expect(insertedRows[0]).toMatchObject({ source: "admin_offline", seazonaPaymentId: null });
-  });
+test("verifyAllocations: a second login of the same practice may pay; another practice may not", async () => {
+  invoiceRows = [inv()];
+  assert.equal(await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], { id: "frontdesk", seazonaClientId: "c1" }), null);
+  assert.equal((await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], { id: "other", seazonaClientId: "c2" })).kind, "forbidden");
 });
 
-describe("recordPaymentAndAllocations — writeToSeazona:true (admin offline opt-in)", () => {
-  it("makes exactly ONE Seazona createPayment call", async () => {
-    await recordPaymentAndAllocations({
-      user: doctor,
-      amount: 100,
-      transactionId: "OFFLINE-abc",
-      allocations,
-      source: "admin_offline",
-      writeToSeazona: true,
-    });
-    expect(seazonaCreatePayment).toHaveBeenCalledTimes(1);
-  });
-
-  it("produces a sensible referenceNumber/notes payload for an OFFLINE- sentinel (no gateway transaction)", async () => {
-    await recordPaymentAndAllocations({
-      user: doctor,
-      amount: 100,
-      transactionId: "OFFLINE-abc",
-      allocations,
-      source: "admin_offline",
-      writeToSeazona: true,
-    });
-    const call = seazonaCreatePayment.mock.calls[0][0];
-    expect(call.referenceNumber).toBe("Invoices 1001");
-    expect(call.notes).toContain("OFFLINE-abc");
-    expect(call.notes).not.toContain("txn"); // no longer implies a gateway transaction
-  });
+test("verifyAllocations: a null practice key on either side matches the owner only", async () => {
+  invoiceRows = [inv()];
+  assert.equal((await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], { id: "frontdesk", seazonaClientId: null })).kind, "forbidden");
+  invoiceRows = [inv({ ownerSeazonaClientId: null })];
+  assert.equal((await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], { id: "frontdesk", seazonaClientId: "c1" })).kind, "forbidden");
+  assert.equal(await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], doctor), null, "the owner, with no practice key");
 });
 
-describe("recordPaymentAndAllocations — offline receipt-email copy", () => {
-  it("passes wasCharged:false through to sendPaymentReceipt so the copy doesn't claim a card charge", async () => {
-    await recordPaymentAndAllocations({
-      user: doctor,
-      amount: 100,
-      transactionId: "OFFLINE-abc",
-      allocations,
-      source: "admin_offline",
-      writeToSeazona: false,
-      wasCharged: false,
-    });
-    expect(sendPaymentReceipt).toHaveBeenCalledTimes(1);
-    expect(sendPaymentReceipt.mock.calls[0][0]).toMatchObject({ wasCharged: false });
-  });
+test("verifyAllocations: the practice shares one cap per invoice — a second login can't re-pay", async () => {
+  invoiceRows = [inv()];
+  paid = new Map([["inv1", 30000]]); // the first login paid in full
+  const again = await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], { id: "frontdesk", seazonaClientId: "c1" }, { enforceCap: true });
+  assert.equal(again.kind, "validation");
 });
 
-describe("recordPaymentAndAllocations — audit override for offline records", () => {
-  it("logs the offline-specific action with the admin as actor, not the paying doctor", async () => {
-    await recordPaymentAndAllocations({
-      user: doctor,
-      amount: 100,
-      transactionId: "OFFLINE-abc",
-      allocations,
-      source: "admin_offline",
-      writeToSeazona: false,
-      wasCharged: false,
-      auditAction: "payment.offline_recorded",
-      actorUserId: "admin-1",
-    });
-    expect(auditEntries).toHaveLength(1);
-    expect(auditEntries[0]).toMatchObject({ action: "payment.offline_recorded", userId: "admin-1" });
-    // Never mislabeled as a card charge.
-    expect(auditEntries[0].action).not.toBe("payment.charge");
-  });
+test("verifyAllocations: someone else's invoice and a missing one read the same (403)", async () => {
+  invoiceRows = [inv({ clientUserId: "doc2" })];
+  const other = await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], doctor);
+  invoiceRows = [];
+  const missing = await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], doctor);
+  assert.equal(other.kind, "forbidden");
+  assert.deepEqual(other, missing);
 });
 
-describe("recordPaymentAndAllocations — never throws", () => {
-  it("treats a Seazona write that returns no id as a soft failure and still writes the ledger", async () => {
-    // Matches the real seazonaService.request() contract: it never throws,
-    // just resolves null on any failure.
-    seazonaCreatePayment.mockImplementation(async () => null);
-    const result = await recordPaymentAndAllocations({
-      user: doctor,
-      amount: 100,
-      transactionId: "tx1",
-      allocations,
-      source: "doctor_card",
-    });
-    expect(result.seazonaPaymentId).toBeNull();
-    expect(insertedRows).toHaveLength(1);
-  });
+test("verifyAllocations: drafts and voids can't be paid; an invoice may appear once", async () => {
+  invoiceRows = [inv({ status: "draft" })];
+  assert.match((await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], doctor)).message, /hasn't been issued/);
+  invoiceRows = [inv({ status: "void" })];
+  assert.match((await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], doctor)).message, /is void/);
+  const dup = await verifyAllocations([{ invoiceId: "inv1", amountCents: 1 }, { invoiceId: "inv1", amountCents: 1 }], doctor);
+  assert.equal(dup.kind, "validation");
+});
 
-  it("marks ledgerWriteFailed and does not throw when the DB insert fails", async () => {
-    const { db } = await import("../config/database.js");
-    const original = db.insert;
-    db.insert = () => ({
-      values: async () => {
-        throw new Error("db down");
-      },
-    });
-    const result = await recordPaymentAndAllocations({
-      user: doctor,
-      amount: 100,
-      transactionId: "tx1",
-      allocations,
-      source: "doctor_card",
-    });
-    expect(result.ledgerWriteFailed).toBe(true);
-    db.insert = original;
-  });
+test("verifyAllocations: the cap is what's left after payments, credits and refunds", async () => {
+  invoiceRows = [inv()];
+  paid = new Map([["inv1", 20000]]);
+  assert.equal(await verifyAllocations([{ invoiceId: "inv1", amountCents: 10000 }], doctor, { enforceCap: true }), null);
+  const over = await verifyAllocations([{ invoiceId: "inv1", amountCents: 10001 }], doctor, { enforceCap: true });
+  assert.equal(over.kind, "validation");
+  assert.match(over.message, /exceeds its balance of \$100\.00/);
+  assert.equal(await verifyAllocations([{ invoiceId: "inv1", amountCents: 30000 }], doctor), null, "no cap without enforceCap (ownership pass)");
+});
+
+test("verifyAllocations fills in the invoice number from our invoice", async () => {
+  invoiceRows = [inv()];
+  const a = [{ invoiceId: "inv1", amountCents: 100 }];
+  await verifyAllocations(a, doctor);
+  assert.equal(a[0].invoiceNumber, "500001");
 });

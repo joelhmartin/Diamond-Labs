@@ -8,83 +8,55 @@ import { cartLinesSchema, numericInput } from "./catalog.schema.js";
  * decimal places — a third decimal is a tampering/format error, not a charge.
  */
 
-// At-most-2-decimal-places guard that doesn't trip on float drift.
+// At-most-2-decimal-places guard that doesn't trip on float drift (the
+// checkout's dollar `amount` is the only dollar field left on the wire).
 const hasAtMost2Decimals = (n) => Number(n.toFixed(2)) === n;
 
-// A money amount: positive, capped, and cent-precise.
-const amount = z
-  .number()
-  .positive()
-  .max(100000)
-  .refine(hasAtMost2Decimals, { message: "amount must have at most 2 decimal places" });
+/** Integer cents, positive, capped at $100,000. */
+const amountCents = z.number().int().positive().max(10_000_000);
 
-/**
- * One slice of a charge applied to a single Seazona invoice. `invoiceNumber` is
- * optional on input — the server backfills it from the live invoice when absent.
- */
+/** One slice of a payment applied to one of OUR invoices (own-the-lab piece 3). */
 export const allocationSchema = z.object({
-  invoiceId: z.string().min(1),
-  invoiceNumber: z.string().optional(),
-  amount,
+  invoiceId: z.string().min(1).max(128),
+  amountCents,
 });
 
-/** Helper: does the allocation set sum (within a cent) to `total`? */
-function allocationsSumTo(allocations, total) {
-  const sum = allocations.reduce((s, a) => s + Number(a.amount), 0);
-  return Math.abs(sum - Number(total)) <= 0.01;
-}
+const sumOf = (allocations) => allocations.reduce((s, a) => s + a.amountCents, 0);
+const eachInvoiceOnce = (allocations) => new Set(allocations.map((a) => a.invoiceId)).size === allocations.length;
+const allocations = z.array(allocationSchema).min(1)
+  .refine(eachInvoiceOnce, { message: "Each invoice can appear only once." });
 
-/** POST /payments/charge-saved — charge a saved card across invoices. */
+/** POST /payments/charge-saved (and the admin charge-on-behalf) — a saved card across invoices. */
 export const chargeSavedSchema = z
-  .object({
-    paymentProfileId: z.string().min(1),
-    amount,
-    allocations: z.array(allocationSchema).min(1),
-  })
-  .refine((d) => allocationsSumTo(d.allocations, d.amount), {
-    message: "Allocations must sum to the charge amount.",
+  .object({ paymentProfileId: z.string().min(1), amountCents, allocations })
+  .refine((d) => sumOf(d.allocations) === d.amountCents, {
+    message: "Allocations must add up to the charge.",
     path: ["allocations"],
   });
 
 /**
- * POST /payments/hosted-token — issue a hosted-payment-page token. The charge
- * amount is derived server-side from the allocation sum, so only allocations
- * are required. Extra route-specific fields (iframeCommunicatorUrl, saveCard)
- * are allowed through.
+ * POST /payments/hosted-token — the hosted page's amount is the allocation sum,
+ * computed server-side. Extra fields (iframeCommunicatorUrl, saveCard) pass through.
  */
-export const hostedTokenSchema = z
-  .object({
-    allocations: z.array(allocationSchema).min(1),
-  })
-  .passthrough();
+export const hostedTokenSchema = z.object({ allocations }).passthrough();
 
 /**
- * POST /admin/payments/refund — admin-initiated refund/void of a recorded
- * payment.
- *
- * - Omit `allocations` → FULL reversal: the route negates every original ledger
- *   row (void if unsettled, refund if settled).
- * - Provide `allocations` → PARTIAL refund of specific invoice slices (settled
- *   charges only — Authorize.net can't partially VOID an unsettled charge). Each
- *   entry's `invoiceId` must belong to the original charge and its `amount` must
- *   not exceed what that invoice was charged. ONE reversal per charge: once any
- *   refund (full or partial) is recorded, further refunds on it are rejected.
+ * POST /admin/payments/refund. Omit `allocations` for a FULL reversal; give
+ * slices for a PARTIAL refund (settled charges only). `invoiceId` is the ledger
+ * row's invoice key (our invoice id, or the Seazona id on a Seazona-era row).
  */
-export const refundAllocationSchema = z.object({
-  invoiceId: z.string().min(1),
-  amount,
-});
+export const refundAllocationSchema = z.object({ invoiceId: z.string().min(1).max(128), amountCents });
 
 export const refundSchema = z.object({
   transactionId: z.string().min(1),
   allocations: z.array(refundAllocationSchema).min(1).optional(),
 });
 
-/** POST /payments/hosted-complete — finalize a hosted charge (C2-bound). */
+/** POST /payments/hosted-complete — finalize a hosted charge (bound to its token). */
 export const hostedCompleteSchema = z.object({
   transId: z.string().min(1),
   refId: z.string().min(1),
-  allocations: z.array(allocationSchema).min(1),
+  allocations,
 });
 
 /**

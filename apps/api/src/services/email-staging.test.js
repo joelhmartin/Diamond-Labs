@@ -38,7 +38,7 @@ test("staging: receipt goes only to STAGING_EMAIL_TO with prefixed subject", asy
   cfg.appEnv = "staging";
   cfg.to = "qa@example.com";
   const f = stub();
-  await email.sendPaymentReceipt({ to: "real-doctor@practice.com", amount: 10, invoices: [], transactionId: "t", date: new Date() });
+  await email.sendPaymentReceipt({ to: "real-doctor@practice.com", amountCents: 1000, invoices: [], transactionId: "t", date: new Date() });
   assert.equal(f.mock.calls.length, 1);
   const p = form(f);
   assert.equal(p.get("to"), "qa@example.com");
