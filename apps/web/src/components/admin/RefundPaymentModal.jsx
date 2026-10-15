@@ -3,7 +3,7 @@ import { ConfirmButton } from "../ui/ConfirmButton.jsx";
 import { X, AlertCircle, Loader2 } from "lucide-react";
 import api from "../../config/api.js";
 import { useToast } from "../ui/Toast.jsx";
-import { formatCents } from "../../lib/money.js";
+import { formatCents, toDecimalString } from "../../lib/money.js";
 import { refundSelection } from "../../lib/invoices.js";
 
 const INPUT =
@@ -29,7 +29,7 @@ export function RefundPaymentModal({ onClose, presetTransactionId = "", payment 
       label: inv.invoiceNumber || inv.invoiceId,
       maxCents: inv.amountCents,
       include: true,
-      amountStr: (inv.amountCents / 100).toFixed(2),
+      amountStr: toDecimalString(inv.amountCents),
     }))
   );
   const setLine = (i, patch) => setLines((prev) => prev.map((l, j) => (j === i ? { ...l, ...patch } : l)));

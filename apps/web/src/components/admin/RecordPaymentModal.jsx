@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { X, Loader2, AlertCircle } from "lucide-react";
-import { MANUAL_PAYMENT_METHODS, MANUAL_PAYMENT_LABELS, sortOldestFirst } from "@my-app/shared";
+import { MANUAL_PAYMENT_METHODS, MANUAL_PAYMENT_LABELS } from "@my-app/shared";
 import api from "../../config/api.js";
 import { useToast } from "../ui/Toast.jsx";
 import { AllocationRows } from "../billing/AllocationRows.jsx";
@@ -49,9 +49,11 @@ export function RecordPaymentModal({ clientUserId, clientName, onClose, onRecord
     return () => window.removeEventListener("keydown", onKey, true);
   }, []);
 
+  // The server's own list: the practice's open invoices, oldest due first. It is exactly
+  // what a payment with no chosen invoices is spread over, so what staff see is what is applied.
   useEffect(() => {
     api.get(`/admin/clients/${clientUserId}/invoices`, { params: { open: "true" } })
-      .then((res) => setInvoices(sortOldestFirst(res.data.data || [])))
+      .then((res) => setInvoices(res.data.data || []))
       .catch((e) => { setInvoices([]); setErr(errorText(e)); });
   }, [clientUserId]);
 
@@ -89,7 +91,7 @@ export function RecordPaymentModal({ clientUserId, clientName, onClose, onRecord
         <button type="button" onClick={close} className="absolute right-4 top-4 text-navy/30 hover:text-navy" aria-label="Close"><X size={18} /></button>
         <h3 className="font-heading text-lg font-bold text-navy">Record a payment</h3>
         <p className="mt-1 text-xs text-navy/50">
-          {clientName ? `${clientName} · ` : ""}open balance {invoices ? formatCents(openCents) : "…"}. No card is charged.
+          {clientName ? `${clientName} · ` : ""}practice open balance {invoices ? formatCents(openCents) : "…"}. No card is charged.
         </p>
 
         {invoices === null ? (
@@ -117,7 +119,7 @@ export function RecordPaymentModal({ clientUserId, clientName, onClose, onRecord
 
             <label className="flex items-center gap-2 text-sm text-navy/70">
               <input type="checkbox" className="accent-brand-600" checked={choose} onChange={(e) => setChoose(e.target.checked)} />
-              Apply to specific invoices (otherwise oldest due first)
+              Apply to specific invoices (otherwise oldest due first, across the practice)
             </label>
 
             {choose && (
@@ -125,6 +127,7 @@ export function RecordPaymentModal({ clientUserId, clientName, onClose, onRecord
                 <AllocationRows
                   rows={invoices}
                   showDue
+                  showOwner
                   className="max-h-48"
                   valueOf={(inv) => chosen[inv.id] ?? ""}
                   onChange={(inv, val) => setChosen((prev) => ({ ...prev, [inv.id]: val }))}

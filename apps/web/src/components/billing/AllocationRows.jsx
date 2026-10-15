@@ -10,9 +10,10 @@ import { dateText } from "../../lib/invoices.js";
  * rows:     [{ id, invoiceNumber, balanceCents, dueDate? }], in display order
  * valueOf:  (row) → what the input shows, in dollars (number or typed string)
  * onChange: (row, typedValue) → void
+ * showOwner: adds the row's `ownerName` (a practice colleague's invoice can be in the list)
  * appliedCentsOf: optional (row) → cents; adds a "paid in full" / "partial" tag
  */
-export function AllocationRows({ rows, valueOf, onChange, disabled = false, showDue = false, appliedCentsOf = null, inputClassName = "", className = "max-h-44" }) {
+export function AllocationRows({ rows, valueOf, onChange, disabled = false, showDue = false, showOwner = false, appliedCentsOf = null, inputClassName = "", className = "max-h-44" }) {
   return (
     <div className={`space-y-1 overflow-y-auto ${className}`}>
       {rows.map((inv) => {
@@ -21,6 +22,7 @@ export function AllocationRows({ rows, valueOf, onChange, disabled = false, show
         return (
           <div key={inv.id} className="flex items-center gap-2 text-sm">
             <span className="w-20 shrink-0 font-mono text-xs font-medium">#{inv.invoiceNumber}</span>
+            {showOwner && <span className="w-28 shrink-0 truncate text-xs text-gray-500" title={inv.ownerName || ""}>{inv.ownerName || ""}</span>}
             {showDue && <span className="w-24 shrink-0 text-xs text-gray-500">due {dateText(inv.dueDate)}</span>}
             <span className="w-20 shrink-0 text-xs text-gray-400">{formatCents(inv.balanceCents)}</span>
             <span className="text-gray-300">→</span>

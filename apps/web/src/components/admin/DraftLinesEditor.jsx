@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { INVOICE_LINE_KINDS, LINE_KIND_LABELS, PRICE_SOURCE_LABELS, parseMoneyInput } from "@my-app/shared";
 import { ConfirmButton } from "../ui/ConfirmButton.jsx";
-import { formatCents } from "../../lib/money.js";
+import { formatCents, toDecimalString } from "../../lib/money.js";
 
 const INPUT = "rounded-lg border border-surface-300/60 bg-white px-2.5 py-1.5 text-sm text-navy focus:border-brand-500 focus:outline-none";
 const PILL = "rounded-full px-3 py-1.5 text-xs font-semibold";
@@ -53,7 +53,7 @@ export function DraftLinesEditor({ lines, onEdit, busy }) {
                 </td>
                 <td className="px-3 py-2 text-right">
                   <button type="button" className="text-brand-700 hover:underline" disabled={busy}
-                    onClick={() => setPricing({ lineId: l.id, priceStr: (l.unitCents / 100).toFixed(2), reason: "" })}>
+                    onClick={() => setPricing({ lineId: l.id, priceStr: toDecimalString(l.unitCents), reason: "" })}>
                     {formatCents(l.unitCents)}
                   </button>
                 </td>
