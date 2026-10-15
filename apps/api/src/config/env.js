@@ -69,6 +69,14 @@ const envSchema = z.object({
   // this to the legacy system's last order number + 1 before cutover;
   // allocation is max(existing + 1, start), so raising it later never reuses a number.
   LAB_ORDER_NUMBER_START: z.coerce.number().int().positive().default(100000),
+  // ── Invoices ──
+  // Invoice numbers continue the legacy system's numbering. Piece 5 sets this
+  // to Seazona's last invoice number + 1 BEFORE any invoice is created in
+  // production (legacy invoices are imported under their own numbers);
+  // allocation is max(existing + 1, start).
+  INVOICE_NUMBER_START: z.coerce.number().int().positive().default(500000),
+  // Net terms: an invoice issued on ship is due this many days later.
+  INVOICE_TERMS_DAYS: z.coerce.number().int().min(0).max(365).default(30),
   // Shared secret for the HTTP job trigger. Required in production only.
   JOBS_TRIGGER_SECRET: z.string().optional(),
   // Opt-in dev-only in-process interval trigger (see jobs/triggers/interval.js).

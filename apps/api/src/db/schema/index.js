@@ -22,3 +22,4 @@ export {
 } from "./catalog.js";
 export { clientPrices } from "./client-prices.js";
 export { labDepartments, labOrders, labOrderLines, labOrderEvents } from "./lab-orders.js";
+export { invoices, invoiceLines } from "./invoices.js";
