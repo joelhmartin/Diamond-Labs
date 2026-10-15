@@ -107,7 +107,7 @@ export async function issueForShippedLabOrder(tx, { labOrderId, shippedAt, byUse
   if (!invoice) {
     const [labOrder] = await tx.select().from(labOrders).where(eq(labOrders.id, labOrderId));
     // A shop order's invoice is written at checkout; a missing one is a
-    // [LAB][SHOP_ORDER_FAILED] backfill case, not something to invent here.
+    // [LAB][SHOP_ORDER_FAILED] case for the shop-lab-orders-repair sweep, not something to invent here.
     if (!labOrder || labOrder.source === "shop_order") return { issued: false, reason: "no_invoice" };
     const lines = await tx.select().from(labOrderLines).where(eq(labOrderLines.labOrderId, labOrderId)).orderBy(asc(labOrderLines.position));
     await createDraftForLabOrder(tx, { labOrder, lines, byUserId });

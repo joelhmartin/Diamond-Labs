@@ -19,7 +19,9 @@ export const ledgerInvoiceKey = (r) => r.invoiceId ?? r.seazonaInvoiceId ?? null
  * Collapse invoice_payments rows into one summary per ORIGINAL transaction.
  * Charge rows have no refundsTransactionId; reversal rows carry
  * refundsTransactionId = the charge's id and a NEGATIVE appliedCents. The
- * refund write-ahead guard is a reversal with 0 cents and a REFUND-PENDING id.
+ * refund write-ahead rows are reversals written BEFORE the gateway call, carrying the
+ * real negative amounts and a REFUND-PENDING id until the gateway answers (then the
+ * real refund id). They count toward refundedCents: the invoice balance reopens.
  * @returns {Array<object>} newest first
  */
 export function summarizePayments(rows) {

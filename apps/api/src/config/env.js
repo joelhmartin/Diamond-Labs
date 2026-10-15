@@ -69,6 +69,10 @@ const envSchema = z.object({
   // this to the legacy system's last order number + 1 before cutover;
   // allocation is max(existing + 1, start), so raising it later never reuses a number.
   LAB_ORDER_NUMBER_START: z.coerce.number().int().positive().default(100000),
+  // Floor for the missing-shop-lab-order repair sweep (jobs/definitions/shop-lab-orders-repair.job.js):
+  // paid shop orders created before this ISO date/time are never backfilled. Unset = no date floor;
+  // orders placed before lab orders existed are still excluded because their items carry no variantId.
+  LAB_SHOP_REPAIR_SINCE: z.string().refine((v) => !Number.isNaN(Date.parse(v)), "must be an ISO date").optional(),
   // ── Invoices ──
   // Invoice numbers continue the legacy system's numbering. Piece 5 sets this
   // to Seazona's last invoice number + 1 BEFORE any invoice is created in

@@ -107,7 +107,7 @@ export async function releaseRxCase(tx, { caseRow, byUserId = null }) {
  * The lab order and the paid shop invoice for a just-paid shop order. Runs in
  * its own transaction right after the paid order commits (never inside it), so
  * a failure can't roll back a charged order; checkout logs
- * [LAB][SHOP_ORDER_FAILED] for backfill.
+ * [LAB][SHOP_ORDER_FAILED] and services/lab/shop-order-repair.service.js picks the order up.
  */
 export async function createShopLabOrder(tx, { orderId, clientUserId = null, quote, transactionId }) {
   const orderNumber = await allocateOrderNumber(tx);
