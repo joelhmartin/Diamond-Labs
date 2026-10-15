@@ -10,6 +10,7 @@ import * as departmentsService from "../services/lab/departments.service.js";
 import { buildTicketModel } from "../services/lab/ticket-model.js";
 import { renderTicketPdf } from "../services/lab/ticket-pdf.js";
 import { labErrorReply } from "../services/lab/lab-errors.js";
+import { sendPdf } from "./pdf-reply.js";
 import * as auditService from "../services/audit.service.js";
 
 /**
@@ -69,11 +70,7 @@ export default async function labRoutes(fastify) {
       return reply.code(500).send({ error: { ...ERROR_CODES.INTERNAL_ERROR, message: "Failed to build the work ticket." } });
     }
     audit(request, "lab_order.ticket_printed", request.params.id, { orderNumber });
-    return reply
-      .header("Content-Type", "application/pdf")
-      .header("Content-Disposition", `inline; filename="work-ticket-${orderNumber}.pdf"`)
-      .header("Cache-Control", "no-store")
-      .send(pdf);
+    return sendPdf(reply, pdf, `work-ticket-${orderNumber}.pdf`);
   });
   fastify.post("/lab/orders/:id/status", { preHandler: [...STAFF, validate(labStatusChangeSchema)] }, (request, reply) =>
     run(reply, async () => {

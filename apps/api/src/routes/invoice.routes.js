@@ -4,7 +4,7 @@ import { listClientInvoices } from "../services/billing/invoice-queries.js";
 import { doctorInvoiceRow, doctorInvoiceView } from "../services/billing/invoice-views.js";
 import { practiceUserIds } from "../services/billing/ledger.service.js";
 import { canActOnInvoice } from "../services/billing/invoice-rules.js";
-import { invoiceDetailHandler } from "./invoice-detail.handler.js";
+import { invoiceDetailHandler, invoicePdfHandler } from "./invoice-detail.handler.js";
 
 /**
  * A doctor's invoices, from our tables (own-the-lab piece 3). A doctor sees
@@ -25,4 +25,7 @@ export default async function invoiceRoutes(fastify) {
   }));
 
   fastify.get("/invoices/:id", { preHandler: DOCTOR }, invoiceDetailHandler({ mayRead, view: doctorInvoiceView }));
+
+  // Printable copy of the same invoice, same access rule: built on request, never stored.
+  fastify.get("/invoices/:id/pdf", { preHandler: DOCTOR }, invoicePdfHandler({ mayRead }));
 }

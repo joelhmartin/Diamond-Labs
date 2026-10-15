@@ -54,3 +54,14 @@ test("staff actions validate their bodies and map invoice errors to replies", ()
   }
   assert.match(admin, /invoiceErrorReply\(err\)/);
 });
+
+test("invoice PDFs: one shared handler; the doctor's practice's and never a draft; admins any; never cached; audited", () => {
+  assert.match(handlerSource(doctor, 'fastify.get("/invoices/:id/pdf",'), /invoicePdfHandler\(\{ mayRead \}\)/, "the doctor's own access check");
+  assert.match(handlerSource(admin, 'fastify.get("/admin/invoices/:id/pdf",'), /preHandler: ADMIN[\s\S]*invoicePdfHandler\(\{ mayRead: \(\) => true \}\)/);
+  const pdf = handler.slice(handler.indexOf("export function invoicePdfHandler"));
+  assert.match(pdf, /loadReadableInvoice\(request, reply, mayRead/, "the shared access pattern: 404 on no access, generic 500");
+  assert.match(pdf, /sendPdf\(reply, pdf, model\.filename\)/);
+  assert.match(pdf, /"invoice\.pdf_downloaded"/);
+  assert.doesNotMatch(pdf, /patientName/, "the filename and audit never carry the patient");
+  assert.match(read("../pdf-reply.js"), /"Cache-Control", "no-store"/);
+});

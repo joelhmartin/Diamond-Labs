@@ -9,7 +9,7 @@ import * as actions from "../services/billing/invoice-actions.service.js";
 import { invoiceErrorReply } from "../services/billing/invoice-errors.js";
 import { listInvoices, listClientInvoices } from "../services/billing/invoice-queries.js";
 import { adminInvoiceView } from "../services/billing/invoice-views.js";
-import { invoiceDetailHandler } from "./invoice-detail.handler.js";
+import { invoiceDetailHandler, invoicePdfHandler } from "./invoice-detail.handler.js";
 
 /** Billing is admin-only: the lab role sees no money. */
 export const ADMIN = [authenticate, requireAdmin];
@@ -31,6 +31,9 @@ export default async function adminInvoiceRoutes(fastify) {
   }));
 
   fastify.get("/admin/invoices/:id", { preHandler: ADMIN }, invoiceDetailHandler({ mayRead: () => true, view: adminInvoiceView, withActivity: true }));
+
+  // Any invoice, drafts included (printed with a DRAFT banner).
+  fastify.get("/admin/invoices/:id/pdf", { preHandler: ADMIN }, invoicePdfHandler({ mayRead: () => true }));
 
   // One client's invoices: the drawer, Record payment and the AR row link.
   fastify.get("/admin/clients/:userId/invoices", { preHandler: [...ADMIN, validateQuery(clientInvoicesQuerySchema)] }, async (request) => ({

@@ -1,6 +1,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { buildTicketModel, printable } from "./ticket-model.js";
+import { buildTicketModel } from "./ticket-model.js";
+import { printable } from "../pdf/pdf-text.js";
 
 const generatedAt = new Date("2026-10-07T15:00:00Z");
 const rxDetail = {
