@@ -81,3 +81,27 @@ export function assertQuotedTotal(clientAmount, quote) {
     throw new PricingError("PRICE_CHANGED", "Prices changed — please review your order.");
   }
 }
+
+/**
+ * Lab order lines -> invoice lines. Unlike priceLines (the shop), nothing is
+ * refused: the job is already on the bench. A line with no variant, or a
+ * variant with no price, becomes unitCents 0 / priceSource "unpriced", which
+ * holds its invoice at draft for staff. Inactive and rx-channel variants price
+ * normally. Note-only lines (build instructions) are not billed.
+ */
+export function priceLabLines({ lines, variants, clientPrices = new Map() }) {
+  return lines.filter((l) => !l.noteOnly).map((l) => {
+    const variant = l.variantId ? variants.get(l.variantId) : null;
+    const price = variant ? unitPriceFor(variant, clientPrices.get(l.variantId)) : null;
+    return {
+      labOrderLineId: l.id ?? null,
+      variantId: l.variantId ?? null,
+      code: l.code ?? null,
+      description: l.name,
+      qty: Number.isInteger(l.qty) && l.qty > 0 ? l.qty : 1,
+      unitCents: price ? price.cents : 0,
+      priceSource: price ? price.source : "unpriced",
+      taxable: Boolean(variant?.taxable),
+    };
+  });
+}

@@ -8,6 +8,7 @@ const source = readFileSync(fileURLToPath(new URL("./lab-orders.service.js", imp
 const mod = await import("./lab-orders.service.js");
 const { LabOrderError } = await import("./lab-order-rules.js");
 const { decryptField } = await import("../../lib/crypto.js");
+const { fakeTx, fakeDb } = await import("../../test/fake-tx.js");
 
 test("the service exposes what the routes, release and checkout call", () => {
   for (const name of [
@@ -48,34 +49,6 @@ test("staff roles and the board summary have one definition each", () => {
   assert.doesNotMatch(source, /seazona\.service|seazonaapi|fetch\(/i);
 });
 
-// ── Behaviour, against a recording fake of the drizzle transaction surface ──
-
-/** Chainable, awaitable stub. Each select/update await pops the next queued result. */
-function fakeTx({ selects = [], updates = [] } = {}) {
-  const log = [];
-  const chain = (kind, queue, record) => {
-    const b = new Proxy(function () {}, {
-      get(_t, prop) {
-        if (prop === "then") return (res, rej) => Promise.resolve(queue ? queue.shift() ?? [] : undefined).then(res, rej);
-        return (...args) => { if (record) record(prop, args); return b; };
-      },
-    });
-    return b;
-  };
-  const tx = {
-    log,
-    execute: async (q) => { log.push({ op: "execute" }); return q; },
-    select: () => { log.push({ op: "select" }); return chain("select", selects); },
-    update: () => { log.push({ op: "update" }); return chain("update", updates, (m, a) => m === "set" && log.push({ op: "set", values: a[0] })); },
-    insert: () => {
-      const entry = { op: "insert" };
-      log.push(entry);
-      return chain("insert", null, (m, a) => { if (m === "values") entry.values = a[0]; });
-    },
-  };
-  return tx;
-}
-const fakeDb = (tx) => ({ transaction: (fn) => fn(tx) });
 const baseRow = { id: "lo-1", orderNumber: 100001, status: "received", version: 3, holdReason: null, labNotes: null };
 
 test("mutate: an UPDATE that matches no row (someone else won the race) throws STALE", async () => {
@@ -119,15 +92,6 @@ test("releaseRxCase: a claim that matches no row throws ALREADY_RELEASED and ins
   assert.deepEqual(tx.log.filter((l) => l.op === "insert" || l.op === "execute"), []);
 });
 
-test("createShopLabOrder: the order number is allocated under the lock and every event note is sealed", async () => {
-  const tx = fakeTx({ selects: [[{ max: null }]] });
-  const out = await mod.createShopLabOrder(tx, { orderId: "o1", clientUserId: null, quoteLines: [{ name: "Kit", qty: 1 }] });
-  assert.ok(out.orderNumber >= 1);
-  const inserts = tx.log.filter((l) => l.op === "insert");
-  assert.equal(inserts.length, 3, "order, lines, events");
-  for (const e of [].concat(inserts[2].values)) assert.ok(e.note == null || decryptField(e.note) !== e.note);
-});
-
 test("allocateOrderNumber takes the advisory lock before reading the max", async () => {
   const tx = fakeTx({ selects: [[{ max: 100050 }]] });
   const n = await mod.allocateOrderNumber(tx);
@@ -169,4 +133,57 @@ test("Admin > Orders is newest-received-first and says when the cap trimmed it; 
   assert.equal(mod.listOrder({}).length, 3);
   assert.match(source, /truncated: rows\.length >= LIST_LIMIT/);
   assert.match(source, /\.limit\(LIST_LIMIT\)/);
+});
+
+test("createShopLabOrder: the job and its paid shop invoice are written in one transaction", async () => {
+  const tx = fakeTx({ selects: [[{ max: null }], [{ max: null }]] });
+  const quote = {
+    lines: [{ variantId: "v1", code: "61", name: "Kit", qty: 1, unitCents: 500, lineCents: 500, taxable: false, priceSource: "base" }],
+    subtotalCents: 500, taxCents: 0, shippingCents: 1200, totalCents: 1700,
+  };
+  await mod.createShopLabOrder(tx, { orderId: "o1", clientUserId: null, quote, transactionId: "t1" });
+  const ins = tx.log.filter((l) => l.op === "insert").map((l) => l.values);
+  assert.equal(ins.length, 7, "lab order, lines, events, invoice, invoice lines, ledger row, audit");
+  const events = [].concat(ins[2]);
+  assert.deepEqual(events.map((e) => [e.type, e.to, typeof e.id]), [["release", "received", "string"]], "the job's release event is written, with an id");
+  assert.equal(ins[5].source, "shop_card");
+  assert.equal(ins[5].appliedCents, 1700);
+});
+
+test("mutate runs the plan's follow-up inside the transaction, with the updated order", async () => {
+  const seen = [];
+  const tx = fakeTx({ selects: [[baseRow]], updates: [[{ ...baseRow, version: 4, status: "shipped" }]] });
+  const plan = () => ({
+    patch: { status: "shipped", version: 4 },
+    event: { labOrderId: "lo-1", type: "status", note: null, at: new Date() },
+    after: async (t, order) => { seen.push([t === tx, order.status, order.version]); },
+  });
+  await mod.mutate("lo-1", 3, plan, fakeDb(tx));
+  assert.deepEqual(seen, [[true, "shipped", 4]]);
+});
+
+test("billing follows the bench and never blocks it: ship issues, cancel voids, failures are logged", async () => {
+  assert.equal(mod.billingFollowUp("in_production", "u1"), undefined);
+  const errors = [];
+  const original = console.error;
+  console.error = (m) => errors.push(String(m));
+  try {
+    const failing = { transaction: async () => { throw new Error("db down"); } };
+    await mod.billingFollowUp("shipped", "u1")(failing, { id: "lo-1", shippedAt: new Date() });
+    await mod.billingFollowUp("cancelled", "u1")(failing, { id: "lo-1" });
+  } finally {
+    console.error = original;
+  }
+  assert.match(errors[0], /^\[BILLING\]\[ISSUE_FAILED\] labOrder=lo-1/);
+  assert.match(errors[1], /^\[BILLING\]\[VOID_FAILED\] labOrder=lo-1/);
+});
+
+test("release and remake draft an invoice inside their transaction, after the job's lines exist", () => {
+  const release = source.slice(source.indexOf("export async function releaseRxCase"), source.indexOf("export async function createShopLabOrder"));
+  assert.ok(release.indexOf("insertPlan(") < release.indexOf("createDraftForLabOrder(tx,"), "release");
+  const remake = source.slice(source.indexOf("export function remakeOrder"), source.indexOf("export function listAssignableStaff"));
+  assert.ok(remake.indexOf("insertPlan(") < remake.indexOf("createDraftForLabOrder(tx,"), "remake");
+  const shop = source.slice(source.indexOf("export async function createShopLabOrder"), source.indexOf("function boardWhere"));
+  assert.match(shop, /createShopInvoice\(tx, \{ labOrderId: plan\.labOrder\.id, clientUserId, quote, transactionId \}\)/);
+  assert.match(source, /tx\.transaction\(\(sp\) => step\(sp, order\)\)/, "billing runs in a savepoint");
 });

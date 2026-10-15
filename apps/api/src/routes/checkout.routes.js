@@ -123,12 +123,12 @@ async function recordGuestOrder({
     return { orderRecordFailed: true };
   }
 
-  // The job for the bench. Deliberately OUTSIDE the paid-order transaction: the
+  // The job for the bench and its paid shop invoice. Deliberately OUTSIDE the paid-order transaction: the
   // card is already charged, so a DB error here must never roll back the order row.
   // No PHI or card data in the log line.
   try {
     await db.transaction((tx) =>
-      createShopLabOrder(tx, { orderId, clientUserId: pricedForUserId, quoteLines: quote.lines })
+      createShopLabOrder(tx, { orderId, clientUserId: pricedForUserId, quote, transactionId: result.transactionId })
     );
   } catch (err) {
     log.error({ orderId }, `[LAB][SHOP_ORDER_FAILED] order=${orderId}: ${String(err?.message || err)}`);

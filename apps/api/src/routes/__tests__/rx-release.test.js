@@ -54,7 +54,7 @@ test("checkout creates the lab order AFTER the paid-order transaction, in its ow
   assert.doesNotMatch(paidTx, /createShopLabOrder/, "lab order must not roll back the paid order");
 
   const after = payment.slice(end, payment.indexOf("if (pushStatus === \"pending\")", end));
-  assert.match(after, /await db\.transaction\(\(tx\) =>\s*createShopLabOrder\(tx, \{ orderId, clientUserId: pricedForUserId, quoteLines: quote\.lines \}\)/);
+  assert.match(after, /await db\.transaction\(\(tx\) =>\s*createShopLabOrder\(tx, \{ orderId, clientUserId: pricedForUserId, quote, transactionId: result\.transactionId \}\)/);
   assert.match(after, /log\.error\(\{ orderId \}, `\[LAB\]\[SHOP_ORDER_FAILED\] order=\$\{orderId\}/);
   assert.match(after, /catch \(err\)/);
 });

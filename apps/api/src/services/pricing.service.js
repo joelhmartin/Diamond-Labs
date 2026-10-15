@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../config/database.js";
 import { productVariants, productFamilies, clientPrices } from "../db/schema/index.js";
-import { priceLines } from "../lib/pricing.js";
+import { priceLines, priceLabLines } from "../lib/pricing.js";
 import { PRICING } from "../config/pricing.js";
 
 /** Whose negotiated prices apply to a request — null means guest pricing. */
@@ -21,13 +21,28 @@ export async function loadShopVariants(variantIds) {
   return new Map(rows.map(({ v, f }) => [v.id, { ...v, active: v.active && f.active && f.channel !== "rx" }]));
 }
 
-export async function loadClientPrices(clientUserId, variantIds) {
+/** Variants by id in any channel and any active state: lab work is priced whatever its catalog status is now. */
+export async function loadVariantsById(variantIds, database = db) {
+  if (variantIds.length === 0) return new Map();
+  const rows = await database.select().from(productVariants).where(inArray(productVariants.id, variantIds));
+  return new Map(rows.map((v) => [v.id, v]));
+}
+
+export async function loadClientPrices(clientUserId, variantIds, database = db) {
   if (!clientUserId || variantIds.length === 0) return new Map();
-  const rows = await db
+  const rows = await database
     .select({ variantId: clientPrices.variantId, priceCents: clientPrices.priceCents })
     .from(clientPrices)
     .where(and(eq(clientPrices.clientUserId, clientUserId), inArray(clientPrices.variantId, variantIds)));
   return new Map(rows.map((r) => [r.variantId, r.priceCents]));
+}
+
+/** A lab order's lines priced for its client (inside the caller's transaction when one is passed). */
+export async function priceLabOrderLines(lines, clientUserId, database = db) {
+  const ids = [...new Set(lines.filter((l) => !l.noteOnly && l.variantId).map((l) => l.variantId))];
+  const variants = await loadVariantsById(ids, database);
+  const prices = await loadClientPrices(clientUserId, ids, database);
+  return priceLabLines({ lines, variants, clientPrices: prices });
 }
 
 export async function priceShopCart({ lines, clientUserId = null }) {

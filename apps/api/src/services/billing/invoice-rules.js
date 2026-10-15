@@ -168,7 +168,8 @@ export function planLineEdit(invoice, lines, edit, { now, taxRateBps }) {
         checkQty(edit.qty);
         values.qty = edit.qty;
       }
-      if (edit.unitCents !== undefined && edit.unitCents !== line.unitCents) {
+      // An unpriced line is stored at 0, so setting 0 on it is a real change: it becomes priced (free).
+      if (edit.unitCents !== undefined && (edit.unitCents !== line.unitCents || line.priceSource === "unpriced")) {
         checkSign(line.kind, edit.unitCents);
         const reason = trimmed(edit.reason);
         if (!reason) throw new InvoiceError("REASON_REQUIRED", "Say why the price is being changed.");

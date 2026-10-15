@@ -186,3 +186,29 @@ test("invoice errors map to the status a screen can act on", () => {
   assert.equal(invoiceErrorReply(new InvoiceError("LOCKED", "x")).status, 409, "a payment in progress: retry shortly");
   assert.equal(invoiceErrorReply(new Error("boom")), null);
 });
+
+test("editing: setting an unpriced line to $0 is a real change (it becomes priced, manual) and still needs a reason", () => {
+  const lines = [line({ unitCents: 0, lineCents: 0, priceSource: "unpriced" })];
+  assert.throws(() => planLineEdit(draft({ totalCents: 0 }), lines, { op: "update", lineId: "l1", unitCents: 0 }, { now, ...TAX }), isCode("REASON_REQUIRED"));
+  const plan = planLineEdit(draft({ totalCents: 0 }), lines, { op: "update", lineId: "l1", unitCents: 0, reason: "no charge" }, { now, ...TAX });
+  assert.deepEqual(plan.op.update.values, { unitCents: 0, priceSource: "manual", priceNote: "no charge", lineCents: 0 });
+  assert.equal(hasUnpriced([{ ...lines[0], ...plan.op.update.values }]), false);
+  // A priced line set to its current price is still a no-op.
+  assert.throws(() => planLineEdit(draft(), [line()], { op: "update", lineId: "l1", unitCents: 10000, reason: "x" }, { now, ...TAX }), isCode("INVALID"));
+});
+
+test("editing: a taxable line's tax is recomputed from the edited lines", () => {
+  const lines = [line({ taxable: true })];
+  const plan = planLineEdit(draft(), lines, { op: "update", lineId: "l1", qty: 2 }, { now, ...TAX });
+  assert.deepEqual(
+    [plan.patch.subtotalCents, plan.patch.taxCents, plan.patch.totalCents],
+    [20000, 1600, 21600],
+  );
+});
+
+test("editing: a negative price on a non-adjustment update is refused", () => {
+  assert.throws(
+    () => planLineEdit(draft(), [line()], { op: "update", lineId: "l1", unitCents: -500, reason: "oops" }, { now, ...TAX }),
+    isCode("INVALID"),
+  );
+});

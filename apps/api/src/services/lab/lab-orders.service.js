@@ -7,7 +7,7 @@ import {
   labOrders, labOrderLines, labOrderEvents, labDepartments, rxCases, rxCaseFiles, rxCaseLines, orders, users, productVariants,
 } from "../../db/schema/index.js";
 import { createId } from "../../lib/id.js";
-import { encryptField, decryptField } from "../../lib/crypto.js";
+import { encryptField, decryptField, fieldSealer } from "../../lib/crypto.js";
 import { decryptRxPhi } from "../rx/phi-crypto.js";
 import { allocateSequenceNumber } from "../sequence.service.js";
 import { devicesForCase } from "../rx/case-devices.js";
@@ -16,6 +16,9 @@ import {
   LabOrderError, planRxRelease, planShopLabOrder, planRemake,
   assertFresh, planStatusChange, planFieldChange, presentBoardCard, rushFromCase,
 } from "./lab-order-rules.js";
+import {
+  createDraftForLabOrder, createShopInvoice, issueForShippedLabOrder, voidForCancelledLabOrder,
+} from "../billing/invoices.service.js";
 
 const SHIPPED_VISIBLE_DAYS = 14;
 
@@ -27,16 +30,9 @@ const actor = alias(users, "actor");
 // rx_cases' free-text fields (B4 / phi-crypto.js).
 const SECRET_ORDER_FIELDS = ["holdReason", "labNotes"];
 
-function sealOrder(values) {
-  const out = { ...values };
-  for (const f of SECRET_ORDER_FIELDS) if (f in out && out[f] != null) out[f] = encryptField(out[f]);
-  return out;
-}
-function openOrder(row) {
-  const out = { ...row };
-  for (const f of SECRET_ORDER_FIELDS) out[f] = row[f] == null ? null : decryptField(row[f]);
-  return out;
-}
+const orderSecrets = fieldSealer(SECRET_ORDER_FIELDS);
+const sealOrder = orderSecrets.seal;
+const openOrder = orderSecrets.open;
 function sealEvent(e) {
   return { ...e, id: createId(), note: e.note == null ? null : encryptField(e.note) };
 }
@@ -65,8 +61,10 @@ async function variantIdsForCodes(tx, codes) {
 
 async function insertPlan(tx, { labOrder, lines, events }) {
   await tx.insert(labOrders).values(sealOrder(labOrder));
-  if (lines.length) await tx.insert(labOrderLines).values(lines.map((l) => ({ ...l, id: createId() })));
+  const inserted = lines.map((l) => ({ ...l, id: createId() }));
+  if (inserted.length) await tx.insert(labOrderLines).values(inserted);
   if (events.length) await tx.insert(labOrderEvents).values(events.map((e, i) => sealEvent({ ...e, at: new Date(new Date(e.at).getTime() + i) })));
+  return inserted;
 }
 
 /**
@@ -99,19 +97,23 @@ export async function releaseRxCase(tx, { caseRow, byUserId = null }) {
   const variantIdByCode = await variantIdsForCodes(tx, lines.map((l) => l.seazonaCode));
   const orderNumber = await allocateOrderNumber(tx);
   const plan = planRxRelease({ caseRow, lines, variantIdByCode, orderNumber, labOrderId: createId(), byUserId, now: new Date() });
-  await insertPlan(tx, { labOrder: plan.labOrder, lines: plan.lines, events: [plan.event] });
-  return { labOrder: { id: plan.labOrder.id, orderNumber }, unknownCodes: plan.unknownCodes };
+  const orderLines = await insertPlan(tx, { labOrder: plan.labOrder, lines: plan.lines, events: [plan.event] });
+  // The bill is drafted with the job: a failure here fails the release as a whole (staff retry).
+  const invoice = await createDraftForLabOrder(tx, { labOrder: plan.labOrder, lines: orderLines, byUserId });
+  return { labOrder: { id: plan.labOrder.id, orderNumber }, unknownCodes: plan.unknownCodes, invoice };
 }
 
 /**
- * The lab order for a just-paid shop order. Runs in its own transaction right
- * after the paid order commits (never inside it), so a failure can't roll back
- * a charged order.
+ * The lab order and the paid shop invoice for a just-paid shop order. Runs in
+ * its own transaction right after the paid order commits (never inside it), so
+ * a failure can't roll back a charged order; checkout logs
+ * [LAB][SHOP_ORDER_FAILED] for backfill.
  */
-export async function createShopLabOrder(tx, { orderId, clientUserId = null, quoteLines }) {
+export async function createShopLabOrder(tx, { orderId, clientUserId = null, quote, transactionId }) {
   const orderNumber = await allocateOrderNumber(tx);
-  const plan = planShopLabOrder({ orderId, clientUserId, quoteLines, orderNumber, labOrderId: createId(), now: new Date() });
+  const plan = planShopLabOrder({ orderId, clientUserId, quoteLines: quote.lines, orderNumber, labOrderId: createId(), now: new Date() });
   await insertPlan(tx, { labOrder: plan.labOrder, lines: plan.lines, events: [plan.event] });
+  await createShopInvoice(tx, { labOrderId: plan.labOrder.id, clientUserId, quote, transactionId });
   return { id: plan.labOrder.id, orderNumber };
 }
 
@@ -320,7 +322,9 @@ export async function mutate(id, expectedVersion, plan, database = db) {
       .returning();
     if (!updated) throw new LabOrderError("STALE", "This order changed — reload.");
     await tx.insert(labOrderEvents).values(sealEvent(planned.event));
-    return { order: openOrder(updated), changed: true };
+    const opened = openOrder(updated);
+    if (planned.after) await planned.after(tx, opened);
+    return { order: opened, changed: true };
   });
 }
 
@@ -340,8 +344,34 @@ async function assertActiveDepartment(tx, departmentId) {
   if (!d) throw new LabOrderError("INVALID", "That department doesn't exist or is inactive.");
 }
 
+/**
+ * Billing follows the bench and never blocks it. Shipping issues the order's
+ * invoice and cancelling voids its draft, each in a SAVEPOINT. A billing
+ * failure is logged for staff ([BILLING][ISSUE_FAILED] / [BILLING][VOID_FAILED],
+ * ids only) and the move itself still commits.
+ */
+export function billingFollowUp(to, byUserId) {
+  const steps = {
+    shipped: { tag: "ISSUE_FAILED", step: (tx, order) => issueForShippedLabOrder(tx, { labOrderId: order.id, shippedAt: order.shippedAt, byUserId }) },
+    cancelled: { tag: "VOID_FAILED", step: (tx, order) => voidForCancelledLabOrder(tx, { labOrderId: order.id, byUserId }) },
+  };
+  const s = steps[to];
+  if (!s) return undefined;
+  const { tag, step } = s;
+  return async (tx, order) => {
+    try {
+      await tx.transaction((sp) => step(sp, order));
+    } catch (err) {
+      console.error(`[BILLING][${tag}] labOrder=${order.id}: ${String(err?.message || err).slice(0, 300)}`);
+    }
+  };
+}
+
 export function changeStatus(id, { to, reason, expectedVersion, byUserId = null }) {
-  return mutate(id, expectedVersion, (order) => planStatusChange(order, to, { reason, byUserId, now: new Date() }));
+  return mutate(id, expectedVersion, (order) => ({
+    ...planStatusChange(order, to, { reason, byUserId, now: new Date() }),
+    after: billingFollowUp(to, byUserId),
+  }));
 }
 
 export function changeField(id, { field, value, expectedVersion, byUserId = null }) {
@@ -372,7 +402,8 @@ export function remakeOrder(id, { reason, expectedVersion, byUserId = null }) {
       .where(and(eq(labOrders.id, id), eq(labOrders.version, original.version)))
       .returning({ id: labOrders.id });
     if (!bumped) throw new LabOrderError("STALE", "This order changed — reload.");
-    await insertPlan(tx, plan);
+    const lines = await insertPlan(tx, plan);
+    await createDraftForLabOrder(tx, { labOrder: plan.labOrder, lines, byUserId });
     return { labOrder: { id: plan.labOrder.id, orderNumber } };
   });
 }
