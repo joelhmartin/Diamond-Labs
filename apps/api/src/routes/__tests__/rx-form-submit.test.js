@@ -1,5 +1,8 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { handlerSource } from "./_source.js";
 
 import { rxFormSubmitSchema, buildDigitalDevices } from "@my-app/shared";
 import { linesForDevices } from "../../services/rx/case-lines.service.js";
@@ -88,8 +91,12 @@ test("a prescription with an unmappable selection still yields a line, flagged o
   assert.ok(lines.some((l) => l.status === "open"));
 });
 
-test("auto-release is off unless RX_AUTO_RELEASE is exactly 'true'", async () => {
-  const { shouldAutoRelease } = await import("../rx.routes.js");
-  assert.equal(shouldAutoRelease("true"), true);
-  for (const v of [undefined, "", "1", "TRUE", "yes", "false"]) assert.equal(shouldAutoRelease(v), false, String(v));
+test("every submission waits for admin review: no auto-release path remains in the route", () => {
+  const src = readFileSync(fileURLToPath(new URL("../rx.routes.js", import.meta.url)), "utf8");
+  for (const gone of ["RX_AUTO_RELEASE", "shouldAutoRelease", "auto_released", "releaseRxCase"]) {
+    assert.ok(!src.includes(gone), `rx.routes.js still references ${gone}`);
+  }
+  const body = handlerSource(src, 'fastify.post("/rx/form-submissions",');
+  assert.doesNotMatch(body, /releaseRxCase|canRelease/);
+  assert.match(body, /status: SUBMISSION_STATUS/);
 });

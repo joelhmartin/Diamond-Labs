@@ -34,12 +34,17 @@ export function headerSafe(value, max = MAX_SUBJECT_LENGTH) {
  * here so no send can skip it (email-staging.test.js enforces this).
  */
 async function deliver({ to, bcc, subject, html, text }) {
+  // `to` / `bcc` may be a string or an array of addresses. Each address is
+  // sanitised on its own (so the 320-char cap can't cut a list mid-address) and
+  // the list is joined with commas, which is what Mailgun takes: ONE message to
+  // everyone, never N separate sends.
+  const addresses = (v) => [].concat(v ?? []).map((a) => headerSafe(a, 320)).filter(Boolean).join(", ");
   // Header values: several subjects interpolate user input (doctor name, account
   // name, ...) and `to` can be a registrant-typed address. Strip control
   // characters (CR/LF header injection) and cap length centrally so no caller
   // has to remember. Done first so the dev log line below is sanitized too.
-  to = headerSafe(to, 320);
-  if (bcc) bcc = headerSafe(bcc, 320);
+  to = addresses(to);
+  bcc = addresses(bcc);
   subject = headerSafe(subject, MAX_SUBJECT_LENGTH);
 
   // Staging: redirect to STAGING_EMAIL_TO (identity in production). Applied after
@@ -235,7 +240,7 @@ export async function sendDoctorRejected({ email, name }) {
 
 /**
  * AutoPay charge failed. Sent to the doctor; the lab gets a blind copy via
- * ADMIN_NOTIFICATION_EMAIL so a paused enrollment does not go unnoticed.
+ * ADMIN_NOTIFICATION_EMAIL (every address on the list) so a paused enrollment does not go unnoticed.
  */
 export async function sendAutopayFailure({ email, name, amount, reason, paused }) {
   return deliver({
@@ -388,9 +393,9 @@ export async function sendOrderReceipt({
 /**
  * Notify the lab that a new Rx case has arrived and is ready for review.
  * Sent (soft-fail) after every successful POST /rx/form-submissions save.
- * Sent for every submission — a case that auto-released (RX_AUTO_RELEASE)
- * never appears in the review queue, so this may be the only signal staff get
- * that it exists.
+ * Sent for every submission, to every admin on ADMIN_NOTIFICATION_EMAIL:
+ * every case waits for an admin to review it (and often to call the doctor)
+ * before it is released to the lab.
  *
  * No PHI: only the case number, the submitting doctor's identity, a plain
  * device summary, and an unmapped-line count travel here. Patient name,
@@ -400,7 +405,7 @@ export async function sendOrderReceipt({
 export async function sendRxSubmissionReceived({ caseNumber, practiceName, deviceSummary, unmappedCount, caseUrl }) {
   if (!env.ADMIN_NOTIFICATION_EMAIL) return false;
   const unmappedNote = unmappedCount > 0
-    ? `<p style="margin:16px 0 0;color:#b45309;font-size:13px;">${esc(unmappedCount)} selection(s) still need a product code before this case can be sent.</p>`
+    ? `<p style="margin:16px 0 0;color:#b45309;font-size:13px;">${esc(unmappedCount)} selection(s) still need a product code before this case can be released to the lab.</p>`
     : "";
   return deliver({
     to: env.ADMIN_NOTIFICATION_EMAIL,

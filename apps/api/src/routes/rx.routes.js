@@ -8,8 +8,8 @@ import { eq, desc, and, asc } from "drizzle-orm";
 import { ERROR_CODES, rxCaseSubmitSchema, rxFormSubmitSchema, buildFormDevices, doctorCaseView } from "@my-app/shared";
 import { seedLines } from "../services/rx/case-lines.service.js";
 import { loadOverrides } from "../services/rx/code-overrides.service.js";
-import { canRelease, summariseLines } from "../services/rx/case-gates.js";
-import { releaseRxCase, labOrdersForCases } from "../services/lab/lab-orders.service.js";
+import { summariseLines } from "../services/rx/case-gates.js";
+import { labOrdersForCases } from "../services/lab/lab-orders.service.js";
 import { uploadCaseFile, deleteStoredFile, getSignedReadUrl } from "../services/storage.service.js";
 import { encryptRxPhi, decryptRxPhi } from "../services/rx/phi-crypto.js";
 import * as auditService from "../services/audit.service.js";
@@ -34,14 +34,6 @@ const FILE_FIELD_KINDS = new Set(["scan", "photo", "prescription", "sleep_study"
 // 'pending_approval' at the schema level while nothing ever queried for that
 // value, so the queue could never return a row).
 export const SUBMISSION_STATUS = "new";
-
-/**
- * Whether a freshly-submitted, cleanly-resolved case is released straight to
- * the production board. Exact "true" only - any other value, or unset, is off.
- */
-export function shouldAutoRelease(flag) {
-  return flag === "true";
-}
 
 export default async function rxRoutes(fastify) {
   // ─────────────────────────────────────────────────────────────────────────
@@ -424,7 +416,7 @@ export default async function rxRoutes(fastify) {
     const uploadedFiles = [];
     let signatureUrl = data.signatureUrl || null;
     // Hoisted out of the try block below so it's still in scope afterward,
-    // for the auto-release + arrival-email steps.
+    // for the arrival-email step.
     let devices = [];
     try {
       for (const pf of pendingFiles) {
@@ -531,52 +523,19 @@ export default async function rxRoutes(fastify) {
     });
 
     // The case is fully persisted at this point (row + files + seeded
-    // lines) regardless of anything below — auto-release and the arrival email
-    // are additions on top of a submission that has already succeeded, and
-    // neither may fail the doctor's response.
+    // lines) regardless of anything below. Every case waits for an admin to review
+    // it (there is no auto-release); the arrival email is an addition on top
+    // of a submission that has already succeeded and may not fail the
+    // doctor's response.
     const lines = await db
       .select()
       .from(rxCaseLines)
       .where(eq(rxCaseLines.caseId, caseId))
       .orderBy(asc(rxCaseLines.position));
 
-    // ── Auto-release under RX_AUTO_RELEASE ────────────────────────────────
-    // Same gate the queue's Release button uses (canRelease on the stored
-    // lines) and the same release (releaseRxCase) - never a second copy. A
-    // case that doesn't pass stays "new" for the queue. Any failure is
-    // logged and leaves the case for a human; the doctor's submission has
-    // already succeeded and must not fail over this.
-    let finalStatus = SUBMISSION_STATUS;
-    if (shouldAutoRelease(env.RX_AUTO_RELEASE) && canRelease(lines).ok) {
-      try {
-        const caseRow = {
-          id: caseId,
-          userId,
-          status: SUBMISSION_STATUS,
-          dueDate: data.dueDate || null,
-          formData: data.formData ?? {},
-          rush: false,
-          rushTier: null,
-        };
-        const result = await db.transaction((tx) => releaseRxCase(tx, { caseRow, byUserId: null }));
-        finalStatus = "released";
-        auditService.logSafe({
-          userId: request.user.id,
-          action: "rx_case.auto_released",
-          targetType: "rx_case",
-          targetId: caseId,
-          metadata: { labOrderId: result.labOrder.id, orderNumber: result.labOrder.orderNumber, unknownCodes: result.unknownCodes },
-          ipAddress: request.ip,
-        });
-      } catch (err) {
-        request.log.error({ caseId, err: err.message }, "[LAB][RX_AUTO_RELEASE_FAILED] auto-release failed; case left for the queue");
-      }
-    }
-
     // ── Notify the lab a case arrived ──────────────────────────────────────
-    // Fires for EVERY successful submission — a case auto-released
-    // above skipped the review queue entirely, so this email may be the only
-    // signal staff get that it ever existed. Same non-critical-send
+    // Fires for EVERY successful submission: every case waits in the review
+    // queue for an admin, and this email is how they hear of it. Same non-critical-send
     // pattern as sendAdminApprovalRequest et al.: send() inside
     // email.service.js already catches its own errors and resolves to
     // false rather than throwing, so this can't fail the doctor's response.
@@ -588,7 +547,7 @@ export default async function rxRoutes(fastify) {
       caseUrl: `${env.APP_URL}/admin/rx-cases/${caseId}`,
     });
 
-    return reply.code(201).send({ data: { id: caseId, caseNumber, status: finalStatus } });
+    return reply.code(201).send({ data: { id: caseId, caseNumber, status: SUBMISSION_STATUS } });
   });
 
   // ─────────────────────────────────────────────────────────────────────────

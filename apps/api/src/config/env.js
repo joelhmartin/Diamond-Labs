@@ -55,7 +55,7 @@ const envSchema = z.object({
   // ── AutoPay ──
   // LIVE-CHARGE GATE. When false (the default) the sweep resolves balances,
   // computes allocations, and records what it WOULD charge — without touching a
-  // card. Gated dark, like RX_AUTO_RELEASE. Flip only after reading a
+  // card. Gated dark. Flip only after reading a
   // dry run's `would_charge` attempts.
   AUTOPAY_LIVE_RUN: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
   // Enrollment floor in dollars. An admin may override it per doctor.
@@ -85,16 +85,16 @@ const envSchema = z.object({
 
   // Google Cloud Storage
   RX_GCS_BUCKET: z.string().optional(),
-  // Auto-release gate (own-the-lab piece 2). Exactly "true" enables it: a
-  // cleanly-resolved incoming case (canRelease passes) is released straight
-  // to the production board on submission, skipping the review queue. It
-  // creates only our own lab order - nothing leaves this system - so the
-  // worst case of a wrong release is a job staff cancel on the board.
-  RX_AUTO_RELEASE: z.string().optional(),
   MEDIA_GCS_BUCKET: z.string().optional(),
 
-  // Admin
-  ADMIN_NOTIFICATION_EMAIL: z.string().email().optional(),
+  // Admin. One address or a comma-separated list; parsed to an array of valid
+  // emails (undefined when empty). Every Rx submission waits for these admins.
+  ADMIN_NOTIFICATION_EMAIL: z
+    .string()
+    .optional()
+    .transform((v) => (v ?? "").split(",").map((e) => e.trim()).filter(Boolean))
+    .pipe(z.array(z.string().email()))
+    .transform((list) => (list.length ? list : undefined)),
 });
 
 function parseEnv() {
