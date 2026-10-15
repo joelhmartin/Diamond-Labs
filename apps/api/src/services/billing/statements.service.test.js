@@ -10,11 +10,10 @@ const source = readFileSync(fileURLToPath(new URL("./statements.service.js", imp
 test("receivables: issued invoices with what is still owed, aged and grouped by client", async () => {
   const db = fakeTx({ selects: [
     [
-      { id: "i1", clientUserId: "doc1", status: "issued", totalCents: 30000, dueDate: "2000-01-01" },
-      { id: "i2", clientUserId: "doc1", status: "issued", totalCents: 5000, dueDate: "2000-01-01" },
-      { id: "i3", clientUserId: "doc2", status: "issued", totalCents: 8000, dueDate: "2999-01-01" },
+      { id: "i1", clientUserId: "doc1", status: "issued", totalCents: 30000, dueDate: "2000-01-01", paid: "10000" },
+      { id: "i2", clientUserId: "doc1", status: "issued", totalCents: 5000, dueDate: "2000-01-01", paid: "5000" },
+      { id: "i3", clientUserId: "doc2", status: "issued", totalCents: 8000, dueDate: "2999-01-01", paid: "0" },
     ],
-    [{ invoiceId: "i1", paid: "10000" }, { invoiceId: "i2", paid: "5000" }],
     [{ id: "doc1", name: "Dr One", accountNumber: "1", practice: "One Dental" }, { id: "doc2", name: "Dr Two", accountNumber: "2", practice: null }],
   ] });
   const ar = await svc.listReceivables({}, db);
@@ -29,7 +28,9 @@ test("a statement is only for a doctor; drafts carry no money", async () => {
   assert.match(source, /ne\(invoices\.status, "draft"\)/);
 });
 
-test("receivables use the one paid-sum and the one balance rule (withBalances), not a second copy", () => {
-  assert.match(source, /withBalances\(/);
+test("receivables read one SQL-aggregated query (no id list) and keep deriveBalance as the balance rule", async () => {
+  assert.match(source, /openReceivableInvoices\(/);
+  const db = fakeTx({ selects: [[{ id: "i1", clientUserId: "d", status: "issued", totalCents: 100, dueDate: null, paid: "100" }]] });
+  assert.equal((await svc.listReceivables({}, db)).rows.length, 0, "a fully paid invoice never reaches AR");
   assert.doesNotMatch(source, /sum\(\$\{invoicePayments/);
 });

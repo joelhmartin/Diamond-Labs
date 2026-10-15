@@ -10,8 +10,9 @@ import { users, invoicePayments } from "../db/schema/index.js";
 import { and, eq, gt, isNull, notInArray, or } from "drizzle-orm";
 import { createId } from "../lib/id.js";
 import { toDecimalString } from "../lib/money.js";
+import { OFFLINE_PREFIX } from "../lib/payment-summary.js";
 import { planRefund, invoiceKeysOf } from "../lib/refund-plan.js";
-import { ERROR_CODES, refundSchema, SHOP_PAYMENT_SOURCE, CREDIT_SOURCE } from "@my-app/shared";
+import { ERROR_CODES, refundSchema, SHOP_PAYMENT_SOURCE, CREDIT_SOURCE, isManualPaymentSource } from "@my-app/shared";
 import { withIdempotency, ChargeInProgressError, extractDeclineMessage } from "../lib/payment-helpers.js";
 
 const invoiceRef = (r) => r.invoiceNumber || r.invoiceId || r.seazonaInvoiceId;
@@ -49,6 +50,13 @@ export default async function refundRoutes(fastify) {
       ));
     if (!originalRows.length) {
       return reply.code(404).send({ error: { ...ERROR_CODES.NOT_FOUND, message: "No portal payment found for that transaction id." } });
+    }
+
+    // 1b. A manual payment (check / cash / ACH / other, or a legacy OFFLINE- id) never
+    //     touched the card gateway: refuse before any guard row is written or the
+    //     gateway is called. Staff reverse these with a credit.
+    if (txid.startsWith(OFFLINE_PREFIX) || originalRows.some((r) => isManualPaymentSource(r.source))) {
+      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "Manual payments are reversed with a credit, not a card refund." } });
     }
 
     // 2. The reversal plan (read-only; no money moves yet).
