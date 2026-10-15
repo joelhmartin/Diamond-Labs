@@ -242,7 +242,7 @@ export async function sendDoctorRejected({ email, name }) {
  * AutoPay charge failed. Sent to the doctor; the lab gets a blind copy via
  * ADMIN_NOTIFICATION_EMAIL (every address on the list) so a paused enrollment does not go unnoticed.
  */
-export async function sendAutopayFailure({ email, name, amount, reason, paused }) {
+export async function sendAutopayFailure({ email, name, amountCents, reason, paused }) {
   return deliver({
     to: email,
     bcc: env.ADMIN_NOTIFICATION_EMAIL,
@@ -250,7 +250,7 @@ export async function sendAutopayFailure({ email, name, amount, reason, paused }
     html: `
       <h1>We couldn't process your AutoPay payment</h1>
       <p>Hello${name ? `, ${esc(name)}` : ""} — your scheduled AutoPay payment of
-         <strong>$${Number(amount).toFixed(2)}</strong> did not go through.</p>
+         <strong>${formatCents(amountCents)}</strong> did not go through.</p>
       <p style="color:#5a6b7b;">Reason: ${esc(reason)}</p>
       ${paused
         ? `<p style="padding:12px;border-left:4px solid #f59e0b;background:#fffbeb;">
@@ -428,7 +428,7 @@ export async function sendRxSubmissionReceived({ caseNumber, practiceName, devic
 /**
  * Doctor invoice-payment receipt. Sent (soft-fail) after a successful invoice
  * payment is recorded — covers the saved-card, hosted-card, AutoPay, and admin
- * offline-record flows. `invoices` are { number, amount } per invoice the
+ * offline-record flows. `invoices` are { number, amountCents } per invoice the
  * payment was applied to.
  *
  * `wasCharged` (default true) distinguishes an actual card charge from an
@@ -495,8 +495,8 @@ export async function sendPaymentReceipt({ to, amountCents, invoices = [], trans
 
 /**
  * Doctor refund receipt. Sent (soft-fail) after an admin refunds/voids a recorded
- * payment. Mirrors sendPaymentReceipt. `invoices` are { number, amount } per
- * invoice the refund was applied against (amount is the positive refunded value).
+ * payment. Mirrors sendPaymentReceipt. `invoices` are { number, amountCents } per
+ * invoice the refund was applied against (amountCents is the positive refunded value).
  */
 export async function sendRefundReceipt({ to, amountCents, invoices = [], transactionId, date }) {
   if (!to) return false;

@@ -36,9 +36,12 @@ export default async function adminInvoiceRoutes(fastify) {
   fastify.get("/admin/invoices/:id/pdf", { preHandler: ADMIN }, invoicePdfHandler({ mayRead: () => true }));
 
   // One client's invoices: the drawer, Record payment and the AR row link.
-  fastify.get("/admin/clients/:userId/invoices", { preHandler: [...ADMIN, validateQuery(clientInvoicesQuerySchema)] }, async (request) => ({
-    data: await listClientInvoices([request.params.userId], { includeDrafts: !request.query.open, openOnly: request.query.open }),
-  }));
+  // With open=true it is the practice's open invoices, the exact list Record payment plans against.
+  fastify.get("/admin/clients/:userId/invoices", { preHandler: [...ADMIN, validateQuery(clientInvoicesQuerySchema)] }, (request, reply) =>
+    run(reply, async () =>
+      request.query.open
+        ? actions.openInvoicesForClientUser(request.params.userId)
+        : listClientInvoices([request.params.userId], { includeDrafts: true })));
 
   // Draft editing: one edit per request, always with the version the editor saw.
   fastify.patch("/admin/invoices/:id/lines", { preHandler: [...ADMIN, validate(invoiceEditSchema)] }, (request, reply) =>

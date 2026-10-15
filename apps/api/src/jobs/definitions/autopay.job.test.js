@@ -12,13 +12,14 @@ vi.mock("../../services/authorizenet.service.js", () => ({
 }));
 
 const recorded = [];
+let ledgerWriteFailed = false;
 // I3 — controllable per test so the in-lock cap re-check can be forced to
 // fail independently of everything else; defaults to "no cap problem".
 const paymentRecordingVerifyAllocations = vi.fn(async () => null);
 vi.mock("../../services/payment-recording.service.js", () => ({
   recordPaymentAndAllocations: vi.fn(async (args) => {
     recorded.push(args);
-    return { ledgerWriteFailed: false };
+    return { ledgerWriteFailed };
   }),
   verifyAllocations: (...args) => paymentRecordingVerifyAllocations(...args),
 }));
@@ -154,6 +155,7 @@ const now = new Date("2026-08-15T14:00:00Z");
 beforeEach(() => {
   charged.length = 0;
   recorded.length = 0;
+  ledgerWriteFailed = false;
   attempts.length = 0;
   enrollmentUpdates.length = 0;
   lockStore.clear();
@@ -395,6 +397,25 @@ describe("processEnrollment", () => {
     await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r1" });
     expect(enrollmentUpdates).toContainEqual(expect.objectContaining({ consecutiveFailures: 1 }));
     expect(sendAutopayFailure).toHaveBeenCalledTimes(1);
+    // Cents all the way to the email, which formats them itself.
+    expect(sendAutopayFailure.mock.calls[0][0]).toMatchObject({ amountCents: 50000 });
+    expect(sendAutopayFailure.mock.calls[0][0]).not.toHaveProperty("amount");
+  });
+
+  it("keeps a captured charge `succeeded` but pauses the enrollment when the ledger write failed", async () => {
+    ledgerWriteFailed = true;
+    const attempt = await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r1" });
+    expect(charged).toHaveLength(1);
+    expect(attempt.status).toBe("succeeded");
+    expect(attempt.failureReason).toBe("ledger_write_failed");
+    expect(attempt.transactionId).toBe("tx1");
+    expect(enrollmentUpdates).toContainEqual(expect.objectContaining({ status: "paused", pausedReason: "ledger_write_failed" }));
+    expect(sendAutopayFailure).not.toHaveBeenCalled();
+  });
+
+  it("does not pause a normal successful charge", async () => {
+    await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r1" });
+    expect(enrollmentUpdates.some((u) => u.status === "paused")).toBe(false);
   });
 });
 

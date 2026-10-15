@@ -30,7 +30,7 @@ import {
 class DoctorNotFoundError extends Error {}
 
 // Per-route strict rate limit for the one charge-producing endpoint in this
-// file — mirrors payment.routes.js's CHARGE_RATE_LIMIT so an admin acting on
+// file — mirrors invoice-payment.routes.js's CHARGE_RATE_LIMIT so an admin acting on
 // behalf of many doctors can't hammer the gateway any harder than a doctor
 // charging their own card could.
 const ADMIN_CHARGE_RATE_LIMIT = { config: { rateLimit: { max: 8, timeWindow: "1 minute" } } };
@@ -382,7 +382,7 @@ export default async function adminPaymentRoutes(fastify) {
 
   // Admin-parity charge: charge a doctor's saved card on their behalf,
   // allocated across invoices. Mirrors POST /payments/charge-saved
-  // (payment.routes.js) exactly — same idempotency, per-invoice locking, and
+  // (invoice-payment.routes.js) exactly — same idempotency, per-invoice locking, and
   // allocation-cap enforcement — but scoped to the target doctor rather than
   // the caller, and audited as an admin action in addition to the standard
   // "payment.charge" entry recordPaymentAndAllocations already writes.

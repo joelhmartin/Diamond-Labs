@@ -125,12 +125,12 @@ Full cinematic landing experience:
 
 #### Seazona (lab management — clients, invoices, orders, payments)
 
-Source of truth for clients (doctors), invoices, orders, and recorded payments. Our DB stores `users.seazonaClientId` + `users.seazonaAccountNumber` to link a doctor to their Seazona client record.
+Source of truth for clients (doctors) and the product/order feed only. **Invoices and payments are ours now (own-the-lab piece 3):** the `invoices` + `invoice_payments` tables (integer cents) are the system of record. Our DB stores `users.seazonaClientId` + `users.seazonaAccountNumber` to link a doctor to their Seazona client record (and it is the practice key: logins sharing it share invoices).
 
 - **Base URL:** `https://diamond.seazonaapi.net/` (env `SEAZONA_BASE_URL`) — **trailing slash required** (the wrapper joins `${BASE_URL}v1/...`). The old `https://diamondapi.labzona.net/` host was retired 2026-06-15 (returned 403 from everywhere); creds were rotated to a UUID Client ID + 64-hex Client Secret on the new host.
 - **Auth:** HTTP Basic — `Authorization: Basic base64(SEAZONA_API_KEY:SEAZONA_SECRET)`. Seazona's portal labels these "Client ID" / "Client Secret"; the code still reads them under the `SEAZONA_API_KEY` / `SEAZONA_SECRET` env names (values-only swap, no rename).
 - **Content-Type:** `application/json` on every request — applied AFTER caller headers in the wrapper so it (and `Authorization`) can't be overridden.
-- **Wrapper:** `apps/api/src/services/seazona.service.js` — `requestRaw()` returns `{ ok, status, data }`; the `request()` convenience wrapper returns `data` (or `null` on any failure; `[]` for list helpers). On non-2xx/network error it logs a `[Seazona] … → <status>` line (matched by the GCP alert) and never throws — routes must handle `null`/empty. Reachability-aware helpers `getInvoicesResult()` / `getAllInvoicesResult()` return `{ reachable, invoices }` so callers can tell "unreachable" from "empty"; `checkHealth()` backs `GET /api/v1/health/seazona`.
+- **Wrapper:** `apps/api/src/services/seazona.service.js` — `requestRaw()` returns `{ ok, status, data }`; the `request()` convenience wrapper returns `data` (or `null` on any failure; `[]` for list helpers). On non-2xx/network error it logs a `[Seazona] … → <status>` line (matched by the GCP alert) and never throws — routes must handle `null`/empty. `checkHealth()` backs `GET /api/v1/health/seazona`.
 
 **🛑 Rate limit — Seazona blocks the whole host IP when it's exceeded** (`403 API access is temporarily disabled for this host`; it has happened twice: Aug and Oct 2026, the second time from bulk history pulls). Documented limit is **60 requests/minute**, and it's shared by everything on that IP. Rules:
 - **Never call Seazona except through `seazona.service.js`** — it enforces the 60/min limit. No raw `fetch`/`curl` loops, no hand-rolled wrappers in scripts.
@@ -145,24 +145,19 @@ Source of truth for clients (doctors), invoices, orders, and recorded payments. 
 | GET | `v1/clients/?lastModified=` | **Trailing slash + empty `lastModified` query param are both required.** Without the query the API 400s. Empty string returns everything. |
 | GET | `v1/clients/login-exists?email=<urlencoded>` | Cheap "does this email exist" check. Returns client object or null. |
 | GET | `v1/clients/:id` | Single client. |
-| GET | `v1/invoices/?lastModified=<ISO>` | Same gotcha — `lastModified` is required. We default to `1900-01-01T00:00:00Z` to mean "everything". |
-| GET | `v1/invoices/:id` | Single invoice. |
+| GET | `v1/invoices/?lastModified=<ISO>` | **Retired for display/payment** (kept in the service only for the piece 5 history import). `lastModified` is required. |
+| GET | `v1/invoices/:id` | Retired, as above. |
 | GET | `v1/orders/?ordered=<ISO>` | Required `ordered` query param (NOT `lastModified`). Empty = 400. Default to `1900-01-01T00:00:00Z`. |
 | GET | `v1/orders/:id` | Returns order with products, files, settings. |
-| POST | `v1/payments/` | Body: `{ clientId, accountNumber, referenceNumber, notes, amount }`. |
+| POST | `v1/payments/` | **Nothing writes payments to Seazona any more.** Kept in the service only; the guard test below fails the build if a caller appears. |
 | GET | `v1/products` | Works as expected. |
 
 **Known gotchas:**
-- There is **no list endpoint for `/v1/payments/`** — payment reconciliation by querying the API in bulk is not possible. We record each payment individually after charging via Authorize.net.
+- There is **no list endpoint for `/v1/payments/`** and no readable paid state in Seazona; irrelevant now that our ledger owns it.
 - The `status` field on an invoice is a workflow state (`Shipped`, `Hold`, `In Production`, …), **not** paid/unpaid. Don't write logic that treats it as a payment status.
 - `listClients()` does the brute force fetch-all + in-memory filter for things like phone lookup (`findClientByPhone`). There's no server-side filter for these.
 
-**Real Seazona invoice shape (live):**
-```
-{ id, invoiceNumber, patient, clientId, fullName, company,
-  sales, tax, discounts, total, status, due, lastModified }
-```
-The frontend renders the normalized shape produced by `normalizeInvoice()` in `apps/api/src/routes/invoice.routes.js`.
+**Invoices and payments (ours):** the `invoices` + `invoice_payments` ledger, integer cents everywhere, is the only source of paid/balance state. Go through the existing entry points instead of re-implementing them: `chargeSavedCardAndRecord` (card-charge.service.js), `recordPaymentAndAllocations` and `verifyAllocations` (payment-recording.service.js; pass `{ enforceCap: true }` before taking money), `withInvoiceLocks` (lib/payment-helpers.js, serializes payments per invoice), `deriveBalance` (billing/invoice-rules.js: balance is derived, never stored), `openInvoicesForClient` (billing/ledger.service.js). Seazona invoice reads are retired and guarded by `routes/__tests__/seazona-invoice-retired.test.js`; the helpers stay in `seazona.service.js` only for the piece 5 import. Do not add Seazona calls to payment, invoice or statement code.
 
 **Bulk import:** `pnpm db:import-seazona` (wraps `apps/api/src/db/import-seazona-clients.js`) creates doctor users + accounts + memberships from `listClients()`. Idempotent — skips by `seazonaClientId` link or matching email. `DRY_RUN=1 pnpm db:import-seazona` previews. Imported users have `passwordHash=null` and must complete a password reset before login.
 
@@ -187,20 +182,7 @@ The frontend renders the normalized shape produced by `normalizeInvoice()` in `a
 | `chargeCustomerProfile({ customerProfileId, paymentProfileId, amount, invoiceNumber })` | `createTransactionRequest` with `profile.{customerProfileId,paymentProfile.paymentProfileId}` | `{ transactionId, responseCode, authCode }` |
 | `deletePaymentProfile({ customerProfileId, paymentProfileId })` | `deleteCustomerPaymentProfileRequest` | void |
 
-**API routes** (`apps/api/src/routes/payment.routes.js`, all under `/api/v1`):
-
-| Method | Path | Auth | Body |
-|---|---|---|---|
-| POST | `/payments/checkout` | public | `{ opaqueData, amount, items, email, shipping{name,address1,city,state,postalCode}, phone? }` — guest catalog checkout, **no CIM**. Generates `invoiceNumber = DOL-<last8 of Date.now()>`. |
-| POST | `/payments/charge` | doctor (approved) | `{ opaqueData, amount, allocations[], description? }` — after the charge, records ONE account-level `seazonaService.createPayment` for the whole charge (see pairing rule) and one local `invoice_payments` row per allocation. |
-| GET | `/payments/saved-cards` | doctor | — |
-| POST | `/payments/saved-cards` | doctor | `{ opaqueData }` — lazily creates the user's `authorizeNetCustomerProfileId` if missing, persists it on `users`. |
-| DELETE | `/payments/saved-cards/:profileId` | doctor | — |
-| POST | `/payments/charge-saved` | doctor | `{ paymentProfileId, amount, allocations[] }` — records the same one account-level Seazona payment + local per-allocation ledger as `/payments/charge`. |
-
-**Pairing rule (charge → record):** every successful Authorize.net charge associated with a Seazona client must be followed by a Seazona payment write. Seazona's payment API has **no invoice-level granularity** (`GET /v1/payments/` → 405; create + get-one-by-id only), so the routes record **ONE account-level** `seazonaService.createPayment({ clientId, accountNumber, referenceNumber, notes, amount })` per charge — where `referenceNumber` is the `"Invoices <num>, <num>"` token Seazona's report parses to attribute the payment to specific invoices (by invoice NUMBER, verified live 2026-06-10), and `amount` is the full charge total. The per-invoice split is captured in the local `invoice_payments` ledger, all rows sharing the one `seazonaPaymentId`. Do NOT refactor this into N separate Seazona payments — that creates N account-level credits and breaks reconciliation. This funnels through `recordPaymentAndAllocations()` in `payment.routes.js`; if `createPayment` returns no id after a successful charge it logs an alertable `[Seazona][PAYMENT_WRITE_FAILED]` line (never throws — can't un-charge a card).
-
-**Paid/balance is NOT readable from Seazona** — even with full API permissions: invoices carry `total`/`due`(date)/`status`(workflow), no paid flag; clients carry no balance; `/v1/payments/` is write-only; ledger/statement endpoints 404. The portal's paid/balance state therefore comes from the local `invoice_payments` ledger (auto-marks an invoice paid when its portal balance hits 0); payments staff enter directly in Seazona are invisible to the portal.
+**Payment routes** live in `apps/api/src/routes/invoice-payment.routes.js` (doctor) and `admin-payment.routes.js` (admin on behalf); amounts are integer `amountCents` on the wire (only the guest `/payments/checkout` in checkout.routes.js still takes a dollar `amount`). Read those files for the surface rather than trusting a table here.
 
 **Frontend Accept.js integration:**
 - Script tag in `apps/web/index.html`: `https://js.authorize.net/v1/Accept.js` (swap to `https://jstest.authorize.net/v1/Accept.js` for sandbox).
