@@ -23,6 +23,16 @@ export async function blobErrorText(err) {
   return errorText(err);
 }
 
+/** The API's message for a failed request, or `fallback` when the response carried none. */
+export function apiErrorMessage(err, fallback) {
+  return err?.response?.data?.error?.message || fallback;
+}
+
+/** 502: the card processor itself couldn't be reached (nothing the person entered was wrong). */
+export function isGatewayError(err) {
+  return err?.response?.status === 502;
+}
+
 export function isStale(err) {
   return err?.response?.status === 409 && err?.response?.data?.error?.code === "STALE";
 }

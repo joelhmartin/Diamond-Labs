@@ -11,7 +11,7 @@ import { join, relative } from "node:path";
 // comments, so a stale instruction can't survive either.
 const here = fileURLToPath(new URL(".", import.meta.url));
 const repo = join(here, "../../../../../");
-const ROOTS = ["apps/api/src", "apps/api/scripts", "scripts"].map((p) => join(repo, p));
+const ROOTS = ["apps/api/src", "apps/api/scripts", "apps/web/src", "scripts"].map((p) => join(repo, p));
 const ALLOWED = new Set(["apps/api/src/services/seazona.service.js"]);
 const SELF = fileURLToPath(import.meta.url);
 

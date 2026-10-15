@@ -1,81 +1,12 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Search, RefreshCw, Undo2, Loader2, AlertCircle, History, ChevronDown } from "lucide-react";
 import api from "../../config/api.js";
+import { formatCents } from "../../lib/money.js";
+import { formatUSD, formatDate, formatDateTime, auditLabel, SOURCE_LABEL, StatusPill } from "../../components/admin/payment-labels.jsx";
 import { RefundPaymentModal } from "../../components/admin/RefundPaymentModal.jsx";
 
 const INPUT =
   "w-full px-3.5 py-2.5 rounded-lg bg-white border border-surface-300/60 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-navy/25";
-
-function formatUSD(n) {
-  return Number(n || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
-}
-
-function formatDate(d) {
-  if (!d) return "—";
-  const dt = new Date(d);
-  if (isNaN(dt)) return String(d);
-  return dt.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
-}
-
-function formatDateTime(d) {
-  if (!d) return "—";
-  const dt = new Date(d);
-  if (isNaN(dt)) return String(d);
-  return dt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-}
-
-const AUDIT_ACTION_LABEL = {
-  "payment.charge": "Charged",
-  "payment.refund": "Reversed",
-  "payment.offline_recorded": "Offline payment recorded",
-  "payment.card.set_default": "Set default card",
-  "payment.card.delete": "Deleted card",
-};
-
-function auditLabel(e) {
-  if (e.action === "payment.refund") {
-    return e.metadata?.kind === "void" ? "Voided" : "Refunded";
-  }
-  return AUDIT_ACTION_LABEL[e.action] || e.action;
-}
-
-const STATUS_PILL = {
-  paid: "bg-emerald-500/10 text-emerald-700",
-  partially_refunded: "bg-amber-500/10 text-amber-700",
-  refunded: "bg-gray-200 text-gray-600",
-  refund_pending: "bg-blue-500/10 text-blue-700",
-};
-const STATUS_LABEL = {
-  paid: "Paid",
-  partially_refunded: "Partially refunded",
-  refunded: "Refunded",
-  refund_pending: "Refund pending",
-};
-
-// How the payment was initiated. AutoPay is the one nobody clicked, so the lab
-// needs to see it distinctly when reconciling — otherwise a scheduled charge is
-// indistinguishable from one a doctor or an admin made by hand. Rows written
-// before the `source` column existed carry null; render nothing rather than guess.
-const SOURCE_LABEL = {
-  autopay: "AutoPay",
-  doctor_card: "Doctor — card",
-  doctor_hosted: "Doctor — card",
-  admin_card: "Admin — card",
-  admin_offline: "Offline",
-  refund: "Refund",
-};
-
-function StatusPill({ status }) {
-  return (
-    <span
-      className={`inline-block rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
-        STATUS_PILL[status] || "bg-gray-200 text-gray-700"
-      }`}
-    >
-      {STATUS_LABEL[status] || status}
-    </span>
-  );
-}
 
 export function AdminPaymentsPage() {
   const [payments, setPayments] = useState([]);
@@ -231,7 +162,7 @@ export function AdminPaymentsPage() {
                       </td>
                       <td className="px-4 py-3 font-mono text-xs text-navy/60">{p.transactionId}</td>
                       <td className="px-4 py-3 text-navy/70 text-xs">
-                        {p.invoices.map((inv) => inv.invoiceNumber || inv.seazonaInvoiceId).join(", ") || "—"}
+                        {p.invoices.map((inv) => inv.invoiceNumber || inv.invoiceId).join(", ") || "—"}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         {p.source === "autopay" ? (
@@ -242,11 +173,11 @@ export function AdminPaymentsPage() {
                           <span className="text-xs text-navy/50">{SOURCE_LABEL[p.source] || "—"}</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right text-navy/80 whitespace-nowrap">{formatUSD(p.gross)}</td>
+                      <td className="px-4 py-3 text-right text-navy/80 whitespace-nowrap">{formatCents(p.grossCents)}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap text-navy/60">
-                        {p.refunded > 0 ? `-${formatUSD(p.refunded)}` : "—"}
+                        {p.refundedCents > 0 ? `-${formatCents(p.refundedCents)}` : "—"}
                       </td>
-                      <td className="px-4 py-3 text-right font-medium text-navy whitespace-nowrap">{formatUSD(p.net)}</td>
+                      <td className="px-4 py-3 text-right font-medium text-navy whitespace-nowrap">{formatCents(p.netCents)}</td>
                       <td className="px-4 py-3"><StatusPill status={p.status} /></td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -296,9 +227,11 @@ export function AdminPaymentsPage() {
                                 <li key={e.id} className="flex flex-wrap items-baseline gap-x-2 text-xs">
                                   <span className="font-mono text-navy/40 whitespace-nowrap">{formatDateTime(e.createdAt)}</span>
                                   <span className="font-semibold text-navy">{auditLabel(e)}</span>
-                                  {e.metadata?.amount != null && (
+                                  {e.metadata?.amountCents != null ? (
+                                    <span className="text-navy/70">{formatCents(e.metadata.amountCents)}</span>
+                                  ) : e.metadata?.amount != null ? (
                                     <span className="text-navy/70">{formatUSD(e.metadata.amount)}</span>
-                                  )}
+                                  ) : null}
                                   <span className="text-navy/50">
                                     by {e.actorName || e.actorEmail || (e.actorId ? "user " + e.actorId.slice(0, 8) : "system")}
                                   </span>

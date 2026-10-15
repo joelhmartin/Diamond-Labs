@@ -37,3 +37,42 @@ export function recentMonths(todayIso, count = 12) {
     return { value: d.toISOString().slice(0, 7), label: MONTH_LABEL.format(d) };
   });
 }
+
+/**
+ * The refund modal's per-invoice lines ([{ invoiceId, maxCents, include, amountStr }])
+ * → what to send. Full reversal when every line is included at its full amount;
+ * otherwise the included slices, each no more than was charged.
+ */
+export function refundSelection(lines) {
+  const parsed = lines.map((l) => {
+    const cents = typedCents(l.amountStr);
+    return { ...l, cents, valid: !l.include || (cents > 0 && cents <= l.maxCents) };
+  });
+  const included = parsed.filter((l) => l.include);
+  return {
+    parsed,
+    anySelected: included.length > 0,
+    allValid: parsed.every((l) => l.valid),
+    isFull: parsed.length > 0 && parsed.every((l) => l.include && l.cents === l.maxCents),
+    totalCents: included.reduce((s, l) => s + l.cents, 0),
+    allocations: included.map((l) => ({ invoiceId: l.invoiceId, amountCents: l.cents })),
+  };
+}
+
+const ACTIVITY_WORDS = {
+  "invoice.drafted": "Draft created",
+  "invoice.edited": "Edited",
+  "invoice.issued": "Issued",
+  "invoice.issue_held": "Held at draft (needs a price)",
+  "invoice.voided": "Voided",
+  "invoice.credited": "Credit applied",
+  "invoice.emailed": "Emailed to the client",
+  "invoice.pdf_downloaded": "PDF downloaded",
+};
+
+/** A readable word for an audit action; one this screen doesn't know ("invoice.foo_bar") reads as "Foo bar", never hidden. */
+export function activityLabel(action) {
+  if (ACTIVITY_WORDS[action]) return ACTIVITY_WORDS[action];
+  const tail = String(action ?? "").split(".").pop().replace(/_/g, " ").trim();
+  return tail ? tail.charAt(0).toUpperCase() + tail.slice(1) : "Activity";
+}
