@@ -9,7 +9,7 @@ import { redis } from "../config/redis.js";
 import { users, invoicePayments } from "../db/schema/index.js";
 import { and, eq, gt, isNull, notInArray, or } from "drizzle-orm";
 import { createId } from "../lib/id.js";
-import { toCents } from "../lib/money.js";
+import { toDecimalString } from "../lib/money.js";
 import { planRefund, invoiceKeysOf } from "../lib/refund-plan.js";
 import { ERROR_CODES, refundSchema, SHOP_PAYMENT_SOURCE, CREDIT_SOURCE } from "@my-app/shared";
 import { withIdempotency, ChargeInProgressError, extractDeclineMessage } from "../lib/payment-helpers.js";
@@ -89,7 +89,7 @@ export default async function refundRoutes(fastify) {
           //     Dollars only on the wire.
           let result;
           try {
-            result = await voidOrRefund(txid, plan.totalCents == null ? undefined : plan.totalCents / 100);
+            result = await voidOrRefund(txid, plan.totalCents == null ? undefined : toDecimalString(plan.totalCents));
           } catch (gwErr) {
             const definitivelyNoMoneyMoved = !!gwErr.refundErrorKind || !!gwErr.authNetResponse;
             if (definitivelyNoMoneyMoved) {
@@ -105,7 +105,8 @@ export default async function refundRoutes(fastify) {
 
           // The money is back at the gateway. Nothing below may throw.
           const refundTxnId = result.transactionId || `REFUND-${txid}`;
-          const refundedCents = toCents(result.amount);
+          // Derived from the plan (what OUR ledger reverses), not parsed back from the gateway amount.
+          const refundedCents = -plan.rows.reduce((sum, r) => sum + r.appliedCents, 0);
 
           // 4. Reverse OUR ledger: rows that sum to exactly what was reversed.
           const reversalRows = plan.rows.map((r) => ({

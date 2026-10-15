@@ -37,4 +37,5 @@ export * from "./money.js";
 
 // Billing
 export * from "./billing/billing.js";
+export * from "./billing/allocation.js";
 export * from "./schemas/billing.schema.js";

@@ -25,6 +25,16 @@ import { CHARGE_RATE_LIMIT, chargeErrorReply, sendInvoiceLockedError, sendAlloca
 // hosted charge before the issued token's server-side binding expires.
 const HOSTED_BINDING_TTL = 30 * 60;
 
+// A hosted payment Authorize.net captured but we refused to record (cap or bound
+// amount). The card was charged and nothing is on the ledger: alertable, ids and
+// amounts only, never free text.
+function logCapturedNotRecorded({ transId, userId, cents, allocations }) {
+  console.error(
+    "[PAYMENT][CAPTURED_NOT_RECORDED] hosted payment captured but refused by the cap or bound-amount check — manual reconcile required " +
+      JSON.stringify({ transactionId: String(transId), userId, amountCents: cents, invoiceIds: allocations.map((a) => String(a.invoiceId)) })
+  );
+}
+
 const sumCentsOf = (allocations) => allocations.reduce((s, a) => s + a.amountCents, 0);
 
 // Requires an Idempotency-Key header (H1/L5): the frontend mints one per submit.
@@ -156,6 +166,7 @@ async function hostedComplete(request, reply) {
   const capturedCents = toCents(details.amount);
   const boundCents = sumCentsOf(boundAllocations);
   if (capturedCents !== boundCents) {
+    logCapturedNotRecorded({ transId, userId: request.user.id, cents: capturedCents, allocations: boundAllocations });
     return reply.code(422).send({
       error: { ...ERROR_CODES.VALIDATION_ERROR, message: `Allocation total (${formatCents(boundCents)}) does not match the captured amount (${formatCents(capturedCents)}).` },
     });
@@ -168,6 +179,9 @@ async function hostedComplete(request, reply) {
       redis,
       boundAllocations.map((a) => a.invoiceId),
       async () => {
+        // Under the locks, so two concurrent completes of one transaction can't both record it.
+        const dup = await db.select({ id: invoicePayments.id }).from(invoicePayments).where(eq(invoicePayments.transactionId, String(transId)));
+        if (dup.length) return { alreadyRecorded: dup.length };
         const v = await verifyAllocations(boundAllocations, request.user, { enforceCap: true });
         if (v) return { allocationError: v };
         return {
@@ -186,7 +200,11 @@ async function hostedComplete(request, reply) {
     if (err instanceof InvoiceLockedError) return sendInvoiceLockedError(reply);
     throw err;
   }
-  if (recorded.allocationError) return sendAllocationError(reply, recorded.allocationError);
+  if (recorded.alreadyRecorded) return { data: { transId, alreadyRecorded: true, rows: recorded.alreadyRecorded } };
+  if (recorded.allocationError) {
+    logCapturedNotRecorded({ transId, userId: request.user.id, cents: capturedCents, allocations: boundAllocations });
+    return sendAllocationError(reply, recorded.allocationError);
+  }
 
   // One-time use.
   await redis.del(`rxpay:hosted:${refId}`).catch(() => {});

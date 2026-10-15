@@ -23,6 +23,9 @@ const owner = alias(users, "owner");
  * are set by manual payments only. `wasCharged` false = no card was charged
  * (receipt copy says "recorded").
  *
+ * Non-integer cents (amountCents or any allocation's) insert nothing and are
+ * reported the same way as a failed insert.
+ *
  * Returns { ledgerWriteFailed }. NEVER throws: after a card charge the money is
  * captured, so a ledger failure is logged loudly ([PAYMENT][LEDGER_WRITE_FAILED],
  * ids and amounts only) rather than 500ing a request a retry would re-charge.
@@ -41,6 +44,12 @@ export async function recordPaymentAndAllocations({
 }) {
   let ledgerWriteFailed = false;
   try {
+    // Fail closed: a dollar-shaped caller (or a missing amount) would write
+    // NULL-cents rows that the ledger silently ignores. Insert nothing and take
+    // the loud reconcile path instead.
+    if (!Number.isSafeInteger(amountCents) || !allocations.every((a) => Number.isSafeInteger(a.amountCents))) {
+      throw new Error("amountCents and every allocation amountCents must be integer cents");
+    }
     await db.insert(invoicePayments).values(
       allocations.map((a) => ({
         id: createId(),

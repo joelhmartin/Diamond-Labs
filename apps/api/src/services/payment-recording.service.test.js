@@ -136,3 +136,20 @@ test("verifyAllocations fills in the invoice number from our invoice", async () 
   await verifyAllocations(a, doctor);
   assert.equal(a[0].invoiceNumber, "500001");
 });
+
+test("fails closed on dollar-shaped input: nothing inserted, the loud reconcile path is taken", async () => {
+  const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+  const bad = [
+    { amountCents: 425.5, allocations: allocations() },
+    { amountCents: undefined, allocations: allocations() },
+    { amountCents: 42550, allocations: [{ invoiceId: "inv1", invoiceNumber: "500001", amount: 300 }] },
+    { amountCents: 42550, allocations: [{ invoiceId: "inv1", invoiceNumber: "500001", amountCents: 300.25 }] },
+  ];
+  for (const b of bad) {
+    const out = await recordPaymentAndAllocations({ user: doctor, transactionId: "tx1", source: "doctor_card", ...b });
+    assert.deepEqual(out, { ledgerWriteFailed: true });
+  }
+  assert.equal(inserted.length, 0);
+  assert.equal(errors.mock.calls.filter((c) => String(c[0]).includes("[PAYMENT][LEDGER_WRITE_FAILED]")).length, bad.length);
+  errors.mockRestore();
+});
