@@ -195,6 +195,24 @@ export async function processEnrollment({ enrollment, doctor, invoices, dryRun, 
 
       // On replay, fn never ran: neither the gateway nor the ledger was touched again.
       const transactionId = idem.result?.transactionId ?? null;
+      // The card was charged but the ledger write failed: the money moved, so the
+      // attempt stays `succeeded`, but the balance still looks owed. Pause the
+      // enrollment so the next cycle cannot charge the same balance again.
+      if (idem.result?.ledgerWriteFailed) {
+        await updateEnrollment(
+          enrollment.id,
+          { lastRunAt: now, lastChargedAt: now, consecutiveFailures: 0, status: "paused", pausedReason: "ledger_write_failed", updatedAt: now },
+          log
+        );
+        log?.error?.(
+          { enrollmentId: enrollment.id, userId: doctor.id, transactionId },
+          "[AutoPay][LEDGER_WRITE_FAILED] charge captured but the ledger write failed — enrollment paused until reconciled"
+        );
+        return writeAttempt(
+          { ...base, status: "succeeded", amountAttempted, amountCharged: amountAttempted, transactionId, allocations, failureReason: "ledger_write_failed" },
+          log
+        );
+      }
       await updateEnrollment(enrollment.id, { lastRunAt: now, lastChargedAt: now, consecutiveFailures: 0, updatedAt: now }, log);
       return writeAttempt(
         { ...base, status: "succeeded", amountAttempted, amountCharged: amountAttempted, transactionId, allocations },
@@ -256,7 +274,7 @@ export async function processEnrollment({ enrollment, doctor, invoices, dryRun, 
       // Notify, soft-fail (the email takes dollars).
       await Promise.resolve()
         .then(() => emailService.sendAutopayFailure({
-          email: doctor.email, name: doctor.name, amount: totalAllocatedCents / 100, reason: err?.message || "Card declined", paused: shouldPause,
+          email: doctor.email, name: doctor.name, amountCents: totalAllocatedCents, reason: err?.message || "Card declined", paused: shouldPause,
         }))
         .catch(() => {});
       return writeAttempt(

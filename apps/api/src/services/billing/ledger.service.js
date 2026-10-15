@@ -62,7 +62,7 @@ export async function openInvoicesForClient(client, database = db) {
   const ids = await practiceUserIds(client, database);
   const rows = await database
     .select({
-      id: invoices.id, clientUserId: invoices.clientUserId, ownerSeazonaClientId: owner.seazonaClientId,
+      id: invoices.id, clientUserId: invoices.clientUserId, ownerSeazonaClientId: owner.seazonaClientId, ownerName: owner.name,
       invoiceNumber: invoices.invoiceNumber, status: invoices.status,
       totalCents: invoices.totalCents, dueDate: invoices.dueDate, issuedAt: invoices.issuedAt,
     })
@@ -74,7 +74,7 @@ export async function openInvoicesForClient(client, database = db) {
     balanced
       .filter((i) => i.balanceCents > 0)
       .map((i) => ({
-        id: i.id, invoiceNumber: i.invoiceNumber, balanceCents: i.balanceCents, dueDate: i.dueDate ?? null,
+        id: i.id, clientUserId: i.clientUserId, ownerName: i.ownerName ?? null, invoiceNumber: i.invoiceNumber, balanceCents: i.balanceCents, dueDate: i.dueDate ?? null,
         issuedOn: isoDateIn(LAB_TIMEZONE, new Date(i.issuedAt)),
       }))
   );

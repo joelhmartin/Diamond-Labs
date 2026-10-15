@@ -25,9 +25,10 @@ vi.mock("../../config/database.js", () => ({
 let details;
 vi.mock("../../services/authorizenet.service.js", () => ({ getTransactionDetails: async () => details }));
 let verifyResult = null;
+const verifyCalls = [];
 const recorded = [];
 vi.mock("../../services/payment-recording.service.js", () => ({
-  verifyAllocations: async () => verifyResult,
+  verifyAllocations: async (...args) => { verifyCalls.push(args); return verifyResult; },
   recordPaymentAndAllocations: async (a) => { recorded.push(a); return { ledgerWriteFailed: false }; },
 }));
 vi.mock("../../services/card.service.js", () => ({ ensureCustomerProfile: async () => "cp1" }));
@@ -50,7 +51,7 @@ let errors;
 beforeEach(() => {
   store.clear(); store.set("rxpay:hosted:Habc", JSON.stringify(bound));
   selectQueue = [];
-  recorded.length = 0; verifyResult = null;
+  recorded.length = 0; verifyResult = null; verifyCalls.length = 0;
   details = { orderInvoiceNumber: "Habc", responseCode: "1", transactionStatus: "settledSuccessfully", amount: 500, status: "ok" };
   errors = vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -91,5 +92,18 @@ describe("POST /payments/hosted-complete", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().data).toMatchObject({ alreadyRecorded: true, rows: 1 });
     expect(recorded).toHaveLength(0);
+  });
+});
+
+describe("POST /payments/hosted-token", () => {
+  it("checks the balance cap up front so a stale allocation is refused before the card is taken", async () => {
+    verifyResult = { kind: "validation", message: "over the balance" };
+    const app = Fastify();
+    await app.register(invoicePaymentRoutes, { prefix: "/api/v1" });
+    const res = await app.inject({ method: "POST", url: "/api/v1/payments/hosted-token", payload: { allocations: bound.allocations } });
+    await app.close();
+    expect(res.statusCode).toBe(422);
+    expect(verifyCalls).toHaveLength(1);
+    expect(verifyCalls[0][2]).toEqual({ enforceCap: true });
   });
 });

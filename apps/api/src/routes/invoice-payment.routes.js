@@ -8,7 +8,7 @@ import { redis } from "../config/redis.js";
 import { invoicePayments } from "../db/schema/index.js";
 import { eq } from "drizzle-orm";
 import { createId } from "../lib/id.js";
-import { formatCents, toCents, toDecimalString } from "../lib/money.js";
+import { formatCents, sumCents, toCents, toDecimalString } from "../lib/money.js";
 import { ERROR_CODES, chargeSavedSchema, hostedTokenSchema, hostedCompleteSchema } from "@my-app/shared";
 import {
   withIdempotency,
@@ -34,8 +34,6 @@ function logCapturedNotRecorded({ transId, userId, cents, allocations }) {
       JSON.stringify({ transactionId: String(transId), userId, amountCents: cents, invoiceIds: allocations.map((a) => String(a.invoiceId)) })
   );
 }
-
-const sumCentsOf = (allocations) => allocations.reduce((s, a) => s + a.amountCents, 0);
 
 // Requires an Idempotency-Key header (H1/L5): the frontend mints one per submit.
 async function chargeSaved(request, reply) {
@@ -95,9 +93,9 @@ async function hostedToken(request, reply) {
   if (iframeCommunicatorUrl && !/^https?:\/\//.test(iframeCommunicatorUrl)) {
     return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "iframeCommunicatorUrl must be an http(s) URL." } });
   }
-  const v = await verifyAllocations(allocations, request.user);
+  const v = await verifyAllocations(allocations, request.user, { enforceCap: true });
   if (v) return sendAllocationError(reply, v);
-  const amountCents = sumCentsOf(allocations);
+  const amountCents = sumCents(allocations.map((a) => a.amountCents));
 
   // Save-card: create the CIM profile lazily so the gateway has a customer
   // to attach the new card to.
@@ -164,7 +162,7 @@ async function hostedComplete(request, reply) {
   }
   // C2 (d): captured amount = the bound allocation sum, to the cent.
   const capturedCents = toCents(details.amount);
-  const boundCents = sumCentsOf(boundAllocations);
+  const boundCents = sumCents(boundAllocations.map((a) => a.amountCents));
   if (capturedCents !== boundCents) {
     logCapturedNotRecorded({ transId, userId: request.user.id, cents: capturedCents, allocations: boundAllocations });
     return reply.code(422).send({

@@ -100,6 +100,34 @@ test("recordManualPayment: oldest-first, re-verified under the lock, recorded as
   );
 });
 
+test("Record payment's picker and the default allocation read the same practice-wide list", async () => {
+  const issuedAt = new Date("2026-08-31T15:00:00Z");
+  const queue = () => [
+    [{ id: "doc1", email: "d@x.com", name: "Dr", role: "doctor", seazonaClientId: "c1" }],
+    [{ id: "doc1" }, { id: "colleague" }],
+    [
+      { id: "mine", clientUserId: "doc1", ownerSeazonaClientId: "c1", ownerName: "Dr One", invoiceNumber: 500002, status: "issued", totalCents: 5000, dueDate: "2026-10-31", issuedAt },
+      { id: "theirs", clientUserId: "colleague", ownerSeazonaClientId: "c1", ownerName: "Dr Two", invoiceNumber: 500001, status: "issued", totalCents: 5000, dueDate: "2026-09-30", issuedAt },
+    ],
+    [],
+  ];
+  recorded.length = 0;
+  const picker = await actions.openInvoicesForClientUser("doc1", fakeTx({ selects: queue() }));
+  assert.deepEqual(picker.map((i) => [i.id, i.clientUserId, i.ownerName]), [["theirs", "colleague", "Dr Two"], ["mine", "doc1", "Dr One"]]);
+  await actions.recordManualPayment({ clientUserId: "doc1", method: "check", amountCents: 7000, paidOn: "2026-09-15", byUserId: "a1" }, fakeTx({ selects: queue() }));
+  // The default plan spreads over exactly the rows the picker showed, in the same order.
+  assert.deepEqual(recorded[0].allocations.map((a) => a.invoiceId), picker.map((i) => i.id));
+  assert.deepEqual(recorded[0].allocations.map((a) => a.amountCents), [5000, 2000]);
+});
+
+test("one source for the practice's open invoices: the endpoint and recordManualPayment share the loader", () => {
+  const route = readFileSync(fileURLToPath(new URL("../../routes/admin-invoice.routes.js", import.meta.url)), "utf8");
+  assert.match(route, /request\.query\.open\s*\?\s*actions\.openInvoicesForClientUser\(request\.params\.userId\)/);
+  assert.match(source, /export async function openInvoicesForClientUser[\s\S]*?openInvoicesForClient\(await loadPayingClient/);
+  const manual = source.slice(source.indexOf("export async function recordManualPayment"));
+  assert.match(manual, /await loadPayingClient\(clientUserId, database\);[\s\S]*?await openInvoicesForClient\(client, database\)/);
+});
+
 test("recordManualPayment: a race lost under the lock is refused, nothing recorded; non-doctors are not clients", async () => {
   verifyResult = { kind: "validation", message: "exceeds its balance" };
   const db = fakeTx({ selects: [

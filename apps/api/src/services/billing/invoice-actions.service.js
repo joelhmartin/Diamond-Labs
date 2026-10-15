@@ -135,15 +135,30 @@ export function recordCredit(id, { amountCents, reason, byUserId }, database = d
  * then written through recordPaymentAndAllocations like every card payment:
  * ledger rows, a "recorded, not charged" receipt, an audit entry.
  */
-export async function recordManualPayment(
-  { clientUserId, method, reference = null, amountCents, paidOn, allocations, byUserId },
-  database = db,
-) {
+async function loadPayingClient(clientUserId, database) {
   const [client] = await database
     .select({ id: users.id, email: users.email, name: users.name, role: users.role, seazonaClientId: users.seazonaClientId })
     .from(users)
     .where(eq(users.id, clientUserId));
   if (!client || client.role !== "doctor") throw new InvoiceError("NOT_FOUND", "Client not found.");
+  return client;
+}
+
+/**
+ * What a payment recorded for this client can be applied to: the practice's open
+ * invoices, oldest due first. The ONE list both Record payment's picker
+ * (GET /admin/clients/:userId/invoices?open=true) and recordManualPayment's
+ * default allocation read, so staff see exactly what the server plans against.
+ */
+export async function openInvoicesForClientUser(clientUserId, database = db) {
+  return openInvoicesForClient(await loadPayingClient(clientUserId, database), database);
+}
+
+export async function recordManualPayment(
+  { clientUserId, method, reference = null, amountCents, paidOn, allocations, byUserId },
+  database = db,
+) {
+  const client = await loadPayingClient(clientUserId, database);
   // Practice-wide, as a doctor paying online would see (canActOnInvoice).
   const openInvoices = await openInvoicesForClient(client, database);
   const planned = planManualPayment({ openInvoices, amountCents, allocations, paidOn, todayIso: isoDateIn(LAB_TIMEZONE, new Date()) });

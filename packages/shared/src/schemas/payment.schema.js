@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { cartLinesSchema, numericInput } from "./catalog.schema.js";
+import { sumCents } from "../money.js";
 
 /**
  * Shared payment validation schemas. Mirror the backend payment routes so the
@@ -21,7 +22,7 @@ export const allocationSchema = z.object({
   amountCents,
 });
 
-const sumOf = (allocations) => allocations.reduce((s, a) => s + a.amountCents, 0);
+const sumOf = (allocations) => sumCents(allocations.map((a) => a.amountCents));
 const eachInvoiceOnce = (allocations) => new Set(allocations.map((a) => a.invoiceId)).size === allocations.length;
 const allocations = z.array(allocationSchema).min(1)
   .refine(eachInvoiceOnce, { message: "Each invoice can appear only once." });

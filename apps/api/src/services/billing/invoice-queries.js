@@ -73,13 +73,12 @@ export async function listInvoices(filters = {}, database = db) {
 /**
  * The invoices of a set of clients, newest first: one doctor (admin), or a
  * doctor's whole practice (practiceUserIds; Spec correction 6). Doctors get
- * issued and void ones (includeDrafts false); `openOnly` is what a payment
- * can be applied to.
+ * issued and void ones (includeDrafts false). What a payment can be applied to
+ * is ledger.openInvoicesForClient, not this.
  */
-export async function listClientInvoices(clientUserIds, { includeDrafts = false, openOnly = false } = {}, database = db) {
+export async function listClientInvoices(clientUserIds, { includeDrafts = false } = {}, database = db) {
   const conds = [inArray(invoices.clientUserId, clientUserIds)];
-  if (openOnly) conds.push(eq(invoices.status, "issued"));
-  else if (!includeDrafts) conds.push(ne(invoices.status, "draft"));
+  if (!includeDrafts) conds.push(ne(invoices.status, "draft"));
   const rows = await database
     .select({
       invoice: invoices, labOrderNumber: labOrders.orderNumber, caseNumber: rxCases.caseNumber,
@@ -98,7 +97,7 @@ export async function listClientInvoices(clientUserIds, { includeDrafts = false,
     issuedAt: inv.issuedAt, dueDate: inv.dueDate,
     totalCents: inv.totalCents, paidCents: inv.paidCents, balanceCents: inv.balanceCents,
   }));
-  return openOnly ? out.filter((i) => i.balanceCents > 0) : out;
+  return out;
 }
 
 async function labOrderBlock(labOrderId, database) {

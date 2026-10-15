@@ -1,8 +1,12 @@
+import { eq } from "drizzle-orm";
+import { db } from "../config/database.js";
+import { users } from "../db/schema/index.js";
 import { validate, validateQuery } from "../middleware/validate.js";
 import { ERROR_CODES, receivablesQuerySchema, statementQuerySchema } from "@my-app/shared";
 import * as auditService from "../services/audit.service.js";
 import { sendStatementNotice } from "../services/email.service.js";
 import { listReceivables, statementFor } from "../services/billing/statements.service.js";
+import { practiceUserIds } from "../services/billing/ledger.service.js";
 import { statementPdfHandler } from "./invoice-detail.handler.js";
 import { ADMIN } from "./admin-invoice.routes.js";
 
@@ -18,8 +22,12 @@ export default async function receivablesRoutes(fastify) {
   }));
 
   // Staff-triggered, never automatic: a short notice with the closing balance and a portal link.
+  // The balance is the practice's, the same figure the doctor's own statement download shows
+  // (the admin PDF and AR rows stay per user).
   fastify.post("/admin/clients/:userId/statement/email", { preHandler: [...ADMIN, validate(statementQuerySchema)] }, async (request, reply) => {
-    const out = await statementFor(request.params.userId, request.body.month);
+    const [target] = await db.select({ id: users.id, seazonaClientId: users.seazonaClientId }).from(users).where(eq(users.id, request.params.userId));
+    if (!target) return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    const out = await statementFor(request.params.userId, request.body.month, { clientUserIds: await practiceUserIds(target) });
     if (!out) return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
     if (!out.client.email) {
       return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "This client has no email address on file." } });

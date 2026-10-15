@@ -94,3 +94,9 @@ test("one statement handler serves both audiences; a doctor's covers their pract
   assert.match(body, /clientUserIds: await practiceUserIds\(request\.user\)/);
   assert.doesNotMatch(doctor + receivables, /statementPdfFor|sendPdf/, "no near-duplicate handler");
 });
+
+test("the emailed statement notice covers the practice, like the doctor's own download", () => {
+  const body = handlerSource(receivables, 'fastify.post("/admin/clients/:userId/statement/email",');
+  assert.match(body, /statementFor\(request\.params\.userId, request\.body\.month, \{ clientUserIds: await practiceUserIds\(target\) \}\)/);
+  assert.match(receivables, /import \{ practiceUserIds \} from "\.\.\/services\/billing\/ledger\.service\.js"/);
+});
