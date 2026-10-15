@@ -31,6 +31,8 @@ function ChargePanel({ invoices, cards, cardsUnavailable, doctorUserId, onSucces
 
   const { ordered, alloc, targetStr, totalBalanceCents, handleTargetChange, setRow, payTotalCents, allocations, canPay } =
     useInvoiceAllocation(invoices);
+  // Rows can belong to a practice colleague; say so rather than let staff charge them blind.
+  const allOwn = ordered.every((inv) => inv.clientUserId === doctorUserId);
 
   const charge = async () => {
     if (!selectedCard) return addToast({ message: "Select a card to charge.", type: "error" });
@@ -68,11 +70,12 @@ function ChargePanel({ invoices, cards, cardsUnavailable, doctorUserId, onSucces
           aria-label="Amount to charge"
           className={`${INPUT} w-28`}
         />
-        <span className="text-xs text-navy/40">applied oldest-first · balance {formatCents(totalBalanceCents)}</span>
+        <span className="text-xs text-navy/40">applied oldest-first · {allOwn ? "open balance" : "practice open balance"} {formatCents(totalBalanceCents)}</span>
       </div>
 
       <AllocationRows
         rows={ordered}
+        showOwner={!allOwn}
         valueOf={(inv) => (alloc[inv.id] ?? 0) / 100}
         onChange={setRow}
         disabled={processing}
