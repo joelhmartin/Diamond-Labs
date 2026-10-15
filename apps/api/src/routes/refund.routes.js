@@ -100,7 +100,14 @@ export default async function refundRoutes(fastify) {
           } catch (gwErr) {
             const definitivelyNoMoneyMoved = !!gwErr.refundErrorKind || !!gwErr.authNetResponse;
             if (definitivelyNoMoneyMoved) {
-              await db.delete(invoicePayments).where(inArray(invoicePayments.id, reversalIds)).catch(() => {});
+              await db.delete(invoicePayments).where(inArray(invoicePayments.id, reversalIds)).catch((delErr) => {
+                // The gateway moved no money, but the pending negative rows are still in the ledger: they reopen
+                // the invoice balances and block any later refund of this charge. Make that state findable.
+                console.error(
+                  `[PAYMENT][REFUND_PENDING_CLEANUP_FAILED] gateway refused reversal of charge ${txid} but deleting pending reversal rows ${reversalIds.join(",")} failed — delete them manually to reconcile ` +
+                    JSON.stringify({ transactionId: txid, error: String(delErr?.message || delErr).slice(0, 300) })
+                );
+              });
               throw gwErr;
             }
             console.error(
