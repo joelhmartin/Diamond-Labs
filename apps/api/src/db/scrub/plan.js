@@ -136,7 +136,7 @@ export const SCRUB_PLAN = {
     mode: "update",
     columns: {
       id: K, user_id: K, invoice_id: K, seazona_client_id: K, seazona_invoice_id: K, invoice_number: K,
-      applied_amount: K, applied_cents: K, transaction_id: K, seazona_payment_id: K, refunds_transaction_id: K,
+      applied_cents: K, transaction_id: K, seazona_payment_id: K, refunds_transaction_id: K,
       source: K, paid_on: K,
       reference: pii("NULL"), // staff-typed check number / trace — free text
       note: phi("NULL"), // a credit's reason: staff free text, encrypted at rest

@@ -189,6 +189,21 @@ describe("processEnrollment", () => {
     expect(attempt.status).toBe("succeeded");
   });
 
+  it("fails closed, charging nothing, when any open invoice balance is not integer cents", async () => {
+    for (const balanceCents of [300.5, "30000", null, undefined, NaN]) {
+      charged.length = 0;
+      const attempt = await processEnrollment({
+        enrollment, doctor, invoices: [{ id: "i1", invoiceNumber: 1001, balanceCents, dueDate: "2026-01-01" }, invoices[1]],
+        dryRun: false, now, runId: "r1",
+      });
+      expect(charged).toHaveLength(0);
+      expect(attempt.status).toBe("failed");
+      expect(attempt.failureReason).toMatch(/non-integer balance/);
+    }
+    expect(enrollmentUpdates.some((u) => u.consecutiveFailures !== undefined)).toBe(false);
+    expect(sendAutopayFailure).not.toHaveBeenCalled();
+  });
+
   it("charges nothing and completes when the balance is zero", async () => {
     const attempt = await processEnrollment({ enrollment, doctor, invoices: [], dryRun: false, now, runId: "r1" });
     expect(charged).toHaveLength(0);

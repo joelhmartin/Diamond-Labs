@@ -58,3 +58,13 @@ test("0029 converts every existing ledger amount to cents, half away from zero",
   const sql = migration("0029_");
   assert.match(sql, /UPDATE "invoice_payments" SET "applied_cents" = round\("applied_amount" \* 100\)::integer WHERE "applied_cents" IS NULL;/);
 });
+
+test("0030: applied_cents is required and the dollar column is gone (after the 0029 backfill)", () => {
+  const sql = migration("0030_");
+  assert.match(sql, /ALTER TABLE "invoice_payments" ALTER COLUMN "applied_cents" SET NOT NULL;/);
+  assert.match(sql, /ALTER TABLE "invoice_payments" DROP COLUMN (IF EXISTS )?"applied_amount";/);
+  assert.equal(invoicePayments.appliedCents.notNull, true);
+  assert.ok(!("appliedAmount" in invoicePayments));
+  const backfill = sql.indexOf('UPDATE "invoice_payments" SET "applied_cents" = round("applied_amount" * 100)::integer WHERE "applied_cents" IS NULL;');
+  assert.ok(backfill >= 0 && backfill < sql.indexOf("SET NOT NULL"), "rows written between migrate and deploy are backfilled BEFORE NOT NULL");
+});

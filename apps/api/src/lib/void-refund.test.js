@@ -41,7 +41,7 @@ describe("voidOrRefund — status → action decision", () => {
 
   it("VOIDs an unsettled transaction when given the full amount (not a partial)", async () => {
     getTransactionDetails.mockResolvedValue({ ...baseDetails, transactionStatus: "capturedPendingSettlement" });
-    const out = await voidOrRefund("1234567890", 100);
+    const out = await voidOrRefund("1234567890", "100.00");
     expect(out.action).toBe("void");
     expect(out.amount).toBe(100);
     expect(voidTransaction).toHaveBeenCalledOnce();
@@ -49,7 +49,7 @@ describe("voidOrRefund — status → action decision", () => {
 
   it("REFUSES a PARTIAL void of an unsettled charge (can't partial-void) with a validation error", async () => {
     getTransactionDetails.mockResolvedValue({ ...baseDetails, transactionStatus: "authorizedPendingCapture" });
-    await expect(voidOrRefund("1234567890", 25)).rejects.toMatchObject({ refundErrorKind: "validation" });
+    await expect(voidOrRefund("1234567890", "25.00")).rejects.toMatchObject({ refundErrorKind: "validation" });
     expect(voidTransaction).not.toHaveBeenCalled();
     expect(refundTransaction).not.toHaveBeenCalled();
   });
@@ -78,10 +78,10 @@ describe("voidOrRefund — status → action decision", () => {
 
   it("REFUNDs a settled transaction for a partial amount when given", async () => {
     getTransactionDetails.mockResolvedValue({ ...baseDetails, transactionStatus: "settledSuccessfully" });
-    const out = await voidOrRefund("1234567890", 40);
+    const out = await voidOrRefund("1234567890", "40.10");
     expect(out.action).toBe("refund");
-    expect(out.amount).toBe(40);
-    expect(refundTransaction).toHaveBeenCalledWith(expect.objectContaining({ amount: 40 }));
+    expect(out.amount).toBe("40.10"); // the decimal string, untouched (Number() would print 40.1)
+    expect(refundTransaction).toHaveBeenCalledWith(expect.objectContaining({ amount: "40.10" }));
   });
 
   it("throws a not_found error when the transaction is missing", async () => {

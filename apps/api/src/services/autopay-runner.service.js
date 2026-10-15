@@ -124,6 +124,11 @@ export async function processEnrollment({ enrollment, doctor, invoices, dryRun, 
   const base = attemptBase({ enrollment, doctor, runId, now, dryRun, cycleKey });
 
   try {
+    // Fail closed: a balance that is not integer cents (a corrupt or foreign
+    // row) must never be summed into a charge. No charge, no failure count.
+    if ((invoices || []).some((i) => !Number.isSafeInteger(i.balanceCents))) {
+      return writeAttempt({ ...base, status: "failed", failureReason: "an open invoice has a non-integer balance; nothing charged" }, log);
+    }
     const totalBalanceCents = (invoices || []).reduce((s, i) => s + i.balanceCents, 0);
     const chargeCents = resolveChargeCents({ enrolledCents: toCents(enrollment.amount), totalBalanceCents });
 

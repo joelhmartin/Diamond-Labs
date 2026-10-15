@@ -4,14 +4,14 @@ import { toDecimalString } from "../lib/money.js";
 
 /**
  * Charge a payer's saved card for a set of invoice allocations, then record the
- * payment on our ledger. The one implementation behind the doctor route
- * (POST /payments/charge-saved) and the admin charge-on-behalf route; each
- * keeps its own auth, idempotency key and invoice locks and calls this INSIDE
+ * payment on our ledger. The one implementation behind three callers: the
+ * doctor route (POST /payments/charge-saved), the admin charge-on-behalf route
+ * and the AutoPay sweep (source "autopay"); each keeps its own auth, idempotency key and invoice locks and calls this INSIDE
  * its withInvoiceLocks, so the balance cap check, the gateway charge and the
  * ledger write all happen under the same locks.
  *
  * `payer` is the doctor being charged (request.user, or the admin's target);
- * `source` is doctor_card | admin_card. Allocations are
+ * `source` is doctor_card | admin_card | autopay. Allocations are
  * [{ invoiceId, amountCents }]; verifyAllocations backfills invoiceNumber.
  * Dollars appear only on the gateway wire (toDecimalString).
  *

@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
-import { isoDateIn, LAB_TIMEZONE, SHOP_PAYMENT_SOURCE } from "@my-app/shared";
+import { isoDateIn, LAB_TIMEZONE, SHOP_PAYMENT_SOURCE, sortOldestFirst } from "@my-app/shared";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../../config/database.js";
 import { invoices, invoicePayments, users } from "../../db/schema/index.js";
@@ -34,7 +34,6 @@ export async function withBalances(invoiceRows, database = db) {
   return invoiceRows.map((inv) => ({ ...inv, ...deriveBalance(inv, paid.get(inv.id) ?? 0) }));
 }
 
-const LAST_DAY = "9999-12-31";
 const owner = alias(users, "owner");
 
 /**
@@ -71,13 +70,14 @@ export async function openInvoicesForClient(client, database = db) {
     .leftJoin(owner, eq(owner.id, invoices.clientUserId))
     .where(and(inArray(invoices.clientUserId, ids), eq(invoices.status, "issued")));
   const balanced = await withBalances(rows.filter((r) => canActOnInvoice(client, r, r.ownerSeazonaClientId)), database);
-  return balanced
-    .filter((i) => i.balanceCents > 0)
-    .map((i) => ({
-      id: i.id, invoiceNumber: i.invoiceNumber, balanceCents: i.balanceCents, dueDate: i.dueDate ?? null,
-      issuedOn: isoDateIn(LAB_TIMEZONE, new Date(i.issuedAt)),
-    }))
-    .sort((a, b) => (a.dueDate ?? LAST_DAY).localeCompare(b.dueDate ?? LAST_DAY) || a.invoiceNumber - b.invoiceNumber);
+  return sortOldestFirst(
+    balanced
+      .filter((i) => i.balanceCents > 0)
+      .map((i) => ({
+        id: i.id, invoiceNumber: i.invoiceNumber, balanceCents: i.balanceCents, dueDate: i.dueDate ?? null,
+        issuedOn: isoDateIn(LAB_TIMEZONE, new Date(i.issuedAt)),
+      }))
+  );
 }
 
 /** An invoice's ledger rows, oldest first, with credit reasons decrypted. */

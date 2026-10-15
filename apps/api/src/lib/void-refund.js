@@ -31,9 +31,12 @@ function refundError(kind, message) {
 /**
  * Void or refund a transaction by id.
  * @param {string|number} transId — the ORIGINAL Authorize.net transaction id.
- * @param {number} [amount] — optional partial refund amount; ignored for voids
- *   (a void is always the full transaction). Defaults to the captured amount.
- * @returns {Promise<{ action: "void"|"refund", transactionId: string, amount: number }>}
+ * @param {string} [amount] — optional partial refund amount as a decimal string
+ *   ("300.07", from toDecimalString); passed to the gateway as given, never
+ *   through Number(). Ignored for voids (a void is always the full
+ *   transaction). Defaults to the captured amount.
+ * @returns {Promise<{ action: "void"|"refund", transactionId: string, amount: string|number }>}
+ *   `amount` echoes the decimal string passed in, else the gateway's captured amount.
  * @throws tagged error (`refundErrorKind`): "not_found" | "validation"; or an
  *   Authorize.net gateway error carrying `authNetResponse`.
  */
@@ -56,13 +59,14 @@ export async function voidOrRefund(transId, amount) {
         "Authorize.net can't partially void an unsettled charge; refund after it settles."
       );
     }
-    // Void is always full — `amount` is intentionally not honored beyond the guard.
+    // Void is always full — `amount` is intentionally not honored beyond the guard
+    // (the comparison is the only place the string is read as a number).
     const r = await voidTransaction(transId);
     return { action: "void", transactionId: r.transactionId, amount: details.amount };
   }
 
   if (SETTLED.has(status)) {
-    const refundAmount = amount != null ? Number(amount) : details.amount;
+    const refundAmount = amount != null ? String(amount) : details.amount;
     const r = await refundTransaction({
       transId,
       amount: refundAmount,

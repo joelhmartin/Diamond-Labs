@@ -72,8 +72,9 @@ Copy the resulting secret references (`DATABASE_URL`, `JWT_SECRET`,
 `SEAZONA_BASE_URL`, `AUTHORIZE_NET_API_LOGIN`,
 `AUTHORIZE_NET_TRANSACTION_KEY`, `AUTHORIZE_NET_ENV`, `MAILGUN_*`,
 `EMAIL_FROM`, `APP_URL`, `NODE_ENV`, etc.) — the job needs all of them,
-because the AutoPay sweep touches Seazona, Authorize.net, and email exactly
-like the doctor-facing routes do. Call that value `$EXISTING_SECRETS` below
+because the AutoPay sweep touches the database, Authorize.net, and email
+exactly like the doctor-facing routes do (it makes no Seazona calls, so any
+`SEAZONA_*` references in the list are harmless). Call that value `$EXISTING_SECRETS` below
 (a comma-separated `KEY=secret:version` list).
 
 ### 1.2 Create the AutoPay-specific secrets
@@ -136,7 +137,7 @@ Notes on the non-obvious flags:
 - **`--service-account`** — reusing `$RUNTIME_SA` is the simplest setup, but
   it also holds `jobs-trigger-secret` (granted in 1.2 for the API service),
   which the Job never needs. The least-privilege setup is a dedicated Job
-  service account granted only Cloud SQL client plus the database, Seazona,
+  service account granted only Cloud SQL client plus the database,
   Authorize.net, email and `autopay-*` secrets, with `JOBS_TRIGGER_SECRET`
   left out of `$EXISTING_SECRETS` for the Job.
 - **`--args=...,autopay,--live`** — see section 0. This is permanent; the
@@ -211,39 +212,20 @@ for the go-live checklist.
 
 Do these **in order**. Do not skip to step 2.3.
 
-### 2.0 Go-live precondition: cap each charge at the client's Seazona balance (NOT BUILT)
+### 2.0 Balance source: our own ledger (retired precondition)
 
-**`AUTOPAY_LIVE_RUN` must stay `false` until this exists.** It is a code
-change, not a configuration step, and it is deliberately not part of the
-AutoPay PR. The code TODO sits at the charge step in
-`apps/api/src/services/autopay-runner.service.js` (search for
-`go-live precondition`).
+The old go-live precondition (cap each charge at the client's Seazona balance,
+because payments staff keyed into Seazona never reached the portal) is
+**retired**. Since own-the-lab piece 3 every payment, including the checks and
+cash staff record, lands in our `invoice_payments` ledger in integer cents, and
+AutoPay reads open invoices from our `invoices` table via
+`openInvoicesForClient` (`services/billing/ledger.service.js`). Nothing in the
+sweep calls Seazona.
 
-Why: AutoPay works out what a doctor owes from the portal's own
-`invoice_payments` ledger. That ledger only knows about payments made through
-the portal. Payments staff take directly in Seazona (phone, check, cash keyed
-into the Seazona web app) never reach it, because Seazona's payment API is
-write-only. Without a cap, AutoPay charges an enrolled doctor again for money
-the lab already collected.
-
-What to build: before any live charge, read the client's current balance from
-Seazona and charge `min(planned amount, Seazona balance)`.
-
-- Seazona's JSON API has no balance field or statements endpoint (see the
-  Seazona section of `CLAUDE.md`: invoices carry no paid flag, clients carry
-  no balance, `/v1/payments/` is write-only, ledger/statement endpoints 404).
-- The only source is the statements grid's **Export to Excel** in Seazona's
-  admin web app. It produces an HTML `<table>` saved as `.xls`, which is easy to
-  parse, but it needs a staff **web login** (cookie session on the admin host),
-  not the API's client ID and secret. Getting that login, and deciding where its
-  credentials live, is part of this precondition.
-- Treat a Seazona balance that dropped with no matching portal payment as a
-  signal that someone paid out-of-band. Cap the charge, and flag the doctor for
-  staff to record the payment through the admin offline-payment flow so the
-  portal ledger catches up.
-- Until this is built, the operational rule in the PR still applies: for
-  enrolled doctors, staff record payments through the admin offline-payment
-  flow, never only in Seazona.
+What still applies: `AUTOPAY_LIVE_RUN` stays `false` until you have read a dry
+run (2.1). Turning it on is a cutover decision, not a code change. Staff should
+record any payment taken outside the portal through the admin manual-payment
+flow before the sweep runs, so the next charge sees it.
 
 ### 2.1 Confirm `autopay_attempts` has sane `would_charge` rows
 
@@ -270,7 +252,8 @@ where status = 'would_charge'
 ```
 
 Look for: amounts that match what each doctor actually enrolled at (or a
-smaller amount if `resolveChargeAmount` capped to their remaining balance —
+smaller amount if `resolveChargeCents` (`packages/shared/src/billing/allocation.js`)
+capped to their remaining balance —
 never larger), `allocations` that reference real, currently-open invoice
 IDs, and no doctor appearing whose balance already looks paid off.
 
@@ -295,7 +278,7 @@ money moves.
 
 ### 2.3 Set `AUTOPAY_LIVE_RUN=true` and redeploy
 
-Only once the 2.0 balance cap is built, deployed, and visible in a dry run.
+Only once a dry run (2.1) shows sane `would_charge` rows.
 
 ```bash
 printf 'true' | gcloud secrets versions add autopay-live-run --project=$PROJECT_ID --data-file=-
@@ -390,17 +373,13 @@ These were found during implementation and are accepted risks, not bugs to
   `--max-retries=0` (section 1.3) means this can only happen via a manual
   re-run, not an automatic one, which gives a human a chance to check
   `autopay_attempts` first.
-- **Seazona rate-limits hard, so the sweep is serial.** Concurrency 8 failed
-  448 of 476 requests against Seazona; the sweep is deliberately serial with
-  ~1.1s spacing between enrollments (`SEAZONA_SPACING_MS` = 1100 in
-  `apps/api/src/services/autopay-runner.service.js`), on top of each
-  enrollment's own Seazona invoice fetch and (if live) Authorize.net charge
-  latency. Wall-clock time scales with the size of the enrolled cohort, not
-  just that floor. This is why `--task-timeout=30m` (section 1.3) is a
-  starting point, not a fixed answer — watch `job_runs.finished_at -
-  started_at` as the enrolled cohort grows and raise the timeout before it
-  becomes a real constraint, not after a run gets killed mid-sweep (which
-  triggers the crash-window risk above).
+- **The sweep is serial.** It processes one enrollment at a time, so
+  wall-clock time scales with the size of the enrolled cohort and the
+  Authorize.net charge latency. `--task-timeout=30m` (section 1.3) is a
+  starting point, not a fixed answer: watch `job_runs.finished_at -
+  started_at` as the cohort grows and raise the timeout before it becomes a
+  real constraint, not after a run gets killed mid-sweep (which triggers the
+  crash-window risk above).
 - **`JOBS_TRIGGER_SECRET` guards an internet-reachable endpoint.** The
   `/internal/jobs/*` routes (`apps/api/src/jobs/triggers/http.js`) are
   mounted on `diamond-labs-api`, the same Fastify instance that serves the
@@ -421,32 +400,15 @@ These were found during implementation and are accepted risks, not bugs to
   repo root), read the per-source counts it prints, and only re-run without
   `DRY_RUN` once those counts look right. This is unrelated to whether
   AutoPay is live, but matters for the same reason: it touches the ledger
-  that AutoPay reads balances from (`getClientPaidMapStrict`, keyed by
-  Seazona client + invoice since PR #36).
-- **The Seazona rate limiter is per process.** The throttle in
-  `seazona.service.js` counts requests in memory, so each API instance and
-  the `diamond-labs-jobs` execution each admit up to 50/min on their own.
-  Their sum can exceed Seazona's 60/min integration quota while a sweep runs
-  alongside busy doctor traffic. Keep the API service's max instances low,
-  run the sweep off-hours (the 9am Central schedule is a starting point), and
-  move the limiter onto the shared `kv_store` before the enrolled cohort
-  grows large.
-- **The invoice archive walk may not be complete.** `getAllInvoicesResult()`
-  walks Seazona's 10,000-record-capped, id-sorted list forward by
-  `lastModified`. Rows past the cap that share one timestamp, or that sit
-  between the cursor and the next page's newest timestamp, can be skipped.
-  This understates a balance (AutoPay charges less, or marks the enrollment
-  `completed`, which the next sweep re-checks); it cannot overcharge, because
-  allocations only ever touch invoices the walk returned and the in-lock cap
-  re-reads each one. Before go-live, compare the archive size a dry run sees
-  against Seazona's own invoice count (go-live step 2.1).
+  that AutoPay reads balances from (`invoice_payments.applied_cents`, summed per local invoice by
+  `paidCentsByInvoice`).
 - **A held charge pauses the enrollment.** If Authorize.net holds an AutoPay
   charge for fraud review and the portal cannot release the hold,
   `chargeCustomerProfile` reports the outcome as pending. The sweep records a
   `skipped` attempt carrying the held `transaction_id`, sets the enrollment to
   `paused` with `paused_reason = 'gateway_outcome_pending'`, sends no decline
   email, and never retries it. Decide the held transaction in the merchant
-  interface; if it was approved, record it with the admin offline-payment
+  interface; if it was approved, record it with the admin manual-payment
   flow, then resume the enrollment from the admin AutoPay page.
 
 ---
@@ -483,16 +445,7 @@ funnels through — so no caller can bypass it and no future code has to remembe
 leave headroom, and it honours `Retry-After` on a 429 with exactly one retry (never an
 unbounded loop, which is what turns a throttle into a block).
 
-The AutoPay sweep additionally paces ~1.1s between doctors. That is not what keeps us legal —
-the wrapper does — it exists so a long sweep does not consume the whole minute's budget in one
-burst and starve doctors loading their invoice pages concurrently.
-
-**Sizing the Cloud Run Job timeout.** Because the ceiling is 60/min, sweep duration is bounded
-by request count, not CPU. Budget roughly: (invoice-archive pages) + (one `getInvoice` per
-allocated invoice, per doctor) requests, at <=50/min. A cohort large enough to approach the
-`--task-timeout` should be split across days rather than run faster.
-
-**Seazona's own recommendation for bulk reads:** use the `lastModified` query parameter to pull
-only records changed since the last sync rather than refetching the full set. Our invoice reads
-currently pass the epoch (everything) on each run — moving to incremental sync is the main
-remaining lever if the archive grows.
+AutoPay no longer calls Seazona at all (balances are ours), so it neither spends
+this budget nor needs sizing against it. The remaining Seazona traffic is the
+history import planned for piece 5; it must go through `seazona.service.js`
+and use the `lastModified` query parameter to pull only changed records.

@@ -1,4 +1,4 @@
-import { pgTable, varchar, timestamp, numeric, integer, date, text, index } from "drizzle-orm/pg-core";
+import { pgTable, varchar, timestamp, integer, date, text, index } from "drizzle-orm/pg-core";
 
 /**
  * The invoice ledger: how money was applied to invoices. One row per invoice a
@@ -25,11 +25,8 @@ export const invoicePayments = pgTable("invoice_payments", {
   seazonaClientId: varchar("seazona_client_id", { length: 100 }),
   seazonaInvoiceId: varchar("seazona_invoice_id", { length: 128 }),
   invoiceNumber: varchar("invoice_number", { length: 50 }),
-  // TEMPORARY: the dollar amount. Converted into applied_cents by migration
-  // 0029 and dropped in own-the-lab piece 3 Task 8. New code never reads it.
-  appliedAmount: numeric("applied_amount", { precision: 12, scale: 2 }),
-  // Integer cents (NOT NULL from Task 8 / migration 0030).
-  appliedCents: integer("applied_cents"),
+  // Integer cents (sign rule in the header).
+  appliedCents: integer("applied_cents").notNull(),
   transactionId: varchar("transaction_id", { length: 100 }).notNull(),
   seazonaPaymentId: varchar("seazona_payment_id", { length: 128 }),
   // Set only on refund/void reversal rows → the ORIGINAL charge's transaction id.
