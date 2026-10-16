@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Plus, AlertCircle } from "lucide-react";
 import api from "../../config/api.js";
-import { errorText } from "../../lib/lab-board.js";
+import { errorText } from "../../lib/requests.js";
 
 const INPUT =
   "px-3 py-2 rounded-lg bg-white border border-surface-300/60 text-navy text-sm focus:outline-none focus:border-brand-500";

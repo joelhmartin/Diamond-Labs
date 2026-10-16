@@ -12,13 +12,14 @@ vi.mock("../../services/authorizenet.service.js", () => ({
 }));
 
 const recorded = [];
+let ledgerWriteFailed = false;
 // I3 — controllable per test so the in-lock cap re-check can be forced to
 // fail independently of everything else; defaults to "no cap problem".
 const paymentRecordingVerifyAllocations = vi.fn(async () => null);
 vi.mock("../../services/payment-recording.service.js", () => ({
   recordPaymentAndAllocations: vi.fn(async (args) => {
     recorded.push(args);
-    return { seazonaPaymentId: "sp1" };
+    return { ledgerWriteFailed };
   }),
   verifyAllocations: (...args) => paymentRecordingVerifyAllocations(...args),
 }));
@@ -92,26 +93,17 @@ vi.mock("../../config/database.js", () => ({
   },
 }));
 
-// Reachability-aware Seazona read + the STRICT ledger read — controlled per
-// test so the two Critical-bug regression tests (ledger blip, Seazona outage)
-// can force each failure mode independently of the gateway/db mocks above.
-// CRITICAL 1 — must be the PAGINATING getAllInvoicesResult(), not the
-// single-page getInvoicesResult(): the runner now calls the former exactly
-// once per sweep (I6) rather than once per enrollment.
-const seazonaGetAllInvoicesResult = vi.fn(async () => ({ reachable: true, invoices: [] }));
-vi.mock("../../services/seazona.service.js", () => ({
-  getAllInvoicesResult: seazonaGetAllInvoicesResult,
+// The sweep reads each due doctor's open invoices from OUR ledger
+// (own-the-lab piece 3) — controllable per test, incl. a read failure.
+const ledgerOpenInvoicesForClient = vi.fn(async () => []);
+vi.mock("../../services/billing/ledger.service.js", () => ({
+  openInvoicesForClient: (...args) => ledgerOpenInvoicesForClient(...args),
 }));
 
 // Real (unmocked) schema import — pure pgTable definitions, no DB/env side
 // effects — used only so the db mock above can tell the enrollments query
 // apart from the attempts query by table identity.
 const { autopayAttempts: autopayAttemptsTable } = await import("../../db/schema/index.js");
-
-const ledgerGetClientPaidMapStrict = vi.fn(async () => ({}));
-vi.mock("../../services/invoice-ledger.service.js", () => ({
-  getClientPaidMapStrict: ledgerGetClientPaidMapStrict,
-}));
 
 // Same db/redis mocking pattern as jobs/runner.test.js — withIdempotency and
 // withInvoiceLocks (apps/api/src/lib/payment-helpers.js) both go through
@@ -152,17 +144,8 @@ const doctor = {
 };
 const enrollment = { id: "e1", userId: "u1", amount: "500.00", dayOfMonth: 15, paymentProfileId: "pp1", enabled: true, status: "active", consecutiveFailures: 0 };
 const invoices = [
-  { id: "i1", invoiceNumber: "1001", balance: 300, dueDate: "2026-01-01" },
-  { id: "i2", invoiceNumber: "1002", balance: 400, dueDate: "2026-02-01" },
-];
-
-// Raw Seazona-shaped invoices for the runAutopaySweep-level tests — same
-// dollar amounts as `invoices` above (balance = total - portal-paid), so a
-// sweep run through resolveOpenInvoices() produces the identical allocation
-// plan as the direct processEnrollment tests.
-const rawSeazonaInvoices = [
-  { id: "i1", invoiceNumber: "1001", clientId: "c1", total: 300, due: "2026-01-01" },
-  { id: "i2", invoiceNumber: "1002", clientId: "c1", total: 400, due: "2026-02-01" },
+  { id: "i1", invoiceNumber: 1001, balanceCents: 30000, dueDate: "2026-01-01" },
+  { id: "i2", invoiceNumber: 1002, balanceCents: 40000, dueDate: "2026-02-01" },
 ];
 
 // Aug 15 09:00 America/Chicago (the default AUTOPAY_TIMEZONE) — day 15,
@@ -172,16 +155,15 @@ const now = new Date("2026-08-15T14:00:00Z");
 beforeEach(() => {
   charged.length = 0;
   recorded.length = 0;
+  ledgerWriteFailed = false;
   attempts.length = 0;
   enrollmentUpdates.length = 0;
   lockStore.clear();
   dueRows = [];
   cycleAttemptRows = [];
   attemptRowsByCycle = null;
-  seazonaGetAllInvoicesResult.mockClear();
-  seazonaGetAllInvoicesResult.mockImplementation(async () => ({ reachable: true, invoices: rawSeazonaInvoices }));
-  ledgerGetClientPaidMapStrict.mockClear();
-  ledgerGetClientPaidMapStrict.mockImplementation(async () => ({}));
+  ledgerOpenInvoicesForClient.mockClear();
+  ledgerOpenInvoicesForClient.mockImplementation(async () => invoices);
   paymentRecordingVerifyAllocations.mockClear();
   paymentRecordingVerifyAllocations.mockImplementation(async () => null);
   sendAutopayFailure.mockClear();
@@ -190,10 +172,11 @@ beforeEach(() => {
 describe("processEnrollment", () => {
   it("charges the enrolled amount and allocates oldest-first", async () => {
     const attempt = await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r1" });
-    expect(charged[0]).toMatchObject({ customerProfileId: "cp1", paymentProfileId: "pp1", amount: 500 });
+    expect(charged[0]).toMatchObject({ customerProfileId: "cp1", paymentProfileId: "pp1", amount: "500.00" });
+    expect(recorded[0].amountCents).toBe(50000);
     expect(recorded[0].allocations).toEqual([
-      { invoiceId: "i1", invoiceNumber: "1001", amount: 300 },
-      { invoiceId: "i2", invoiceNumber: "1002", amount: 200 },
+      { invoiceId: "i1", invoiceNumber: "1001", amountCents: 30000 },
+      { invoiceId: "i2", invoiceNumber: "1002", amountCents: 20000 },
     ]);
     expect(recorded[0].source).toBe("autopay");
     expect(attempt.status).toBe("succeeded");
@@ -201,11 +184,26 @@ describe("processEnrollment", () => {
 
   it("charges only the balance when it is under the enrolled amount", async () => {
     const attempt = await processEnrollment({
-      enrollment, doctor, invoices: [{ id: "i1", invoiceNumber: "1001", balance: 180, dueDate: "2026-01-01" }],
+      enrollment, doctor, invoices: [{ id: "i1", invoiceNumber: 1001, balanceCents: 18000, dueDate: "2026-01-01" }],
       dryRun: false, now, runId: "r1",
     });
-    expect(charged[0].amount).toBe(180);
+    expect(charged[0].amount).toBe("180.00");
     expect(attempt.status).toBe("succeeded");
+  });
+
+  it("fails closed, charging nothing, when any open invoice balance is not integer cents", async () => {
+    for (const balanceCents of [300.5, "30000", null, undefined, NaN]) {
+      charged.length = 0;
+      const attempt = await processEnrollment({
+        enrollment, doctor, invoices: [{ id: "i1", invoiceNumber: 1001, balanceCents, dueDate: "2026-01-01" }, invoices[1]],
+        dryRun: false, now, runId: "r1",
+      });
+      expect(charged).toHaveLength(0);
+      expect(attempt.status).toBe("failed");
+      expect(attempt.failureReason).toMatch(/non-integer balance/);
+    }
+    expect(enrollmentUpdates.some((u) => u.consecutiveFailures !== undefined)).toBe(false);
+    expect(sendAutopayFailure).not.toHaveBeenCalled();
   });
 
   it("charges nothing and completes when the balance is zero", async () => {
@@ -322,7 +320,7 @@ describe("processEnrollment", () => {
     // what a Seazona outage looks like (the wrapper swallows failures to
     // null) — not just a genuinely missing/foreign invoice. The recorded
     // reason must not read as a definitive "not found" data problem.
-    it("labels a 'forbidden' cap-check result as an unreachable/unavailable blip, not a flat 'not found'", async () => {
+    it("records a 'forbidden' cap-check result as could-not-verify, never as a decline", async () => {
       paymentRecordingVerifyAllocations.mockResolvedValueOnce({
         kind: "forbidden",
         message: "Invoice 1001 not found.",
@@ -331,7 +329,7 @@ describe("processEnrollment", () => {
       expect(charged).toHaveLength(0);
       expect(recorded).toHaveLength(0);
       expect(attempt.status).toBe("failed");
-      expect(attempt.failureReason).toMatch(/unreachable|unavailable/i);
+      expect(attempt.failureReason).toMatch(/could not verify/i);
       // Still not a card decline — no consecutiveFailures bump/pause.
       expect(enrollmentUpdates.some((u) => u.consecutiveFailures !== undefined)).toBe(false);
     });
@@ -399,6 +397,25 @@ describe("processEnrollment", () => {
     await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r1" });
     expect(enrollmentUpdates).toContainEqual(expect.objectContaining({ consecutiveFailures: 1 }));
     expect(sendAutopayFailure).toHaveBeenCalledTimes(1);
+    // Cents all the way to the email, which formats them itself.
+    expect(sendAutopayFailure.mock.calls[0][0]).toMatchObject({ amountCents: 50000 });
+    expect(sendAutopayFailure.mock.calls[0][0]).not.toHaveProperty("amount");
+  });
+
+  it("keeps a captured charge `succeeded` but pauses the enrollment when the ledger write failed", async () => {
+    ledgerWriteFailed = true;
+    const attempt = await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r1" });
+    expect(charged).toHaveLength(1);
+    expect(attempt.status).toBe("succeeded");
+    expect(attempt.failureReason).toBe("ledger_write_failed");
+    expect(attempt.transactionId).toBe("tx1");
+    expect(enrollmentUpdates).toContainEqual(expect.objectContaining({ status: "paused", pausedReason: "ledger_write_failed" }));
+    expect(sendAutopayFailure).not.toHaveBeenCalled();
+  });
+
+  it("does not pause a normal successful charge", async () => {
+    await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r1" });
+    expect(enrollmentUpdates.some((u) => u.status === "paused")).toBe(false);
   });
 });
 
@@ -407,7 +424,7 @@ describe("runAutopaySweep", () => {
   // (which would reopen the full invoice total and overcharge).
   it("records a failed attempt and charges nothing when the local ledger read fails", async () => {
     dueRows = [{ enrollment, doctor }];
-    ledgerGetClientPaidMapStrict.mockRejectedValueOnce(new Error("connection reset"));
+    ledgerOpenInvoicesForClient.mockRejectedValueOnce(new Error("connection reset"));
 
     const summary = await runAutopaySweep({ dryRun: false, now, runId: "r1" });
 
@@ -419,58 +436,31 @@ describe("runAutopaySweep", () => {
     expect(attempts[0].failureReason).toMatch(/ledger read failed/i);
   });
 
-  // Nothing due — the full paginating archive walk must be skipped entirely,
-  // not just its results ignored. This is the guard against paying that cost
-  // (and its rate-limit risk) on every daily run regardless of whether
-  // anything is actually due.
-  it("skips the Seazona archive fetch entirely when nothing is due", async () => {
+  it("reads no invoices at all when nothing is due", async () => {
     dueRows = [];
-
     const summary = await runAutopaySweep({ dryRun: false, now, runId: "r1" });
-
     expect(summary.considered).toBe(0);
-    expect(seazonaGetAllInvoicesResult).not.toHaveBeenCalled();
+    expect(ledgerOpenInvoicesForClient).not.toHaveBeenCalled();
     expect(attempts).toHaveLength(0);
   });
 
-  // Critical 2(a) — a Seazona outage must never be read as "zero invoices".
-  it("records a skipped attempt, leaves status untouched, and charges nothing when Seazona is unreachable", async () => {
-    dueRows = [{ enrollment, doctor }];
-    seazonaGetAllInvoicesResult.mockResolvedValueOnce({ reachable: false, invoices: [] });
-
-    const summary = await runAutopaySweep({ dryRun: false, now, runId: "r1" });
-
-    expect(charged).toHaveLength(0);
-    expect(summary.skipped).toBe(1);
-    expect(attempts).toHaveLength(1);
-    expect(attempts[0].status).toBe("skipped");
-    expect(attempts[0].failureReason).toMatch(/seazona unreachable/i);
-    // No enrollment update at all — status must be left exactly as it was,
-    // not inferred as paid-off from an outage.
-    expect(enrollmentUpdates).toHaveLength(0);
-  });
-
-  it("charges a due enrollment end-to-end when Seazona and the ledger are healthy", async () => {
+  it("charges a due enrollment end-to-end", async () => {
     dueRows = [{ enrollment, doctor }];
 
     const summary = await runAutopaySweep({ dryRun: false, now, runId: "r1" });
 
     expect(charged).toHaveLength(1);
-    expect(charged[0].amount).toBe(500);
+    expect(charged[0].amount).toBe("500.00");
     expect(summary.charged).toBe(1);
     expect(summary.totalAmount).toBe(500);
   });
 
-  // I6 — the archive must be fetched once for the whole sweep, not once per
-  // enrollment (the thing that tripped a host-level 403 from ~950 requests).
-  it("fetches the Seazona invoice archive only once even with multiple due enrollments", async () => {
-    const doctor2 = { ...doctor, id: "u2", seazonaClientId: "c2" };
+  it("reads each due doctor's own open invoices from the ledger", async () => {
+    const doctor2 = { ...doctor, id: "u2" };
     const enrollment2 = { ...enrollment, id: "e2", userId: "u2" };
     dueRows = [{ enrollment, doctor }, { enrollment: enrollment2, doctor: doctor2 }];
-
     await runAutopaySweep({ dryRun: false, now, runId: "r1" });
-
-    expect(seazonaGetAllInvoicesResult).toHaveBeenCalledTimes(1);
+    expect(ledgerOpenInvoicesForClient.mock.calls.map((c) => [c[0].id, c[0].seazonaClientId])).toEqual([["u1", "c1"], ["u2", "c1"]]);
   });
 
   // I4 — decline retries fire on day+2/day+5, but ONLY when this cycle

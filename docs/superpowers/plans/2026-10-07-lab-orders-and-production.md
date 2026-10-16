@@ -2784,16 +2784,7 @@ import { createShopLabOrder } from "../services/lab/lab-orders.service.js";
 
 In `checkoutLinesFromQuote`, add `code: l.code ?? null,` after `variantId: l.variantId,`.
 
-In `recordGuestOrder`, inside `await db.transaction(async (tx) => { … })`, directly after the `await tx.insert(orderItems).values(…);` statement:
-
-```js
-      // The job for the bench, in the same transaction as the paid order: an
-      // order is never recorded without its lab order, or vice versa. Never
-      // refuses what pricing accepted (planShopLabOrder) — the card is charged.
-      await createShopLabOrder(tx, { orderId, clientUserId: pricedForUserId, quoteLines: quote.lines });
-```
-
-Update the `recordGuestOrder` docstring's first sentence to "Record a successful guest catalog charge LOCALLY (authoritative), with its lab order, and attempt the gated Seazona createOrder push."
+> **Superseded at implementation (ruling, see PR #53):** the lab order is NOT created in the paid order's transaction. `recordGuestOrder` commits the paid order first, then calls `createShopLabOrder` in its own transaction; a failure logs `[LAB][SHOP_ORDER_FAILED] order=<id>` and never touches the paid order (the card is already charged, so the paid record must survive). The spec's Flows section says the same.
 
 - [ ] **Step 6: Run the tests**
 
@@ -5617,7 +5608,7 @@ After CodeRabbit posts, check for real inline findings, not just the walkthrough
 | `released` status | Task 3 |
 | Legacy `pushed` readable and labelled | Task 12 |
 | Auto-release | Task 7 |
-| Checkout creates the lab order in the same transaction | Task 7 |
+| Checkout creates the lab order in its own transaction after the paid order commits | Task 7 |
 | Seazona order code removed, with every call site grep-verified | Task 12 |
 | `seazona*` columns kept | Task 12 (comments only) |
 | `lab` role and `requireRole("admin","lab")` | Tasks 2, 6 |

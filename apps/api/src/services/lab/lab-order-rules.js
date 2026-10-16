@@ -22,15 +22,6 @@ export class LabOrderError extends Error {
   }
 }
 
-/** The next order number: continues from `start`, never reuses one. */
-export function nextLabOrderNumber(maxExisting, start) {
-  if (!Number.isSafeInteger(start) || start < 1) {
-    throw new RangeError(`LAB_ORDER_NUMBER_START must be a positive integer, got ${start}`);
-  }
-  if (maxExisting == null) return start;
-  return Math.max(Number(maxExisting) + 1, start);
-}
-
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /** A "YYYY-MM-DD" that is a real calendar date, else null. */

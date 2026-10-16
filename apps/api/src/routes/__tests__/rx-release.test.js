@@ -7,7 +7,7 @@ import { handlerSource } from "./_source.js";
 const read = (p) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), "utf8");
 const adminRx = read("../admin-rx-cases.routes.js");
 const rx = read("../rx.routes.js");
-const payment = read("../payment.routes.js");
+const payment = read("../checkout.routes.js");
 
 const RELEASE = 'fastify.post("/admin/rx-cases/:id/release",';
 
@@ -32,16 +32,15 @@ test("the case detail carries the current lab order", () => {
   assert.match(body, /labOrder:/);
 });
 
-test("auto-release reuses the same gate and the same release, and never fails the doctor's submission", () => {
-  const start = rx.indexOf("shouldAutoRelease(env.RX_AUTO_RELEASE)");
-  assert.ok(start >= 0, "auto-release block missing");
-  const end = rx.indexOf("Notify the lab a case arrived", start);
-  assert.ok(end > start, "arrival-email marker not found after the auto-release block");
-  const block = rx.slice(start, end);
-  assert.match(block, /canRelease\(lines\)\.ok/);
-  assert.match(block, /db\.transaction\(\(tx\) => releaseRxCase\(tx,/);
-  assert.match(block, /catch \(err\)/);
-  assert.match(block, /finalStatus = "released"/);
+test("the arrival email is sent for every submission, after the case is persisted, and cannot fail the response", () => {
+  const body = handlerSource(rx, 'fastify.post("/rx/form-submissions",');
+  const persisted = body.indexOf('"rx form submission saved"');
+  const email = body.indexOf("await sendRxSubmissionReceived(");
+  const reply = body.indexOf("reply.code(201)");
+  assert.ok(persisted >= 0 && email > persisted && reply > email, "order: persisted → arrival email → 201");
+  assert.doesNotMatch(body.slice(persisted), /if \(.*sendRxSubmissionReceived/s, "email must not be conditional");
+  assert.doesNotMatch(body, /releaseRxCase|canRelease/);
+  assert.match(body, /status: SUBMISSION_STATUS/);
 });
 
 test("checkout creates the lab order AFTER the paid-order transaction, in its own transaction, never failing the charge", () => {
@@ -54,7 +53,7 @@ test("checkout creates the lab order AFTER the paid-order transaction, in its ow
   assert.doesNotMatch(paidTx, /createShopLabOrder/, "lab order must not roll back the paid order");
 
   const after = payment.slice(end, payment.indexOf("if (pushStatus === \"pending\")", end));
-  assert.match(after, /await db\.transaction\(\(tx\) =>\s*createShopLabOrder\(tx, \{ orderId, clientUserId: pricedForUserId, quoteLines: quote\.lines \}\)/);
+  assert.match(after, /await db\.transaction\(\(tx\) =>\s*createShopLabOrder\(tx, \{ orderId, clientUserId: pricedForUserId, quote, transactionId: result\.transactionId \}\)/);
   assert.match(after, /log\.error\(\{ orderId \}, `\[LAB\]\[SHOP_ORDER_FAILED\] order=\$\{orderId\}/);
   assert.match(after, /catch \(err\)/);
 });

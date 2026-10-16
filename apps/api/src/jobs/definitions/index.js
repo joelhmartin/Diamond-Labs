@@ -1,4 +1,5 @@
 import "./autopay.job.js";
+import "./shop-lab-orders-repair.job.js";
 
 /** Importing this module registers every job. Kept as a function for clarity
  *  at call sites and so tests can assert it was invoked. */

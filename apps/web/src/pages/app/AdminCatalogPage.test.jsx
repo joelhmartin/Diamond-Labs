@@ -1,16 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { parsePriceInput, familyBadge, canActivate, variantDeleteCheck, valueDeleteCheck } from "./AdminCatalogPage.jsx";
-
-test("admins type dollars; the API gets cents", () => {
-  assert.equal(parsePriceInput("199"), 19900);
-  assert.equal(parsePriceInput("$1,234.5"), 123450);
-  assert.equal(parsePriceInput("0"), 0);
-  assert.equal(parsePriceInput(""), null);
-  assert.equal(parsePriceInput("abc"), undefined);
-  assert.equal(parsePriceInput("-3"), undefined);
-  assert.equal(parsePriceInput("1.999"), undefined);
-});
+import { familyBadge, canActivate, variantDeleteCheck, valueDeleteCheck } from "./AdminCatalogPage.jsx";
 
 test("the family badge says what still needs doing", () => {
   const v = (over) => ({ active: true, basePriceCents: 100, ...over });

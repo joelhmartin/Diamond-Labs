@@ -87,7 +87,7 @@ const NON_DOCTOR_ROUTES = [
   [
     "POST",
     "/api/v1/admin/users/u2/payments/charge-saved",
-    { paymentProfileId: "pp1", amount: 10, allocations: [{ invoiceId: "i1", amount: 10 }] },
+    { paymentProfileId: "pp1", amountCents: 1000, allocations: [{ invoiceId: "i1", amountCents: 1000 }] },
   ],
 ];
 
@@ -118,7 +118,7 @@ describe("admin payment routes 404 on a non-doctor or unapproved-doctor target (
     [
       "POST",
       "/api/v1/admin/users/u2/payments/charge-saved",
-      { paymentProfileId: "pp1", amount: 10, allocations: [{ invoiceId: "i1", amount: 10 }] },
+      { paymentProfileId: "pp1", amountCents: 1000, allocations: [{ invoiceId: "i1", amountCents: 1000 }] },
     ],
   ]) {
     it(`${method} ${url} is 404 when the target is a doctor whose approval is pending`, async () => {

@@ -109,3 +109,24 @@ export function decryptJson(value) {
 export function isEncrypted(value) {
   return typeof value === "string" && value.startsWith(PREFIX);
 }
+
+/**
+ * Encrypt/decrypt a fixed set of free-text fields on a row: staff notes that
+ * can name a patient (lab order hold reasons and notes, invoice notes, void
+ * and price-override reasons, credit reasons). `seal` skips null and absent
+ * fields; `open` decrypts the ones present and keeps null as null.
+ */
+export function fieldSealer(fields) {
+  return {
+    seal(values) {
+      const out = { ...values };
+      for (const f of fields) if (f in out && out[f] != null) out[f] = encryptField(out[f]);
+      return out;
+    },
+    open(row) {
+      const out = { ...row };
+      for (const f of fields) if (f in out) out[f] = row[f] == null ? null : decryptField(row[f]);
+      return out;
+    },
+  };
+}

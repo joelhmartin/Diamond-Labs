@@ -135,8 +135,12 @@ export const SCRUB_PLAN = {
   invoice_payments: {
     mode: "update",
     columns: {
-      id: K, user_id: K, seazona_client_id: K, seazona_invoice_id: K, invoice_number: K, applied_amount: K,
-      transaction_id: K, seazona_payment_id: K, refunds_transaction_id: K, source: K, created_at: K,
+      id: K, user_id: K, invoice_id: K, seazona_client_id: K, seazona_invoice_id: K, invoice_number: K,
+      applied_cents: K, transaction_id: K, seazona_payment_id: K, refunds_transaction_id: K,
+      source: K, paid_on: K,
+      reference: pii("NULL"), // staff-typed check number / trace — free text
+      note: phi("NULL"), // a credit's reason: staff free text, encrypted at rest
+      created_at: K,
     },
   },
   autopay_enrollments: {
@@ -301,6 +305,31 @@ export const SCRUB_PLAN = {
       id: K, lab_order_id: K, type: K, from_value: K, to_value: K, by_user_id: K,
       note: phi("NULL"), // staff-typed free text, encrypted at rest
       at: K,
+    },
+  },
+  // Invoices (own-the-lab piece 3). Staff free text (notes, void reasons, price
+  // notes) is encrypted at rest in prod and can name a patient: replaced, never decrypted.
+  invoices: {
+    mode: "update",
+    columns: {
+      id: K, invoice_number: K, kind: K, client_user_id: K, lab_order_id: K, legacy_seazona_invoice_id: K,
+      status: K, version: K, issued_at: K, due_date: K, voided_at: K,
+      void_reason: phi("NULL"),
+      subtotal_cents: K, tax_cents: K, shipping_cents: K, total_cents: K,
+      notes: phi("NULL"),
+      created_at: K, updated_at: K,
+    },
+  },
+  invoice_lines: {
+    mode: "update",
+    columns: {
+      id: K, invoice_id: K, position: K, kind: K, variant_id: K, code: K,
+      // Free-form lines are staff-typed: re-derived from the catalog by code (same
+      // rule as lab_order_lines.name); a shipping line stays "Shipping".
+      description: phi(`CASE WHEN "invoice_lines"."kind" = 'shipping' THEN 'Shipping' ELSE LEFT(COALESCE(${catalogNameFor('"invoice_lines"."code"')}, 'Line'), 255) END`),
+      qty: K, unit_cents: K, line_cents: K, taxable: K, price_source: K,
+      price_note: phi("NULL"), // why a price was overridden: staff free text, encrypted
+      lab_order_line_id: K, created_at: K,
     },
   },
   app_theme: { mode: "update", columns: { id: K, tokens: K, updated_by: K, updated_at: K } },

@@ -2,8 +2,13 @@ import { db } from "../config/database.js";
 import { auditLog } from "../db/schema/index.js";
 import { createId } from "../lib/id.js";
 
-export async function log({ userId, accountId, action, targetType, targetId, metadata, ipAddress }) {
-  await db.insert(auditLog).values({
+/**
+ * Write one audit row. Pass a transaction as `database` when the action is
+ * itself transactional (invoice draft/issue/void/credit), so the audit row
+ * commits or rolls back with it.
+ */
+export async function log({ userId, accountId, action, targetType, targetId, metadata, ipAddress }, database = db) {
+  await database.insert(auditLog).values({
     id: createId(),
     userId: userId || null,
     accountId: accountId || null,

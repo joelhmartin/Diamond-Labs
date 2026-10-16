@@ -57,9 +57,11 @@ test("lab staff can read Rx cases and their files; editing stays admin-only", ()
 test("the work ticket is staff-only, never cached, and audit-logged", () => {
   const body = handlerSource(labSource, 'fastify.get("/lab/orders/:id/ticket.pdf",');
   assert.match(body, /STAFF/);
-  assert.match(body, /"Cache-Control", "no-store"/);
   assert.match(body, /lab_order\.ticket_printed/);
-  assert.match(body, /application\/pdf/);
+  assert.match(body, /sendPdf\(reply, pdf, `work-ticket-\$\{orderNumber\}\.pdf`\)/);
+  const pdfReply = read("../pdf-reply.js");
+  assert.match(pdfReply, /"Cache-Control", "no-store"/);
+  assert.match(pdfReply, /application\/pdf/);
 });
 
 test("a role change only lands if the role is still the one we validated (409 otherwise)", () => {

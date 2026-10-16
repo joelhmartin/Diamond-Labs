@@ -456,8 +456,8 @@ export async function registerDoctor(data) {
   //  • Phone match: a practice's phone number is public, so it is only surfaced
   //    to the admin as a suggestion and never stored or linked.
   //
-  // An approved doctor with no link gets SEAZONA_CLIENT_NOT_LINKED on billing
-  // routes until both conditions hold.
+  // Billing no longer depends on this link (own-the-lab piece 3: invoices are
+  // ours); it matters for piece 5's import of the client's Seazona history.
   let seazonaEmailMatch = null;
   let suggestedSeazonaClient = null;
 

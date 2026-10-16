@@ -55,7 +55,7 @@ const envSchema = z.object({
   // ── AutoPay ──
   // LIVE-CHARGE GATE. When false (the default) the sweep resolves balances,
   // computes allocations, and records what it WOULD charge — without touching a
-  // card. Gated dark, like RX_AUTO_RELEASE. Flip only after reading a
+  // card. Gated dark. Flip only after reading a
   // dry run's `would_charge` attempts.
   AUTOPAY_LIVE_RUN: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
   // Enrollment floor in dollars. An admin may override it per doctor.
@@ -69,6 +69,18 @@ const envSchema = z.object({
   // this to the legacy system's last order number + 1 before cutover;
   // allocation is max(existing + 1, start), so raising it later never reuses a number.
   LAB_ORDER_NUMBER_START: z.coerce.number().int().positive().default(100000),
+  // Floor for the missing-shop-lab-order repair sweep (jobs/definitions/shop-lab-orders-repair.job.js):
+  // paid shop orders created before this ISO date/time are never backfilled. Unset = no date floor;
+  // orders placed before lab orders existed are still excluded because their items carry no variantId.
+  LAB_SHOP_REPAIR_SINCE: z.string().refine((v) => !Number.isNaN(Date.parse(v)), "must be an ISO date").optional(),
+  // ── Invoices ──
+  // Invoice numbers continue the legacy system's numbering. Piece 5 sets this
+  // to Seazona's last invoice number + 1 BEFORE any invoice is created in
+  // production (legacy invoices are imported under their own numbers);
+  // allocation is max(existing + 1, start).
+  INVOICE_NUMBER_START: z.coerce.number().int().positive().default(500000),
+  // Net terms: an invoice issued on ship is due this many days later.
+  INVOICE_TERMS_DAYS: z.coerce.number().int().min(0).max(365).default(30),
   // Shared secret for the HTTP job trigger. Required in production only.
   JOBS_TRIGGER_SECRET: z.string().optional(),
   // Opt-in dev-only in-process interval trigger (see jobs/triggers/interval.js).
@@ -77,16 +89,16 @@ const envSchema = z.object({
 
   // Google Cloud Storage
   RX_GCS_BUCKET: z.string().optional(),
-  // Auto-release gate (own-the-lab piece 2). Exactly "true" enables it: a
-  // cleanly-resolved incoming case (canRelease passes) is released straight
-  // to the production board on submission, skipping the review queue. It
-  // creates only our own lab order - nothing leaves this system - so the
-  // worst case of a wrong release is a job staff cancel on the board.
-  RX_AUTO_RELEASE: z.string().optional(),
   MEDIA_GCS_BUCKET: z.string().optional(),
 
-  // Admin
-  ADMIN_NOTIFICATION_EMAIL: z.string().email().optional(),
+  // Admin. One address or a comma-separated list; parsed to an array of valid
+  // emails (undefined when empty). Every Rx submission waits for these admins.
+  ADMIN_NOTIFICATION_EMAIL: z
+    .string()
+    .optional()
+    .transform((v) => (v ?? "").split(",").map((e) => e.trim()).filter(Boolean))
+    .pipe(z.array(z.string().email()))
+    .transform((list) => (list.length ? list : undefined)),
 });
 
 function parseEnv() {

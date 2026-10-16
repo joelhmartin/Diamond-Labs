@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { priceLines, unitPriceFor, assertQuotedTotal, PricingError } from "./pricing.js";
+import { priceLines, priceLabLines, unitPriceFor, assertQuotedTotal, PricingError } from "./pricing.js";
 
 const config = { taxRateBps: 800, shippingFlatCents: 1200, maxQty: 999 };
 const v = (id, over = {}) => ({
@@ -95,4 +95,30 @@ test("checkout refuses any total other than the one the shopper was quoted", () 
   assert.equal(code(() => assertQuotedTotal(undefined, quote)), "PRICE_CHANGED");
   assert.equal(code(() => assertQuotedTotal("abc", quote)), "PRICE_CHANGED");
   assert.doesNotThrow(() => assertQuotedTotal(0, { totalCents: 0 }));
+});
+
+test("lab lines: client price, else base; unknown or unpriced variants are flagged, never refused", () => {
+  const variants = new Map([
+    ["v1", { id: "v1", basePriceCents: 45000, taxable: false, active: true }],
+    ["v2", { id: "v2", basePriceCents: null, taxable: true, active: true }],
+    ["v3", { id: "v3", basePriceCents: 1200, taxable: true, active: false }],
+  ]);
+  const out = priceLabLines({
+    lines: [
+      { id: "a", variantId: "v1", code: "2608", name: "DDSO Nylon", qty: 1, noteOnly: false },
+      { id: "b", variantId: "v2", code: "2700", name: "No price yet", qty: 2, noteOnly: false },
+      { id: "c", variantId: null, code: "9999", name: "Unknown code", qty: 1, noteOnly: false },
+      { id: "d", variantId: "v3", code: "61", name: "Retired item", qty: 1, noteOnly: false },
+      { id: "e", variantId: null, code: null, name: "Bite in CR", qty: 1, noteOnly: true },
+    ],
+    variants,
+    clientPrices: new Map([["v1", 40500]]),
+  });
+  assert.deepEqual(out.map((l) => [l.labOrderLineId, l.unitCents, l.priceSource, l.qty, l.taxable]), [
+    ["a", 40500, "client", 1, false],
+    ["b", 0, "unpriced", 2, true],
+    ["c", 0, "unpriced", 1, false],
+    ["d", 1200, "base", 1, true],
+  ]);
+  assert.equal(out[0].description, "DDSO Nylon");
 });

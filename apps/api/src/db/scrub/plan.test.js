@@ -68,6 +68,9 @@ const MUST_SCRUB = {
   lab_orders: ["hold_reason", "lab_notes"],
   lab_order_events: ["note"],
   lab_order_lines: ["name", "source_label"],
+  invoices: ["notes", "void_reason"],
+  invoice_lines: ["description", "price_note"],
+  invoice_payments: ["reference", "note"],
 };
 
 test("named PHI/PII/secret columns are never classified keep", () => {
@@ -201,4 +204,11 @@ test("drift check ignores public.staging_seed_marker whatever the session search
   assert.deepEqual(findUnclassifiedLive(live), []);
   const other = { [keyOf("other", "staging_seed_marker")]: cols };
   assert.deepEqual(findUnclassifiedLive(other), ["table other.staging_seed_marker is not in the scrub plan"]);
+});
+
+test("invoice line descriptions are re-derived from the catalog by code; shipping stays Shipping", () => {
+  const sql = buildStatements(SCRUB_PLAN, CTX).find((s) => s.table === "invoice_lines").sql;
+  assert.ok(sql.includes(`"description" = CASE WHEN "invoice_lines"."kind" = 'shipping' THEN 'Shipping' ELSE LEFT(COALESCE(`), sql);
+  assert.ok(sql.includes(`v."code" = "invoice_lines"."code"`), sql);
+  assert.match(sql, /"price_note" = NULL/);
 });

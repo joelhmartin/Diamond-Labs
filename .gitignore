@@ -12,3 +12,6 @@ coverage/
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# SDD scratch (agent working files)
+.superpowers/

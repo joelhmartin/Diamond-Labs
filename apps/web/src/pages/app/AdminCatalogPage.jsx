@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Search, Loader2, AlertCircle, Plus, Layers, Save, Pencil, Trash2, X, Check } from "lucide-react";
 import { canDeleteVariant, canDeleteOptionValue } from "@my-app/shared";
 import api from "../../config/api.js";
-import { formatCents } from "../../lib/money.js";
+import { formatCents, parseMoneyInput, toDecimalString } from "../../lib/money.js";
 import ImageUploadField from "../../components/ui/ImageUploadField.jsx";
 
 const INPUT =
@@ -10,15 +10,6 @@ const INPUT =
 const CHANNELS = [["all", "All"], ["shop", "Shop"], ["rx", "Lab-billed"], ["both", "Both"]];
 // 371+ families: render only the first slice of matches; search narrows the rest.
 const LIST_CAP = 200;
-
-/** "$1,234.50" → 123450. "" → null (no price). Anything else → undefined (invalid). */
-export function parsePriceInput(str) {
-  const s = String(str ?? "").replace(/[$,\s]/g, "");
-  if (s === "") return null;
-  if (!/^\d+(\.\d{1,2})?$/.test(s)) return undefined;
-  const [whole, frac = ""] = s.split(".");
-  return Number(whole) * 100 + Number((frac + "00").slice(0, 2));
-}
 
 export function familyBadge(family) {
   const n = family.variants.length;
@@ -111,7 +102,7 @@ function VariantRow({ family, variant, onSaved, act, busy }) {
   const [draft, setDraft] = useState({
     name: variant.name ?? "",
     code: variant.code ?? "",
-    price: variant.basePriceCents == null ? "" : (variant.basePriceCents / 100).toFixed(2),
+    price: variant.basePriceCents == null ? "" : toDecimalString(variant.basePriceCents),
     taxable: variant.taxable,
     active: variant.active,
   });
@@ -119,7 +110,7 @@ function VariantRow({ family, variant, onSaved, act, busy }) {
   const [error, setError] = useState(null);
 
   async function save() {
-    const basePriceCents = parsePriceInput(draft.price);
+    const basePriceCents = parseMoneyInput(draft.price);
     if (basePriceCents === undefined) { setError("Price must be dollars and cents, e.g. 199.00"); return; }
     if (!draft.name.trim()) { setError("A variant needs a name."); return; }
     if (draft.active) {

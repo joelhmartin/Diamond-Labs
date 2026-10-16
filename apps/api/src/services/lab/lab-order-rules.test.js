@@ -1,20 +1,12 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
-  LabOrderError, summariseLabLines, nextLabOrderNumber, parseDueDate, rushFromCase, planRxRelease, planShopLabOrder, planRemake,
+  LabOrderError, summariseLabLines, parseDueDate, rushFromCase, planRxRelease, planShopLabOrder, planRemake,
   assertFresh, planStatusChange, planFieldChange, initialsFor, presentBoardCard,
 } from "./lab-order-rules.js";
 
 const now = new Date("2026-10-07T15:00:00Z");
 const isCode = (code) => (err) => err instanceof LabOrderError && err.code === code;
-
-test("order numbers continue from the start and never reuse one", () => {
-  assert.equal(nextLabOrderNumber(null, 100000), 100000);
-  assert.equal(nextLabOrderNumber(100244, 100000), 100245);
-  assert.equal(nextLabOrderNumber(12, 100000), 100000, "raising the start later jumps ahead");
-  assert.throws(() => nextLabOrderNumber(null, 0), RangeError);
-  assert.throws(() => nextLabOrderNumber(null, 1.5), RangeError);
-});
 
 test("due dates must be real YYYY-MM-DD dates", () => {
   assert.equal(parseDueDate("2026-10-21"), "2026-10-21");

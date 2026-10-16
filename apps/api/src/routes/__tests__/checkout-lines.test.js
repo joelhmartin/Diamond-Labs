@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { checkoutLinesFromQuote } from "../payment.routes.js";
+import { checkoutLinesFromQuote } from "../checkout.routes.js";
 
 test("quote lines become the order/receipt line shape, in dollars", () => {
   const lines = checkoutLinesFromQuote({

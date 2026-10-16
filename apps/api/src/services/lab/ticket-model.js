@@ -1,4 +1,5 @@
 import { LAB_STATUS_LABELS, LAB_TIMEZONE, formatUsDate, formatLabDate } from "@my-app/shared";
+import { deepPrintable } from "../pdf/pdf-text.js";
 
 /**
  * Everything printed on a work ticket, decided here so it is testable — the
@@ -7,21 +8,6 @@ import { LAB_STATUS_LABELS, LAB_TIMEZONE, formatUsDate, formatLabDate } from "@m
  * as on the form (groupRxAnswers). The ticket carries PHI: it is built on
  * request and never stored.
  */
-
-// pdfkit's standard fonts draw WinAnsi only. Keep Latin-1 plus the common
-// typographic marks; anything else (emoji, CJK) would print as garbage.
-const UNPRINTABLE = /[^\n\x20-\x7E -ÿ–—‘’“”•…]/gu;
-
-export function printable(text) {
-  return String(text).normalize("NFC").replace(UNPRINTABLE, "?");
-}
-
-function deepPrintable(value) {
-  if (typeof value === "string") return printable(value);
-  if (Array.isArray(value)) return value.map(deepPrintable);
-  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, deepPrintable(v)]));
-  return value;
-}
 
 const ARCH = { upper: "Upper", lower: "Lower", both: "Both" };
 const archLabel = (a) => (a ? (ARCH[String(a).toLowerCase()] ?? String(a)) : "");

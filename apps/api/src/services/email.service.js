@@ -1,6 +1,8 @@
 import { mailgun } from "../config/email.js";
 import { env } from "../config/env.js";
 import { stagingRewrite } from "../config/app-env.js";
+import { formatUsDate } from "@my-app/shared";
+import { formatCents } from "../lib/money.js";
 
 /**
  * Dispatch an email through Mailgun's HTTP API. Returns `true` when the message
@@ -32,12 +34,17 @@ export function headerSafe(value, max = MAX_SUBJECT_LENGTH) {
  * here so no send can skip it (email-staging.test.js enforces this).
  */
 async function deliver({ to, bcc, subject, html, text }) {
+  // `to` / `bcc` may be a string or an array of addresses. Each address is
+  // sanitised on its own (so the 320-char cap can't cut a list mid-address) and
+  // the list is joined with commas, which is what Mailgun takes: ONE message to
+  // everyone, never N separate sends.
+  const addresses = (v) => [].concat(v ?? []).map((a) => headerSafe(a, 320)).filter(Boolean).join(", ");
   // Header values: several subjects interpolate user input (doctor name, account
   // name, ...) and `to` can be a registrant-typed address. Strip control
   // characters (CR/LF header injection) and cap length centrally so no caller
   // has to remember. Done first so the dev log line below is sanitized too.
-  to = headerSafe(to, 320);
-  if (bcc) bcc = headerSafe(bcc, 320);
+  to = addresses(to);
+  bcc = addresses(bcc);
   subject = headerSafe(subject, MAX_SUBJECT_LENGTH);
 
   // Staging: redirect to STAGING_EMAIL_TO (identity in production). Applied after
@@ -233,9 +240,9 @@ export async function sendDoctorRejected({ email, name }) {
 
 /**
  * AutoPay charge failed. Sent to the doctor; the lab gets a blind copy via
- * ADMIN_NOTIFICATION_EMAIL so a paused enrollment does not go unnoticed.
+ * ADMIN_NOTIFICATION_EMAIL (every address on the list) so a paused enrollment does not go unnoticed.
  */
-export async function sendAutopayFailure({ email, name, amount, reason, paused }) {
+export async function sendAutopayFailure({ email, name, amountCents, reason, paused }) {
   return deliver({
     to: email,
     bcc: env.ADMIN_NOTIFICATION_EMAIL,
@@ -243,7 +250,7 @@ export async function sendAutopayFailure({ email, name, amount, reason, paused }
     html: `
       <h1>We couldn't process your AutoPay payment</h1>
       <p>Hello${name ? `, ${esc(name)}` : ""} — your scheduled AutoPay payment of
-         <strong>$${Number(amount).toFixed(2)}</strong> did not go through.</p>
+         <strong>${formatCents(amountCents)}</strong> did not go through.</p>
       <p style="color:#5a6b7b;">Reason: ${esc(reason)}</p>
       ${paused
         ? `<p style="padding:12px;border-left:4px solid #f59e0b;background:#fffbeb;">
@@ -386,9 +393,9 @@ export async function sendOrderReceipt({
 /**
  * Notify the lab that a new Rx case has arrived and is ready for review.
  * Sent (soft-fail) after every successful POST /rx/form-submissions save.
- * Sent for every submission — a case that auto-released (RX_AUTO_RELEASE)
- * never appears in the review queue, so this may be the only signal staff get
- * that it exists.
+ * Sent for every submission, to every admin on ADMIN_NOTIFICATION_EMAIL:
+ * every case waits for an admin to review it (and often to call the doctor)
+ * before it is released to the lab.
  *
  * No PHI: only the case number, the submitting doctor's identity, a plain
  * device summary, and an unmapped-line count travel here. Patient name,
@@ -398,7 +405,7 @@ export async function sendOrderReceipt({
 export async function sendRxSubmissionReceived({ caseNumber, practiceName, deviceSummary, unmappedCount, caseUrl }) {
   if (!env.ADMIN_NOTIFICATION_EMAIL) return false;
   const unmappedNote = unmappedCount > 0
-    ? `<p style="margin:16px 0 0;color:#b45309;font-size:13px;">${esc(unmappedCount)} selection(s) still need a product code before this case can be sent.</p>`
+    ? `<p style="margin:16px 0 0;color:#b45309;font-size:13px;">${esc(unmappedCount)} selection(s) still need a product code before this case can be released to the lab.</p>`
     : "";
   return deliver({
     to: env.ADMIN_NOTIFICATION_EMAIL,
@@ -421,15 +428,15 @@ export async function sendRxSubmissionReceived({ caseNumber, practiceName, devic
 /**
  * Doctor invoice-payment receipt. Sent (soft-fail) after a successful invoice
  * payment is recorded — covers the saved-card, hosted-card, AutoPay, and admin
- * offline-record flows. `invoices` are { number, amount } per invoice the
+ * offline-record flows. `invoices` are { number, amountCents } per invoice the
  * payment was applied to.
  *
  * `wasCharged` (default true) distinguishes an actual card charge from an
  * admin recording a payment that was already taken by other means (check,
- * cash, or entered directly in Seazona) — pass `false` for the latter so the
+ * cash, or ACH) — pass `false` for the latter so the
  * copy never tells a doctor their card was charged when it wasn't.
  */
-export async function sendPaymentReceipt({ to, amount, invoices = [], transactionId, date, wasCharged = true }) {
+export async function sendPaymentReceipt({ to, amountCents, invoices = [], transactionId, date, wasCharged = true }) {
   if (!to) return false;
   const when = (date instanceof Date ? date : new Date()).toLocaleDateString("en-US", {
     year: "numeric",
@@ -441,7 +448,7 @@ export async function sendPaymentReceipt({ to, amount, invoices = [], transactio
       (i) => `
         <tr>
           <td style="padding:10px 12px;border-bottom:1px solid #eef1f4;color:#1a2733;">Invoice ${esc(i.number)}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #eef1f4;color:#1a2733;text-align:right;">${money(i.amount)}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #eef1f4;color:#1a2733;text-align:right;">${formatCents(i.amountCents)}</td>
         </tr>`
     )
     .join("");
@@ -449,7 +456,7 @@ export async function sendPaymentReceipt({ to, amount, invoices = [], transactio
   const heading = wasCharged ? "Payment received" : "Payment recorded";
   const intro = wasCharged
     ? `Thank you — your payment to Diamond Orthotic Laboratory was processed on ${when}.`
-    : `We've recorded a payment of ${money(amount)} on your Diamond Orthotic Laboratory account, applied on ${when}. Your card was not charged through the portal for this payment.`;
+    : `We've recorded a payment of ${formatCents(amountCents)} on your Diamond Orthotic Laboratory account, applied on ${when}. Your card was not charged through the portal for this payment.`;
   const totalLabel = wasCharged ? "Total charged" : "Total recorded";
 
   const html = `
@@ -467,7 +474,7 @@ export async function sendPaymentReceipt({ to, amount, invoices = [], transactio
         <tfoot>
           <tr>
             <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${totalLabel}</td>
-            <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${money(amount)}</td>
+            <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${formatCents(amountCents)}</td>
           </tr>
         </tfoot>
       </table>
@@ -488,10 +495,10 @@ export async function sendPaymentReceipt({ to, amount, invoices = [], transactio
 
 /**
  * Doctor refund receipt. Sent (soft-fail) after an admin refunds/voids a recorded
- * payment. Mirrors sendPaymentReceipt. `invoices` are { number, amount } per
- * invoice the refund was applied against (amount is the positive refunded value).
+ * payment. Mirrors sendPaymentReceipt. `invoices` are { number, amountCents } per
+ * invoice the refund was applied against (amountCents is the positive refunded value).
  */
-export async function sendRefundReceipt({ to, amount, invoices = [], transactionId, date }) {
+export async function sendRefundReceipt({ to, amountCents, invoices = [], transactionId, date }) {
   if (!to) return false;
   const when = (date instanceof Date ? date : new Date()).toLocaleDateString("en-US", {
     year: "numeric",
@@ -503,7 +510,7 @@ export async function sendRefundReceipt({ to, amount, invoices = [], transaction
       (i) => `
         <tr>
           <td style="padding:10px 12px;border-bottom:1px solid #eef1f4;color:#1a2733;">Invoice ${esc(i.number)}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #eef1f4;color:#1a2733;text-align:right;">${money(i.amount)}</td>
+          <td style="padding:10px 12px;border-bottom:1px solid #eef1f4;color:#1a2733;text-align:right;">${formatCents(i.amountCents)}</td>
         </tr>`
     )
     .join("");
@@ -523,7 +530,7 @@ export async function sendRefundReceipt({ to, amount, invoices = [], transaction
         <tfoot>
           <tr>
             <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">Total refunded</td>
-            <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${money(amount)}</td>
+            <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${formatCents(amountCents)}</td>
           </tr>
         </tfoot>
       </table>
@@ -537,4 +544,38 @@ export async function sendRefundReceipt({ to, amount, invoices = [], transaction
   `;
 
   return deliver({ to, subject: "Refund issued — Diamond Orthotic Laboratory", html });
+}
+
+/**
+ * "You have an invoice" — sent only when staff press Email invoice (never
+ * automatically). A short notice: amount, due date and a portal link. No PDF
+ * and no clinical data travel by email; the doctor downloads the PDF in the portal.
+ */
+export async function sendInvoiceNotice({ to, invoiceId, invoiceNumber, totalCents, balanceCents, dueDate }) {
+  if (!to) return false;
+  const url = `${env.APP_URL}/doctor/invoices/${encodeURIComponent(invoiceId)}`;
+  const html = `
+    <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a2733;">
+      <h1 style="font-size:20px;margin:0 0 12px;">Invoice #${esc(invoiceNumber)}</h1>
+      <p style="margin:0 0 6px;">Total: <strong>${formatCents(totalCents)}</strong></p>
+      <p style="margin:0 0 6px;">Balance due: <strong>${formatCents(Math.max(0, balanceCents))}</strong></p>
+      <p style="margin:0 0 20px;">Due: <strong>${esc(formatUsDate(dueDate) || "on receipt")}</strong></p>
+      <p style="margin:0 0 24px;"><a href="${url}" style="display:inline-block;padding:12px 24px;background:#13AEEF;color:#fff;text-decoration:none;border-radius:999px;font-weight:600;">View and pay invoice</a></p>
+      <p style="margin:0;font-size:12px;color:#8a98a6;">Sign in to the Diamond Orthotic Laboratory portal to download the PDF.</p>
+    </div>`;
+  return deliver({ to, subject: `Invoice #${invoiceNumber} — Diamond Orthotic Laboratory`, html });
+}
+
+/** "Your statement is ready" — staff-triggered; the closing balance and a portal link only. */
+export async function sendStatementNotice({ to, monthLabel, closingCents }) {
+  if (!to) return false;
+  const url = `${env.APP_URL}/doctor/invoices`;
+  const html = `
+    <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a2733;">
+      <h1 style="font-size:20px;margin:0 0 12px;">Your ${esc(monthLabel)} statement</h1>
+      <p style="margin:0 0 20px;">Balance at the end of the month: <strong>${formatCents(closingCents)}</strong></p>
+      <p style="margin:0 0 24px;"><a href="${url}" style="display:inline-block;padding:12px 24px;background:#13AEEF;color:#fff;text-decoration:none;border-radius:999px;font-weight:600;">View invoices and statements</a></p>
+      <p style="margin:0;font-size:12px;color:#8a98a6;">Sign in to the Diamond Orthotic Laboratory portal to download the statement.</p>
+    </div>`;
+  return deliver({ to, subject: `${monthLabel} statement — Diamond Orthotic Laboratory`, html });
 }

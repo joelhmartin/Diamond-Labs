@@ -4,7 +4,7 @@ import { Search, RefreshCw, Loader2, AlertCircle } from "lucide-react";
 import { LAB_ORDER_STATUSES, LAB_STATUS_LABELS, formatUsDate, formatLabDate } from "@my-app/shared";
 import api from "../../config/api.js";
 import { labOrderPath } from "../../config/routes.js";
-import { errorText } from "../../lib/lab-board.js";
+import { errorText } from "../../lib/requests.js";
 import { sourceLabel } from "../../lib/staff.js";
 
 const INPUT =

@@ -1,247 +1,165 @@
-import * as seazonaService from "./seazona.service.js";
-import { getInvoicePaidStrict } from "./invoice-ledger.service.js";
+import { eq, inArray } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+import { db } from "../config/database.js";
+import { invoices, invoicePayments, users } from "../db/schema/index.js";
+import { createId } from "../lib/id.js";
+import { formatCents } from "../lib/money.js";
 import { sendPaymentReceipt } from "./email.service.js";
 import * as auditService from "./audit.service.js";
-import { db } from "../config/database.js";
-import { invoicePayments } from "../db/schema/index.js";
-import { createId } from "../lib/id.js";
-import { env } from "../config/env.js";
-import { round2 } from "../lib/money.js";
+import { paidCentsByInvoice } from "./billing/ledger.service.js";
+import { deriveBalance, canActOnInvoice } from "./billing/invoice-rules.js";
 
-// "payment" rather than "txn" — this reads fine whether `transactionId` is a
-// real gateway transaction id or the `OFFLINE-<id>` sentinel an admin offline
-// record uses (there is no gateway transaction in that case).
-function buildAllocationNotes(allocations, transactionId) {
-  const parts = allocations.map(
-    (a) => `${a.invoiceNumber || a.invoiceId} $${Number(a.amount).toFixed(2)}`
-  );
-  return `DOL portal payment ${transactionId} — ${parts.join("; ")}`.slice(0, 500);
-}
+const owner = alias(users, "owner");
 
 /**
- * Seazona's "Invoices & Payments" report attributes an account-level payment to
- * specific invoices by parsing the literal token `Invoices <num>, <num>` out of
- * the payment's `referenceNumber` field (verified live 2026-06-10 — it matches
- * on referenceNumber, NOT notes, and by invoice NUMBER, not GUID). Build exactly
- * that token; returns null if no allocation carries an invoice number.
- */
-export function buildInvoiceReference(allocations) {
-  const numbers = allocations.map((a) => a.invoiceNumber).filter(Boolean);
-  return numbers.length ? `Invoices ${numbers.join(", ")}` : null;
-}
-
-/**
- * After a successful charge (or an admin's offline payment record): record ONE
- * account-level payment in Seazona (their payment API has no invoice-level
- * granularity) with notes describing the split, then write one local
- * invoice_payments row per allocated invoice.
+ * After money moved (a captured card charge) or was received (a manual
+ * payment staff record): write one invoice_payments row per allocated
+ * invoice, send the receipt, and audit. Our ledger is the system of record;
+ * nothing is written to the legacy lab system (own-the-lab piece 3).
  *
- * `source` tags where the payment originated (e.g. "doctor_card", "doctor_hosted",
- * "admin_card", "admin_offline") for the invoice_payments ledger — optional and
- * defaulted so existing callers are unchanged.
+ * Allocations: [{ invoiceId, invoiceNumber, amountCents }] against local
+ * invoices. `source`: doctor_card | doctor_hosted | admin_card | autopay |
+ * admin_check | admin_cash | admin_ach | admin_other. `paidOn` / `reference`
+ * are set by manual payments only. `wasCharged` false = no card was charged
+ * (receipt copy says "recorded").
  *
- * `writeToSeazona` (default true) ANDs with the existing production/clientId
- * gate below — it never turns Seazona writes ON where they weren't already
- * possible, only lets a caller suppress one that would otherwise happen. This
- * exists for the admin offline-payment path: by default staff have already
- * entered the payment directly in Seazona, so writing again would double-credit
- * the client's account. An admin can opt in per-payment (`writeToSeazona: true`)
- * for a check/cash payment that has NOT yet been entered anywhere.
+ * Non-integer cents (amountCents or any allocation's) insert nothing and are
+ * reported the same way as a failed insert.
  *
- * `wasCharged` (default true) controls the doctor's receipt-email copy — an
- * offline record is not a card charge, so the email must not claim one happened.
- * Pass `false` for offline records.
- *
- * `auditAction` (default "payment.charge") and `actorUserId` (default
- * `user.id`) let a caller override the audit-log shape. The offline path passes
- * `auditAction: "payment.offline_recorded"` (matching the label the admin UI
- * already renders for that action) and `actorUserId` = the admin who recorded
- * it, since `user` here is the doctor the payment is credited to, not the actor.
- *
- * Returns `{ seazonaPaymentId, ledgerWriteFailed }`. NEVER throws — for a real
- * charge the card is already captured, and for an offline record the ledger
- * write is the one durable side effect — so either a Seazona or local-ledger
- * write failure is logged loudly (alertable) and reported back as a warning
- * rather than surfaced as a 500 (which, for a charge, would invite a re-charge
- * on retry).
+ * Returns { ledgerWriteFailed }. NEVER throws: after a card charge the money is
+ * captured, so a ledger failure is logged loudly ([PAYMENT][LEDGER_WRITE_FAILED],
+ * ids and amounts only) rather than 500ing a request a retry would re-charge.
  */
 export async function recordPaymentAndAllocations({
   user,
-  amount,
+  amountCents,
   transactionId,
   allocations,
   source = null,
-  writeToSeazona = true,
   wasCharged = true,
   auditAction = "payment.charge",
   actorUserId = null,
+  paidOn = null,
+  reference = null,
 }) {
-  let seazonaPaymentId = null;
-
-  // Seazona has no sandbox — createPayment writes to the live system. Only do it
-  // for real (production) charges; in sandbox we still write the local ledger so
-  // the flow is fully testable without polluting Seazona's production data.
-  // `writeToSeazona` is ANDed on top — see the doc comment above.
-  if (writeToSeazona && user.seazonaClientId && env.AUTHORIZE_NET_ENV === "production") {
-    // Guarded: this function promises never to throw (the card is already
-    // charged). A rejection here would skip the local ledger write below and
-    // let the caller treat a captured charge as a failure.
-    let res = null;
-    try {
-      res = await seazonaService.createPayment({
-        clientId: user.seazonaClientId,
-        accountNumber: user.seazonaAccountNumber,
-        // `Invoices <num>` token is what Seazona's report matches on to attribute
-        // this payment to the invoice(s); the gateway txn id lives in notes. Fall
-        // back to the txn id only if no allocation carried an invoice number.
-        referenceNumber: buildInvoiceReference(allocations) || transactionId,
-        notes: buildAllocationNotes(allocations, transactionId),
-        amount,
-      });
-    } catch (err) {
-      console.error(`[Seazona] createPayment threw for charge ${transactionId}: ${String(err?.message || err).slice(0, 300)}`);
-    }
-    // H3 — Seazona's payment-id field name is not firmly known. Accept the
-    // plausible shapes; if the call returned a body but no id resolves, log the
-    // KEYS ONLY (never values — avoid PHI) so the real field can be learned.
-    seazonaPaymentId = res?.paymentId ?? res?.id ?? res?.PaymentId ?? res?.paymentID ?? null;
-    if (res && !seazonaPaymentId) {
-      console.error(`[Seazona][PAYMENT_ID_SHAPE] keys=${Object.keys(res).join(",")}`);
-    }
-
-    // CRITICAL: the card was already charged at Authorize.net. If the Seazona
-    // write didn't land, the payment exists at the processor but NOT in the
-    // billing system of record — it must be entered manually. This was silently
-    // swallowed before. Log a distinct, alertable line (the `[Seazona]` token is
-    // what the GCP log-based metric matches) carrying everything needed to
-    // reconcile by hand. We do NOT throw — failing here can't un-charge the card.
-    if (!seazonaPaymentId) {
-      console.error(
-        `[Seazona][PAYMENT_WRITE_FAILED] charge ${transactionId} succeeded at Authorize.net but did NOT record in Seazona — manual entry required ` +
-          JSON.stringify({
-            transactionId,
-            clientId: user.seazonaClientId,
-            accountNumber: user.seazonaAccountNumber || null,
-            amount,
-            invoices: allocations.map((a) => a.invoiceNumber || a.invoiceId),
-          })
-      );
-    }
-  }
-
-  // M4 — the card is already charged; a local-ledger insert failure must NOT
-  // 500 (that would invite a re-charge on retry). Guard it, log an alertable
-  // line carrying ONLY ids/amounts (no card or patient data), and report the
-  // charge as succeeded-with-warning.
   let ledgerWriteFailed = false;
   try {
+    // Fail closed: a dollar-shaped caller (or a missing amount) would write
+    // NULL-cents rows that the ledger silently ignores. Insert nothing and take
+    // the loud reconcile path instead.
+    if (!Number.isSafeInteger(amountCents) || !allocations.every((a) => Number.isSafeInteger(a.amountCents))) {
+      throw new Error("amountCents and every allocation amountCents must be integer cents");
+    }
     await db.insert(invoicePayments).values(
       allocations.map((a) => ({
         id: createId(),
         userId: user.id,
-        seazonaClientId: user.seazonaClientId || null,
-        seazonaInvoiceId: String(a.invoiceId),
-        invoiceNumber: a.invoiceNumber ? String(a.invoiceNumber) : null,
-        appliedAmount: Number(a.amount).toFixed(2),
+        invoiceId: String(a.invoiceId),
+        invoiceNumber: a.invoiceNumber != null ? String(a.invoiceNumber) : null,
+        appliedCents: a.amountCents,
         transactionId,
-        seazonaPaymentId,
         source,
+        paidOn,
+        reference,
       }))
     );
   } catch (ledgerErr) {
     ledgerWriteFailed = true;
     console.error(
-      `[PAYMENT][LEDGER_WRITE_FAILED] charge ${transactionId} succeeded but the local invoice_payments ledger insert failed — manual reconcile required ` +
+      `[PAYMENT][LEDGER_WRITE_FAILED] payment ${transactionId} was ${wasCharged ? "charged" : "received"} but the invoice ledger insert failed — manual reconcile required ` +
         JSON.stringify({
           transactionId,
-          seazonaPaymentId,
           userId: user.id,
-          amount,
-          invoices: allocations.map((a) => ({ invoiceId: a.invoiceId, amount: Number(a.amount) })),
+          amountCents,
+          invoices: allocations.map((a) => ({ invoiceId: a.invoiceId, amountCents: a.amountCents })),
           error: String(ledgerErr?.message || ledgerErr).slice(0, 300),
         })
     );
   }
 
-  // Payment receipt — soft-fail, never blocks (the money side is already
-  // settled — either charged at the gateway, or an offline record staff need
-  // reflected). Covers every path that funnels through here.
-  if (user.email) {
+  // Receipt (soft-fail). A manual record that failed to save recorded nothing,
+  // so it gets no receipt; a captured card charge always does.
+  if (user.email && !(ledgerWriteFailed && !wasCharged)) {
     try {
       await sendPaymentReceipt({
         to: user.email,
-        amount,
-        invoices: allocations.map((a) => ({
-          number: a.invoiceNumber || a.invoiceId,
-          amount: Number(a.amount),
-        })),
+        amountCents,
+        invoices: allocations.map((a) => ({ number: a.invoiceNumber || a.invoiceId, amountCents: a.amountCents })),
         transactionId,
         date: new Date(),
         wasCharged,
       });
     } catch {
-      /* send() never throws; this is belt-and-suspenders */
+      /* deliver() never throws; belt-and-suspenders */
     }
   }
 
-  // Durable audit trail (who paid/recorded what). Soft-fail — the money side is
-  // already settled. Covers every path that funnels through here.
   await auditService.logSafe({
     userId: actorUserId || user.id,
     action: auditAction,
     targetType: "transaction",
     targetId: transactionId,
     metadata: {
-      amount,
+      amountCents,
+      source,
       invoices: allocations.map((a) => a.invoiceNumber || a.invoiceId),
-      seazonaPaymentId: seazonaPaymentId || null,
       ledgerWriteFailed,
     },
   });
 
-  return { seazonaPaymentId, ledgerWriteFailed };
+  return { ledgerWriteFailed };
 }
 
 /**
- * Verify every allocated invoice belongs to the doctor's Seazona client, and
- * (optionally, C1) that no allocation exceeds the invoice's remaining balance.
+ * Check a payment's allocations against our invoices: each one exists, may be
+ * paid by this user (canActOnInvoice: the owner, or a login of the same
+ * practice), is issued, appears once, and (with
+ * `enforceCap`) is not paid past its balance after payments, credits and
+ * refunds. Backfills `invoiceNumber`. Returns null when all good, else
+ * { kind: "forbidden" | "validation", message } (→ 403 / 422).
  *
- * Backfills each allocation's invoiceNumber from the live invoice (Seazona's
- * report matches on number, not GUID). Returns `null` when all good, else
- * `{ kind, message }` where kind is "forbidden" (not found / not owned, → 403)
- * or "validation" (cap exceeded, → 422). Uses the SAME live invoice it already
- * fetched for ownership to compute the remaining balance — no extra fetch.
+ * Concurrency: every caller holds withInvoiceLocks (lib/payment-helpers.js)
+ * across verify-with-cap → charge → record. A DB row lock can't do that job:
+ * the card charge happens between the check and the write, outside any
+ * transaction.
  */
-export async function verifyAllocations(allocations, user, { enforceCap = false } = {}) {
-  // Fetch every invoice up front, concurrently: callers run this INSIDE the
-  // per-invoice locks (INVOICE_LOCK_TTL is short), so N sequential round trips
-  // would spend the lock's lifetime before the charge is even attempted. The
-  // Seazona wrapper still paces the requests; validation below stays ordered.
-  const fetched = await Promise.all(allocations.map((a) => seazonaService.getInvoice(a.invoiceId)));
-  for (const [i, a] of allocations.entries()) {
-    const inv = fetched[i];
-    if (!inv) return { kind: "forbidden", message: `Invoice ${a.invoiceNumber || a.invoiceId} not found.` };
-    if (!a.invoiceNumber && inv.invoiceNumber != null) a.invoiceNumber = inv.invoiceNumber;
-    if (String(inv.clientId) !== String(user.seazonaClientId)) {
-      return { kind: "forbidden", message: `Invoice ${a.invoiceNumber || a.invoiceId} does not belong to your account.` };
+export async function verifyAllocations(allocations, user, { enforceCap = false, database = db } = {}) {
+  const ids = allocations.map((a) => String(a.invoiceId));
+  if (new Set(ids).size !== ids.length) {
+    return { kind: "validation", message: "Each invoice can appear only once in a payment." };
+  }
+  const rows = ids.length
+    ? await database
+        .select({
+          id: invoices.id, invoiceNumber: invoices.invoiceNumber, clientUserId: invoices.clientUserId,
+          ownerSeazonaClientId: owner.seazonaClientId, status: invoices.status, totalCents: invoices.totalCents,
+        })
+        .from(invoices)
+        .leftJoin(owner, eq(owner.id, invoices.clientUserId))
+        .where(inArray(invoices.id, ids))
+    : [];
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const paid = enforceCap ? await paidCentsByInvoice(ids, database) : null;
+  for (const a of allocations) {
+    const inv = byId.get(String(a.invoiceId));
+    // Not found and not yours read the same, so invoice ids can't be probed.
+    // The cap below stays per invoice id, so a second login can't re-pay.
+    if (!inv || !canActOnInvoice(user, inv, inv.ownerSeazonaClientId)) {
+      return { kind: "forbidden", message: `Invoice ${a.invoiceNumber || a.invoiceId} is not on this account.` };
+    }
+    a.invoiceNumber = String(inv.invoiceNumber);
+    if (inv.status !== "issued") {
+      return {
+        kind: "validation",
+        message: `Invoice #${inv.invoiceNumber} ${inv.status === "void" ? "is void" : "hasn't been issued yet"} and can't be paid.`,
+      };
     }
     if (enforceCap) {
-      // C1 — remaining = invoice total minus what's already been applied through
-      // the portal ledger for this Seazona CLIENT (every login of the practice —
-      // keying on user.id let a second login pay an already-paid invoice again).
-      // The +0.005 tolerance absorbs cent rounding; a fully-paid invoice has
-      // remaining ~0 and is therefore blocked.
-      // STRICT read on purpose: a DB error here must abort the charge, not
-      // silently report "paid so far = 0" and re-open the full balance.
-      const paid = await getInvoicePaidStrict({
-        seazonaClientId: user.seazonaClientId,
-        seazonaInvoiceId: a.invoiceId,
-      });
-      const remaining = round2(Number(inv.total || 0) - paid);
-      if (Number(a.amount) > remaining + 0.005) {
+      const { balanceCents } = deriveBalance(inv, paid.get(inv.id) ?? 0);
+      if (a.amountCents > balanceCents) {
         return {
           kind: "validation",
-          message: `Allocation $${Number(a.amount).toFixed(2)} for invoice ${a.invoiceNumber || a.invoiceId} exceeds its remaining balance of $${remaining.toFixed(2)}.`,
+          message: `${formatCents(a.amountCents)} for invoice #${inv.invoiceNumber} exceeds its balance of ${formatCents(Math.max(0, balanceCents))}.`,
         };
       }
     }

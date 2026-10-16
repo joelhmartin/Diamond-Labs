@@ -93,7 +93,7 @@ export const labOrderEvents = pgTable("lab_order_events", {
   type: varchar("type", { length: 20 }).notNull(),
   from: varchar("from_value", { length: 128 }),
   to: varchar("to_value", { length: 128 }),
-  // Null for system actions (checkout, auto-release).
+  // Null for system actions (checkout).
   byUserId: varchar("by_user_id", { length: 128 }),
   // Encrypted free text.
   note: text("note"),
