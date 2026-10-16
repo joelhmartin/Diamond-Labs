@@ -5,7 +5,8 @@ import { LAB_BOARD_COLUMNS, LAB_STATUS_LABELS, formatUsDate, isTerminalLabStatus
 import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { labOrderPath } from "../../config/routes.js";
-import { groupByStatus, quickMoves, boardParams, errorText, isStale } from "../../lib/lab-board.js";
+import { groupByStatus, quickMoves, boardParams } from "../../lib/lab-board.js";
+import { errorText, isStale } from "../../lib/requests.js";
 
 const INPUT =
   "px-3 py-2 rounded-lg bg-white border border-surface-300/60 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10";

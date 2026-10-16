@@ -1,10 +1,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, AlertTriangle, Receipt } from "lucide-react";
 import api from "../../config/api.js";
-
-function formatUSD(n) {
-  return Number(n || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
-}
+import { formatCents } from "../../lib/money.js";
 
 function formatDate(d) {
   if (!d) return "—";
@@ -36,6 +33,11 @@ const SOURCE_LABEL = {
   doctor_hosted: "Card",
   admin_card: "By lab",
   admin_offline: "Recorded by lab",
+  admin_check: "Check (recorded by lab)",
+  admin_cash: "Cash (recorded by lab)",
+  admin_ach: "ACH (recorded by lab)",
+  admin_other: "Recorded by lab",
+  credit: "Credit from lab",
   refund: "Refund",
 };
 
@@ -97,7 +99,7 @@ export function PaymentsPage() {
                 <tr key={p.transactionId} className="border-t border-gray-100">
                   <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{formatDate(p.createdAt)}</td>
                   <td className="px-4 py-3 text-gray-600 text-xs">
-                    {p.invoices.map((inv) => inv.invoiceNumber || inv.seazonaInvoiceId).join(", ") || "—"}
+                    {p.invoices.map((inv) => inv.invoiceNumber || inv.invoiceId).join(", ") || "—"}
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     {p.source === "autopay" ? (
@@ -108,11 +110,11 @@ export function PaymentsPage() {
                       <span className="text-xs text-gray-500">{SOURCE_LABEL[p.source] || "—"}</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right text-gray-800 whitespace-nowrap">{formatUSD(p.gross)}</td>
+                  <td className="px-4 py-3 text-right text-gray-800 whitespace-nowrap">{formatCents(p.grossCents)}</td>
                   <td className="px-4 py-3 text-right text-gray-500 whitespace-nowrap">
-                    {p.refunded > 0 ? `-${formatUSD(p.refunded)}` : "—"}
+                    {p.refundedCents > 0 ? `-${formatCents(p.refundedCents)}` : "—"}
                   </td>
-                  <td className="px-4 py-3 text-right font-medium text-gray-900 whitespace-nowrap">{formatUSD(p.net)}</td>
+                  <td className="px-4 py-3 text-right font-medium text-gray-900 whitespace-nowrap">{formatCents(p.netCents)}</td>
                   <td className="px-4 py-3">
                     <span
                       className={`inline-block rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${

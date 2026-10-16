@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Search, Loader2, AlertCircle, Plus, Layers, Save, Pencil, Trash2, X, Check } from "lucide-react";
 import { canDeleteVariant, canDeleteOptionValue } from "@my-app/shared";
 import api from "../../config/api.js";
-import { formatCents, parseMoneyInput } from "../../lib/money.js";
+import { formatCents, parseMoneyInput, toDecimalString } from "../../lib/money.js";
 import ImageUploadField from "../../components/ui/ImageUploadField.jsx";
 
 const INPUT =
@@ -102,7 +102,7 @@ function VariantRow({ family, variant, onSaved, act, busy }) {
   const [draft, setDraft] = useState({
     name: variant.name ?? "",
     code: variant.code ?? "",
-    price: variant.basePriceCents == null ? "" : (variant.basePriceCents / 100).toFixed(2),
+    price: variant.basePriceCents == null ? "" : toDecimalString(variant.basePriceCents),
     taxable: variant.taxable,
     active: variant.active,
   });
