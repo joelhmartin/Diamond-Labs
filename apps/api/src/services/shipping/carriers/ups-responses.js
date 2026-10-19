@@ -28,7 +28,10 @@ export function parseUpsRates(body) {
     .filter((q) => q.serviceCode && Number.isSafeInteger(q.amountCents));
 }
 
-/** The bought label, or null when the success body can't be read (the adapter treats that as uncertain). */
+/**
+ * The bought label, or null when the success body can't be read (the adapter treats that as uncertain).
+ * `chargeCents` is null when the charge is unreadable, never 0 (a silent $0 would under-bill).
+ */
 export function parseUpsLabel(body, { serviceCode, labelFormat }) {
   const r = body?.ShipmentResponse?.ShipmentResults;
   const pkg = list(r?.PackageResults)[0];
@@ -40,7 +43,7 @@ export function parseUpsLabel(body, { serviceCode, labelFormat }) {
     carrierShipmentId: r.ShipmentIdentificationNumber,
     labelFormat: labelFormat === "zpl" ? "zpl" : "gif",
     labelData: image,
-    chargeCents: cents(r?.NegotiatedRateCharges?.TotalCharge?.MonetaryValue ?? r?.ShipmentCharges?.TotalCharges?.MonetaryValue) ?? 0,
+    chargeCents: cents(r?.NegotiatedRateCharges?.TotalCharge?.MonetaryValue ?? r?.ShipmentCharges?.TotalCharges?.MonetaryValue),
     currency: r?.ShipmentCharges?.TotalCharges?.CurrencyCode ?? "USD",
     serviceCode,
     serviceName: upsServiceName(serviceCode),

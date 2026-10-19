@@ -1,0 +1,36 @@
+{
+  "transactionId": "fixture-track",
+  "output": {
+    "completeTrackResults": [
+      {
+        "trackingNumber": "794644790138",
+        "trackResults": [
+          {
+            "latestStatusDetail": { "code": "IT", "derivedCode": "IT", "description": "In transit", "scanLocation": { "city": "SAN ANTONIO", "stateOrProvinceCode": "TX" } },
+            "dateAndTimes": [{ "type": "ACTUAL_PICKUP", "dateTime": "2026-10-20T17:10:00-05:00" }],
+            "scanEvents": [
+              { "date": "2026-10-20T17:10:00-05:00", "eventType": "PU", "eventDescription": "Picked up", "derivedStatusCode": "PU", "scanLocation": { "city": "SAN ANTONIO", "stateOrProvinceCode": "TX" } },
+              { "date": "2026-10-21T03:12:00-05:00", "eventType": "DP", "eventDescription": "Departed FedEx location", "derivedStatusCode": "IT", "scanLocation": { "city": "SAN ANTONIO", "stateOrProvinceCode": "TX" } }
+            ]
+          }
+        ]
+      },
+      {
+        "trackingNumber": "794644790199",
+        "trackResults": [
+          {
+            "latestStatusDetail": { "code": "DL", "derivedCode": "DL", "description": "Delivered", "scanLocation": { "city": "AUSTIN", "stateOrProvinceCode": "TX" } },
+            "dateAndTimes": [{ "type": "ACTUAL_DELIVERY", "dateTime": "2026-10-22T14:21:00-05:00" }],
+            "scanEvents": []
+          }
+        ]
+      },
+      {
+        "trackingNumber": "000000000000",
+        "trackResults": [
+          { "error": { "code": "TRACKING.TRACKINGNUMBER.NOTFOUND", "message": "Tracking number cannot be found. Please correct the tracking number and try again." } }
+        ]
+      }
+    ]
+  }
+}

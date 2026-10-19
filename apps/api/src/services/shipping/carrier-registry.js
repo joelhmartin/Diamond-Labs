@@ -3,6 +3,7 @@ import { carrierConfig } from "./carrier-config.js";
 import { sharedTokenCache } from "./oauth-token-cache.js";
 import { ShippingError } from "./shipping-errors.js";
 import { createUpsAdapter } from "./carriers/ups.adapter.js";
+import { createFedexAdapter } from "./carriers/fedex.adapter.js";
 import { createManualAdapter } from "./carriers/manual.adapter.js";
 
 /**
@@ -13,6 +14,7 @@ import { createManualAdapter } from "./carriers/manual.adapter.js";
  */
 const FACTORIES = {
   ups: createUpsAdapter,
+  fedex: createFedexAdapter,
   manual: createManualAdapter,
 };
 

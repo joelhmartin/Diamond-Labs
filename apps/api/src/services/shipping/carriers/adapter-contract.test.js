@@ -44,3 +44,7 @@ test("manual: no carrier name is refused; no tracking number is fine (a hand del
   assert.deepEqual(await manual.track(["x"]), []);
   assert.deepEqual(await manual.voidLabel({}), { ok: true });
 });
+
+test("UPS, FedEx and manual are all registered", () => {
+  assert.deepEqual([...CARRIER_IDS].sort(), ["fedex", "manual", "ups"]);
+});

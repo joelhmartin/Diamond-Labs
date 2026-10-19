@@ -1,0 +1,1 @@
+{ "transactionId": "fixture-cancel", "output": { "cancelledShipment": true, "message": "Shipment is successfully cancelled" } }

@@ -52,3 +52,13 @@ test("track: no package in the answer is an empty result, not a crash", () => {
 test("errors", () => {
   assert.deepEqual(parseUpsError(fixture("ups", "error")), { code: "120802", message: "Address Validation Error on ShipTo address" });
 });
+
+test("label: an unreadable or missing charge is null, never 0", () => {
+  const body = structuredClone(fixture("ups", "ship"));
+  const r = body.ShipmentResponse.ShipmentResults;
+  delete r.NegotiatedRateCharges;
+  delete r.ShipmentCharges;
+  assert.equal(parseUpsLabel(body, { serviceCode: "03" }).chargeCents, null);
+  r.ShipmentCharges = { TotalCharges: { CurrencyCode: "USD", MonetaryValue: "n/a" } };
+  assert.equal(parseUpsLabel(body, { serviceCode: "03" }).chargeCents, null);
+});

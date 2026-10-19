@@ -71,3 +71,9 @@ test("configured: names the missing UPS variable, never a value", () => {
   const { ups } = make([], { ups: { ...testCarrierConfig().ups, accountNumber: "" } });
   assert.deepEqual(ups.configured(), { ok: false, reason: "UPS: credentials not set (UPS_ACCOUNT_NUMBER)" });
 });
+
+test("the token call carries the account number as x-merchant-id", async () => {
+  const { ups, fetchImpl } = make([TOKEN, { status: 200, body: fixture("ups", "rate") }]);
+  await ups.rate({ shipFrom: TEST_SHIP_FROM, shipTo, parcel });
+  assert.equal(fetchImpl.calls[0].init.headers["x-merchant-id"], "A1B2C3");
+});

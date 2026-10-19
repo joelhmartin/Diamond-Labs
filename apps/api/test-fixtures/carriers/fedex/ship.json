@@ -1,0 +1,29 @@
+{
+  "transactionId": "fixture-ship",
+  "output": {
+    "transactionShipments": [
+      {
+        "masterTrackingNumber": "794644790138",
+        "serviceType": "FEDEX_GROUND",
+        "serviceName": "FedEx Ground®",
+        "shipDatestamp": "2026-10-20",
+        "pieceResponses": [
+          {
+            "trackingNumber": "794644790138",
+            "packageDocuments": [
+              { "contentType": "LABEL", "docType": "PNG", "encodedLabel": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" }
+            ]
+          }
+        ],
+        "completedShipmentDetail": {
+          "shipmentRating": {
+            "shipmentRateDetails": [
+              { "rateType": "PAYOR_ACCOUNT_PACKAGE", "totalNetCharge": 12.38 },
+              { "rateType": "PAYOR_LIST_PACKAGE", "totalNetCharge": 15.9 }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

@@ -50,3 +50,10 @@ test("paths carry the API version and encode ids", () => {
   assert.equal(upsPaths.void("1Z 9"), "/api/shipments/v2409/void/cancel/1Z%209");
   assert.match(upsPaths.track("1Z999"), /^\/api\/track\/v1\/details\/1Z999\?locale=en_US/);
 });
+
+test("ResidentialAddressIndicator is present for a residential ship-to and absent otherwise", () => {
+  const to = (over) => upsRateRequest({ shipFrom: TEST_SHIP_FROM, shipTo: { ...shipTo, ...over }, parcel, accountNumber: "A" }).RateRequest.Shipment.ShipTo.Address;
+  assert.ok("ResidentialAddressIndicator" in to({ residential: true }));
+  assert.equal("ResidentialAddressIndicator" in to({ residential: false }), false);
+  assert.equal("ResidentialAddressIndicator" in to({}), false);
+});
