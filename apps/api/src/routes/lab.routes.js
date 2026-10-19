@@ -9,9 +9,9 @@ import * as labOrdersService from "../services/lab/lab-orders.service.js";
 import * as departmentsService from "../services/lab/departments.service.js";
 import { buildTicketModel } from "../services/lab/ticket-model.js";
 import { renderTicketPdf } from "../services/lab/ticket-pdf.js";
-import { labErrorReply } from "../services/lab/lab-errors.js";
+import * as labShipping from "../services/lab/lab-shipping.service.js";
+import { run, audit } from "./lab-route-helpers.js";
 import { sendPdf } from "./pdf-reply.js";
-import * as auditService from "../services/audit.service.js";
 
 /**
  * Every lab route: signed in, and lab staff or admin. Pricing, payments,
@@ -20,21 +20,6 @@ import * as auditService from "../services/audit.service.js";
 export const STAFF = [authenticate, requireRole(...STAFF_ROLES)];
 
 export default async function labRoutes(fastify) {
-  async function run(reply, fn, status = 200) {
-    try {
-      const data = await fn();
-      return reply.code(status).send({ data });
-    } catch (err) {
-      const r = labErrorReply(err);
-      if (r) return reply.code(r.status).send(r.body);
-      throw err;
-    }
-  }
-
-  // Audit metadata is ids/fields/versions only — never decrypted free text.
-  const audit = (request, action, targetId, metadata, targetType = "lab_order") =>
-    auditService.logSafe({ userId: request.user.id, action, targetType, targetId, metadata, ipAddress: request.ip });
-
   fastify.get("/lab/orders", { preHandler: [...STAFF, validateQuery(labOrderListQuerySchema)] }, async (request) => ({
     data: await labOrdersService.listLabOrders(request.query), // { orders, truncated }
   }));
@@ -74,7 +59,11 @@ export default async function labRoutes(fastify) {
   });
   fastify.post("/lab/orders/:id/status", { preHandler: [...STAFF, validate(labStatusChangeSchema)] }, (request, reply) =>
     run(reply, async () => {
-      const { order } = await labOrdersService.changeStatus(request.params.id, { ...request.body, byUserId: request.user.id });
+      const args = { ...request.body, byUserId: request.user.id };
+      // A labelled order ships with its whole box (and its shipped email): lab-shipping.service markOrderShipped.
+      const { order } = request.body.to === "shipped"
+        ? await labShipping.markOrderShipped(request.params.id, args)
+        : await labOrdersService.changeStatus(request.params.id, args);
       audit(request, "lab_order.status_changed", order.id, { to: order.status, version: order.version });
       return { id: order.id, status: order.status, version: order.version };
     }));

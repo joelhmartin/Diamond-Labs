@@ -37,6 +37,7 @@ import rxRoutes from "./routes/rx.routes.js";
 import rxMappingRoutes from "./routes/admin-rx-mapping.routes.js";
 import adminRxCasesRoutes from "./routes/admin-rx-cases.routes.js";
 import labRoutes from "./routes/lab.routes.js";
+import shippingRoutes from "./routes/shipping.routes.js";
 import themeRoutes from "./routes/theme.routes.js";
 import autopayRoutes from "./routes/autopay.routes.js";
 import adminPaymentRoutes from "./routes/admin-payment.routes.js";
@@ -179,7 +180,8 @@ await fastify.register(helmet, {
       scriptSrc: ["'self'", "https://js.authorize.net", "https://jstest.authorize.net"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:", "https:"],
+      // blob: — the label print page renders the fetched label through a same-origin blob URL.
+      imgSrc: ["'self'", "data:", "blob:", "https:"],
       connectSrc: ["'self'", "https://api.authorize.net", "https://apitest.authorize.net"],
       // player.vimeo.com — the instructional-videos page embeds Vimeo players.
       // Without it every one of those iframes is blocked outright by this policy.
@@ -240,6 +242,7 @@ await fastify.register(rxRoutes,      { prefix: "/api/v1" });
 await fastify.register(rxMappingRoutes, { prefix: "/api/v1" });
 await fastify.register(adminRxCasesRoutes, { prefix: "/api/v1" });
 await fastify.register(labRoutes, { prefix: "/api/v1" });
+await fastify.register(shippingRoutes, { prefix: "/api/v1" });
 await fastify.register(themeRoutes,     { prefix: "/api/v1" });
 await fastify.register(autopayRoutes,   { prefix: "/api/v1" });
 await fastify.register(adminPaymentRoutes, { prefix: "/api/v1" });

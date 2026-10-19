@@ -71,3 +71,10 @@ test("a role change only lands if the role is still the one we validated (409 ot
   assert.match(body, /\.returning\(/);
   assert.match(body, /code\(409\)/);
 });
+
+test("→ shipped goes through markOrderShipped (a labelled order ships its whole box); other moves are unchanged", () => {
+  const body = handlerSource(labSource, 'fastify.post("/lab/orders/:id/status",');
+  assert.match(body, /request\.body\.to === "shipped"\s*\?\s*await labShipping\.markOrderShipped\(/);
+  assert.match(body, /: await labOrdersService\.changeStatus\(/);
+  assert.match(read("../lab-route-helpers.js"), /labErrorReply\(err\) \?\? shippingErrorReply\(err\)/);
+});
