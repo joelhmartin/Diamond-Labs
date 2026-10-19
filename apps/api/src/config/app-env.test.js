@@ -2,7 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { readFileSync } from "node:fs";
-import { assertSafeConfig, assertScrubMarker, stagingRewrite, isStaging, registerStagingHeaders, effectiveGatewayMode, testModeError } from "./app-env.js";
+import { assertSafeConfig, assertScrubMarker, stagingRewrite, isStaging, registerStagingHeaders, effectiveGatewayMode, testModeError, effectiveCarrierEnv } from "./app-env.js";
 
 const GOOD = {
   APP_ENV: "staging",
@@ -156,4 +156,11 @@ test("scrub marker gate: present boots; missing row, missing table or query erro
   await assertScrubMarker({ APP_ENV: "production" }, spy);
   await assertScrubMarker({}, spy);
   assert.equal(called, false);
+});
+
+test("staging never buys a real label: carriers are sandbox-only there, whatever CARRIER_ENV says", () => {
+  assert.equal(effectiveCarrierEnv({ APP_ENV: "staging", CARRIER_ENV: "production" }), "sandbox");
+  assert.equal(effectiveCarrierEnv({ APP_ENV: "production", CARRIER_ENV: "production" }), "production");
+  assert.equal(effectiveCarrierEnv({ APP_ENV: "production" }), "sandbox");
+  assert.equal(effectiveCarrierEnv({ APP_ENV: "development", CARRIER_ENV: "sandbox" }), "sandbox");
 });

@@ -1,4 +1,5 @@
 import { LAB_TIMEZONE, AGING_BUCKETS, MANUAL_PAYMENT_LABELS, formatUsDate, isoDateIn } from "@my-app/shared";
+import { labIdentity } from "../../config/lab-identity.js";
 import { formatCents } from "../../lib/money.js";
 import { deepPrintable } from "../pdf/pdf-text.js";
 import { ageBalances } from "./aging.js";
@@ -65,7 +66,7 @@ export function statementEvents({ invoices, payments }) {
  * aged per invoice as of the month's end (or today, for the current month).
  * Pure; dates use the lab timezone.
  */
-export function buildStatementModel(client, activity, period, { generatedAt }) {
+export function buildStatementModel(client, activity, period, { generatedAt, labName = labIdentity().name }) {
   const { startIso, endIso, label } = monthBounds(period.month);
   const todayIso = isoDateIn(LAB_TIMEZONE, generatedAt);
   const asOfIso = todayIso < endIso ? todayIso : endIso;
@@ -102,6 +103,6 @@ export function buildStatementModel(client, activity, period, { generatedAt }) {
     summary: [["Opening balance", formatCents(openingCents)], ["Closing balance", formatCents(closingCents)]],
     lines: lines.map((l) => ({ ...l, cells: [formatUsDate(l.date), l.description, formatCents(l.amountCents), formatCents(l.balanceCents)] })),
     aging: { ...aging, cells: AGING_BUCKETS.map((b) => [b.label, formatCents(aging.buckets[b.key])]) },
-    footer: `Generated ${formatUsDate(todayIso)} · Aging as of ${formatUsDate(asOfIso)} · Diamond Orthotic Laboratory · Pay online in the doctor portal.`,
+    footer: `Generated ${formatUsDate(todayIso)} · Aging as of ${formatUsDate(asOfIso)} · ${labName} · Pay online in the doctor portal.`,
   });
 }

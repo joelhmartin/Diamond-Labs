@@ -1,4 +1,5 @@
 import { LAB_TIMEZONE, formatUsDate, formatLabDate, isoDateIn, invoiceStatusLabel } from "@my-app/shared";
+import { labIdentity } from "../../config/lab-identity.js";
 import { formatCents } from "../../lib/money.js";
 import { deepPrintable } from "../pdf/pdf-text.js";
 
@@ -29,7 +30,7 @@ export function billToLines(client) {
  * @param invoice  from getInvoiceDetail (with paidCents / balanceCents)
  * @param order    getInvoiceDetail's labOrder block: { orderNumber, caseNumber, patientName, shopOrderNumber }
  */
-export function buildInvoiceModel(invoice, lines, client, order, { generatedAt }) {
+export function buildInvoiceModel(invoice, lines, client, order, { generatedAt, labName = labIdentity().name }) {
   const status = invoiceStatusLabel(invoice, isoDateIn(LAB_TIMEZONE, generatedAt));
   const banners = [];
   if (invoice.status === "draft") banners.push("DRAFT — NOT A BILL");
@@ -61,6 +62,6 @@ export function buildInvoiceModel(invoice, lines, client, order, { generatedAt }
     billTo: billToLines(client),
     lines: lines.map((l) => [String(l.qty), l.code || "—", l.description, formatCents(l.unitCents), formatCents(l.lineCents)]),
     totals,
-    footer: `Generated ${labDate(generatedAt)} · Diamond Orthotic Laboratory · Pay online in the doctor portal. Contains patient information — keep confidential.`,
+    footer: `Generated ${labDate(generatedAt)} · ${labName} · Pay online in the doctor portal. Contains patient information — keep confidential.`,
   });
 }
