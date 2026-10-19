@@ -127,6 +127,20 @@ test("mark shipped: every order in the box ships, and ONE email lists them all",
   });
 });
 
+test("a shop-order box emails the guest with the shop order number (DOL-…) as well", async () => {
+  sentEmails.length = 0;
+  const a = order({ shipmentId: "sh1", source: "shop_order", sourceId: "so1", clientUserId: null });
+  const tx = fakeTx({
+    selects: [[shipment], [a], [a], [], [], [a], [{ id: "so1", orderNumber: "DOL-12345678", email: "guest@x.com", phone: null, shipping: null }]],
+    updates: [[{ id: "sh1" }], [{ ...a, status: "shipped", version: 4 }]],
+  });
+  await svc.markShipmentShipped("sh1", { byUserId: "u1" }, deps(tx));
+  assert.equal(sentEmails.length, 1);
+  assert.equal(sentEmails[0].to, "guest@x.com");
+  assert.equal(sentEmails[0].shopOrderNumber, "DOL-12345678");
+  assert.deepEqual(sentEmails[0].orderNumbers, [100245]);
+});
+
 test("mark shipped twice (staff and the tracking sync racing): the second sends nothing", async () => {
   sentEmails.length = 0;
   const shippedA = order({ shipmentId: "sh1", status: "shipped" });
@@ -189,6 +203,12 @@ test("void's not-a-draft note goes on the order the shipping line targets (lowes
   const note = tx.log.filter((l) => l.op === "insert").map((l) => l.values).at(-1);
   assert.equal(note.type, "note");
   assert.equal(note.labOrderId, "lo1");
+});
+
+test("Mark shipped losing to a void must not report success: INVALID 'This label was voided.'", async () => {
+  // read says label_created, the claim matches no row (a void committed meanwhile), the re-read says voided
+  const tx = fakeTx({ selects: [[shipment], [{ ...shipment, status: "voided" }]], updates: [[]] });
+  await assert.rejects(svc.markShipmentShipped("sh1", { byUserId: "u1" }, deps(tx)), (e) => e.code === "INVALID" && e.message === "This label was voided.");
 });
 
 test("a stale order page can't ship a box", async () => {

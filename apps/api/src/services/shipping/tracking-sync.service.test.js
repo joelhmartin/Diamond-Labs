@@ -61,15 +61,23 @@ test("delivered is counted and stamped; an already-shipped box isn't shipped aga
   assert.equal(database.log.find((l) => l.op === "set").values.deliveredAt, now);
 });
 
-test("one carrier failing doesn't stop the other; each failed number keeps its error for the next run", async () => {
+test("a fresh label the carrier has no information on yet is no news: no stored error, not counted as an error", async () => {
   const ups = fakeAdapter("ups", { track: async () => [result({ status: null, error: { carrier: "ups", code: "151044", message: "No tracking information available" } })] });
+  const database = fakeTx({ selects: [[row()]], updates: [[{ id: "sh1" }]] });
+  const out = await syncTracking({ now, database, registry: fakeRegistry([ups]), onMoved: async () => {} });
+  assert.equal(out.errors, 0);
+  assert.equal(database.log.find((l) => l.op === "set").values.trackingError, null);
+});
+
+test("one carrier failing doesn't stop the other; each failed number keeps its error for the next run", async () => {
+  const ups = fakeAdapter("ups", { track: async () => [result({ status: null, error: { carrier: "ups", code: "HTTP_503", message: "UPS is unavailable" } })] });
   const fedex = fakeAdapter("fedex", { track: async () => [result({ trackingNumber: "7946" })] });
   const database = fakeTx({ selects: [[row(), row({ id: "sh2", carrier: "fedex", trackingNumber: "7946" })]], updates: [[{ id: "sh1" }], [{ id: "sh2" }]] });
   const out = await syncTracking({ now, database, registry: fakeRegistry([ups, fedex]), onMoved: async () => {} });
   assert.equal(out.errors, 1);
   assert.equal(out.updated, 1);
   const sets = database.log.filter((l) => l.op === "set").map((l) => l.values);
-  assert.equal(sets[0].trackingError, "No tracking information available");
+  assert.equal(sets[0].trackingError, "UPS is unavailable");
   assert.equal(sets[1].status, "in_transit");
 });
 
@@ -140,7 +148,7 @@ test("a write that lost its race (no row updated) is skipped: not counted as upd
 
 test("two numbers in one carrier batch: the one that errors keeps its error, the other still updates", async () => {
   const ups = fakeAdapter("ups", { track: async () => [
-    result({ trackingNumber: "1Z1", status: null, error: { carrier: "ups", code: "151044", message: "No tracking information available" } }),
+    result({ trackingNumber: "1Z1", status: null, error: { carrier: "ups", code: "HTTP_503", message: "UPS is unavailable" } }),
     result({ trackingNumber: "1Z2" }),
   ] });
   const database = fakeTx({ selects: [[row(), row({ id: "sh2", trackingNumber: "1Z2" })]], updates: [[{ id: "sh1" }], [{ id: "sh2" }]] });

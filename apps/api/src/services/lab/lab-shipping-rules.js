@@ -57,6 +57,8 @@ export function planShippingCharge({ policy, flatCents, label, orders }) {
   if (policy === "carrier_cost" && label.chargeCents == null) {
     return { add: false, reason: "charge_unknown", labOrderId: billable[0].id, orderNumber: billable[0].orderNumber };
   }
+  // A manual shipment (courier, hand delivery) has no carrier charge, and a flat fee for it would bill a hand delivery.
+  if (policy === "flat" && label.carrier === "manual") return { add: false, reason: "manual" };
   const unitCents = policy === "flat" ? flatCents : label.chargeCents;
   if (!Number.isSafeInteger(unitCents) || unitCents <= 0) return { add: false, reason: "zero" };
   const what = [label.serviceName || CARRIER_LABELS[label.carrier], label.trackingNumber].filter(Boolean).join(" ");

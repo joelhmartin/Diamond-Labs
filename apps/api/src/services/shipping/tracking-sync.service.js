@@ -26,7 +26,7 @@ function candidatesWhere({ shipmentIds, trackers, now }) {
 function tally(summary, plan, result, shipment, log) {
   if (plan.event) summary.updated += 1;
   if (plan.patch?.status === "delivered") summary.delivered += 1;
-  if (!result || result.error) summary.errors += 1;
+  if ((!result || result.error) && !plan.noNews) summary.errors += 1;
   if (plan.unknownCode) {
     summary.unknownCodes += 1;
     log.warn?.(`[SHIP][UNKNOWN_STATUS] carrier=${shipment.carrier} code=${plan.unknownCode} shipment=${shipment.id}`);

@@ -65,9 +65,25 @@ test("tracking: an unknown carrier code changes nothing but lastTrackedAt, and r
 });
 
 test("tracking: a carrier error (or no answer) is stored for staff and retried next run", () => {
-  const err = planTrackingUpdate(base, { error: { carrier: "ups", code: "151044", message: "No tracking information available" } }, now);
-  assert.deepEqual(err.patch, { lastTrackedAt: now, trackingError: "No tracking information available", updatedAt: now });
+  const err = planTrackingUpdate(base, { error: { carrier: "ups", code: "HTTP_503", message: "UPS is unavailable" } }, now);
+  assert.deepEqual(err.patch, { lastTrackedAt: now, trackingError: "UPS is unavailable", updatedAt: now });
   assert.equal(planTrackingUpdate(base, undefined, now).patch.trackingError, "No tracking result returned.");
+});
+
+test("tracking: 'not found / no information yet' on a fresh label is no news, not a stored error", () => {
+  for (const error of [
+    { carrier: "ups", code: "151044", message: "No tracking information available" },
+    { carrier: "fedex", code: "TRACKING.TRACKINGNUMBER.NOTFOUND", message: "Tracking number cannot be found." },
+    { carrier: "fedex", code: "NO_RESULT", message: "FedEx returned no result for this number." },
+  ]) {
+    const plan = planTrackingUpdate({ ...base, status: "label_created", trackingError: "old" }, { error }, now);
+    assert.deepEqual(plan.patch, { lastTrackedAt: now, trackingError: null, updatedAt: now });
+    assert.equal(plan.event, null);
+    assert.equal(plan.moved, false);
+  }
+  // once it has moved, "not found" is a real problem again
+  const moving = planTrackingUpdate({ ...base, status: "in_transit" }, { error: { carrier: "ups", code: "151044", message: "No tracking information available" } }, now);
+  assert.equal(moving.patch.trackingError, "No tracking information available");
 });
 
 test("tracking: a moving shipment whose orders never shipped is healed on the next run", () => {

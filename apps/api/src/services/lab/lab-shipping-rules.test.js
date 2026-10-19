@@ -45,6 +45,11 @@ test("flat: the configured amount; $0 adds nothing", () => {
   assert.deepEqual(planShippingCharge({ policy: "flat", flatCents: 0, label, orders: [o()] }), { add: false, reason: "zero" });
 });
 
+test("flat: a manual shipment (courier, hand delivery) adds no line", () => {
+  const manual = { carrier: "manual", serviceName: "Courier", trackingNumber: null, chargeCents: 0 };
+  assert.deepEqual(planShippingCharge({ policy: "flat", flatCents: 1500, label: manual, orders: [o()] }), { add: false, reason: "manual" });
+});
+
 test("carrier_cost with a charge the carrier didn't report: no line, and the order to note (R5a); flat is unaffected", () => {
   const unknown = { ...label, chargeCents: null };
   assert.deepEqual(planShippingCharge({ policy: "carrier_cost", flatCents: 0, label: unknown, orders: [o()] }), {

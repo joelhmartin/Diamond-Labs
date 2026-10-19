@@ -160,6 +160,11 @@ export async function shipBoxIn(tx, shipmentId, { byUserId = null, now = new Dat
   if (!shipment) throw new ShippingError("NOT_FOUND", "Shipment not found.");
   if (shipment.status === "voided") throw new ShippingError("INVALID", "This label was voided.");
   const claimed = await shipments.stampShipped(tx, shipment, { now });
+  if (!claimed) {
+    // Lost the claim: either the box already shipped, or a void committed between our read and the claim.
+    const again = await shipments.getShipment(shipmentId, tx);
+    if (again?.status === "voided") throw new ShippingError("INVALID", "This label was voided.");
+  }
   const moved = [];
   for (const o of await ordersOnShipment(shipmentId, tx)) {
     if (o.status !== "ready_to_ship") continue;
@@ -193,7 +198,7 @@ async function notifyShipped(shipment, d) {
   const to = await shipmentRecipient(boxed, d.database);
   if (!to) return false;
   return sendShippedNotice({
-    to, orderNumbers: boxed.map((o) => o.orderNumber), carrier: carrierName(shipment),
+    to: to.email, ...(to.shopOrderNumber ? { shopOrderNumber: to.shopOrderNumber } : {}), orderNumbers: boxed.map((o) => o.orderNumber), carrier: carrierName(shipment),
     trackingNumber: shipment.trackingNumber, trackingUrl: trackingUrl(shipment.carrier, shipment.trackingNumber),
   });
 }
@@ -214,7 +219,10 @@ export async function markOrderShipped(labOrderId, { expectedVersion, byUserId =
   const out = await markShipmentShipped(order.shipmentId, { byUserId }, deps);
   const [after] = await loadOrders([labOrderId], d.database);
   // false when this order was skipped (it wasn't at ready_to_ship) or the box had already shipped
-  return { order: after, changed: out.ordersShipped.includes(order.orderNumber) };
+  return {
+    order: after, changed: out.ordersShipped.includes(order.orderNumber),
+    shipmentId: order.shipmentId, ordersShipped: out.ordersShipped, alreadyShipped: out.alreadyShipped,
+  };
 }
 
 /** End-of-day hand-off: every labelled, unshipped box. One failure is logged and the rest still ship. */

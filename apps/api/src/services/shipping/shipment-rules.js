@@ -58,12 +58,20 @@ export function planVoided(shipment, { now }) {
   };
 }
 
+/**
+ * A carrier that answers "not found / no information yet" for a number it has not
+ * scanned. Expected for a fresh label; for any other status it is a real problem.
+ * (Matches UPS's "No tracking information available" and FedEx's TRACKING.TRACKINGNUMBER.NOTFOUND / NO_RESULT.)
+ */
+const NO_NEWS_YET = /not\s*found|notfound|no\s+tracking\s+information|no\s+information|no[_\s]result/i;
+const isNoNewsYet = (error) => NO_NEWS_YET.test(`${error?.code ?? ""} ${error?.message ?? ""}`);
+
 const NOTHING = { patch: null, event: null, moved: false, unknownCode: null };
 
 /**
  * One carrier answer → what to write.
  * - A terminal shipment never changes (a stale scan after "delivered" is ignored).
- * - An error, or no answer, is stored as trackingError and retried next run.
+ * - An error, or no answer, is stored (except "not found yet" on a label_created shipment: no news) as trackingError and retried next run.
  * - An unknown code changes only lastTrackedAt; the code comes back for the log.
  * - A new status writes ONE event; delivered stamps deliveredAt.
  * - `moved` = the shipment is (now) moving and its orders were never marked
@@ -71,6 +79,10 @@ const NOTHING = { patch: null, event: null, moved: false, unknownCode: null };
  */
 export function planTrackingUpdate(shipment, result, now) {
   if (isTerminalShipmentStatus(shipment.status)) return NOTHING;
+  // A label-created shipment nobody has scanned yet: "not found" is no news, not an error to show staff.
+  if (result?.error && shipment.status === "label_created" && isNoNewsYet(result.error)) {
+    return { ...NOTHING, patch: { lastTrackedAt: now, trackingError: null, updatedAt: now }, noNews: true };
+  }
   if (!result || result.error) {
     const message = String(result?.error?.message ?? "No tracking result returned.").slice(0, 300);
     return { ...NOTHING, patch: { lastTrackedAt: now, trackingError: message, updatedAt: now } };
