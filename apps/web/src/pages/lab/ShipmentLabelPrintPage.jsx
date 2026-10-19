@@ -31,6 +31,9 @@ export function ShipmentLabelPrintPage() {
   useEffect(() => {
     let url = null;
     let live = true;
+    setRotated(false);
+    setLabel(null);
+    setError(null);
     api.get(`/lab/shipments/${id}/label`, { responseType: "blob" })
       .then((res) => {
         if (!live) return;

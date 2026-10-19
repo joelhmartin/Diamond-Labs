@@ -9,7 +9,7 @@ import { groupByStatus, quickMoves, boardParams } from "../../lib/lab-board.js";
 import { labelBadge } from "../../lib/shipping.js";
 import { ConfirmButton } from "../../components/ui/ConfirmButton.jsx";
 import { errorText, isStale } from "../../lib/requests.js";
-import { INPUT_BASE as INPUT } from "../../components/lab/form-styles.js";
+import { INPUT_BASE } from "../../components/lab/form-styles.js";
 
 const dueText = (due) => (due ? `Due ${formatUsDate(due)}` : "No due date");
 
@@ -180,17 +180,17 @@ export function LabBoardPage() {
         >
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy/30" />
           <input
-            className={`${INPUT} pl-8 w-64`}
+            className={`${INPUT_BASE} pl-8 w-64`}
             placeholder="Order #, case #, practice…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
         </form>
-        <select className={INPUT} value={filters.departmentId} onChange={(e) => set({ departmentId: e.target.value })}>
+        <select className={INPUT_BASE} value={filters.departmentId} onChange={(e) => set({ departmentId: e.target.value })}>
           <option value="">All departments</option>
           {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
-        <select className={INPUT} value={filters.assigneeUserId} onChange={(e) => set({ assigneeUserId: e.target.value })}>
+        <select className={INPUT_BASE} value={filters.assigneeUserId} onChange={(e) => set({ assigneeUserId: e.target.value })}>
           <option value="">Anyone</option>
           {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
@@ -199,7 +199,7 @@ export function LabBoardPage() {
         </label>
         <label className="flex items-center gap-1.5 text-sm text-navy">
           Due by
-          <input type="date" className={INPUT} value={filters.dueBefore} onChange={(e) => set({ dueBefore: e.target.value })} />
+          <input type="date" className={INPUT_BASE} value={filters.dueBefore} onChange={(e) => set({ dueBefore: e.target.value })} />
         </label>
       </div>
 

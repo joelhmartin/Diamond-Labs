@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Loader2, RefreshCw, Printer } from "lucide-react";
 import { CARRIERS, CARRIER_LABELS, SHIPMENT_STATUSES, formatCents, formatLabDate } from "@my-app/shared";
@@ -20,16 +20,24 @@ export function ShipmentsPage() {
   const [data, setData] = useState(null);
   const [carriers, setCarriers] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+  const loadSeq = useRef(0);
 
   const load = useCallback(async () => {
+    // Only the newest request may write state: a slow earlier filter's response is dropped.
+    const seq = ++loadSeq.current;
     try {
       const [list, c] = await Promise.all([
         api.get("/lab/shipments", { params: shipmentListParams(filters) }),
         api.get("/lab/carriers"),
       ]);
+      if (seq !== loadSeq.current) return;
       setData(list.data.data);
       setCarriers(c.data.data.carriers);
+      setLoadError(null);
     } catch (err) {
+      if (seq !== loadSeq.current) return;
+      setLoadError(errorText(err));
       addToast({ message: errorText(err), type: "error" });
     }
   }, [filters, addToast]);
@@ -78,7 +86,12 @@ export function ShipmentsPage() {
         <input type="date" className={INPUT} value={filters.to} onChange={setFilter("to")} aria-label="To" />
       </div>
 
-      {!data ? (
+      {loadError && !data ? (
+        <div className="flex items-center gap-3 py-10 text-sm text-red-700">
+          {loadError}
+          <button type="button" className={ROW_BTN} onClick={load}>Retry</button>
+        </div>
+      ) : !data ? (
         <div className="flex items-center gap-2 py-10 text-sm text-navy/50"><Loader2 size={14} className="animate-spin" /> Loading…</div>
       ) : data.shipments.length === 0 ? (
         <p className="py-10 text-center text-sm text-navy/50">No shipments match.</p>
