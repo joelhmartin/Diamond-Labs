@@ -25,7 +25,7 @@ const IN_PROGRESS = "This label purchase is already in progress, or its result i
 export function shippingReply(err) {
   const r = labRouteErrorReply(err);
   if (r && err?.code === "LABEL_NOT_SAVED" && err.cause instanceof LabOrderError) {
-    r.body.error.message = `${err.cause.message} ${err.message}`;
+    return { ...r, body: { ...r.body, error: { ...r.body.error, message: `${err.cause.message} ${err.message}` } } };
   }
   return r;
 }
@@ -72,6 +72,7 @@ async function labelHandler(request, reply) {
   const disposition = label.labelFormat === "zpl" ? "attachment" : "inline";
   return reply
     .header("Cache-Control", "no-store")
+    .header("X-Content-Type-Options", "nosniff")
     .header("Content-Type", LABEL_CONTENT_TYPES[label.labelFormat])
     .header("Content-Disposition", `${disposition}; filename="label-${safe}.${label.labelFormat}"`)
     .send(label.bytes);
@@ -116,5 +117,12 @@ export default async function shippingRoutes(fastify) {
       const out = await labShipping.markAllLabelledShipped({ byUserId: request.user.id }, { log: request.log });
       audit(request, "shipment.marked_all_shipped", null, out);
       return out;
+    }));
+
+  fastify.post("/lab/shipments/:id/refresh-tracking", { preHandler: STAFF }, (request, reply) =>
+    run(reply, async () => {
+      const summary = await labShipping.syncLabTracking({ shipmentIds: [request.params.id], log: request.log });
+      audit(request, "shipment.tracking_refreshed", request.params.id, { checked: summary.checked, updated: summary.updated });
+      return summary;
     }));
 }

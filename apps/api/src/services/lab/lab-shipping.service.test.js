@@ -248,3 +248,43 @@ test("void with a non-draft invoice: the line stays, and the order's history say
   assert.deepEqual(out.invoiceLineSkipped, [{ invoiceNumber: 500001, reason: "not_draft" }]);
   assert.match(decryptField(inserts(tx).at(-1).note), /invoice #500001 was left in place/);
 });
+
+// ── tracking sync: first movement ships the box in the same transaction ──
+
+const movingRow = { id: "sh1", carrier: "ups", trackingNumber: "1Z999AA10123456784", status: "label_created", shippedAt: null };
+const pickedUp = () => fakeAdapter("ups", { track: async () => [{ trackingNumber: movingRow.trackingNumber, status: "in_transit", description: "Pickup Scan", location: null, occurredAt: new Date(), deliveredAt: null }] });
+const rollbackDb = (tx) => {
+  const db = { rolledBack: 0, select: (...a) => tx.select(...a), transaction: async (fn) => { try { return await fn(tx); } catch (err) { db.rolledBack += 1; throw err; } } };
+  return db;
+};
+
+test("sync: first movement ships the box, then sends the one email after commit", async () => {
+  sentEmails.length = 0;
+  const a = order({ shipmentId: "sh1" });
+  const client = { id: "doc1", name: "Dr. Ada", email: "dr@x.com", role: "doctor", accountNumber: null, profile: null };
+  const tx = fakeTx({
+    selects: [[movingRow], [shipment], [a], [a], [], [], [a], [client]],
+    updates: [[{ id: "sh1" }], [{ id: "sh1" }], [{ ...a, status: "shipped", version: 4 }]],
+  });
+  const db = rollbackDb(tx);
+  const out = await svc.syncLabTracking({ registry: fakeRegistry([pickedUp()]), database: db, log: { error: () => {}, warn: () => {} } }, deps(db));
+  assert.equal(out.moved, 1);
+  assert.equal(db.rolledBack, 0);
+  assert.equal(sentEmails.length, 1);
+  assert.deepEqual(sentEmails[0].orderNumbers, [100245]);
+});
+
+test("sync: a failure while shipping the orders rolls the status change back and is retried", async () => {
+  sentEmails.length = 0;
+  const lines = [];
+  // the box's order row can't be read (empty queue) -> mutateIn throws inside the transaction
+  const tx = fakeTx({ selects: [[movingRow], [shipment], [order({ shipmentId: "sh1" })]], updates: [[{ id: "sh1" }], [{ id: "sh1" }]] });
+  const db = rollbackDb(tx);
+  const out = await svc.syncLabTracking({ registry: fakeRegistry([pickedUp()]), database: db, log: { error: (m) => lines.push(m), warn: () => {} } }, deps(db));
+  assert.equal(db.rolledBack, 1);
+  assert.equal(out.moved, 0);
+  assert.equal(out.updated, 0);
+  assert.equal(out.errors, 1);
+  assert.match(lines[0], /^\[SHIP\]\[MARK_SHIPPED_FAILED\] shipment=sh1 error=\w+$/);
+  assert.equal(sentEmails.length, 0);
+});

@@ -6,6 +6,7 @@ import { createId } from "../../lib/id.js";
 import { sendShippedNotice } from "../email.service.js";
 import { addShipmentLine, removeShipmentLine } from "../billing/invoices.service.js";
 import { carrierRegistry } from "../shipping/carrier-registry.js";
+import { syncTracking } from "../shipping/tracking-sync.service.js";
 import { ShippingError } from "../shipping/shipping-errors.js";
 import { planNewShipment, assertVoidable } from "../shipping/shipment-rules.js";
 import * as shipments from "../shipping/shipments.service.js";
@@ -166,34 +167,41 @@ export async function voidShipment(shipmentId, { byUserId = null } = {}, deps) {
 }
 
 /**
- * The box left. Every order on the shipment still at ready_to_ship moves to
- * shipped (each invoice is issued by billingFollowUp, in a savepoint), and
- * shippedAt is claimed once. After commit, ONLY the caller that claimed it sends
- * the one shipped email. Safe to call twice (staff and the tracking sync racing).
+ * The box left, inside the caller's transaction (the one implementation both
+ * "Mark shipped" and the tracking sync use). Every order on the shipment still
+ * at ready_to_ship moves to shipped (each invoice is issued by billingFollowUp,
+ * in a savepoint), and shippedAt is claimed once. `claimed` is true only for
+ * the caller that set it, so exactly one shipped email goes out.
  */
+export async function shipBoxIn(tx, shipmentId, { byUserId = null, now = new Date() } = {}) {
+  const shipment = await shipments.getShipment(shipmentId, tx);
+  if (!shipment) throw new ShippingError("NOT_FOUND", "Shipment not found.");
+  if (shipment.status === "voided") throw new ShippingError("INVALID", "This label was voided.");
+  const claimed = await shipments.stampShipped(tx, shipment, { now });
+  const moved = [];
+  for (const o of await ordersOnShipment(shipmentId, tx)) {
+    if (o.status !== "ready_to_ship") continue;
+    const { order } = await mutateIn(tx, o.id, null, (current) => ({
+      ...planStatusChange(current, "shipped", { byUserId, now }),
+      after: billingFollowUp("shipped", byUserId),
+    }));
+    moved.push(order.orderNumber);
+  }
+  return { shipment, claimed, moved };
+}
+
+/** After commit, ONLY the caller that claimed shippedAt sends the one shipped email; it can never fail the ship. */
+function emailAfterShip(d, { shipment, claimed }) {
+  if (!claimed) return Promise.resolve();
+  return afterCommit(d, () => notifyShipped(shipment, d), (err) =>
+    d.log.error(`[SHIP][EMAIL_FAILED] shipment=${shipment.id} error=${errTag(err)}`));
+}
+
+/** The box left (staff, or "Mark all"). Safe to call twice (staff and the tracking sync racing). */
 export async function markShipmentShipped(shipmentId, { byUserId = null } = {}, deps) {
   const d = resolve(deps);
-  const result = await d.database.transaction(async (tx) => {
-    const shipment = await shipments.getShipment(shipmentId, tx);
-    if (!shipment) throw new ShippingError("NOT_FOUND", "Shipment not found.");
-    if (shipment.status === "voided") throw new ShippingError("INVALID", "This label was voided.");
-    const now = new Date();
-    const claimed = await shipments.stampShipped(tx, shipment, { now });
-    const moved = [];
-    for (const o of await ordersOnShipment(shipmentId, tx)) {
-      if (o.status !== "ready_to_ship") continue;
-      const { order } = await mutateIn(tx, o.id, null, (current) => ({
-        ...planStatusChange(current, "shipped", { byUserId, now }),
-        after: billingFollowUp("shipped", byUserId),
-      }));
-      moved.push(order.orderNumber);
-    }
-    return { shipment, claimed, moved };
-  });
-  if (result.claimed) {
-    await afterCommit(d, () => notifyShipped(result.shipment, d), (err) =>
-      d.log.error(`[SHIP][EMAIL_FAILED] shipment=${shipmentId} error=${errTag(err)}`));
-  }
+  const result = await d.database.transaction((tx) => shipBoxIn(tx, shipmentId, { byUserId }));
+  await emailAfterShip(d, result);
   return { shipmentId, ordersShipped: result.moved, alreadyShipped: !result.claimed };
 }
 
@@ -242,4 +250,20 @@ export async function markAllLabelledShipped({ byUserId = null } = {}, deps) {
     }
   }
   return { shipped, failed };
+}
+
+/**
+ * The tracking sync with the lab's one rule: a shipment's first carrier
+ * movement ships its box, in the same transaction as the status change (a
+ * failure rolls both back; the next run sees the movement again).
+ */
+export function syncLabTracking(opts = {}, deps) {
+  const d = resolve({ ...deps, ...(opts.log ? { log: opts.log } : {}) });
+  return syncTracking({
+    ...opts,
+    onMoved: async (tx, shipmentId) => {
+      const result = await shipBoxIn(tx, shipmentId, { byUserId: null });
+      return () => emailAfterShip(d, result);
+    },
+  });
 }

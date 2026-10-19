@@ -6,12 +6,12 @@ import { handlerSource } from "./_source.js";
 import { fakeTx } from "../../test/fake-tx.js";
 
 const mocks = vi.hoisted(() => ({
-  buyForOrders: vi.fn(), voidShipment: vi.fn(), markShipmentShipped: vi.fn(), markAllLabelledShipped: vi.fn(), rateShipment: vi.fn(),
+  buyForOrders: vi.fn(), voidShipment: vi.fn(), markShipmentShipped: vi.fn(), markAllLabelledShipped: vi.fn(), rateShipment: vi.fn(), syncLabTracking: vi.fn(),
   getLabel: vi.fn(), logSafe: vi.fn(), redis: { store: new Map() },
 }));
 vi.mock("../../services/lab/lab-shipping.service.js", () => ({
   buyForOrders: mocks.buyForOrders, voidShipment: mocks.voidShipment, markShipmentShipped: mocks.markShipmentShipped,
-  markAllLabelledShipped: mocks.markAllLabelledShipped, rateShipment: mocks.rateShipment, markOrderShipped: vi.fn(),
+  markAllLabelledShipped: mocks.markAllLabelledShipped, rateShipment: mocks.rateShipment, syncLabTracking: mocks.syncLabTracking, markOrderShipped: vi.fn(),
 }));
 vi.mock("../../services/shipping/shipments.service.js", async (orig) => ({ ...(await orig()), getLabel: mocks.getLabel }));
 vi.mock("../../services/audit.service.js", () => ({ logSafe: mocks.logSafe }));
@@ -259,4 +259,16 @@ test("the ship context route returns the context, or 404 for an unknown order", 
   assert.deepEqual(context.siblings, []);
   assert.ok(Array.isArray(context.carriers));
   assert.equal(await shipContext("nope", fakeTx({ selects: [[]] })), null);
+});
+
+test("Refresh tracking is staff-only, runs the lab sync for one shipment, and is audited", () => {
+  const body = handlerSource(src, 'fastify.post("/lab/shipments/:id/refresh-tracking",');
+  assert.match(body, /STAFF/);
+  assert.match(body, /syncLabTracking\(\{ shipmentIds: \[request\.params\.id\]/);
+  assert.match(body, /shipment\.tracking_refreshed/);
+});
+
+test("shippingReply copies the error body instead of mutating the shared reply; labels are nosniff", () => {
+  assert.doesNotMatch(src, /r\.body\.error\.message =/);
+  assert.match(fn("labelHandler"), /X-Content-Type-Options", "nosniff"/);
 });
