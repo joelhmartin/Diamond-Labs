@@ -309,3 +309,7 @@ test("a board card says when its order has a label", () => {
   assert.equal(presentBoardCard(row, [], "2026-10-07").labelled, true);
   assert.equal(presentBoardCard({ ...row, order: { ...row.order, shipmentId: null } }, [], "2026-10-07").labelled, false);
 });
+
+test("a labelled order already shipped gets the normal refusal, not 'void the label'", () => {
+  assert.throws(() => planStatusChange({ ...labelled, status: "shipped" }, "on_hold", { reason: "x", now }), (e) => isCode("INVALID_TRANSITION")(e) && !/void the label/.test(e.message));
+});

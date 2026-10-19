@@ -193,10 +193,27 @@ test("mutateIn runs inside the caller's transaction; mutate is its one-line wrap
   assert.match(source, /export function mutate\(id, expectedVersion, plan, database = db\) \{\s*return database\.transaction\(\(tx\) => mutateIn\(tx, id, expectedVersion, plan\)\);/);
 });
 
-test("mutateIn: a system move (null version) skips the freshness check but still can't lose an update", async () => {
+const notePlan = () => ({ patch: { version: 4 }, event: { labOrderId: "lo-1", type: "note", note: null, at: new Date() } });
+const isStale = (e) => e instanceof LabOrderError && e.code === "STALE";
+
+test("mutateIn: a system move (null version) skips the freshness check and applies when the conditional UPDATE matches", async () => {
+  const tx = fakeTx({ selects: [[baseRow]], updates: [[{ ...baseRow, version: 4 }]] });
+  const out = await mod.mutateIn(tx, "lo-1", null, notePlan);
+  assert.equal(out.changed, true);
+  assert.equal(out.order.version, 4);
+  assert.equal(tx.log.filter((l) => l.op === "insert").length, 1, "the event was written");
+});
+
+test("mutateIn: a mismatched integer version is refused by the freshness check, before any write", async () => {
+  const tx = fakeTx({ selects: [[baseRow]], updates: [[{ ...baseRow, version: 4 }]] });
+  await assert.rejects(mod.mutateIn(tx, "lo-1", 2, notePlan), isStale);
+  assert.equal(tx.log.filter((l) => l.op === "update" || l.op === "insert").length, 0);
+});
+
+test("mutateIn: even a system move can't lose an update (conditional UPDATE matching no row is STALE)", async () => {
   const tx = fakeTx({ selects: [[baseRow]], updates: [[]] });
-  const plan = () => ({ patch: { version: 4 }, event: { labOrderId: "lo-1", type: "note", note: null, at: new Date() } });
-  await assert.rejects(mod.mutateIn(tx, "lo-1", null, plan), (e) => e instanceof LabOrderError && e.code === "STALE");
+  await assert.rejects(mod.mutateIn(tx, "lo-1", null, notePlan), isStale);
+  assert.equal(tx.log.filter((l) => l.op === "insert").length, 0);
 });
 
 test("the order page's shipment block comes from the summary map (SUMMARY has no label image)", async () => {

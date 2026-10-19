@@ -152,7 +152,7 @@ const label = (s) => LAB_STATUS_LABELS[s] ?? s;
 
 /** A status move → the row patch and its event. Every rule comes from the shared table. */
 export function planStatusChange(order, to, { reason, byUserId = null, now }) {
-  if (order.shipmentId && to !== "shipped") {
+  if (order.shipmentId && order.status === "ready_to_ship" && to !== "shipped") {
     throw new LabOrderError("INVALID", `Order #${order.orderNumber} has a shipping label — void the label before moving it.`);
   }
   const allowed = allowedNextStatuses(order.status, { heldFrom: order.heldFrom, labelled: Boolean(order.shipmentId) });
