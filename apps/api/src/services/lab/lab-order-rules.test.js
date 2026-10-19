@@ -2,7 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   LabOrderError, summariseLabLines, parseDueDate, rushFromCase, planRxRelease, planShopLabOrder, planRemake,
-  assertFresh, planStatusChange, planFieldChange, initialsFor, presentBoardCard,
+  assertFresh, planStatusChange, planFieldChange, initialsFor, presentBoardCard, planShipmentLink, planShipmentUnlink,
 } from "./lab-order-rules.js";
 
 const now = new Date("2026-10-07T15:00:00Z");
@@ -274,4 +274,38 @@ test("shop line qty falls back to 1 unless it is a positive integer (the planner
 test("summariseLabLines is exported for the ticket and services", () => {
   assert.equal(summariseLabLines([{ name: "A", qty: 2 }, { name: "N", noteOnly: true, qty: 1 }]), "2× A");
   assert.equal(summariseLabLines([]), "—");
+});
+
+const labelled = { ...order, status: "ready_to_ship", shipmentId: "sh1" };
+const ship = { id: "sh1", serviceName: "UPS Ground", trackingNumber: "1Z999AA10123456784" };
+
+test("a labelled order can only move to shipped; anything else says to void the label first", () => {
+  for (const to of ["on_hold", "cancelled", "quality_check"]) {
+    assert.throws(() => planStatusChange(labelled, to, { reason: "x", now }), (e) => isCode("INVALID")(e) && /void the label/.test(e.message), to);
+  }
+  assert.equal(planStatusChange(labelled, "shipped", { now }).patch.status, "shipped");
+});
+
+test("linking a just-bought shipment: version bump and a 'shipment' event naming carrier and tracking only", () => {
+  const { patch, event } = planShipmentLink({ ...order, status: "ready_to_ship", shipmentId: null }, ship, { byUserId: "u1", now });
+  assert.deepEqual(patch, { shipmentId: "sh1", version: 4, updatedAt: now });
+  assert.deepEqual([event.type, event.from, event.to, event.note], ["shipment", null, "sh1", "Label: UPS Ground 1Z999AA10123456784"]);
+});
+
+test("linking refuses an order that moved or was labelled by someone else meanwhile", () => {
+  assert.throws(() => planShipmentLink({ ...order, status: "on_hold" }, ship, { now }), isCode("CONFLICT"));
+  assert.throws(() => planShipmentLink({ ...order, status: "ready_to_ship", shipmentId: "sh0" }, ship, { now }), isCode("CONFLICT"));
+});
+
+test("unlinking a voided shipment clears only that shipment", () => {
+  const { patch, event } = planShipmentUnlink(labelled, ship, { byUserId: "u1", now });
+  assert.equal(patch.shipmentId, null);
+  assert.deepEqual([event.type, event.from, event.to, event.note], ["shipment", "sh1", null, "Label voided: UPS Ground 1Z999AA10123456784"]);
+  assert.equal(planShipmentUnlink({ ...labelled, shipmentId: "other" }, ship, { now }), null);
+});
+
+test("a board card says when its order has a label", () => {
+  const row = { order: { ...order, status: "ready_to_ship", shipmentId: "sh1", source: "rx_case", receivedAt: now }, caseNumber: "RX-1", practiceName: "Lee Dental", assigneeName: null };
+  assert.equal(presentBoardCard(row, [], "2026-10-07").labelled, true);
+  assert.equal(presentBoardCard({ ...row, order: { ...row.order, shipmentId: null } }, [], "2026-10-07").labelled, false);
 });

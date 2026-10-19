@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { isoDateIn, LAB_TIMEZONE, CREDIT_SOURCE, manualPaymentSource } from "@my-app/shared";
 import { db } from "../../config/database.js";
 import { redis } from "../../config/redis.js";
@@ -9,7 +9,7 @@ import { createId } from "../../lib/id.js";
 import { withInvoiceLocks, InvoiceLockedError } from "../../lib/payment-helpers.js";
 import { paidCentsByInvoice, openInvoicesForClient } from "./ledger.service.js";
 import { auditInvoice, loadLines, applyLinePlan, commitPatch } from "./invoices.service.js";
-import { sealInvoice, openInvoice, sealLedgerRow } from "./invoice-crypto.js";
+import { openInvoice, sealLedgerRow } from "./invoice-crypto.js";
 import {
   InvoiceError, assertFreshInvoice, planLineEdit, planIssue, planVoid, planCredit, planManualPayment, deriveBalance,
 } from "./invoice-rules.js";

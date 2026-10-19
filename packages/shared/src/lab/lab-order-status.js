@@ -47,8 +47,11 @@ export function isTerminalLabStatus(status) {
  * resumes; an on-hold row without a usable one resumes at received rather
  * than being stuck with no way out but cancel.
  */
-export function allowedNextStatuses(status, { heldFrom = null } = {}) {
+export function allowedNextStatuses(status, { heldFrom = null, labelled = false } = {}) {
   if (!LAB_ORDER_STATUSES.includes(status) || isTerminalLabStatus(status)) return [];
+  // A labelled order (live shipping label) only ships: anything else would
+  // strand the label, so staff void the label first.
+  if (labelled) return status === "ready_to_ship" ? ["shipped"] : [];
   if (status === "on_hold") {
     const resume = FLOW[heldFrom] ? heldFrom : "received";
     return [resume, "cancelled"];

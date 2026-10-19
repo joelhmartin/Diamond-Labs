@@ -9,6 +9,7 @@ import {
 import { createId } from "../../lib/id.js";
 import { encryptField, decryptField, fieldSealer } from "../../lib/crypto.js";
 import { decryptRxPhi } from "../rx/phi-crypto.js";
+import { shipmentSummaries } from "../shipping/shipments.service.js";
 import { allocateSequenceNumber } from "../sequence.service.js";
 import { devicesForCase } from "../rx/case-devices.js";
 import { compileNotesMulti } from "../rx/case-notes.js";
@@ -266,6 +267,8 @@ export async function getLabOrderDetail(id, now = new Date()) {
     shopOrder = s ?? null;
   }
 
+  const shipment = order.shipmentId ? ((await shipmentSummaries([order.shipmentId])).get(order.shipmentId) ?? null) : null;
+
   return {
     order: {
       ...order,
@@ -280,6 +283,7 @@ export async function getLabOrderDetail(id, now = new Date()) {
     rxCase,
     files,
     shopOrder,
+    shipment,
   };
 }
 
@@ -302,30 +306,38 @@ export async function labOrdersForCases(caseIds) {
 }
 
 /**
- * Load → freshness check → plan → conditional update → event, in one
- * transaction. The UPDATE is conditional on the version read, so two
+ * Load → freshness check → plan → conditional update → event, inside the
+ * CALLER's transaction, so several orders can change together (ship together,
+ * mark a box shipped). The UPDATE is conditional on the version read, so two
  * technicians racing past assertFresh still can't both win.
+ *
+ * `expectedVersion === null` is a system move (shipping, the tracking sync):
+ * there is no client version to check, and the conditional UPDATE still
+ * prevents a lost update. Routes always validate a positive integer, so a
+ * request can never send null.
  */
+export async function mutateIn(tx, id, expectedVersion, plan) {
+  const [row] = await tx.select().from(labOrders).where(eq(labOrders.id, id));
+  if (!row) throw new LabOrderError("NOT_FOUND", "Lab order not found.");
+  const order = openOrder(row);
+  if (expectedVersion !== null) assertFresh(order, expectedVersion);
+  const planned = await plan(order, tx);
+  if (!planned) return { order, changed: false };
+  const [updated] = await tx
+    .update(labOrders)
+    .set(sealOrder(planned.patch))
+    .where(and(eq(labOrders.id, id), eq(labOrders.version, order.version)))
+    .returning();
+  if (!updated) throw new LabOrderError("STALE", "This order changed — reload.");
+  await tx.insert(labOrderEvents).values(sealEvent(planned.event));
+  const opened = openOrder(updated);
+  if (planned.after) await planned.after(tx, opened);
+  return { order: opened, changed: true };
+}
+
 // `database` is injectable so the version/seal behaviour can be tested with a fake.
-export async function mutate(id, expectedVersion, plan, database = db) {
-  return database.transaction(async (tx) => {
-    const [row] = await tx.select().from(labOrders).where(eq(labOrders.id, id));
-    if (!row) throw new LabOrderError("NOT_FOUND", "Lab order not found.");
-    const order = openOrder(row);
-    assertFresh(order, expectedVersion);
-    const planned = await plan(order, tx);
-    if (!planned) return { order, changed: false };
-    const [updated] = await tx
-      .update(labOrders)
-      .set(sealOrder(planned.patch))
-      .where(and(eq(labOrders.id, id), eq(labOrders.version, order.version)))
-      .returning();
-    if (!updated) throw new LabOrderError("STALE", "This order changed — reload.");
-    await tx.insert(labOrderEvents).values(sealEvent(planned.event));
-    const opened = openOrder(updated);
-    if (planned.after) await planned.after(tx, opened);
-    return { order: opened, changed: true };
-  });
+export function mutate(id, expectedVersion, plan, database = db) {
+  return database.transaction((tx) => mutateIn(tx, id, expectedVersion, plan));
 }
 
 async function assertAssignable(tx, userId) {

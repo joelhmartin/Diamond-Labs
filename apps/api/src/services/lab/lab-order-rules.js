@@ -152,7 +152,10 @@ const label = (s) => LAB_STATUS_LABELS[s] ?? s;
 
 /** A status move → the row patch and its event. Every rule comes from the shared table. */
 export function planStatusChange(order, to, { reason, byUserId = null, now }) {
-  const allowed = allowedNextStatuses(order.status, { heldFrom: order.heldFrom });
+  if (order.shipmentId && to !== "shipped") {
+    throw new LabOrderError("INVALID", `Order #${order.orderNumber} has a shipping label — void the label before moving it.`);
+  }
+  const allowed = allowedNextStatuses(order.status, { heldFrom: order.heldFrom, labelled: Boolean(order.shipmentId) });
   if (!allowed.includes(to)) {
     throw new LabOrderError(
       "INVALID_TRANSITION",
@@ -247,10 +250,42 @@ export function presentBoardCard(row, lines = [], todayIso) {
     rush: Boolean(o.rush),
     rushTier: o.rushTier ?? null,
     isRemake: Boolean(o.isRemake),
+    labelled: Boolean(o.shipmentId),
     departmentId: o.departmentId ?? null,
     assigneeUserId: o.assigneeUserId ?? null,
     assigneeInitials: initialsFor(row.assigneeName),
     overdue: isOverdue(o.dueDate, o.status, todayIso),
     receivedAt: o.receivedAt,
+  };
+}
+
+// ── Shipping (piece 4) ─────────────────────────────────────────────────────
+
+const shipmentNote = (shipment, verb) => `${verb}: ${[shipment.serviceName, shipment.trackingNumber].filter(Boolean).join(" ")}`.slice(0, 200);
+
+/**
+ * Link an order to a just-bought shipment, inside the persisting transaction.
+ * Re-checks what the pre-purchase check saw: an order that moved or was
+ * labelled meanwhile fails the transaction, and the label is voided
+ * (shipments.service purchaseAndPersist). The event names carrier, service
+ * and tracking number only.
+ */
+export function planShipmentLink(order, shipment, { byUserId = null, now }) {
+  if (order.status !== "ready_to_ship") {
+    throw new LabOrderError("CONFLICT", `Order #${order.orderNumber} moved while the label was being bought.`);
+  }
+  if (order.shipmentId) throw new LabOrderError("CONFLICT", `Order #${order.orderNumber} was labelled by someone else.`);
+  return {
+    patch: { shipmentId: shipment.id, version: order.version + 1, updatedAt: now },
+    event: { labOrderId: order.id, type: "shipment", from: null, to: shipment.id, byUserId, note: shipmentNote(shipment, "Label"), at: now },
+  };
+}
+
+/** A voided shipment: clear it from the order (null when the order points elsewhere). */
+export function planShipmentUnlink(order, shipment, { byUserId = null, now }) {
+  if (order.shipmentId !== shipment.id) return null;
+  return {
+    patch: { shipmentId: null, version: order.version + 1, updatedAt: now },
+    event: { labOrderId: order.id, type: "shipment", from: shipment.id, to: null, byUserId, note: shipmentNote(shipment, "Label voided"), at: now },
   };
 }

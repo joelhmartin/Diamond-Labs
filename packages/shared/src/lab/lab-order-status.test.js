@@ -151,3 +151,9 @@ test("formatLabDate prints the lab's calendar date, not UTC's", () => {
   assert.equal(formatLabDate(null), "");
   assert.equal(formatLabDate("nonsense"), "");
 });
+
+test("a labelled order only ships: hold, cancel and back-to-QC would strand its label", () => {
+  assert.deepEqual(allowedNextStatuses("ready_to_ship", { labelled: true }), ["shipped"]);
+  assert.deepEqual(allowedNextStatuses("ready_to_ship", { labelled: false }), ["shipped", "quality_check", "on_hold", "cancelled"]);
+  assert.deepEqual(allowedNextStatuses("shipped", { labelled: true }), []);
+});
