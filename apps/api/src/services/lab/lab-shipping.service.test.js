@@ -6,6 +6,9 @@ process.env.PHI_ENCRYPTION_KEY ??= "a".repeat(64);
 const sentEmails = [];
 vi.mock("../email.service.js", () => ({ sendShippedNotice: vi.fn(async (args) => { sentEmails.push(args); return true; }) }));
 
+const changeStatusMock = vi.fn(async () => ({ order: { id: "lo1" }, changed: true }));
+vi.mock("./lab-orders.service.js", async (orig) => ({ ...(await orig()), changeStatus: (...a) => changeStatusMock(...a) }));
+
 const svc = await import("./lab-shipping.service.js");
 const { fakeTx } = await import("../../test/fake-tx.js");
 const { fakeAdapter, fakeRegistry, TEST_SHIP_FROM, TEST_LABEL } = await import("../../test/carrier-config.js");
@@ -133,9 +136,59 @@ test("mark shipped twice (staff and the tracking sync racing): the second sends 
   assert.equal(sentEmails.length, 0);
 });
 
-test("mark shipped on one order: an unlabelled order takes the normal path; a labelled one ships its box", () => {
-  assert.match(source, /if \(!order\.shipmentId\) return changeStatus\(labOrderId, \{ to: "shipped", expectedVersion, byUserId \}\);/);
-  assert.match(source, /assertFresh\(order, expectedVersion\);\s*await markShipmentShipped\(order\.shipmentId/);
+test("mark shipped on one order: an unlabelled order takes the plain status path", async () => {
+  changeStatusMock.mockClear();
+  const tx = fakeTx({ selects: [[order({ shipmentId: null })]] });
+  const out = await svc.markOrderShipped("lo1", { expectedVersion: 3, byUserId: "u1" }, deps(tx));
+  assert.deepEqual(changeStatusMock.mock.calls[0], ["lo1", { to: "shipped", expectedVersion: 3, byUserId: "u1" }]);
+  assert.equal(out.changed, true);
+});
+
+test("mark shipped on a labelled order: ships the box; changed is false when this order was skipped", async () => {
+  changeStatusMock.mockClear();
+  const moved = order({ shipmentId: "sh1", status: "shipped" });
+  const tx = fakeTx({ selects: [[order({ shipmentId: "sh1" })], [shipment], [moved], [moved]], updates: [[{ id: "sh1" }]] });
+  const out = await svc.markOrderShipped("lo1", { expectedVersion: 3, byUserId: "u1" }, deps(tx, undefined, { emailEnabled: false }));
+  assert.equal(changeStatusMock.mock.calls.length, 0);
+  assert.equal(out.changed, false);
+});
+
+test("a throwing log sink on the email path can't reject after the box shipped", async () => {
+  const mail = await import("../email.service.js");
+  mail.sendShippedNotice.mockRejectedValueOnce(Object.assign(new Error("secret@addr"), { code: "MAIL_DOWN" }));
+  const a = order({ shipmentId: "sh1" });
+  const client = { id: "doc1", name: "Dr. Ada", email: "dr@x.com", role: "doctor", accountNumber: null, profile: null };
+  const tx = fakeTx({
+    selects: [[shipment], [a], [a], [], [], [a], [client]],
+    updates: [[{ id: "sh1" }], [{ ...a, status: "shipped", version: 4 }]],
+  });
+  const out = await svc.markShipmentShipped("sh1", { byUserId: "u1" }, deps(tx, undefined, { log: { error: () => { throw new Error("sink down"); } } }));
+  assert.equal(out.alreadyShipped, false);
+});
+
+test("email failures log the error code, never the message", async () => {
+  const mail = await import("../email.service.js");
+  mail.sendShippedNotice.mockRejectedValueOnce(Object.assign(new Error("secret@addr"), { code: "MAIL_DOWN" }));
+  const a = order({ shipmentId: "sh1" });
+  const client = { id: "doc1", name: "Dr. Ada", email: "dr@x.com", role: "doctor", accountNumber: null, profile: null };
+  const tx = fakeTx({ selects: [[shipment], [a], [a], [], [], [a], [client]], updates: [[{ id: "sh1" }], [{ ...a, status: "shipped", version: 4 }]] });
+  const lines = [];
+  await svc.markShipmentShipped("sh1", { byUserId: "u1" }, deps(tx, undefined, { log: { error: (m) => lines.push(m) } }));
+  assert.deepEqual(lines, ["[SHIP][EMAIL_FAILED] shipment=sh1 error=MAIL_DOWN"]);
+});
+
+test("void's not-a-draft note goes on the order the shipping line targets (lowest non-remake Rx), not the first linked", async () => {
+  const remake = order({ id: "lo0", orderNumber: 100200, isRemake: true, shipmentId: "sh1", version: 1 });
+  const target = order({ shipmentId: "sh1" });
+  const issued = { id: "inv1", invoiceNumber: 500001, status: "issued", version: 2 };
+  const tx = fakeTx({
+    selects: [[shipment], [remake, target], [remake], [target], [{ invoiceId: "inv1" }], [issued], [target]],
+    updates: [[{ id: "sh1" }], [{ ...remake, shipmentId: null }], [{ ...target, shipmentId: null }], [{ ...target, version: 5 }]],
+  });
+  await svc.voidShipment("sh1", { byUserId: "u1" }, deps(tx));
+  const note = tx.log.filter((l) => l.op === "insert").map((l) => l.values).at(-1);
+  assert.equal(note.type, "note");
+  assert.equal(note.labOrderId, "lo1");
 });
 
 test("a stale order page can't ship a box", async () => {

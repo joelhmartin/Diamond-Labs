@@ -11,7 +11,7 @@ import { planNewShipment, assertVoidable } from "../shipping/shipment-rules.js";
 import * as shipments from "../shipping/shipments.service.js";
 import { mutateIn, changeStatus, billingFollowUp } from "./lab-orders.service.js";
 import { LabOrderError, assertFresh, planStatusChange, planShipmentLink, planShipmentUnlink } from "./lab-order-rules.js";
-import { planShippable, shipmentReference, planShippingCharge, assertOrdersVoidable } from "./lab-shipping-rules.js";
+import { planShippable, shipmentReference, planShippingCharge, assertOrdersVoidable, billableOrders } from "./lab-shipping-rules.js";
 import { loadOrders, ordersOnShipment, shipmentRecipient } from "./lab-shipping-queries.js";
 
 /**
@@ -58,19 +58,28 @@ export async function buyForOrders({ orderIds, shipTo, parcel, carrier, serviceC
     (label) => d.database.transaction((tx) => persistShipment(tx, { label, ordered, parcel, shipTo, byUserId, d })),
     { registry: d.registry, log: d.log },
   );
-  afterCommit(d, () => d.log.info?.(`[SHIP][BOUGHT] shipment=${saved.shipmentId} carrier=${saved.carrier} orders=${saved.orderNumbers.join(",")}`));
+  await afterCommit(d, () => d.log.info?.(`[SHIP][BOUGHT] shipment=${saved.shipmentId} carrier=${saved.carrier} orders=${saved.orderNumbers.join(",")}`));
   return saved;
 }
 
-/** Work that follows a commit (logging, notices) can never fail the operation it follows. */
-function afterCommit(d, fn) {
+/**
+ * Work that follows a commit (logging, notices) can never fail the operation it
+ * follows: it is awaited, but nothing it throws (nor onError) escapes.
+ */
+async function afterCommit(d, fn, onError) {
   try {
-    const out = fn();
-    if (out?.catch) out.catch(() => {});
-  } catch {
-    // swallowed on purpose: the state is already saved
+    await fn();
+  } catch (err) {
+    try {
+      onError?.(err);
+    } catch {
+      // a broken log sink must not reject after the state is saved
+    }
   }
 }
+
+/** Error name/code for logs: never the message, which can carry addresses or bodies. */
+const errTag = (err) => err?.code ?? err?.name ?? "unknown";
 
 /** A system note on a lab order's history (ids/text only, never PHI). Inside the caller's transaction. */
 function noteOrder(tx, labOrderId, text, { byUserId, now }) {
@@ -140,7 +149,7 @@ export async function voidShipment(shipmentId, { byUserId = null } = {}, deps) {
       const line = await removeShipmentLine(tx, { shipmentId, byUserId });
       if (line.skipped.length && linked[0]) {
         const nums = line.skipped.map((x) => `#${x.invoiceNumber}`).join(", ");
-        await noteOrder(tx, linked[0].id, `Label voided, but shipping on invoice ${nums} was left in place: it is no longer a draft. Correct it with a credit.`, { byUserId, now });
+        await noteOrder(tx, (billableOrders(linked)[0] ?? linked[0]).id, `Label voided, but shipping on invoice ${nums} was left in place: it is no longer a draft. Correct it with a credit.`, { byUserId, now });
       }
       return {
         shipmentId, orderIds: linked.map((o) => o.id), invoiceLineRemoved: line.removed > 0,
@@ -182,8 +191,8 @@ export async function markShipmentShipped(shipmentId, { byUserId = null } = {}, 
     return { shipment, claimed, moved };
   });
   if (result.claimed) {
-    await notifyShipped(result.shipment, d).catch((err) =>
-      d.log.error(`[SHIP][EMAIL_FAILED] shipment=${shipmentId}: ${String(err?.message || err).slice(0, 200)}`));
+    await afterCommit(d, () => notifyShipped(result.shipment, d), (err) =>
+      d.log.error(`[SHIP][EMAIL_FAILED] shipment=${shipmentId} error=${errTag(err)}`));
   }
   return { shipmentId, ordersShipped: result.moved, alreadyShipped: !result.claimed };
 }
@@ -209,10 +218,13 @@ export async function markOrderShipped(labOrderId, { expectedVersion, byUserId =
   const [order] = await loadOrders([labOrderId], d.database);
   if (!order) throw new LabOrderError("NOT_FOUND", "Lab order not found.");
   if (!order.shipmentId) return changeStatus(labOrderId, { to: "shipped", expectedVersion, byUserId });
+  // Freshness is checked here, outside the box's transaction, and the move runs with expectedVersion
+  // null; the conditional UPDATE in mutateIn still prevents a lost write.
   assertFresh(order, expectedVersion);
-  await markShipmentShipped(order.shipmentId, { byUserId }, deps);
+  const out = await markShipmentShipped(order.shipmentId, { byUserId }, deps);
   const [after] = await loadOrders([labOrderId], d.database);
-  return { order: after, changed: true };
+  // false when this order was skipped (it wasn't at ready_to_ship) or the box had already shipped
+  return { order: after, changed: out.ordersShipped.includes(order.orderNumber) };
 }
 
 /** End-of-day hand-off: every labelled, unshipped box. One failure is logged and the rest still ship. */
@@ -226,7 +238,7 @@ export async function markAllLabelledShipped({ byUserId = null } = {}, deps) {
       shipped += 1;
     } catch (err) {
       failed += 1;
-      d.log.error(`[SHIP][MARK_SHIPPED_FAILED] shipment=${id}: ${String(err?.message || err).slice(0, 200)}`);
+      d.log.error(`[SHIP][MARK_SHIPPED_FAILED] shipment=${id} error=${errTag(err)}`);
     }
   }
   return { shipped, failed };

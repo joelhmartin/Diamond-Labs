@@ -38,6 +38,11 @@ export function shipmentReference(orderNumbers) {
   return full.length <= 30 ? full : `Orders ${nums[0]} +${nums.length - 1}`;
 }
 
+/** Orders that can carry the shipping line (Rx, not a remake), lowest number first: [0] is THE target. */
+export function billableOrders(orders) {
+  return orders.filter((o) => o.source === "rx_case" && !o.isRemake).sort((a, b) => a.orderNumber - b.orderNumber);
+}
+
 /**
  * SHIPPING_CHARGE_POLICY → the one shipping line a new shipment adds, or why
  * none. Shop orders paid their shipping at checkout and remakes are free, so
@@ -45,7 +50,7 @@ export function shipmentReference(orderNumbers) {
  */
 export function planShippingCharge({ policy, flatCents, label, orders }) {
   if (policy === "none") return { add: false, reason: "policy_none" };
-  const billable = orders.filter((o) => o.source === "rx_case" && !o.isRemake).sort((a, b) => a.orderNumber - b.orderNumber);
+  const billable = billableOrders(orders);
   if (billable.length === 0) return { add: false, reason: orders.every((o) => o.isRemake) ? "all_remakes" : "no_billable_order" };
   // R5a: the carrier reported no readable charge. Never bill $0 silently: the caller
   // leaves a note on this order so staff add the line by hand.
