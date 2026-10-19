@@ -62,6 +62,7 @@ export function ShipModal({ open, orderId, onClose, onBought }) {
   const buy = async () => {
     const body = buyBody(form);
     const key = attempt.keyFor(buySignature(body));
+    setUncertain(null);
     setBusy(true);
     try {
       const res = await api.post("/lab/shipments", body, { headers: { "Idempotency-Key": key } });

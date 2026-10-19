@@ -9,9 +9,7 @@ import { groupByStatus, quickMoves, boardParams } from "../../lib/lab-board.js";
 import { labelBadge } from "../../lib/shipping.js";
 import { ConfirmButton } from "../../components/ui/ConfirmButton.jsx";
 import { errorText, isStale } from "../../lib/requests.js";
-
-const INPUT =
-  "px-3 py-2 rounded-lg bg-white border border-surface-300/60 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10";
+import { INPUT_BASE as INPUT } from "../../components/lab/form-styles.js";
 
 const dueText = (due) => (due ? `Due ${formatUsDate(due)}` : "No due date");
 
@@ -156,22 +154,22 @@ export function LabBoardPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-        {labelledWaiting > 0 && (
-          <ConfirmButton
-            onConfirm={markAllShipped}
-            confirmLabel="Click again to mark every labelled box shipped"
-            className="flex items-center gap-1.5 rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
+          {labelledWaiting > 0 && (
+            <ConfirmButton
+              onConfirm={markAllShipped}
+              confirmLabel="Click again to mark every labelled box shipped"
+              className="flex items-center gap-1.5 rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
+            >
+              <Truck size={12} /> Mark all labelled shipped
+            </ConfirmButton>
+          )}
+          <button
+            type="button"
+            onClick={() => { setLoading(true); load(); }}
+            className="flex items-center gap-1.5 rounded-full bg-surface-100 px-4 py-2 text-xs font-semibold text-navy hover:bg-surface-200"
           >
-            <Truck size={12} /> Mark all labelled shipped
-          </ConfirmButton>
-        )}
-        <button
-          type="button"
-          onClick={() => { setLoading(true); load(); }}
-          className="flex items-center gap-1.5 rounded-full bg-surface-100 px-4 py-2 text-xs font-semibold text-navy hover:bg-surface-200"
-        >
-          <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> Refresh
-        </button>
+            <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> Refresh
+          </button>
         </div>
       </div>
 
