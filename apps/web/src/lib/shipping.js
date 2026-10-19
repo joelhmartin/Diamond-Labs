@@ -1,4 +1,4 @@
-import { parcelPreset, carrierName, SHIPMENT_STATUS_LABELS } from "@my-app/shared";
+import { parcelPreset, carrierName, isTerminalShipmentStatus, SHIPMENT_STATUS_LABELS } from "@my-app/shared";
 
 /**
  * Pure helpers for the Ship form, the Shipping panel, the label print page and
@@ -88,6 +88,9 @@ export function uncertainNotice(err) {
   }
   return e?.message || "The purchase may have gone through. Check the UPS or FedEx account for a label with these order numbers as its reference and void it there before buying again.";
 }
+
+/** The server can only poll a carrier shipment that has a tracking number and hasn't finished. */
+export const canRefreshTracking = (s) => s.carrier !== "manual" && Boolean(s.trackingNumber) && !isTerminalShipmentStatus(s.status);
 
 /** "Label printed" on a board card while the box hasn't left. */
 export const labelBadge = (card) => (card?.labelled && card.status === "ready_to_ship" ? "Label printed" : null);

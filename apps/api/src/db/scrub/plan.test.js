@@ -71,7 +71,7 @@ const MUST_SCRUB = {
   invoices: ["notes", "void_reason"],
   invoice_lines: ["description", "price_note"],
   invoice_payments: ["reference", "note"],
-  shipments: ["service_name", "ship_to", "label_data", "tracking_error"],
+  shipments: ["service_name", "tracking_number", "ship_to", "label_data", "tracking_error"],
   shipment_events: ["location"],
 };
 
@@ -219,5 +219,6 @@ test("shipments keep carrier facts but lose every address, label image and typed
   const sql = buildStatements(SCRUB_PLAN, CTX).find((s) => s.table === "shipments").sql;
   assert.match(sql, /"label_data" = NULL/);
   assert.match(sql, /"ship_to" = '\{"name":"Scrubbed Recipient"/);
+  assert.ok(sql.includes(`"tracking_number" = CASE WHEN "shipments"."carrier" = 'manual' THEN NULL ELSE "shipments"."tracking_number" END`), sql);
   assert.ok(sql.includes(`"service_name" = CASE WHEN "shipments"."carrier" = 'manual' THEN 'Manual' ELSE "shipments"."service_name" END`), sql);
 });

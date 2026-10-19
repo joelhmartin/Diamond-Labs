@@ -26,6 +26,13 @@ test("shippable: one client per box; a guest shop order ships alone", () => {
   assert.equal(planShippable([o({ clientUserId: null, source: "shop_order" })], ["lo1"]).length, 1);
 });
 
+test("shippable: a shop order ships alone even for a registered doctor", () => {
+  const shop = o({ id: "s", source: "shop_order" });
+  assert.throws(() => planShippable([o({ id: "a" }), shop], ["a", "s"]), (e) => notShippable(e) && /shop order ships on its own/.test(e.message));
+  assert.throws(() => planShippable([shop, o({ id: "s2", orderNumber: 100246, source: "shop_order" })], ["s", "s2"]), notShippable);
+  assert.equal(planShippable([shop], ["s"]).length, 1);
+});
+
 test("the label reference is order numbers only, within the carriers' 30 characters", () => {
   assert.equal(shipmentReference([100246, 100245]), "Order 100245, 100246");
   assert.equal(shipmentReference([100245, 100246, 100247, 100248]), "Orders 100245 +3");

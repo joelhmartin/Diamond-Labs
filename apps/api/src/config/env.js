@@ -158,6 +158,11 @@ function parseEnv() {
     );
     process.exit(1);
   }
+  // A flat shipping fee of 0 would silently bill nothing; the policy needs a real amount.
+  if (result.data.SHIPPING_CHARGE_POLICY === "flat" && !(result.data.SHIPPING_FLAT_CENTS > 0)) {
+    console.error("SHIPPING_FLAT_CENTS must be a positive whole number of cents when SHIPPING_CHARGE_POLICY=flat.");
+    process.exit(1);
+  }
   return result.data;
 }
 

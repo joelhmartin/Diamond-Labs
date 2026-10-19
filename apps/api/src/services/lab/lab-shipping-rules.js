@@ -10,8 +10,8 @@ import { ShippingError } from "../shipping/shipping-errors.js";
 /**
  * The orders staff picked → sorted lowest number first, or NOT_SHIPPABLE with
  * every reason (so staff fix them all at once). Each must be at ready_to_ship
- * with no label, and all must belong to one client; a guest shop order (no
- * client) ships alone. Checked before the carrier is called and re-checked
+ * with no label, and all must belong to one client; a shop order (guest
+ * or registered) ships alone. Checked before the carrier is called and re-checked
  * per order inside the persisting transaction (planShipmentLink).
  */
 export function planShippable(orders, requestedIds) {
@@ -22,6 +22,10 @@ export function planShippable(orders, requestedIds) {
   for (const o of sorted) {
     if (o.status !== "ready_to_ship") problems.push(`Order #${o.orderNumber} is not ready to ship.`);
     if (o.shipmentId) problems.push(`Order #${o.orderNumber} already has a label.`);
+  }
+  // A shop order has its own checkout address (even a registered doctor's), and the form applies ONE ship-to to the box.
+  if (sorted.length > 1 && sorted.some((o) => o.source === "shop_order")) {
+    problems.push("A shop order ships on its own: its customer's address is its own, so it can't share a box.");
   }
   const clients = new Set(sorted.map((o) => o.clientUserId ?? null));
   if (sorted.length > 1 && (clients.size > 1 || clients.has(null))) {

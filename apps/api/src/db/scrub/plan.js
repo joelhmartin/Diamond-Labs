@@ -342,7 +342,9 @@ export const SCRUB_PLAN = {
     columns: {
       id: K, carrier: K, service_code: K,
       service_name: pii(`CASE WHEN "shipments"."carrier" = 'manual' THEN 'Manual' ELSE "shipments"."service_name" END`), // manual = staff-typed
-      carrier_shipment_id: K, tracking_number: K, status: K, charge_cents: K, currency: K, parcel: K,
+      carrier_shipment_id: K,
+      tracking_number: pii(`CASE WHEN "shipments"."carrier" = 'manual' THEN NULL ELSE "shipments"."tracking_number" END`), // manual = staff-typed free text
+      status: K, charge_cents: K, currency: K, parcel: K,
       ship_to: pii(SHIP_TO_PLACEHOLDER),
       ship_from: K, // the lab's own address
       label_format: K,

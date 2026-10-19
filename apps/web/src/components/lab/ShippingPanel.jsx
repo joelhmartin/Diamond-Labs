@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { Truck, Printer, ExternalLink, PackageCheck, RefreshCw } from "lucide-react";
-import { formatCents, trackingUrl, isTerminalShipmentStatus } from "@my-app/shared";
+import { formatCents, trackingUrl } from "@my-app/shared";
 import api from "../../config/api.js";
 import { ConfirmButton } from "../ui/ConfirmButton.jsx";
 import { useToast } from "../ui/Toast.jsx";
 import { shipmentPrintPath } from "../../config/routes.js";
-import { shipmentLine, shipmentStatusLabel } from "../../lib/shipping.js";
+import { shipmentLine, shipmentStatusLabel, canRefreshTracking } from "../../lib/shipping.js";
 import { errorText, isStale } from "../../lib/requests.js";
 import { ShipModal } from "./ShipModal.jsx";
 
@@ -56,7 +56,7 @@ export function ShippingPanel({ order, shipment, onChanged }) {
 
   const url = trackingUrl(shipment.carrier, shipment.trackingNumber);
   const waiting = order.status === "ready_to_ship" && !shipment.shippedAt;
-  const trackable = shipment.carrier !== "manual" && Boolean(shipment.trackingNumber) && !isTerminalShipmentStatus(shipment.status);
+  const trackable = canRefreshTracking(shipment);
   return (
     <section className="rounded-2xl border border-surface-300/50 bg-white p-5">
       <h2 className="mb-2 font-heading text-sm font-bold text-navy">Shipping</h2>

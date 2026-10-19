@@ -42,13 +42,14 @@ export async function shipContext(labOrderId, database = db) {
   if (!order) return null;
   const client = order.clientUserId ? await loadClient(order.clientUserId, database) : null;
   const shop = await shopOrderFor(order, database);
-  const siblings = order.clientUserId
+  // A shop order ships alone (planShippable), so it neither has siblings nor is offered as one.
+  const siblings = order.clientUserId && order.source !== "shop_order"
     ? await database
         .select({ id: labOrders.id, orderNumber: labOrders.orderNumber, source: labOrders.source, isRemake: labOrders.isRemake })
         .from(labOrders)
         .where(and(
           eq(labOrders.clientUserId, order.clientUserId), eq(labOrders.status, "ready_to_ship"),
-          isNull(labOrders.shipmentId), ne(labOrders.id, order.id),
+          isNull(labOrders.shipmentId), ne(labOrders.id, order.id), ne(labOrders.source, "shop_order"),
         ))
         .orderBy(asc(labOrders.orderNumber))
         .limit(MAX_ORDERS_PER_SHIPMENT - 1)

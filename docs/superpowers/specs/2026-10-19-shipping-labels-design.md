@@ -183,7 +183,11 @@ not configured") until the address is set.
 - The server checks every order before calling the carrier:
   - it is at `ready_to_ship`;
   - it has no shipment;
-  - all orders belong to one client (a guest shop order ships alone);
+  - all orders belong to one client;
+  - a `shop_order` always ships alone (guest or registered doctor): it has its
+    own checkout address and the form applies one ship-to to the whole box, so
+    any box mixing a shop order with another order is refused, and the ship
+    form never offers shop orders as "other ready orders";
   - the caller may act on them.
 
   A failed check returns 422 with the reason.
@@ -269,7 +273,11 @@ not configured") until the address is set.
 | `carrier_cost` | the label's `chargeCents` |
 | `flat` | `SHIPPING_FLAT_CENTS` |
 
-- The line goes on the draft of the **lowest-numbered** order in the shipment.
+- The line goes on the draft of the **lowest-numbered non-remake Rx order** in
+  the shipment. Shop orders (shipping paid at checkout) and remakes never carry
+  it; if none qualifies, no line is added.
+- `flat` requires `SHIPPING_FLAT_CENTS` to be a positive integer, else the API
+  refuses to boot.
   Its description is "Shipping — UPS Ground 1Z…": carrier, service and
   tracking only.
 - **When no line is added:**
@@ -300,8 +308,10 @@ charge, and who bought it.
 
   A purchase timeout is **uncertain**: the label may exist. The attempt keeps
   its idempotency key, the server logs `[SHIP][PURCHASE_UNCERTAIN]`, and staff
-  see "Check Admin › Shipments before retrying". Bought labels are never
-  silently retried with a new key.
+  are told to check the UPS or FedEx account for a label carrying the order
+  number reference and void it there before buying again. An uncertain
+  purchase is not saved, so it does not appear in Admin › Shipments. Bought
+  labels are never silently retried with a new key.
 - Every purchase, void, mark-shipped and label download writes an audit entry
   (ids only).
 - Money is integer cents end to end, and the carrier's dollars are converted

@@ -9,7 +9,7 @@ import { CarriersPanel } from "../../components/lab/CarriersPanel.jsx";
 import { labOrderPath, shipmentPrintPath } from "../../config/routes.js";
 import { errorText } from "../../lib/requests.js";
 import { INPUT_BASE } from "../../components/lab/form-styles.js";
-import { shipmentLine, shipmentStatusLabel, shipmentListParams } from "../../lib/shipping.js";
+import { shipmentLine, shipmentStatusLabel, shipmentListParams, canRefreshTracking } from "../../lib/shipping.js";
 
 const ROW_BTN = "rounded-full bg-surface-100 px-2.5 py-1 text-[11px] font-semibold text-navy hover:bg-surface-200 disabled:opacity-40";
 
@@ -120,7 +120,7 @@ export function ShipmentsPage() {
                     <div className="flex flex-wrap justify-end gap-1">
                       {s.hasLabel && <a href={shipmentPrintPath(s.id)} target="_blank" rel="noreferrer" className={ROW_BTN}><Printer size={10} className="inline" /> Print</a>}
                       {s.canMarkShipped && <button type="button" disabled={busy} className={ROW_BTN} onClick={() => act(() => api.post(`/lab/shipments/${s.id}/mark-shipped`), "Marked shipped")}>Mark shipped</button>}
-                      {s.carrier !== "manual" && s.status !== "voided" && (
+                      {canRefreshTracking(s) && (
                         <button type="button" disabled={busy} className={ROW_BTN} onClick={() => act(() => api.post(`/lab/shipments/${s.id}/refresh-tracking`), (d) => (d.updated ? "Tracking updated" : "No change"))}>
                           <RefreshCw size={10} className="inline" /> Tracking
                         </button>
