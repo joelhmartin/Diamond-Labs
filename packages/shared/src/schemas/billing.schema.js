@@ -1,12 +1,11 @@
 import { z } from "zod";
+import { id, isoDate } from "./common.schema.js";
 import { INVOICE_STATUSES, INVOICE_LINE_KINDS, MANUAL_PAYMENT_METHODS } from "../billing/billing.js";
 
-const id = z.string().min(1).max(128);
 const version = z.number().int().positive();
 const cents = z.number().int().min(-10_000_000).max(10_000_000);
 const positiveCents = z.number().int().positive().max(10_000_000);
 const reason = z.string().trim().min(1, "Say why.").max(500);
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD.");
 const flag = z.enum(["true", "false"]).optional().transform((v) => v === "true");
 
 export const invoiceListQuerySchema = z.object({
