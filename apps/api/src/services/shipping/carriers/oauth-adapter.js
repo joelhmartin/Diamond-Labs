@@ -13,7 +13,7 @@ import { missingConfigReason } from "../carrier-config.js";
  * extra headers); `authHeaders()` adds per-call headers beside the Bearer.
  */
 export function createOAuthCore({
-  carrier, label, config, creds, fetchImpl, tokenCache, parseError, tokenPath, tokenOptions, required, authHeaders = () => ({}),
+  carrier, label, config, creds, fetchImpl, tokenCache, parseError, tokenPath, tokenOptions, required, authHeaders = () => ({}), alreadyVoided = () => false,
 }) {
   const tokenKey = `${carrier}:${config.carrierEnv}`;
   const url = (path) => `${creds.host}${path}`;
@@ -42,12 +42,17 @@ export function createOAuthCore({
     return reason ? { ok: false, reason } : { ok: true };
   }
 
-  /** A void reports ok or the carrier's reason; it only throws for non-carrier bugs. */
+  /**
+   * A void reports ok or the carrier's reason; it only throws for non-carrier bugs.
+   * `alreadyVoided(code, message)` (per carrier) turns "already voided/cancelled" into
+   * ok, so a second void can finish recording a void the carrier already did.
+   */
   async function safeVoid(run) {
     try {
-      return await run();
+      const out = await run();
+      return !out.ok && alreadyVoided(null, out.reason) ? { ok: true } : out;
     } catch (err) {
-      if (err instanceof CarrierError) return { ok: false, reason: err.message };
+      if (err instanceof CarrierError) return alreadyVoided(err.code, err.message) ? { ok: true } : { ok: false, reason: err.message };
       throw err;
     }
   }

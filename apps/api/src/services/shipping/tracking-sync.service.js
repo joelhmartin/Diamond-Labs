@@ -2,6 +2,7 @@ import { and, gte, inArray, isNotNull, notInArray, sql } from "drizzle-orm";
 import { TERMINAL_SHIPMENT_STATUSES } from "@my-app/shared";
 import { db } from "../../config/database.js";
 import { shipments } from "../../db/schema/index.js";
+import { afterCommit as runAfterCommit } from "./after-commit.js";
 import { carrierRegistry } from "./carrier-registry.js";
 import { errTag } from "./shipping-errors.js";
 import { planTrackingUpdate } from "./shipment-rules.js";
@@ -112,11 +113,7 @@ export async function syncTracking({
   }
 
   for (const [id, after] of afterCommit) {
-    try {
-      await after();
-    } catch (err) {
-      log.error?.(`[SHIP][AFTER_SHIPPED_FAILED] shipment=${id} error=${errTag(err)}`);
-    }
+    await runAfterCommit(after, (err) => log.error?.(`[SHIP][AFTER_SHIPPED_FAILED] shipment=${id} error=${errTag(err)}`));
   }
   return summary;
 }

@@ -2,7 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   initialShipForm, applyPreset, weightOzFrom, splitWeight, ratesBody, buyBody, buySignature, quoteKey,
-  isUncertainPurchase, labelBadge, shipmentLine, labelNeedsRotation, shipmentListParams, filenameFrom,
+  isUncertainPurchase, uncertainNotice, labelBadge, shipmentLine, labelNeedsRotation, shipmentListParams, filenameFrom,
 } from "../shipping.js";
 import { createAttemptKey } from "../idempotency.js";
 
@@ -72,6 +72,13 @@ test("an uncertain or still-held purchase is recognised, so the form says 'check
   assert.equal(isUncertainPurchase(err("PURCHASE_UNCERTAIN")), true);
   assert.equal(isUncertainPurchase(err("IN_PROGRESS")), true);
   assert.equal(isUncertainPurchase(err("CARRIER_ERROR")), false);
+});
+
+test("the uncertain-purchase notice sends staff to the carrier account with the reference", () => {
+  const err = (error) => ({ response: { data: { error } } });
+  assert.match(uncertainNotice(err({ code: "PURCHASE_UNCERTAIN", reference: "Order 100245", message: "x" })), /UPS or FedEx account.*"Order 100245".*void it there/);
+  assert.match(uncertainNotice(err({ code: "IN_PROGRESS", message: "check the UPS or FedEx account" })), /UPS or FedEx account/);
+  assert.doesNotMatch(uncertainNotice({}), /Admin › Shipments/);
 });
 
 test("display helpers", () => {

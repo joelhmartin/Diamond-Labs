@@ -5,7 +5,7 @@ import { Modal } from "../ui/Modal.jsx";
 import { useToast } from "../ui/Toast.jsx";
 import { useAttemptKey } from "../../hooks/useAttemptKey.js";
 import { errorText } from "../../lib/requests.js";
-import { initialShipForm, ratesBody, buyBody, buySignature, quoteKey, isUncertainPurchase } from "../../lib/shipping.js";
+import { initialShipForm, ratesBody, buyBody, buySignature, quoteKey, isUncertainPurchase, uncertainNotice } from "../../lib/shipping.js";
 import { ShipToFields } from "./ShipToFields.jsx";
 import { ParcelFields } from "./ParcelFields.jsx";
 import { RateChooser } from "./RateChooser.jsx";
@@ -15,7 +15,7 @@ import { RateChooser } from "./RateChooser.jsx";
  * ship-to for this shipment, the box, the service; then Buy. Buy sends ONE
  * Idempotency-Key per attempt (useAttemptKey), so a double click or a retry of
  * the same box can't buy two labels. An uncertain purchase keeps its key and
- * tells staff to check Admin › Shipments first.
+ * tells staff to check the carrier account (Admin › Shipments has nothing for it).
  */
 export function ShipModal({ open, orderId, onClose, onBought }) {
   const { addToast } = useToast();
@@ -71,7 +71,7 @@ export function ShipModal({ open, orderId, onClose, onBought }) {
       onBought(res.data.data);
     } catch (err) {
       // Keep the key: retrying this attempt replays or waits, it never buys a second label.
-      if (isUncertainPurchase(err)) setUncertain(errorText(err));
+      if (isUncertainPurchase(err)) setUncertain(uncertainNotice(err));
       else addToast({ message: errorText(err), type: "error" });
     } finally {
       setBusy(false);

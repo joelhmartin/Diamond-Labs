@@ -20,7 +20,7 @@ import { run as runRoute, audit as auditRoute, labRouteErrorReply } from "./lab-
  * own words; credentials never leave the server.
  */
 
-const IN_PROGRESS = "This label purchase is already in progress, or its result is uncertain. Check Admin › Shipments before retrying.";
+const IN_PROGRESS = "This label purchase is already in progress, or its result is uncertain. It may have been bought: check the UPS or FedEx account for a label whose reference is these order numbers and void it there before buying again.";
 
 /** A shipping or lab error → its reply; a lab conflict behind LABEL_NOT_SAVED reads as one sentence. */
 export function shippingReply(err) {

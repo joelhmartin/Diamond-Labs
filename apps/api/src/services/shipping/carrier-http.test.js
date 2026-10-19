@@ -51,6 +51,7 @@ test("replies: a carrier error is a 502 with the carrier's words; an uncertain p
   assert.equal(carrier.body.error.message, "FedEx: Try later.");
   assert.deepEqual(carrier.body.error.carrier, { carrier: "fedex", code: "SERVICE.UNAVAILABLE", message: "Try later." });
   assert.equal(shippingErrorReply(new ShippingError("PURCHASE_UNCERTAIN", "x")).status, 504);
+  assert.equal(shippingErrorReply(new ShippingError("PURCHASE_UNCERTAIN", "x", { reference: "Order 1" })).body.error.reference, "Order 1");
   assert.equal(shippingErrorReply(new ShippingError("NOT_SHIPPABLE", "x", { problems: ["a", "b"] })).body.error.problems.length, 2);
   assert.equal(shippingErrorReply(new Error("boom")), null);
 });

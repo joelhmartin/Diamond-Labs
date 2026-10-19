@@ -50,6 +50,12 @@ export function parseUpsLabel(body, { serviceCode, labelFormat }) {
   };
 }
 
+/**
+ * [UNVERIFIED] UPS's "already voided" answer: no code is documented, so this matches the
+ * words conservatively. Confirm against the sandbox re-void (docs/shipping-operations.md).
+ */
+export const upsAlreadyVoided = (code, message) => /already\s+(been\s+)?(void|cancel)/i.test(String(message ?? ""));
+
 export function parseUpsVoid(body) {
   const status = body?.VoidShipmentResponse?.Response?.ResponseStatus;
   return status?.Code === "1" ? { ok: true } : { ok: false, reason: status?.Description || "UPS did not confirm the void." };

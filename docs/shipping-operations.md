@@ -30,6 +30,7 @@ Admin › Shipments › Carriers as disabled, and the panel says why.
 2. **Ship-from.** Set the lab's street address and phone (`LAB_*`).
 3. **Sandbox smoke.** With sandbox credentials in `apps/api/.env`, run `pnpm --filter @my-app/api carriers:smoke`. Every line must be ✓.
    - **FedEx cancel path:** if void fails with a 404 or 405, switch `FEDEX_CANCEL_METHOD` and `fedexPaths.cancel` in `services/shipping/carriers/fedex-requests.js` to `DELETE /ship/v1/shipments/{trackingNumber}`, and rerun.
+   - **Re-void (already voided):** the smoke voids the label twice and prints `re-void`. It must say `ok`. If it says `NOT accepted`, copy the carrier's code and wording into `upsAlreadyVoided` (`ups-responses.js`) or `fedexAlreadyCancelled` (`fedex-responses.js`): both are UNVERIFIED guesses, and a second void is the only recovery for `[SHIP][VOID_UNRECORDED]`.
    - **Status codes:** every `rawCode=` printed must appear in `services/shipping/carriers/carrier-status.js`. Add any missing code.
    - **Field names:** if a field name differs from a fixture under `apps/api/test-fixtures/carriers/`, replace that fixture with the real (sandbox) body and fix the parser in the same commit.
 4. **FedEx label certification** (about 3 business days per project).
@@ -52,11 +53,11 @@ Admin › Shipments › Carriers as disabled, and the panel says why.
      --args=apps/api/src/jobs/cli.js,shipping-tracking-sync,--live \
      --service-account=$RUNTIME_SA --set-cloudsql-instances=$SQL_INSTANCE \
      --set-secrets="$EXISTING_SECRETS,UPS_CLIENT_ID=ups-client-id:latest,UPS_CLIENT_SECRET=ups-client-secret:latest,UPS_ACCOUNT_NUMBER=ups-account-number:latest,FEDEX_API_KEY=fedex-api-key:latest,FEDEX_SECRET_KEY=fedex-secret-key:latest,FEDEX_ACCOUNT_NUMBER=fedex-account-number:latest" \
-     --set-env-vars="CARRIER_ENV=production,LABEL_FORMAT=image,LAB_PHONE=...,LAB_ADDRESS_LINE1=...,LAB_CITY=...,LAB_STATE=...,LAB_ZIP=..." \
+     --set-env-vars="CARRIER_ENV=production,LABEL_FORMAT=image,LAB_NAME=...,LAB_PHONE=...,LAB_ADDRESS_LINE1=...,LAB_ADDRESS_LINE2=...(optional),LAB_CITY=...,LAB_STATE=...,LAB_ZIP=..." \
      --max-retries=0 --task-timeout=40m
    ```
 
-   (Secret names above are examples: use the ones created in step 1. Add `SHIPPED_EMAIL_ENABLED` to the env vars only if it is not already in `$EXISTING_SECRETS`.) Dry run first, which only counts and writes nothing (omits `--live`):
+   (Secret names above are examples: use the ones created in step 1. **Do not repeat a key in `--set-secrets` that `$EXISTING_SECRETS` already contains** (for example `LAB_*` or a carrier key you already wired on the service): it would be set twice (gcloud rejects the duplicate). Set each variable in exactly one place. Add `SHIPPED_EMAIL_ENABLED` to the env vars only if it is not already in `$EXISTING_SECRETS`.) Dry run first, which only counts and writes nothing (omits `--live`):
 
    ```bash
    gcloud run jobs execute diamond-labs-shipping-sync \
@@ -95,9 +96,9 @@ Admin › Shipments › Carriers as disabled, and the panel says why.
 
 | Line | Meaning | Action |
 |---|---|---|
-| `[SHIP][PURCHASE_UNCERTAIN] carrier= code=` | A purchase timed out or failed ambiguously; the label may exist | Check the carrier's portal for the label. If it exists, void it there. The attempt's key stays locked for 24 h |
+| `[SHIP][PURCHASE_UNCERTAIN] carrier= code=` | A purchase timed out or failed ambiguously; the label may exist | Staff are told the same thing on screen. Nothing is saved for an uncertain purchase, so Admin › Shipments will NOT show it. Open the UPS/FedEx account, find a label with the logged `reference` (the order numbers), and void it there before anyone buys again. The attempt's key stays locked for 24 h, but editing the box or reloading starts a new attempt |
 | `[SHIP][LABEL_ORPHANED] carrier= tracking=` | A label was bought, our DB write failed, and the void failed too | Void that tracking number in the carrier's portal |
-| `[SHIP][VOID_UNRECORDED] shipment= carrier=` | The carrier voided the label but our DB write failed | The shipment still reads "Label created": void it again (the carrier will say it's already void) or fix the row |
+| `[SHIP][VOID_UNRECORDED] shipment= carrier=` | The carrier voided the label but our DB write failed | The shipment still reads "Label created" and the orders are still labelled. Press Void on the shipment again: the adapters treat the carrier's "already voided/cancelled" answer as success, so the second void completes the database side (shipment, order links, invoice line). If the second void is refused with the carrier's words, the already-voided matcher doesn't recognise them yet (see go-live step 3, re-void) |
 | `[SHIP][UNKNOWN_STATUS] carrier= code=` | The tracking sync saw a code we don't map | Add it to `carrier-status.js` |
 | `[SHIP][MARK_SHIPPED_FAILED] shipment=` | A moving shipment's orders couldn't be marked shipped | Retried on the next sync. Persistent: open the order |
 | `[SHIP][EMAIL_FAILED] shipment=` | The shipped email failed | Nothing to retry automatically. Tell the doctor if needed |

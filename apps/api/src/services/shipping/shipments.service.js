@@ -46,19 +46,28 @@ export async function buyLabel(request, { registry = carrierRegistry(), log = co
   try {
     return { ...(await adapter.createLabel(request)), carrier: request.carrier };
   } catch (err) {
-    // A CarrierError the carrier flagged uncertain, or any non-carrier error (e.g. a parser
-    // TypeError after a 200): the label may already exist, so the key stays locked.
+    // A ShippingError or a CarrierError the carrier didn't flag uncertain is a definite failure:
+    // nothing was bought, the key is released. Anything else (a CarrierError flagged uncertain,
+    // or a non-carrier error such as a parser TypeError after a 200) may have bought a label,
+    // so the key stays locked.
     const isCarrierError = err instanceof CarrierError;
-    if (!isCarrierError || err.uncertain) {
-      log.error(`[SHIP][PURCHASE_UNCERTAIN] carrier=${request.carrier}` + (isCarrierError ? ` code=${err.code}` : ` error=${err?.name ?? "unknown"}`));
-      throw new ShippingError(
-        "PURCHASE_UNCERTAIN",
-        `${CARRIER_LABELS[request.carrier]} didn't confirm the label. It may have been bought — check Admin › Shipments before retrying.`,
-        { gatewayOutcomePending: true, carrier: request.carrier },
-      );
-    }
-    throw err;
+    if (err instanceof ShippingError || (isCarrierError && !err.uncertain)) throw err;
+    const reference = request.reference ?? null;
+    log.error(
+      `[SHIP][PURCHASE_UNCERTAIN] carrier=${request.carrier} reference="${reference ?? ""}"` +
+        (isCarrierError ? ` code=${err.code}` : ` error=${err?.name ?? "unknown"}`),
+    );
+    throw new ShippingError("PURCHASE_UNCERTAIN", uncertainPurchaseMessage(request.carrier, reference), {
+      gatewayOutcomePending: true, carrier: request.carrier, reference,
+    });
   }
+}
+
+/** What staff do after an ambiguous purchase: nothing is saved here, so the check is at the carrier. */
+export function uncertainPurchaseMessage(carrier, reference) {
+  const name = CARRIER_LABELS[carrier] ?? carrier;
+  const ref = reference ? ` with the reference "${reference}"` : "";
+  return `${name} didn't confirm the label, so it may have been bought. Check the ${name} account for a label${ref} and void it there if it exists, before buying again.`;
 }
 
 /**

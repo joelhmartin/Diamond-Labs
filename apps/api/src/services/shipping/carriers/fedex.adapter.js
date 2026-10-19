@@ -6,7 +6,7 @@ import { emptyTrackResult } from "./carrier-util.js";
 import {
   fedexPaths, FEDEX_CANCEL_METHOD, FEDEX_TRACK_BATCH, fedexRateRequest, fedexShipRequest, fedexCancelRequest, fedexTrackRequest,
 } from "./fedex-requests.js";
-import { parseFedexError, parseFedexRates, parseFedexLabel, parseFedexCancel, parseFedexTrack } from "./fedex-responses.js";
+import { parseFedexError, parseFedexRates, parseFedexLabel, parseFedexCancel, parseFedexTrack, fedexAlreadyCancelled } from "./fedex-responses.js";
 
 /** FedEx behind the carrier adapter interface (carrier-registry.js). Plain fetch; FedEx has no official Node client. */
 export function createFedexAdapter({ config, fetchImpl = globalThis.fetch, tokenCache = sharedTokenCache }) {
@@ -16,6 +16,7 @@ export function createFedexAdapter({ config, fetchImpl = globalThis.fetch, token
     carrier: "fedex", label: "FedEx", config, creds: { host: cfg.host, clientId: cfg.apiKey, clientSecret: cfg.secretKey },
     fetchImpl, tokenCache, parseError: parseFedexError, tokenPath: fedexPaths.token, tokenOptions: { authStyle: "body" },
     required: { FEDEX_API_KEY: cfg.apiKey, FEDEX_SECRET_KEY: cfg.secretKey, FEDEX_ACCOUNT_NUMBER: cfg.accountNumber },
+    alreadyVoided: fedexAlreadyCancelled,
     authHeaders: () => ({ "X-locale": "en_US" }),
   });
 

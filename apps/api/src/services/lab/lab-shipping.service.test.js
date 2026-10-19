@@ -236,6 +236,23 @@ test("void race (P6): the box moved meanwhile, so nothing is unlinked and no inv
   assert.ok(!errors.some((m) => m.includes("VOID_UNRECORDED")));
 });
 
+test("an unrecorded void can be re-run: the carrier says already voided (ok), so the second void reaches the DB write", async () => {
+  const linked = order({ shipmentId: "sh1" });
+  const ups = fakeAdapter("ups", { voidLabel: async () => ({ ok: true }) });
+  // first attempt: the carrier voids, then the DB transaction fails (transient error)
+  const reads = fakeTx({ selects: [[shipment], [linked]] });
+  const broken = { select: reads.select, transaction: async () => { throw new Error("db down"); } };
+  const errors = [];
+  await assert.rejects(svc.voidShipment("sh1", { byUserId: "u1" }, deps(broken, [ups], { log: { error: (m) => errors.push(m) } })), /db down/);
+  assert.deepEqual(errors, ["[SHIP][VOID_UNRECORDED] shipment=sh1 carrier=ups"]);
+  // second attempt: the carrier answers ok again (already voided) and the write lands
+  const tx = fakeTx({ selects: [[shipment], [linked], [linked]], updates: [[{ id: "sh1" }], [{ ...linked, shipmentId: null, version: 4 }]] });
+  const out = await svc.voidShipment("sh1", { byUserId: "u1" }, deps(tx, [ups]));
+  assert.equal(out.shipmentId, "sh1");
+  assert.equal(tx.log.find((l) => l.op === "set").values.status, "voided");
+  assert.equal(ups.calls.filter(([n]) => n === "voidLabel").length, 2);
+});
+
 test("void with a non-draft invoice: the line stays, and the order's history says so", async () => {
   const linked = order({ shipmentId: "sh1" });
   const issued = { id: "inv1", invoiceNumber: 500001, status: "issued", version: 2 };

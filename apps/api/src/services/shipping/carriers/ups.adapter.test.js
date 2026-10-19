@@ -59,6 +59,13 @@ test("void never throws a carrier error: it reports ok or UPS's reason", async (
   assert.deepEqual(await refused.ups.voidLabel({ carrierShipmentId: "1Z1" }), { ok: false, reason: "Shipment already picked up" });
 });
 
+test("void treats UPS's already-voided answer as success (a second void finishes an unrecorded one)", async () => {
+  const again = make([TOKEN, { status: 400, body: { response: { errors: [{ code: "190118", message: "Shipment has already been voided" }] } } }]);
+  assert.deepEqual(await again.ups.voidLabel({ carrierShipmentId: "1Z1" }), { ok: true });
+  const body200 = make([TOKEN, { status: 200, body: { VoidShipmentResponse: { Response: { ResponseStatus: { Code: "0", Description: "Shipment already voided" } } } } }]);
+  assert.deepEqual(await body200.ups.voidLabel({ carrierShipmentId: "1Z1" }), { ok: true });
+});
+
 test("track: one number per request; one failing number doesn't hide the others", async () => {
   const { ups } = make([TOKEN, { status: 200, body: fixture("ups", "track") }, { status: 404, body: { response: { errors: [{ code: "151044", message: "No tracking information available" }] } } }]);
   const out = await ups.track(["1Z999AA10123456784", "1ZNOPE"]);

@@ -41,9 +41,10 @@ test("buy: a disabled carrier is refused before any call", async () => {
 test("buy: an uncertain purchase keeps its idempotency key locked and tells staff to check before retrying", async () => {
   const ups = fakeAdapter("ups", { createLabel: async () => { throw new CarrierError("ups", "TIMEOUT", "UPS did not answer within 30s.", { uncertain: true, timedOut: true }); } });
   const log = logger();
-  await assert.rejects(svc.buyLabel(request, { registry: fakeRegistry([ups]), log }), (e) =>
-    e instanceof ShippingError && e.code === "PURCHASE_UNCERTAIN" && e.gatewayOutcomePending === true && /check Admin › Shipments before retrying/.test(e.message));
-  assert.deepEqual(log.lines, ["[SHIP][PURCHASE_UNCERTAIN] carrier=ups code=TIMEOUT"]);
+  await assert.rejects(svc.buyLabel({ ...request, reference: "Order 100245" }, { registry: fakeRegistry([ups]), log }), (e) =>
+    e instanceof ShippingError && e.code === "PURCHASE_UNCERTAIN" && e.gatewayOutcomePending === true && e.reference === "Order 100245" &&
+    /UPS account for a label with the reference "Order 100245" and void it there/.test(e.message) && !/Admin › Shipments/.test(e.message));
+  assert.deepEqual(log.lines, ['[SHIP][PURCHASE_UNCERTAIN] carrier=ups reference="Order 100245" code=TIMEOUT']);
 });
 
 test("buy: a non-carrier error after the call (a parser bug on a 200) is uncertain too, name only in the log", async () => {
@@ -51,7 +52,13 @@ test("buy: a non-carrier error after the call (a parser bug on a 200) is uncerta
   const log = logger();
   await assert.rejects(svc.buyLabel(request, { registry: fakeRegistry([ups]), log }), (e) =>
     e.code === "PURCHASE_UNCERTAIN" && e.gatewayOutcomePending === true);
-  assert.deepEqual(log.lines, ["[SHIP][PURCHASE_UNCERTAIN] carrier=ups error=TypeError"]);
+  assert.deepEqual(log.lines, ['[SHIP][PURCHASE_UNCERTAIN] carrier=ups reference="Order 100245" error=TypeError']);
+});
+
+test("buy: a ShippingError from the adapter is a definite failure (key released), not uncertain", async () => {
+  const invalid = new ShippingError("INVALID", "Enter the carrier name.");
+  const ups = fakeAdapter("ups", { createLabel: async () => { throw invalid; } });
+  await assert.rejects(svc.buyLabel(request, { registry: fakeRegistry([ups]), log: logger() }), (e) => e === invalid && !e.gatewayOutcomePending);
 });
 
 test("buy: a definite refusal passes through with the carrier's words, and the key is released", async () => {

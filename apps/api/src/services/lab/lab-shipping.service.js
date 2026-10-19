@@ -5,6 +5,7 @@ import { labIdentity } from "../../config/lab-identity.js";
 import { createId } from "../../lib/id.js";
 import { sendShippedNotice } from "../email.service.js";
 import { addShipmentLine, removeShipmentLine } from "../billing/invoices.service.js";
+import { afterCommit } from "../shipping/after-commit.js";
 import { carrierRegistry } from "../shipping/carrier-registry.js";
 import { syncTracking } from "../shipping/tracking-sync.service.js";
 import { ShippingError, errTag } from "../shipping/shipping-errors.js";
@@ -59,26 +60,9 @@ export async function buyForOrders({ orderIds, shipTo, parcel, carrier, serviceC
     (label) => d.database.transaction((tx) => persistShipment(tx, { label, ordered, parcel, shipTo, byUserId, d })),
     { registry: d.registry, log: d.log },
   );
-  await afterCommit(d, () => d.log.info?.(`[SHIP][BOUGHT] shipment=${saved.shipmentId} carrier=${saved.carrier} orders=${saved.orderNumbers.join(",")}`));
+  await afterCommit(() => d.log.info?.(`[SHIP][BOUGHT] shipment=${saved.shipmentId} carrier=${saved.carrier} orders=${saved.orderNumbers.join(",")}`));
   return saved;
 }
-
-/**
- * Work that follows a commit (logging, notices) can never fail the operation it
- * follows: it is awaited, but nothing it throws (nor onError) escapes.
- */
-async function afterCommit(d, fn, onError) {
-  try {
-    await fn();
-  } catch (err) {
-    try {
-      onError?.(err);
-    } catch {
-      // a broken log sink must not reject after the state is saved
-    }
-  }
-}
-
 
 /** A system note on a lab order's history (ids/text only, never PHI). Inside the caller's transaction. */
 function noteOrder(tx, labOrderId, text, { byUserId, now }) {
@@ -191,7 +175,7 @@ export async function shipBoxIn(tx, shipmentId, { byUserId = null, now = new Dat
 /** After commit, ONLY the caller that claimed shippedAt sends the one shipped email; it can never fail the ship. */
 function emailAfterShip(d, { shipment, claimed }) {
   if (!claimed) return Promise.resolve();
-  return afterCommit(d, () => notifyShipped(shipment, d), (err) =>
+  return afterCommit(() => notifyShipped(shipment, d), (err) =>
     d.log.error(`[SHIP][EMAIL_FAILED] shipment=${shipment.id} error=${errTag(err)}`));
 }
 

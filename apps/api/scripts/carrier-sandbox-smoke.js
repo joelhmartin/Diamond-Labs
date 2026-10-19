@@ -62,6 +62,10 @@ async function smoke(adapter, config) {
     if (!voided.ok) throw new Error(`void failed: ${voided.reason}`);
   }
   console.log(`✓ ${adapter.label} void`);
+  // Voiding again must also read ok (the adapters treat "already voided" as success so an unrecorded
+  // void can be finished). If this says ok:false, copy the carrier's code/words into *AlreadyVoided.
+  const again = await adapter.voidLabel(label);
+  console.log(`${again.ok ? "✓" : "✗"} ${adapter.label} re-void: ${again.ok ? "ok (already voided accepted)" : `NOT accepted, carrier said: ${again.reason}`}`);
 }
 
 async function main() {

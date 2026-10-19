@@ -51,6 +51,7 @@ export function shippingErrorReply(err) {
   const status = STATUS[err.code] ?? 422;
   const error = { code: err.code, status, message: err.message };
   if (err.problems) error.problems = err.problems;
+  if (err.reference) error.reference = err.reference;
   return { status, body: { error } };
 }
 

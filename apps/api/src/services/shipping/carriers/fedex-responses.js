@@ -56,6 +56,13 @@ export function parseFedexLabel(body, { serviceCode, labelFormat }) {
   };
 }
 
+/**
+ * [UNVERIFIED] FedEx's "already cancelled" answer, like the cancel path itself: matched on
+ * the words (and an ALREADY..CANCEL code) conservatively. Confirm in the sandbox re-void.
+ */
+export const fedexAlreadyCancelled = (code, message) =>
+  /already\s+(been\s+)?(void|cancel)/i.test(String(message ?? "")) || /ALREADY.*(CANCEL|VOID)/i.test(String(code ?? ""));
+
 export function parseFedexCancel(body) {
   return body?.output?.cancelledShipment === true
     ? { ok: true }

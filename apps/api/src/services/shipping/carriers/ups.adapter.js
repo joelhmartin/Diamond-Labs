@@ -5,7 +5,7 @@ import { sharedTokenCache } from "../oauth-token-cache.js";
 import { createOAuthCore } from "./oauth-adapter.js";
 import { emptyTrackResult } from "./carrier-util.js";
 import { upsPaths, upsRateRequest, upsShipRequest } from "./ups-requests.js";
-import { parseUpsError, parseUpsRates, parseUpsLabel, parseUpsVoid, parseUpsTrack } from "./ups-responses.js";
+import { parseUpsError, parseUpsRates, parseUpsLabel, parseUpsVoid, parseUpsTrack, upsAlreadyVoided } from "./ups-responses.js";
 
 /** UPS behind the carrier adapter interface (carrier-registry.js). Plain fetch; no UPS SDK exists worth using. */
 export function createUpsAdapter({ config, fetchImpl = globalThis.fetch, tokenCache = sharedTokenCache }) {
@@ -14,6 +14,7 @@ export function createUpsAdapter({ config, fetchImpl = globalThis.fetch, tokenCa
     carrier: "ups", label: "UPS", config, creds: cfg, fetchImpl, tokenCache, parseError: parseUpsError,
     tokenPath: upsPaths.token, tokenOptions: { authStyle: "basic", headers: { "x-merchant-id": cfg.accountNumber } },
     required: { UPS_CLIENT_ID: cfg.clientId, UPS_CLIENT_SECRET: cfg.clientSecret, UPS_ACCOUNT_NUMBER: cfg.accountNumber },
+    alreadyVoided: upsAlreadyVoided,
     authHeaders: () => ({ transId: createId().slice(0, 32), transactionSrc: "diamond-labs" }),
   });
 

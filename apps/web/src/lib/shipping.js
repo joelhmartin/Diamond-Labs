@@ -77,6 +77,18 @@ export function isUncertainPurchase(err) {
   return code === "PURCHASE_UNCERTAIN" || code === "IN_PROGRESS";
 }
 
+/**
+ * What staff read after an uncertain purchase. Nothing is saved for it, so
+ * Admin › Shipments can't show the label: the check is at the carrier, by reference.
+ */
+export function uncertainNotice(err) {
+  const e = err?.response?.data?.error;
+  if (e?.code === "PURCHASE_UNCERTAIN" && e.reference) {
+    return `Don't buy again yet. The label may exist: check the UPS or FedEx account for a label with the reference "${e.reference}" and void it there first.`;
+  }
+  return e?.message || "The purchase may have gone through. Check the UPS or FedEx account for a label with these order numbers as its reference and void it there before buying again.";
+}
+
 /** "Label printed" on a board card while the box hasn't left. */
 export const labelBadge = (card) => (card?.labelled && card.status === "ready_to_ship" ? "Label printed" : null);
 
