@@ -36,5 +36,9 @@ export async function requestClientCredentialsToken({
   });
   const accessToken = typeof body?.access_token === "string" ? body.access_token : "";
   if (!accessToken) throw new CarrierError(carrier, "BAD_RESPONSE", "The token response had no access token.");
-  return { accessToken, expiresInSec: Number(body.expires_in) };
+  const expiresInSec = Number(body.expires_in);
+  if (!Number.isFinite(expiresInSec) || expiresInSec <= 0) {
+    throw new CarrierError(carrier, "BAD_RESPONSE", "The token response had no usable lifetime.");
+  }
+  return { accessToken, expiresInSec };
 }

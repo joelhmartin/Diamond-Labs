@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { createTokenCache } from "./oauth-token-cache.js";
+import { createTokenCache, FAILURE_COOLDOWN_MS } from "./oauth-token-cache.js";
 
 const counter = (expiresInSec = 3600) => {
   const f = async () => { f.calls += 1; return { accessToken: `tok${f.calls}`, expiresInSec }; };
@@ -54,11 +54,13 @@ test("keys never share a token: UPS vs FedEx, sandbox vs production", async () =
 });
 
 test("a failed token request is not cached, and clear(key) forces a fresh token (after a 401)", async () => {
-  const cache = createTokenCache();
+  let t = 0;
+  const cache = createTokenCache({ now: () => t });
   let fail = true;
   const f = async () => { if (fail) throw new Error("401"); return { accessToken: "ok", expiresInSec: 3600 }; };
   await assert.rejects(cache.get("k", f));
   fail = false;
+  t = FAILURE_COOLDOWN_MS;
   assert.equal(await cache.get("k", f), "ok");
   const g = counter();
   await cache.get("j", g);
@@ -71,4 +73,22 @@ test("a token response without a token or lifetime is refused, not cached", asyn
   const cache = createTokenCache();
   await assert.rejects(cache.get("k", async () => ({ accessToken: "", expiresInSec: 3600 })), TypeError);
   await assert.rejects(cache.get("k", async () => ({ accessToken: "t", expiresInSec: NaN })), TypeError);
+});
+
+test("after a failed fetch the key is refused for 30s with the same failure; clear(key) lifts it", async () => {
+  let t = 0;
+  const cache = createTokenCache({ now: () => t });
+  let calls = 0;
+  const bad = async () => { calls += 1; throw new Error("bad credentials"); };
+  await assert.rejects(cache.get("k", bad), /bad credentials/);
+  t = FAILURE_COOLDOWN_MS - 1;
+  await assert.rejects(cache.get("k", bad), /bad credentials/);
+  assert.equal(calls, 1, "no second token request inside the cooldown");
+  await assert.rejects(cache.get("other", bad), /bad credentials/);
+  assert.equal(calls, 2, "the cooldown is per key");
+  cache.clear("k");
+  await assert.rejects(cache.get("k", bad), /bad credentials/);
+  assert.equal(calls, 3);
+  t = 10 * FAILURE_COOLDOWN_MS;
+  assert.equal(await cache.get("k", async () => ({ accessToken: "ok", expiresInSec: 3600 })), "ok");
 });

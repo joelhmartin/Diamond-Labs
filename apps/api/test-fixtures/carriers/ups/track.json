@@ -1,0 +1,21 @@
+{
+  "trackResponse": {
+    "shipment": [
+      {
+        "inquiryNumber": "1Z999AA10123456784",
+        "package": [
+          {
+            "trackingNumber": "1Z999AA10123456784",
+            "currentStatus": { "code": "011", "description": "Delivered" },
+            "activity": [
+              { "location": { "address": { "city": "SAN ANTONIO", "stateProvince": "TX", "countryCode": "US" } }, "status": { "type": "P", "description": "Pickup Scan", "code": "PU" }, "date": "20261020", "time": "171000" },
+              { "location": { "address": { "city": "AUSTIN", "stateProvince": "TX", "countryCode": "US" } }, "status": { "type": "D", "description": "DELIVERED", "code": "KB" }, "date": "20261022", "time": "142100" },
+              { "location": { "address": { "city": "AUSTIN", "stateProvince": "TX", "countryCode": "US" } }, "status": { "type": "I", "description": "Out For Delivery Today", "code": "OT" }, "date": "20261022", "time": "081500" },
+              { "location": { "address": { "countryCode": "US" } }, "status": { "type": "M", "description": "Shipper created a label, UPS has not received the package yet.", "code": "MP" }, "date": "20261020", "time": "101500" }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

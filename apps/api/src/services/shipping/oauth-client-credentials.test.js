@@ -41,3 +41,14 @@ test("a 2xx without an access_token is refused", async () => {
 test("an unknown auth style is a programming error", async () => {
   await assert.rejects(requestClientCredentialsToken({ carrier: "ups", fetchImpl: fakeFetch([]), authStyle: "x", ...base }), TypeError);
 });
+
+test("an expires_in that is missing, zero, negative or not a number is refused, not returned as NaN", async () => {
+  for (const expires_in of [undefined, 0, -5, "soon"]) {
+    const f = fakeFetch([{ status: 200, body: { access_token: "T", expires_in } }]);
+    await assert.rejects(
+      requestClientCredentialsToken({ carrier: "ups", fetchImpl: f, authStyle: "basic", ...base }),
+      (e) => e instanceof CarrierError && e.code === "BAD_RESPONSE",
+      String(expires_in),
+    );
+  }
+});

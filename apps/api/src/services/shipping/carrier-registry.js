@@ -2,6 +2,7 @@ import { env } from "../../config/env.js";
 import { carrierConfig } from "./carrier-config.js";
 import { sharedTokenCache } from "./oauth-token-cache.js";
 import { ShippingError } from "./shipping-errors.js";
+import { createUpsAdapter } from "./carriers/ups.adapter.js";
 import { createManualAdapter } from "./carriers/manual.adapter.js";
 
 /**
@@ -11,6 +12,7 @@ import { createManualAdapter } from "./carriers/manual.adapter.js";
  * it never fails at boot.
  */
 const FACTORIES = {
+  ups: createUpsAdapter,
   manual: createManualAdapter,
 };
 
