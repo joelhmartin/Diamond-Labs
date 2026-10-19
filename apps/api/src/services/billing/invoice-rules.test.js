@@ -4,6 +4,7 @@ import { priceLines } from "../../lib/pricing.js";
 import {
   InvoiceError, addDaysIso, computeTotals, hasUnpriced, asRemakeLines, planDraftInvoice, planShopInvoice,
   assertFreshInvoice, planLineEdit, planIssue, planVoid, deriveBalance, canActOnInvoice, planCredit, planManualPayment,
+  planShipmentLine, planShipmentLineRemoval,
 } from "./invoice-rules.js";
 import { invoiceErrorReply } from "./invoice-errors.js";
 
@@ -252,4 +253,42 @@ test("manual payment: the received date can't be in the future or before the inv
   assert.doesNotThrow(pay("2026-09-30", [{ invoiceId: "b", amountCents: 1000 }]), "the issue day itself is fine");
   assert.throws(pay("10/14/2026"), isCode("INVALID"));
   assert.throws(pay("2026-02-30"), isCode("INVALID"), "a date that doesn't exist");
+});
+
+const shipDraft = { id: "inv1", invoiceNumber: 500001, status: "draft", version: 4, subtotalCents: 40500, taxCents: 0, shippingCents: 0, totalCents: 40500 };
+const shipLines = [{ id: "l1", position: 0, kind: "item", qty: 1, unitCents: 40500, lineCents: 40500, taxable: false, priceSource: "client", shipmentId: null }];
+const SHIP_NOW = new Date("2026-10-20T16:00:00Z");
+
+test("a shipment's line: shipping kind, never taxed, priced from the shipment, remembering which shipment", () => {
+  const plan = planShipmentLine(shipDraft, shipLines, { shipmentId: "sh1", description: "Shipping — UPS Ground 1Z999", unitCents: 1142, now: SHIP_NOW, taxRateBps: 825 });
+  const ins = plan.op.insert;
+  assert.deepEqual([ins.kind, ins.taxable, ins.priceSource, ins.shipmentId, ins.position, ins.lineCents], ["shipping", false, "shipment", "sh1", 1, 1142]);
+  assert.deepEqual([plan.patch.shippingCents, plan.patch.taxCents, plan.patch.totalCents, plan.patch.version], [1142, 0, 41642, 5]);
+  assert.deepEqual(plan.audit, { op: "add", kind: "shipping", unitCents: 1142, shipmentId: "sh1" });
+});
+
+test("a shipment's line is refused on a non-draft, at $0, unknown/negative/fractional, or twice", () => {
+  const base = { shipmentId: "sh1", description: "S", unitCents: 100, now: SHIP_NOW, taxRateBps: 0 };
+  assert.throws(() => planShipmentLine({ ...shipDraft, status: "issued" }, shipLines, base), isCode("INVALID_TRANSITION"));
+  for (const bad of [0, null, undefined, -5, 10.5]) {
+    assert.throws(() => planShipmentLine(shipDraft, shipLines, { ...base, unitCents: bad }), isCode("INVALID"));
+  }
+  const twice = [...shipLines, { id: "l2", position: 1, kind: "shipping", qty: 1, unitCents: 100, lineCents: 100, taxable: false, priceSource: "shipment", shipmentId: "sh1" }];
+  assert.throws(() => planShipmentLine(shipDraft, twice, base), isCode("INVALID"));
+});
+
+test("removing a voided shipment's line takes exactly that line and recomputes totals", () => {
+  const withLine = [...shipLines, { id: "l2", position: 1, kind: "shipping", qty: 1, unitCents: 1142, lineCents: 1142, taxable: false, priceSource: "shipment", shipmentId: "sh1" }];
+  const plan = planShipmentLineRemoval({ ...shipDraft, shippingCents: 1142, totalCents: 41642 }, withLine, "sh1", { now: SHIP_NOW, taxRateBps: 0 });
+  assert.deepEqual(plan.op, { delete: "l2" });
+  assert.deepEqual([plan.patch.shippingCents, plan.patch.totalCents], [0, 40500]);
+  assert.equal(planShipmentLineRemoval(shipDraft, shipLines, "sh1", { now: SHIP_NOW, taxRateBps: 0 }), null, "no line, nothing to do");
+});
+
+test("ordinary lines carry no shipment", () => {
+  const { lines } = planDraftInvoice({
+    invoiceId: "inv9", invoiceNumber: 500009, labOrder: { id: "lo9", clientUserId: "d" },
+    pricedLines: [{ description: "X", qty: 1, unitCents: 100, taxable: false, priceSource: "base" }], now: SHIP_NOW, taxRateBps: 0,
+  });
+  assert.equal(lines[0].shipmentId, null);
 });

@@ -65,7 +65,7 @@ function lineRow(invoiceId, position, l) {
     invoiceId, position, kind: l.kind ?? "item", variantId: l.variantId ?? null, code: l.code ?? null,
     description: l.description, qty: l.qty, unitCents: l.unitCents, lineCents: lineCentsOf(l),
     taxable: (l.kind ?? "item") === "shipping" ? false : Boolean(l.taxable),
-    priceSource: l.priceSource, priceNote: null, labOrderLineId: l.labOrderLineId ?? null,
+    priceSource: l.priceSource, priceNote: null, labOrderLineId: l.labOrderLineId ?? null, shipmentId: l.shipmentId ?? null,
   };
 }
 
@@ -191,6 +191,39 @@ export function planLineEdit(invoice, lines, edit, { now, taxRateBps }) {
     }
   }
   return { op, patch: { ...computeTotals(after, { taxRateBps }), ...bump(invoice, now) }, audit };
+}
+
+/**
+ * A shipment's shipping line on a draft (lab-shipping.service, SHIPPING_CHARGE_POLICY).
+ * Kind "shipping" (never taxed), price source "shipment", and it remembers its
+ * shipment so voiding the label removes exactly this line. One per shipment.
+ * An unknown (null) or non-integer/zero/negative charge is refused, never added as $0.
+ */
+export function planShipmentLine(invoice, lines, { shipmentId, description, unitCents, now, taxRateBps }) {
+  assertDraft(invoice);
+  if (!Number.isInteger(unitCents) || unitCents <= 0) {
+    throw new InvoiceError("INVALID", "A shipping line needs a known charge of more than $0.00.");
+  }
+  if (lines.some((l) => l.shipmentId === shipmentId)) throw new InvoiceError("INVALID", "This shipment's line is already on the invoice.");
+  const position = lines.reduce((m, l) => Math.max(m, l.position), -1) + 1;
+  const line = lineRow(invoice.id, position, { kind: "shipping", description, qty: 1, unitCents, taxable: false, priceSource: "shipment", shipmentId });
+  return {
+    op: { insert: line },
+    patch: { ...computeTotals([...lines, line], { taxRateBps }), ...bump(invoice, now) },
+    audit: { op: "add", kind: "shipping", unitCents, shipmentId },
+  };
+}
+
+/** A voided shipment -> remove the line it added (null when there is none). Draft only. */
+export function planShipmentLineRemoval(invoice, lines, shipmentId, { now, taxRateBps }) {
+  const line = lines.find((l) => l.shipmentId === shipmentId);
+  if (!line) return null;
+  assertDraft(invoice);
+  return {
+    op: { delete: line.id },
+    patch: { ...computeTotals(lines.filter((l) => l !== line), { taxRateBps }), ...bump(invoice, now) },
+    audit: { op: "remove", lineId: line.id, shipmentId },
+  };
 }
 
 /** Issue a draft: due = the lab-local issue date + net terms. An unpriced line holds it. */
