@@ -592,7 +592,7 @@ export async function sendShippedNotice({ to, orderNumbers = [], carrier, tracki
   if (!to || !trackingNumber) return false;
   const lab = labIdentity().name;
   const numbers = orderNumbers.map((n) => `#${n}`).join(", ");
-  const button = trackingUrl
+  const button = typeof trackingUrl === "string" && trackingUrl.startsWith("https:")
     ? `<p style="margin:0 0 24px;"><a href="${esc(trackingUrl)}" style="display:inline-block;padding:12px 24px;background:#13AEEF;color:#fff;text-decoration:none;border-radius:999px;font-weight:600;">Track your package</a></p>`
     : "";
   const html = `
@@ -609,7 +609,7 @@ export async function sendShippedNotice({ to, orderNumbers = [], carrier, tracki
     `Order${orderNumbers.length === 1 ? "" : "s"}: ${numbers}`,
     `Carrier: ${carrier}`,
     `Tracking number: ${trackingNumber}`,
-    trackingUrl ? `Track your package: ${trackingUrl}` : null,
+    (typeof trackingUrl === "string" && trackingUrl.startsWith("https:")) ? `Track your package: ${trackingUrl}` : null,
     lab,
   ].filter(Boolean).join("\n");
   return deliver({ to, subject: `Your order has shipped — ${lab}`, html, text });

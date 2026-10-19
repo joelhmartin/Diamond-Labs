@@ -34,3 +34,11 @@ test("receivables read one SQL-aggregated query (no id list) and keep deriveBala
   assert.equal((await svc.listReceivables({}, db)).rows.length, 0, "a fully paid invoice never reaches AR");
   assert.doesNotMatch(source, /sum\(\$\{invoicePayments/);
 });
+
+test("loadClient carries the practice phone and delivery preferences (the Ship form's starting ship-to)", async () => {
+  const c = await svc.loadClient("d1", fakeTx({ selects: [[{
+    id: "d1", name: "Dr", email: "d@x.com", role: "doctor", accountNumber: null,
+    profile: { companyName: "P", address1: "1 St", address2: null, city: "Austin", state: "TX", zip: "78701", phone: "512-555-0100", deliveryMethod: "UPS Ground", deliveryNotes: "Back door" },
+  }]] }));
+  assert.deepEqual([c.phone, c.deliveryMethod, c.deliveryNotes], ["512-555-0100", "UPS Ground", "Back door"]);
+});

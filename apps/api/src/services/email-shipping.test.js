@@ -59,3 +59,12 @@ test("the shipped email renders only order numbers, carrier and tracking — pat
   assert.equal(p.get("attachment"), null);
   vi.unstubAllGlobals();
 });
+
+test("the tracking button renders only for an https link", async () => {
+  const f = capture();
+  await email.sendShippedNotice({ to: "dr@x.com", orderNumbers: [1], carrier: "UPS", trackingNumber: "1Z1", trackingUrl: "javascript:alert(1)" });
+  const p = sent(f);
+  assert.doesNotMatch(p.get("html"), /href=/);
+  assert.doesNotMatch(p.get("text"), /javascript:/);
+  vi.unstubAllGlobals();
+});

@@ -1,4 +1,3 @@
-import { trackingUrl, carrierName } from "../shipping/shipping.js";
 /**
  * Lab order status rules — the ONE table both the API (lab-order-rules.js,
  * lab.routes.js) and the web (board, order detail, doctor "My cases") read,
@@ -10,6 +9,8 @@ import { trackingUrl, carrierName } from "../shipping/shipping.js";
  *   any non-terminal → on_hold (reason) → back to where it was held from
  *   any non-terminal → cancelled (reason)
  */
+import { trackingUrl, carrierName } from "../shipping/shipping.js";
+
 export const LAB_ORDER_STATUSES = [
   "received", "in_production", "quality_check", "ready_to_ship", "shipped", "on_hold", "cancelled",
 ];
@@ -141,11 +142,6 @@ export function caseSummary(caseRow) {
 }
 
 /**
- * One row of a doctor's "My cases".
- * @param {object} caseRow   DECRYPTED rx_cases row (or the redacted placeholder a failed decrypt yields)
- * @param {Array}  labOrders lab_orders rows for this case — only allow-listed fields are read
- */
-/**
  * Tracking a doctor may see: only for a SHIPPED lab order whose shipment has
  * a tracking number and wasn't voided (a label bought today can still be
  * voided tomorrow). Carrier, number, public link and delivered date; nothing
@@ -157,6 +153,11 @@ export function doctorTracking(labOrder) {
   return { carrier: carrierName(s), trackingNumber: s.trackingNumber, url: trackingUrl(s.carrier, s.trackingNumber), deliveredAt: s.deliveredAt ?? null };
 }
 
+/**
+ * One row of a doctor's "My cases".
+ * @param {object} caseRow   DECRYPTED rx_cases row (or the redacted placeholder a failed decrypt yields)
+ * @param {Array}  labOrders lab_orders rows for this case — only allow-listed fields are read
+ */
 export function doctorCaseView(caseRow, labOrders = []) {
   const current = currentLabOrder(labOrders);
   const { patientName, deviceSummary } = caseSummary(caseRow);

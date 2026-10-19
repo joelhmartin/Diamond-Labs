@@ -12,7 +12,7 @@ import { renderStatementPdf } from "./billing-pdf.js";
  * invoices (no client) never reach a statement or the AR page.
  */
 
-/** The doctor's bill-to block, or null when the user isn't a doctor. */
+/** The doctor's bill-to and ship-to block (statements, invoices, the Ship form), or null when the user isn't a doctor. */
 export async function loadClient(clientUserId, database = db) {
   const [row] = await database
     .select({ id: users.id, name: users.name, email: users.email, role: users.role, accountNumber: users.seazonaAccountNumber, profile: doctorProfiles })
@@ -25,6 +25,7 @@ export async function loadClient(clientUserId, database = db) {
     id: row.id, name: row.name, email: row.email, accountNumber: row.accountNumber ?? null,
     practice: p?.companyName ?? null, address1: p?.address1 ?? null, address2: p?.address2 ?? null,
     city: p?.city ?? null, state: p?.state ?? null, zip: p?.zip ?? null,
+    phone: p?.phone ?? null, deliveryMethod: p?.deliveryMethod ?? null, deliveryNotes: p?.deliveryNotes ?? null,
   };
 }
 
