@@ -72,7 +72,7 @@ const MUST_SCRUB = {
   invoice_lines: ["description", "price_note"],
   invoice_payments: ["reference", "note"],
   shipments: ["service_name", "tracking_number", "ship_to", "label_data", "tracking_error"],
-  shipment_events: ["location"],
+  shipment_events: ["description", "location"],
 };
 
 test("named PHI/PII/secret columns are never classified keep", () => {
@@ -213,6 +213,11 @@ test("invoice line descriptions are re-derived from the catalog by code; shippin
   assert.ok(sql.includes(`"description" = CASE WHEN "invoice_lines"."kind" = 'shipping' THEN 'Shipping' ELSE LEFT(COALESCE(`), sql);
   assert.ok(sql.includes(`v."code" = "invoice_lines"."code"`), sql);
   assert.match(sql, /"price_note" = NULL/);
+});
+
+test("shipment_events drop carrier scan text but keep staff text", () => {
+  const sql = buildStatements(SCRUB_PLAN, CTX).find((s) => s.table === "shipment_events").sql;
+  assert.ok(sql.includes(`"description" = CASE WHEN "shipment_events"."source" = 'carrier' THEN NULL ELSE "shipment_events"."description" END`), sql);
 });
 
 test("shipments keep carrier facts but lose every address, label image and typed carrier name", () => {

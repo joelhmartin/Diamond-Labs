@@ -358,7 +358,8 @@ export const SCRUB_PLAN = {
     mode: "update",
     columns: {
       id: K, shipment_id: K, status: K,
-      description: K, // carrier scan text ("Departed facility") or our own fixed staff strings
+      // carrier scan text can name a city/state: dropped; staff events carry our own fixed strings
+      description: pii(`CASE WHEN "shipment_events"."source" = 'carrier' THEN NULL ELSE "shipment_events"."description" END`),
       location: pii("NULL"), // a recipient's city
       occurred_at: K, source: K, created_at: K,
     },
