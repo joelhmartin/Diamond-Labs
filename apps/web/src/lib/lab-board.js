@@ -14,7 +14,7 @@ export function groupByStatus(cards = []) {
  * reason. Hold and cancel need a reason, so they live on the order page.
  */
 export function quickMoves(card) {
-  return allowedNextStatuses(card.status, { heldFrom: card.heldFrom ?? null })
+  return allowedNextStatuses(card.status, { heldFrom: card.heldFrom ?? null, labelled: Boolean(card.labelled) })
     .filter((to) => !reasonRequiredFor(to))
     .map((to) => ({ to, label: `→ ${label(to)}` }));
 }
@@ -41,6 +41,7 @@ export function describeEvent(e, { staffById = {}, departmentsById = {} } = {}) 
     case "department": return e.to ? `${who}: moved to ${departmentsById[e.to] ?? "a removed department"}` : `${who}: removed from its department`;
     case "due": return e.to ? `${who}: due date set to ${formatUsDate(e.to)}` : `${who}: due date cleared`;
     case "note": return `${who}: ${e.note ?? "note"}`;
+    case "shipment": return `${who}: ${e.note ?? (e.to ? "shipping label bought" : "shipping label voided")}`;
     default: return `${who}: ${e.type}`;
   }
 }

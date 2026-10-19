@@ -39,3 +39,13 @@ test("timeline rows read as sentences, naming people and rooms", () => {
   assert.equal(describeEvent({ type: "due", to: null, byName: "Ana" }, ctx), "Ana: due date cleared");
   assert.equal(describeEvent({ type: "note", note: "Lab notes updated", byName: "Ana" }, ctx), "Ana: Lab notes updated");
 });
+
+test("a labelled card offers only → Shipped (anything else would strand its label)", () => {
+  assert.deepEqual(quickMoves({ status: "ready_to_ship", labelled: true }).map((m) => m.to), ["shipped"]);
+  assert.deepEqual(quickMoves({ status: "ready_to_ship" }).map((m) => m.to), ["shipped", "quality_check"]);
+});
+
+test("shipment events read as sentences", () => {
+  assert.equal(describeEvent({ type: "shipment", to: "sh1", byName: "Maria", note: "Label: UPS Ground 1Z9" }), "Maria: Label: UPS Ground 1Z9");
+  assert.equal(describeEvent({ type: "shipment", from: "sh1", to: null, byName: "Maria", note: null }), "Maria: shipping label voided");
+});

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Loader2, RefreshCw, Search, AlertTriangle, Zap, RotateCcw, AlertCircle } from "lucide-react";
+import { Loader2, RefreshCw, Search, AlertTriangle, Zap, RotateCcw, AlertCircle, Tag, Truck } from "lucide-react";
 import { LAB_BOARD_COLUMNS, LAB_STATUS_LABELS, formatUsDate, isTerminalLabStatus } from "@my-app/shared";
 import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { labOrderPath } from "../../config/routes.js";
 import { groupByStatus, quickMoves, boardParams } from "../../lib/lab-board.js";
+import { labelBadge } from "../../lib/shipping.js";
+import { ConfirmButton } from "../../components/ui/ConfirmButton.jsx";
 import { errorText, isStale } from "../../lib/requests.js";
 
 const INPUT =
@@ -30,6 +32,11 @@ function Card({ card, busy, onMove }) {
           {card.isRemake && (
             <span className="flex items-center gap-0.5 rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-violet-700">
               <RotateCcw size={10} /> Remake
+            </span>
+          )}
+          {labelBadge(card) && (
+            <span className="flex items-center gap-0.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700">
+              <Tag size={10} /> {labelBadge(card)}
             </span>
           )}
         </div>
@@ -124,6 +131,18 @@ export function LabBoardPage() {
     }
   };
 
+  // End-of-day hand-off: every labelled box that hasn't left yet.
+  const labelledWaiting = cards.filter((c) => labelBadge(c)).length;
+  const markAllShipped = async () => {
+    try {
+      const { shipped, failed } = (await api.post("/lab/shipments/mark-all-shipped")).data.data;
+      addToast({ message: failed ? `${shipped} shipped, ${failed} failed. Check the logs or retry.` : `${shipped} shipped`, type: failed ? "error" : "success" });
+    } catch (err) {
+      addToast({ message: errorText(err), type: "error" });
+    }
+    await load();
+  };
+
   const set = (patch) => setFilters((f) => ({ ...f, ...patch }));
 
   return (
@@ -136,6 +155,16 @@ export function LabBoardPage() {
             {overdueCount > 0 && <span className="ml-2 font-semibold text-red-600">· {overdueCount} overdue</span>}
           </p>
         </div>
+        <div className="flex items-center gap-2">
+        {labelledWaiting > 0 && (
+          <ConfirmButton
+            onConfirm={markAllShipped}
+            confirmLabel="Click again to mark every labelled box shipped"
+            className="flex items-center gap-1.5 rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
+          >
+            <Truck size={12} /> Mark all labelled shipped
+          </ConfirmButton>
+        )}
         <button
           type="button"
           onClick={() => { setLoading(true); load(); }}
@@ -143,6 +172,7 @@ export function LabBoardPage() {
         >
           <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> Refresh
         </button>
+        </div>
       </div>
 
       <div className="mb-5 flex flex-wrap items-center gap-2">
