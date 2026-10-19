@@ -272,3 +272,11 @@ test("shippingReply copies the error body instead of mutating the shared reply; 
   assert.doesNotMatch(src, /r\.body\.error\.message =/);
   assert.match(fn("labelHandler"), /X-Content-Type-Options", "nosniff"/);
 });
+
+test("Refresh tracking answers 422 when nothing was eligible to track", async () => {
+  const { shippingReply } = await import("../shipping.routes.js");
+  const { ShippingError } = await import("../../services/shipping/shipping-errors.js");
+  const body = handlerSource(src, 'fastify.post("/lab/shipments/:id/refresh-tracking",');
+  assert.match(body, /summary\.checked === 0\) throw new ShippingError\("INVALID", "This shipment can't be tracked\."\)/);
+  assert.equal(shippingReply(new ShippingError("INVALID", "x")).status, 422);
+});

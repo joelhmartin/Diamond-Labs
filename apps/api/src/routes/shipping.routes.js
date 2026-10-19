@@ -7,6 +7,7 @@ import { withIdempotency, ChargeInProgressError } from "../lib/payment-helpers.j
 import * as labShipping from "../services/lab/lab-shipping.service.js";
 import { shipContext, listShipmentsForLab } from "../services/lab/lab-shipping-queries.js";
 import { getLabel } from "../services/shipping/shipments.service.js";
+import { ShippingError } from "../services/shipping/shipping-errors.js";
 import { carrierRegistry } from "../services/shipping/carrier-registry.js";
 import { LabOrderError } from "../services/lab/lab-order-rules.js";
 import { STAFF } from "./lab.routes.js";
@@ -122,6 +123,8 @@ export default async function shippingRoutes(fastify) {
   fastify.post("/lab/shipments/:id/refresh-tracking", { preHandler: STAFF }, (request, reply) =>
     run(reply, async () => {
       const summary = await labShipping.syncLabTracking({ shipmentIds: [request.params.id], log: request.log });
+      // Nothing was eligible (unknown, voided, delivered or manual): say so rather than look like "nothing new".
+      if (summary.checked === 0) throw new ShippingError("INVALID", "This shipment can't be tracked.");
       audit(request, "shipment.tracking_refreshed", request.params.id, { checked: summary.checked, updated: summary.updated });
       return summary;
     }));

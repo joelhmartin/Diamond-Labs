@@ -3,6 +3,7 @@ import { TERMINAL_SHIPMENT_STATUSES } from "@my-app/shared";
 import { db } from "../../config/database.js";
 import { shipments } from "../../db/schema/index.js";
 import { carrierRegistry } from "./carrier-registry.js";
+import { errTag } from "./shipping-errors.js";
 import { planTrackingUpdate } from "./shipment-rules.js";
 import { applyTrackingPlan } from "./shipments.service.js";
 
@@ -21,9 +22,6 @@ function candidatesWhere({ shipmentIds, trackers, now }) {
   return and(...conds);
 }
 
-/** Error name/code for logs: never the message, which can carry bodies or addresses. */
-const errTag = (err) => err?.code ?? err?.name ?? "unknown";
-
 function tally(summary, plan, result, shipment, log) {
   if (plan.event) summary.updated += 1;
   if (plan.patch?.status === "delivered") summary.delivered += 1;
@@ -40,6 +38,8 @@ function tally(summary, plan, result, shipment, log) {
  * transaction (the lab glue ships the box), so if that fails the status change
  * rolls back and the next run sees the movement again. `onMoved` may return a
  * function to run after the commit (the shipped email).
+ * Returns "committed", "skipped" (lost a race to a void or a concurrent sync)
+ * or "failed" (rolled back, retried next run).
  */
 async function writeOne({ database, shipment, plan, onMoved, summary, log, afterCommit }) {
   let after = null;
@@ -53,11 +53,12 @@ async function writeOne({ database, shipment, plan, onMoved, summary, log, after
     summary.errors += 1;
     const tag = plan.moved ? "MARK_SHIPPED_FAILED" : "TRACK_WRITE_FAILED";
     log.error?.(`[SHIP][${tag}] shipment=${shipment.id} error=${errTag(err)}`);
-    return;
+    return "failed";
   }
-  if (!applied) return;
+  if (!applied) return "skipped";
   if (plan.moved) summary.moved += 1;
   if (typeof after === "function") afterCommit.push([shipment.id, after]);
+  return "committed";
 }
 
 /**
@@ -104,10 +105,9 @@ export async function syncTracking({
       const result = byNumber.get(shipment.trackingNumber);
       const plan = planTrackingUpdate(shipment, result, now);
       if (!plan.patch) continue;
-      const before = { ...summary };
-      await writeOne({ database, shipment, plan, onMoved, summary, log, afterCommit });
-      // Count only a write that committed (a rolled-back one is retried next run).
-      if (summary.errors === before.errors) tally(summary, plan, result, shipment, log);
+      // Count only a write that committed (a skipped or rolled-back one is not an update).
+      const outcome = await writeOne({ database, shipment, plan, onMoved, summary, log, afterCommit });
+      if (outcome === "committed") tally(summary, plan, result, shipment, log);
     }
   }
 

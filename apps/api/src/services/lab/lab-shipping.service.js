@@ -7,7 +7,7 @@ import { sendShippedNotice } from "../email.service.js";
 import { addShipmentLine, removeShipmentLine } from "../billing/invoices.service.js";
 import { carrierRegistry } from "../shipping/carrier-registry.js";
 import { syncTracking } from "../shipping/tracking-sync.service.js";
-import { ShippingError } from "../shipping/shipping-errors.js";
+import { ShippingError, errTag } from "../shipping/shipping-errors.js";
 import { planNewShipment, assertVoidable } from "../shipping/shipment-rules.js";
 import * as shipments from "../shipping/shipments.service.js";
 import { mutateIn, changeStatus, billingFollowUp } from "./lab-orders.service.js";
@@ -79,8 +79,6 @@ async function afterCommit(d, fn, onError) {
   }
 }
 
-/** Error name/code for logs: never the message, which can carry addresses or bodies. */
-const errTag = (err) => err?.code ?? err?.name ?? "unknown";
 
 /** A system note on a lab order's history (ids/text only, never PHI). Inside the caller's transaction. */
 function noteOrder(tx, labOrderId, text, { byUserId, now }) {

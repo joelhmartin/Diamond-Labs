@@ -277,14 +277,15 @@ test("sync: first movement ships the box, then sends the one email after commit"
 test("sync: a failure while shipping the orders rolls the status change back and is retried", async () => {
   sentEmails.length = 0;
   const lines = [];
-  // the box's order row can't be read (empty queue) -> mutateIn throws inside the transaction
-  const tx = fakeTx({ selects: [[movingRow], [shipment], [order({ shipmentId: "sh1" })]], updates: [[{ id: "sh1" }], [{ id: "sh1" }]] });
+  // the order's conditional UPDATE matches no row (someone else moved it) -> mutateIn throws a LabOrderError in the transaction
+  const o = order({ shipmentId: "sh1" });
+  const tx = fakeTx({ selects: [[movingRow], [shipment], [o], [o]], updates: [[{ id: "sh1" }], [{ id: "sh1" }], []] });
   const db = rollbackDb(tx);
   const out = await svc.syncLabTracking({ registry: fakeRegistry([pickedUp()]), database: db, log: { error: (m) => lines.push(m), warn: () => {} } }, deps(db));
   assert.equal(db.rolledBack, 1);
   assert.equal(out.moved, 0);
   assert.equal(out.updated, 0);
   assert.equal(out.errors, 1);
-  assert.match(lines[0], /^\[SHIP\]\[MARK_SHIPPED_FAILED\] shipment=sh1 error=\w+$/);
+  assert.match(lines[0], /^\[SHIP\]\[MARK_SHIPPED_FAILED\] shipment=sh1 error=(STALE|CONFLICT)$/);
   assert.equal(sentEmails.length, 0);
 });

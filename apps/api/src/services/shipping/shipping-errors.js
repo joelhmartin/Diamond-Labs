@@ -53,3 +53,6 @@ export function shippingErrorReply(err) {
   if (err.problems) error.problems = err.problems;
   return { status, body: { error } };
 }
+
+/** Error code/name for log lines: never the message, which can carry bodies or addresses. */
+export const errTag = (err) => err?.code ?? err?.name ?? "unknown";

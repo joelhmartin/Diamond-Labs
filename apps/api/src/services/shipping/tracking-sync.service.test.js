@@ -124,3 +124,40 @@ test("the job is registered under the name Cloud Scheduler calls", async () => {
   const { listJobs } = await import("../../jobs/registry.js");
   assert.ok(listJobs().some((j) => j.name === "shipping-tracking-sync"));
 });
+
+test("a write that lost its race (no row updated) is skipped: not counted as updated or delivered", async () => {
+  const ups = fakeAdapter("ups", { track: async () => [result({ status: "delivered", deliveredAt: now })] });
+  const moved = [];
+  const out = await syncTracking({
+    now, database: fakeTx({ selects: [[row({ status: "in_transit", shippedAt: now })]], updates: [[]] }), registry: fakeRegistry([ups]),
+    onMoved: async (_tx, id) => moved.push(id),
+  });
+  assert.equal(out.updated, 0);
+  assert.equal(out.delivered, 0);
+  assert.equal(out.errors, 0);
+  assert.deepEqual(moved, []);
+});
+
+test("two numbers in one carrier batch: the one that errors keeps its error, the other still updates", async () => {
+  const ups = fakeAdapter("ups", { track: async () => [
+    result({ trackingNumber: "1Z1", status: null, error: { carrier: "ups", code: "151044", message: "No tracking information available" } }),
+    result({ trackingNumber: "1Z2" }),
+  ] });
+  const database = fakeTx({ selects: [[row(), row({ id: "sh2", trackingNumber: "1Z2" })]], updates: [[{ id: "sh1" }], [{ id: "sh2" }]] });
+  const out = await syncTracking({ now, database, registry: fakeRegistry([ups]), onMoved: async () => {} });
+  assert.equal(ups.calls.length, 1);
+  assert.equal(out.errors, 1);
+  assert.equal(out.updated, 1);
+  assert.equal(out.moved, 1);
+});
+
+test("heal: already in transit but never shipped -> onMoved runs, no new event", async () => {
+  const ups = fakeAdapter("ups", { track: async () => [result()] });
+  const database = fakeTx({ selects: [[row({ status: "in_transit" })]], updates: [[{ id: "sh1" }]] });
+  const moved = [];
+  const out = await syncTracking({ now, database, registry: fakeRegistry([ups]), onMoved: async (_tx, id) => moved.push(id) });
+  assert.deepEqual(moved, ["sh1"]);
+  assert.equal(out.moved, 1);
+  assert.equal(out.updated, 0);
+  assert.equal(database.log.filter((l) => l.op === "insert").length, 0);
+});
