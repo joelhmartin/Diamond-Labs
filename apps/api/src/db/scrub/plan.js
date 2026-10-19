@@ -41,6 +41,7 @@ const catalogNameFor = (col) =>
 // An account whose owner (accounts.owner_id, the FK register() sets) is a public sign-up.
 const OWNER_IS_SHOPPER = `EXISTS (SELECT 1 FROM "users" u WHERE u."id" = "accounts"."owner_id" AND u."role" = 'user')`;
 
+const SHIP_TO_PLACEHOLDER = `'{"name":"Scrubbed Recipient","address1":"1 Test Street","city":"Testville","state":"TX","postalCode":"00000","country":"US"}'::jsonb`;
 const SHIPPING_PLACEHOLDER = `'{"name":"Scrubbed Customer","address1":"1 Test Street","city":"Testville","state":"TX","postalCode":"00000"}'::jsonb`;
 
 export const SCRUB_PLAN = {
@@ -284,6 +285,7 @@ export const SCRUB_PLAN = {
       department_id: K, assignee_user_id: K, due_date: K, rush: K, rush_tier: K, is_remake: K, remake_of_order_id: K,
       hold_reason: phi("NULL"),
       lab_notes: phi("NULL"),
+      shipment_id: K,
       version: K, received_at: K, started_at: K, shipped_at: K, cancelled_at: K, created_at: K, updated_at: K,
     },
   },
@@ -329,7 +331,34 @@ export const SCRUB_PLAN = {
       description: phi(`CASE WHEN "invoice_lines"."kind" = 'shipping' THEN 'Shipping' ELSE LEFT(COALESCE(${catalogNameFor('"invoice_lines"."code"')}, 'Line'), 255) END`),
       qty: K, unit_cents: K, line_cents: K, taxable: K, price_source: K,
       price_note: phi("NULL"), // why a price was overridden: staff free text, encrypted
-      lab_order_line_id: K, created_at: K,
+      lab_order_line_id: K, shipment_id: K, created_at: K,
+    },
+  },
+  // Shipments (own-the-lab piece 4). Practice and customer addresses, label images
+  // (which print the address) and carrier error text (which can echo it) go;
+  // carrier, service, tracking numbers, cents and dates stay.
+  shipments: {
+    mode: "update",
+    columns: {
+      id: K, carrier: K, service_code: K,
+      service_name: pii(`CASE WHEN "shipments"."carrier" = 'manual' THEN 'Manual' ELSE "shipments"."service_name" END`), // manual = staff-typed
+      carrier_shipment_id: K, tracking_number: K, status: K, charge_cents: K, currency: K, parcel: K,
+      ship_to: pii(SHIP_TO_PLACEHOLDER),
+      ship_from: K, // the lab's own address
+      label_format: K,
+      label_data: pii("NULL"),
+      created_by_user_id: K, purchased_at: K, shipped_at: K, delivered_at: K, voided_at: K, last_tracked_at: K,
+      tracking_error: pii("NULL"),
+      created_at: K, updated_at: K,
+    },
+  },
+  shipment_events: {
+    mode: "update",
+    columns: {
+      id: K, shipment_id: K, status: K,
+      description: K, // carrier scan text ("Departed facility") or our own fixed staff strings
+      location: pii("NULL"), // a recipient's city
+      occurred_at: K, source: K, created_at: K,
     },
   },
   app_theme: { mode: "update", columns: { id: K, tokens: K, updated_by: K, updated_at: K } },

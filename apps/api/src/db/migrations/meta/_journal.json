@@ -218,6 +218,13 @@
       "when": 1792087614939,
       "tag": "0030_lowly_caretaker",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1792438050512,
+      "tag": "0031_light_the_leader",
+      "breakpoints": true
     }
   ]
 }

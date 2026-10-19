@@ -56,6 +56,11 @@ Pre-check before the transaction: every plan table and column must exist live ("
 | invoice_lines.price_note | phi | NULL (why a price was overridden: staff free text, encrypted) |
 | invoice_payments.reference | pii | NULL (staff-typed check number / ACH trace) |
 | invoice_payments.note | phi | NULL (a credit's reason: staff free text, encrypted) |
+| shipments.ship_to | pii | a fixed placeholder address (practice or guest customer address snapshot) |
+| shipments.label_data | pii | NULL (the label image prints the recipient's address) |
+| shipments.service_name | pii | `Manual` for manual shipments (staff-typed carrier name); carrier service names kept |
+| shipments.tracking_error | pii | NULL (carrier error text can echo the address) |
+| shipment_events.location | pii | NULL (a recipient's city) |
 
 ## Tables emptied (DELETE all rows)
 
@@ -74,7 +79,7 @@ Pre-check before the transaction: every plan table and column must exist live ("
 - rx_cases: case_number, practice_name, device_key/category, first_device, records_method, physical_bite, form_type, due_date, rush, status. Non-identifying once names, DOB, contact and free text are gone. Clinical-ish (`physical_bite`) but not linkable to a person.
 - rx_code_overrides: only rows whose map_key is a KNOWN catalog-map key (from the DEVICE/MODIFICATION/ATTRIBUTE/LAB_SERVICE/GUARD/ORTHO tables, `known-map-keys.js`) are kept; every other row is DELETED. The key prefixes (`mod:`, `attr:`, `primary:`) are shared by stable slugs and by doctor-typed literals (`mod:<literal>`), so shape cannot tell them apart; this is the "not in the known set" fallback. Consequence: a real lab override on a key the tables no longer emit is also dropped. `note` and the rest of each kept row (except `seazona_name`, re-derived) are lab-staff mapping data.
 - lab_departments, and lab_orders / lab_order_lines / lab_order_events apart from the columns above: ids, source reference (rx case or shop order id, no patient data copied), status, dates, rush, remake links, assignee, version, codes, quantities, event types and from/to values. Non-identifying once the free text is gone.
-- invoices and invoice_lines apart from the columns above (numbers, status, dates, cents, codes, quantities, price sources); invoice_payments money columns, ids, sources and `paid_on`; autopay_attempts (allocations are invoice id/number/amount), orders money columns and transaction ids, order_items, catalog and product tables, memberships, app_theme.
+- shipments apart from the columns above (carrier, service, tracking numbers, status, cents, parcel, the lab's own ship-from, dates); shipment_events status, description and dates; lab_orders.shipment_id and invoice_lines.shipment_id; invoices and invoice_lines apart from the columns above (numbers, status, dates, cents, codes, quantities, price sources); invoice_payments money columns, ids, sources and `paid_on`; autopay_attempts (allocations are invoice id/number/amount), orders money columns and transaction ids, order_items, catalog and product tables, memberships, app_theme.
 
 ## Not in the schema
 
