@@ -151,11 +151,33 @@ test("an unknown shipment charge (null) is refused up front, never added as $0",
 test("voiding removes the shipment's line from a draft; an issued invoice is left alone", async () => {
   const shipLine = { ...shipItemLine, id: "l2", position: 1, kind: "shipping", unitCents: 1142, lineCents: 1142, priceSource: "shipment", shipmentId: "sh1" };
   const tx = fakeTx({ selects: [[{ invoiceId: "inv1" }], [shipDraftRow], [shipItemLine, shipLine]], updates: [[{ ...shipDraftRow, version: 3 }]] });
-  assert.deepEqual(await mod.removeShipmentLine(tx, { shipmentId: "sh1", byUserId: "u1" }), { removed: true, invoiceNumber: 500001 });
+  assert.deepEqual(await mod.removeShipmentLine(tx, { shipmentId: "sh1", byUserId: "u1" }), { removed: 1, invoiceNumbers: [500001], skipped: [] });
   assert.equal(tx.log.filter((l) => l.op === "delete").length, 1);
   const issued = fakeTx({ selects: [[{ invoiceId: "inv1" }], [{ ...shipDraftRow, status: "issued" }]] });
-  assert.deepEqual(await mod.removeShipmentLine(issued, { shipmentId: "sh1" }), { removed: false, reason: "not_draft", invoiceNumber: 500001 });
-  assert.deepEqual(await mod.removeShipmentLine(fakeTx({ selects: [[]] }), { shipmentId: "sh1" }), { removed: false, reason: "no_line" });
+  assert.deepEqual(await mod.removeShipmentLine(issued, { shipmentId: "sh1" }), {
+    removed: 0, invoiceNumbers: [], skipped: [{ invoiceNumber: 500001, reason: "not_draft" }], reason: "not_draft",
+  });
+  assert.deepEqual(await mod.removeShipmentLine(fakeTx({ selects: [[]] }), { shipmentId: "sh1" }), { removed: 0, invoiceNumbers: [], skipped: [], reason: "no_line" });
+});
+
+test("every draft carrying the shipment's line loses it, each with its own totals and audit; a non-draft is skipped", async () => {
+  const mk = (id, n, status) => ({ ...shipDraftRow, id, invoiceNumber: n, status, shippingCents: 1142, totalCents: 41642 });
+  const lineOn = (id) => ({ ...shipItemLine, id: `s-${id}`, invoiceId: id, position: 1, kind: "shipping", unitCents: 1142, lineCents: 1142, priceSource: "shipment", shipmentId: "sh1" });
+  const tx = fakeTx({
+    selects: [
+      [{ invoiceId: "invA" }, { invoiceId: "invB" }, { invoiceId: "invC" }],
+      [mk("invA", 600001, "draft")], [{ ...shipItemLine, invoiceId: "invA" }, lineOn("invA")],
+      [mk("invB", 600002, "draft")], [{ ...shipItemLine, invoiceId: "invB" }, lineOn("invB")],
+      [mk("invC", 600003, "issued")],
+    ],
+    updates: [[{ ...mk("invA", 600001, "draft"), version: 3 }], [{ ...mk("invB", 600002, "draft"), version: 3 }]],
+  });
+  const out = await mod.removeShipmentLine(tx, { shipmentId: "sh1", byUserId: "u1" });
+  assert.deepEqual(out, { removed: 2, invoiceNumbers: [600001, 600002], skipped: [{ invoiceNumber: 600003, reason: "not_draft" }] });
+  assert.deepEqual(tx.log.filter((l) => l.op === "delete").length, 2);
+  const sets = tx.log.filter((l) => l.op === "set").map((l) => l.values);
+  assert.deepEqual(sets.map((v) => [v.shippingCents, v.totalCents]), [[0, 40500], [0, 40500]]);
+  assert.deepEqual(inserts(tx).map((a) => a.action), ["invoice.edited", "invoice.edited"]);
 });
 
 test("a draft edited by staff meanwhile is a 409, not a lost update", async () => {

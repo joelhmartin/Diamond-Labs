@@ -193,6 +193,13 @@ export function planLineEdit(invoice, lines, edit, { now, taxRateBps }) {
   return { op, patch: { ...computeTotals(after, { taxRateBps }), ...bump(invoice, now) }, audit };
 }
 
+/** A shipment's charge must be a known positive integer of cents; null ("charge unknown") is refused, never $0. */
+export function assertShipmentCharge(unitCents) {
+  if (!Number.isInteger(unitCents) || unitCents <= 0) {
+    throw new InvoiceError("INVALID", "A shipping line needs a known charge of more than $0.00.");
+  }
+}
+
 /**
  * A shipment's shipping line on a draft (lab-shipping.service, SHIPPING_CHARGE_POLICY).
  * Kind "shipping" (never taxed), price source "shipment", and it remembers its
@@ -201,9 +208,7 @@ export function planLineEdit(invoice, lines, edit, { now, taxRateBps }) {
  */
 export function planShipmentLine(invoice, lines, { shipmentId, description, unitCents, now, taxRateBps }) {
   assertDraft(invoice);
-  if (!Number.isInteger(unitCents) || unitCents <= 0) {
-    throw new InvoiceError("INVALID", "A shipping line needs a known charge of more than $0.00.");
-  }
+  assertShipmentCharge(unitCents);
   if (lines.some((l) => l.shipmentId === shipmentId)) throw new InvoiceError("INVALID", "This shipment's line is already on the invoice.");
   const position = lines.reduce((m, l) => Math.max(m, l.position), -1) + 1;
   const line = lineRow(invoice.id, position, { kind: "shipping", description, qty: 1, unitCents, taxable: false, priceSource: "shipment", shipmentId });

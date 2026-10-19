@@ -8,7 +8,7 @@ import { invoices, invoicePayments, users } from "../../db/schema/index.js";
 import { createId } from "../../lib/id.js";
 import { withInvoiceLocks, InvoiceLockedError } from "../../lib/payment-helpers.js";
 import { paidCentsByInvoice, openInvoicesForClient } from "./ledger.service.js";
-import { auditInvoice, loadLines, applyLinePlan } from "./invoices.service.js";
+import { auditInvoice, loadLines, applyLinePlan, commitPatch } from "./invoices.service.js";
 import { sealInvoice, openInvoice, sealLedgerRow } from "./invoice-crypto.js";
 import {
   InvoiceError, assertFreshInvoice, planLineEdit, planIssue, planVoid, planCredit, planManualPayment, deriveBalance,
@@ -29,16 +29,6 @@ async function lockInvoice(tx, id) {
   const [row] = await tx.select().from(invoices).where(eq(invoices.id, id)).for("update");
   if (!row) throw new InvoiceError("NOT_FOUND", "Invoice not found.");
   return openInvoice(row);
-}
-
-async function commitPatch(tx, invoice, patch) {
-  const [updated] = await tx
-    .update(invoices)
-    .set(sealInvoice(patch))
-    .where(and(eq(invoices.id, invoice.id), eq(invoices.version, invoice.version)))
-    .returning();
-  if (!updated) throw new InvoiceError("STALE", "This invoice changed — reload.");
-  return openInvoice(updated);
 }
 
 /** Run fn holding the card-payment lock on each invoice; a held lock is a 409 LOCKED. */
