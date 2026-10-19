@@ -80,3 +80,8 @@ test("tracking: an exception is not movement, and a carrier can never void our s
   assert.equal(planTrackingUpdate(base, { status: "exception" }, now).moved, false);
   assert.equal(planTrackingUpdate(base, { status: "voided" }, now).event, null);
 });
+
+test("an unknown charge stays null in the row (R5a)", () => {
+  const { shipment } = planNewShipment({ id: "s", label: { ...TEST_LABEL, chargeCents: null, carrier: "ups" }, parcel, shipTo, now });
+  assert.equal(shipment.chargeCents, null);
+});

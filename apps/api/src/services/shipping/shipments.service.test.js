@@ -28,7 +28,7 @@ test("rates: every enabled carrier in parallel, cheapest first; one failing carr
 
 test("rates: a bug inside an adapter shows a plain message, never the stack", async () => {
   const ups = fakeAdapter("ups", { rate: async () => { throw new TypeError("cannot read x of undefined"); } });
-  const out = await svc.rateAll({ shipTo, parcel }, { registry: fakeRegistry([ups]) });
+  const out = await svc.rateAll({ shipTo, parcel }, { registry: fakeRegistry([ups]), log: logger() });
   assert.deepEqual(out.errors, [{ carrier: "ups", code: "ERROR", message: "UPS rating failed." }]);
 });
 
@@ -44,6 +44,14 @@ test("buy: an uncertain purchase keeps its idempotency key locked and tells staf
   await assert.rejects(svc.buyLabel(request, { registry: fakeRegistry([ups]), log }), (e) =>
     e instanceof ShippingError && e.code === "PURCHASE_UNCERTAIN" && e.gatewayOutcomePending === true && /check Admin › Shipments before retrying/.test(e.message));
   assert.deepEqual(log.lines, ["[SHIP][PURCHASE_UNCERTAIN] carrier=ups code=TIMEOUT"]);
+});
+
+test("buy: a non-carrier error after the call (a parser bug on a 200) is uncertain too, name only in the log", async () => {
+  const ups = fakeAdapter("ups", { createLabel: async () => { throw new TypeError("cannot read x of undefined"); } });
+  const log = logger();
+  await assert.rejects(svc.buyLabel(request, { registry: fakeRegistry([ups]), log }), (e) =>
+    e.code === "PURCHASE_UNCERTAIN" && e.gatewayOutcomePending === true);
+  assert.deepEqual(log.lines, ["[SHIP][PURCHASE_UNCERTAIN] carrier=ups error=TypeError"]);
 });
 
 test("buy: a definite refusal passes through with the carrier's words, and the key is released", async () => {
@@ -91,7 +99,7 @@ test("persist AND void failing keeps the idempotency key locked; a clean void re
 test("markVoided is conditional: a lost race throws VOID_REFUSED and logs ids only (P6)", async () => {
   const log = logger();
   const lost = fakeTx({ updates: [[]] });
-  await assert.rejects(svc.markVoided(lost, { id: "sh1", carrier: "ups", status: "label_created" }, { now: new Date() }, { log }),
+  await assert.rejects(svc.markVoided(lost, { id: "sh1", carrier: "ups", status: "label_created" }, { now: new Date(), log }),
     (e) => e instanceof ShippingError && e.code === "VOID_REFUSED");
   assert.deepEqual(log.lines, ["[SHIP][VOID_RACE] shipment=sh1 carrier=ups"]);
   assert.equal(lost.log.filter((l) => l.op === "insert").length, 0, "no event on a lost race");
@@ -99,12 +107,6 @@ test("markVoided is conditional: a lost race throws VOID_REFUSED and logs ids on
   await svc.markVoided(won, { id: "sh1", carrier: "ups", status: "label_created" }, { now: new Date() });
   assert.equal(won.log.find((l) => l.op === "set").values.status, "voided");
   assert.equal(won.log.filter((l) => l.op === "insert").length, 1);
-});
-
-test("an unknown charge stays null in the row (R5a)", async () => {
-  const { planNewShipment } = await import("./shipment-rules.js");
-  const { shipment } = planNewShipment({ id: "s", label: { ...TEST_LABEL, chargeCents: null, carrier: "ups" }, parcel, shipTo, now: new Date() });
-  assert.equal(shipment.chargeCents, null);
 });
 
 test("insertShipment writes the row and its first event in the caller's transaction", async () => {

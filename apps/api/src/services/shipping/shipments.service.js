@@ -16,7 +16,7 @@ import { planVoided } from "./shipment-rules.js";
 // ── Carrier calls ──────────────────────────────────────────────────────────
 
 /** Every enabled carrier's quotes, in parallel (10s each, carrier-http TIMEOUTS.rate), cheapest first. */
-export async function rateAll({ shipFrom, shipTo, parcel }, { registry = carrierRegistry() } = {}) {
+export async function rateAll({ shipFrom, shipTo, parcel }, { registry = carrierRegistry(), log = console } = {}) {
   const carriers = registry.enabled().filter((a) => a.id !== "manual");
   const settled = await Promise.allSettled(carriers.map((a) => a.rate({ shipFrom, shipTo, parcel })));
   const quotes = [];
@@ -25,7 +25,7 @@ export async function rateAll({ shipFrom, shipTo, parcel }, { registry = carrier
     if (s.status === "fulfilled") quotes.push(...s.value);
     else if (s.reason instanceof CarrierError) errors.push(carrierProblem(s.reason));
     else {
-      console.error(`[SHIP][RATE_FAILED] carrier=${carriers[i].id} error=${s.reason?.name ?? "unknown"}`);
+      log.error(`[SHIP][RATE_FAILED] carrier=${carriers[i].id} error=${s.reason?.name ?? "unknown"}`);
       errors.push({ carrier: carriers[i].id, code: "ERROR", message: `${carriers[i].label} rating failed.` });
     }
   });
@@ -46,8 +46,11 @@ export async function buyLabel(request, { registry = carrierRegistry(), log = co
   try {
     return { ...(await adapter.createLabel(request)), carrier: request.carrier };
   } catch (err) {
-    if (err instanceof CarrierError && err.uncertain) {
-      log.error(`[SHIP][PURCHASE_UNCERTAIN] carrier=${request.carrier} code=${err.code}`);
+    // A CarrierError the carrier flagged uncertain, or any non-carrier error (e.g. a parser
+    // TypeError after a 200): the label may already exist, so the key stays locked.
+    const isCarrierError = err instanceof CarrierError;
+    if (!isCarrierError || err.uncertain) {
+      log.error(`[SHIP][PURCHASE_UNCERTAIN] carrier=${request.carrier}` + (isCarrierError ? ` code=${err.code}` : ` error=${err?.name ?? "unknown"}`));
       throw new ShippingError(
         "PURCHASE_UNCERTAIN",
         `${CARRIER_LABELS[request.carrier]} didn't confirm the label. It may have been bought — check Admin › Shipments before retrying.`,
@@ -96,7 +99,7 @@ export async function insertShipment(tx, { shipment, event }) {
  * and status label_created), so a "Mark shipped" racing the void can't both win.
  * Zero rows -> VOID_REFUSED (P6); the caller has already voided at the carrier.
  */
-export async function markVoided(tx, shipment, { now }, { log = console } = {}) {
+export async function markVoided(tx, shipment, { now, log = console }) {
   const { patch, event } = planVoided(shipment, { now });
   const [hit] = await tx
     .update(shipments)
