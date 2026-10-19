@@ -4,11 +4,12 @@ import { isoDateIn, isOverdue, LAB_TIMEZONE, STAFF_ROLES, caseSummary } from "@m
 import { db } from "../../config/database.js";
 import { env } from "../../config/env.js";
 import {
-  labOrders, labOrderLines, labOrderEvents, labDepartments, rxCases, rxCaseFiles, rxCaseLines, orders, users, productVariants,
+  labOrders, labOrderLines, labOrderEvents, labDepartments, rxCases, rxCaseFiles, rxCaseLines, orders, users, productVariants, shipments,
 } from "../../db/schema/index.js";
 import { createId } from "../../lib/id.js";
 import { encryptField, decryptField, fieldSealer } from "../../lib/crypto.js";
 import { decryptRxPhi } from "../rx/phi-crypto.js";
+import { shipmentSummaries } from "../shipping/shipments.service.js";
 import { allocateSequenceNumber } from "../sequence.service.js";
 import { devicesForCase } from "../rx/case-devices.js";
 import { compileNotesMulti } from "../rx/case-notes.js";
@@ -266,6 +267,8 @@ export async function getLabOrderDetail(id, now = new Date()) {
     shopOrder = s ?? null;
   }
 
+  const shipment = order.shipmentId ? ((await shipmentSummaries([order.shipmentId])).get(order.shipmentId) ?? null) : null;
+
   return {
     order: {
       ...order,
@@ -280,10 +283,14 @@ export async function getLabOrderDetail(id, now = new Date()) {
     rxCase,
     files,
     shopOrder,
+    shipment,
   };
 }
 
-/** The lab orders behind each case — allow-listed columns only (doctor view, Rx case detail). */
+/**
+ * The lab orders behind each case — allow-listed columns only (doctor view,
+ * Rx case detail), plus the CURRENT shipment's public facts for doctorTracking.
+ */
 export async function labOrdersForCases(caseIds) {
   const out = new Map();
   if (caseIds.length === 0) return out;
@@ -291,41 +298,55 @@ export async function labOrdersForCases(caseIds) {
     .select({
       id: labOrders.id, sourceId: labOrders.sourceId, status: labOrders.status, orderNumber: labOrders.orderNumber,
       dueDate: labOrders.dueDate, isRemake: labOrders.isRemake, createdAt: labOrders.createdAt,
+      shipCarrier: shipments.carrier, shipServiceName: shipments.serviceName, shipTracking: shipments.trackingNumber,
+      shipStatus: shipments.status, shipDeliveredAt: shipments.deliveredAt,
     })
     .from(labOrders)
+    .leftJoin(shipments, eq(shipments.id, labOrders.shipmentId))
     .where(and(eq(labOrders.source, "rx_case"), inArray(labOrders.sourceId, caseIds)));
-  for (const { sourceId, ...lo } of rows) {
+  for (const { sourceId, shipCarrier, shipServiceName, shipTracking, shipStatus, shipDeliveredAt, ...lo } of rows) {
+    const shipment = shipCarrier
+      ? { carrier: shipCarrier, serviceName: shipServiceName, trackingNumber: shipTracking, status: shipStatus, deliveredAt: shipDeliveredAt }
+      : null;
     if (!out.has(sourceId)) out.set(sourceId, []);
-    out.get(sourceId).push(lo);
+    out.get(sourceId).push({ ...lo, shipment });
   }
   return out;
 }
 
 /**
- * Load → freshness check → plan → conditional update → event, in one
- * transaction. The UPDATE is conditional on the version read, so two
+ * Load → freshness check → plan → conditional update → event, inside the
+ * CALLER's transaction, so several orders can change together (ship together,
+ * mark a box shipped). The UPDATE is conditional on the version read, so two
  * technicians racing past assertFresh still can't both win.
+ *
+ * `expectedVersion === null` is a system move (shipping, the tracking sync):
+ * there is no client version to check, and the conditional UPDATE still
+ * prevents a lost update. Routes always validate a positive integer, so a
+ * request can never send null.
  */
+export async function mutateIn(tx, id, expectedVersion, plan) {
+  const [row] = await tx.select().from(labOrders).where(eq(labOrders.id, id));
+  if (!row) throw new LabOrderError("NOT_FOUND", "Lab order not found.");
+  const order = openOrder(row);
+  if (expectedVersion !== null) assertFresh(order, expectedVersion);
+  const planned = await plan(order, tx);
+  if (!planned) return { order, changed: false };
+  const [updated] = await tx
+    .update(labOrders)
+    .set(sealOrder(planned.patch))
+    .where(and(eq(labOrders.id, id), eq(labOrders.version, order.version)))
+    .returning();
+  if (!updated) throw new LabOrderError("STALE", "This order changed — reload.");
+  await tx.insert(labOrderEvents).values(sealEvent(planned.event));
+  const opened = openOrder(updated);
+  if (planned.after) await planned.after(tx, opened);
+  return { order: opened, changed: true };
+}
+
 // `database` is injectable so the version/seal behaviour can be tested with a fake.
-export async function mutate(id, expectedVersion, plan, database = db) {
-  return database.transaction(async (tx) => {
-    const [row] = await tx.select().from(labOrders).where(eq(labOrders.id, id));
-    if (!row) throw new LabOrderError("NOT_FOUND", "Lab order not found.");
-    const order = openOrder(row);
-    assertFresh(order, expectedVersion);
-    const planned = await plan(order, tx);
-    if (!planned) return { order, changed: false };
-    const [updated] = await tx
-      .update(labOrders)
-      .set(sealOrder(planned.patch))
-      .where(and(eq(labOrders.id, id), eq(labOrders.version, order.version)))
-      .returning();
-    if (!updated) throw new LabOrderError("STALE", "This order changed — reload.");
-    await tx.insert(labOrderEvents).values(sealEvent(planned.event));
-    const opened = openOrder(updated);
-    if (planned.after) await planned.after(tx, opened);
-    return { order: opened, changed: true };
-  });
+export function mutate(id, expectedVersion, plan, database = db) {
+  return database.transaction((tx) => mutateIn(tx, id, expectedVersion, plan));
 }
 
 async function assertAssignable(tx, userId) {

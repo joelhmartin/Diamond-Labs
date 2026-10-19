@@ -1,0 +1,1 @@
+{ "transactionId": "fixture-error", "errors": [{ "code": "SERVICE.PACKAGECOMBINATION.INVALID", "message": "Invalid service and packaging combination." }] }

@@ -1,0 +1,23 @@
+{
+  "RateResponse": {
+    "Response": { "ResponseStatus": { "Code": "1", "Description": "Success" } },
+    "RatedShipment": [
+      {
+        "Service": { "Code": "03", "Description": "" },
+        "TotalCharges": { "CurrencyCode": "USD", "MonetaryValue": "14.86" },
+        "NegotiatedRateCharges": { "TotalCharge": { "CurrencyCode": "USD", "MonetaryValue": "11.42" } },
+        "GuaranteedDelivery": { "BusinessDaysInTransit": "3" }
+      },
+      {
+        "Service": { "Code": "02", "Description": "" },
+        "TotalCharges": { "CurrencyCode": "USD", "MonetaryValue": "32.10" },
+        "GuaranteedDelivery": { "BusinessDaysInTransit": "2" }
+      },
+      {
+        "Service": { "Code": "01", "Description": "" },
+        "TotalCharges": { "CurrencyCode": "USD", "MonetaryValue": "61.05" },
+        "GuaranteedDelivery": { "BusinessDaysInTransit": "1" }
+      }
+    ]
+  }
+}

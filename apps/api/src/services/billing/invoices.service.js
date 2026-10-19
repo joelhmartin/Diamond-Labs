@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { isoDateIn, LAB_TIMEZONE, SHOP_PAYMENT_SOURCE } from "@my-app/shared";
 import { env } from "../../config/env.js";
 import { PRICING } from "../../config/pricing.js";
@@ -8,7 +8,7 @@ import { allocateSequenceNumber } from "../sequence.service.js";
 import { priceLabOrderLines } from "../pricing.service.js";
 import * as auditService from "../audit.service.js";
 import { sealInvoice, openInvoice, sealLine, openLine } from "./invoice-crypto.js";
-import { planDraftInvoice, planShopInvoice, asRemakeLines, hasUnpriced, planIssue, planVoid } from "./invoice-rules.js";
+import { planDraftInvoice, planShopInvoice, asRemakeLines, hasUnpriced, planIssue, planVoid, InvoiceError, assertShipmentCharge, planShipmentLine, planShipmentLineRemoval } from "./invoice-rules.js";
 
 /**
  * Invoice writes. Every function here runs inside the CALLER's transaction:
@@ -136,4 +136,75 @@ export async function voidForCancelledLabOrder(tx, { labOrderId, byUserId = null
   await tx.update(invoices).set(sealInvoice(patch)).where(eq(invoices.id, invoice.id));
   await auditInvoice(tx, "invoice.voided", invoice, byUserId, { via: "cancel" });
   return { voided: true };
+}
+
+/** Apply a patch to an invoice only if its version is still the one read (else 409 STALE). */
+export async function commitPatch(tx, invoice, patch) {
+  const [updated] = await tx
+    .update(invoices)
+    .set(sealInvoice(patch))
+    .where(and(eq(invoices.id, invoice.id), eq(invoices.version, invoice.version)))
+    .returning();
+  if (!updated) throw new InvoiceError("STALE", "This invoice changed — reload.");
+  return openInvoice(updated);
+}
+
+/**
+ * Write one planned line change on a locked draft: the line operation, the
+ * recomputed totals (only if the version is still the one read, else 409
+ * STALE) and the audit row. THE tail every line edit shares: staff edits
+ * (invoice-actions editDraft) and shipment lines below.
+ */
+export async function applyLinePlan(tx, invoice, plan, byUserId) {
+  if (plan.op.insert) await tx.insert(invoiceLines).values(sealLine({ ...plan.op.insert, id: createId() }));
+  if (plan.op.update) await tx.update(invoiceLines).set(sealLine(plan.op.update.values)).where(eq(invoiceLines.id, plan.op.update.id));
+  if (plan.op.delete) await tx.delete(invoiceLines).where(eq(invoiceLines.id, plan.op.delete));
+  const updated = await commitPatch(tx, invoice, plan.patch);
+  await auditInvoice(tx, "invoice.edited", invoice, byUserId, plan.audit);
+  return updated;
+}
+
+/**
+ * A new shipment's shipping line on its order's draft, in the CALLER's
+ * transaction (lab-shipping.service persistShipment). No invoice, or one that
+ * is no longer a draft, adds nothing and says why; the caller notes it for staff.
+ * A null/invalid charge ("charge unknown") throws INVALID before touching the DB.
+ */
+export async function addShipmentLine(tx, { labOrderId, shipmentId, description, unitCents, byUserId = null }) {
+  assertShipmentCharge(unitCents);
+  const invoice = await invoiceForLabOrder(tx, labOrderId);
+  if (!invoice) return { added: false, reason: "no_invoice" };
+  if (invoice.status !== "draft") return { added: false, reason: "not_draft", invoiceNumber: invoice.invoiceNumber };
+  const plan = planShipmentLine(invoice, await loadLines(tx, invoice.id), {
+    shipmentId, description, unitCents, now: new Date(), taxRateBps: PRICING.taxRateBps,
+  });
+  await applyLinePlan(tx, invoice, plan, byUserId);
+  return { added: true, invoiceNumber: invoice.invoiceNumber };
+}
+
+/**
+ * A voided shipment -> remove the line(s) it added, from every invoice that is
+ * still a draft. By design only ONE invoice per shipment gets a shipping line
+ * (lab-shipping picks the lowest-numbered non-remake order), but removal does
+ * not rely on that: each draft is planned, version-checked, totalled and audited
+ * on its own; non-drafts are skipped and reported.
+ * Returns { removed: <count>, invoiceNumbers, skipped: [{ invoiceNumber, reason }], reason? }.
+ */
+export async function removeShipmentLine(tx, { shipmentId, byUserId = null }) {
+  const rows = await tx.select({ invoiceId: invoiceLines.invoiceId }).from(invoiceLines).where(eq(invoiceLines.shipmentId, shipmentId));
+  if (!rows.length) return { removed: 0, invoiceNumbers: [], skipped: [], reason: "no_line" };
+  const invoiceNumbers = [];
+  const skipped = [];
+  for (const invoiceId of new Set(rows.map((r) => r.invoiceId))) {
+    const [row] = await tx.select().from(invoices).where(eq(invoices.id, invoiceId)).for("update");
+    const invoice = openInvoice(row);
+    if (invoice.status !== "draft") {
+      skipped.push({ invoiceNumber: invoice.invoiceNumber, reason: "not_draft" });
+      continue;
+    }
+    const plan = planShipmentLineRemoval(invoice, await loadLines(tx, invoice.id), shipmentId, { now: new Date(), taxRateBps: PRICING.taxRateBps });
+    await applyLinePlan(tx, invoice, plan, byUserId); // plan is non-null: a line with this shipmentId exists on it
+    invoiceNumbers.push(invoice.invoiceNumber);
+  }
+  return { removed: invoiceNumbers.length, invoiceNumbers, skipped, ...(invoiceNumbers.length ? {} : { reason: "not_draft" }) };
 }

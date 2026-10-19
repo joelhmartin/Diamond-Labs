@@ -49,3 +49,10 @@ test("text the PDF fonts can't draw is replaced, not printed as garbage", () => 
   const m = buildInvoiceModel(invoice, lines, client, { ...order, patientName: "Zoë 😀" }, { generatedAt });
   assert.deepEqual(m.header[6], ["Patient", "Zoë ?"]);
 });
+
+test("the footer names the lab from one place (config/lab-identity.js)", () => {
+  assert.match(buildInvoiceModel(invoice, lines, null, null, { generatedAt }).footer, /Diamond Orthotic Laboratory/);
+  const custom = buildInvoiceModel(invoice, lines, null, null, { generatedAt, labName: "Acme Lab" }).footer;
+  assert.match(custom, /Acme Lab/);
+  assert.doesNotMatch(custom, /Diamond/);
+});

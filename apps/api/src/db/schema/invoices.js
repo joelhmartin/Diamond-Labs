@@ -65,10 +65,12 @@ export const invoiceLines = pgTable("invoice_lines", {
   unitCents: integer("unit_cents").notNull(),
   lineCents: integer("line_cents").notNull(),
   taxable: boolean("taxable").notNull().default(false),
-  // client | base | manual | remake | unpriced
+  // client | base | manual | remake | unpriced | shipment
   priceSource: varchar("price_source", { length: 10 }).notNull(),
   // Why staff overrode the price. Encrypted.
   priceNote: text("price_note"),
   labOrderLineId: varchar("lab_order_line_id", { length: 128 }),
+  // The shipment that added this shipping line (piece 4), so voiding the label removes exactly it.
+  shipmentId: varchar("shipment_id", { length: 128 }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [index("invoice_lines_invoice_idx").on(t.invoiceId)]);
+}, (t) => [index("invoice_lines_invoice_idx").on(t.invoiceId), index("invoice_lines_shipment_idx").on(t.shipmentId)]);

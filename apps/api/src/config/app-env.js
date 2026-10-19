@@ -89,6 +89,17 @@ export function effectiveGatewayMode(mode, env) {
   return env?.AUTHORIZE_NET_ENV === "production" ? "production" : "sandbox";
 }
 
+/**
+ * The carrier environment actually used. Under APP_ENV=staging this is ALWAYS
+ * "sandbox", so staging can never buy a real label (same rule as
+ * effectiveGatewayMode for Authorize.net). Otherwise "production" only when
+ * CARRIER_ENV is exactly "production".
+ */
+export function effectiveCarrierEnv(env) {
+  if (isStaging(env)) return "sandbox";
+  return env?.CARRIER_ENV === "production" ? "production" : "sandbox";
+}
+
 /** Error message for an invalid/forbidden test-route `mode`, or null when acceptable. */
 export function testModeError(mode, env) {
   if (mode !== "sandbox" && mode !== "production") return "mode must be 'sandbox' or 'production'.";

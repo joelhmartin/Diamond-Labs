@@ -13,7 +13,7 @@ const { fakeTx, fakeDb } = await import("../../test/fake-tx.js");
 test("the service exposes what the routes, release and checkout call", () => {
   for (const name of [
     "allocateOrderNumber", "releaseRxCase", "createShopLabOrder", "listLabOrders", "getLabOrderDetail",
-    "labOrdersForCases", "changeStatus", "changeField", "remakeOrder", "listAssignableStaff",
+    "labOrdersForCases", "changeStatus", "changeField", "remakeOrder", "listAssignableStaff", "mutateIn",
   ]) assert.equal(typeof mod[name], "function", name);
 });
 
@@ -186,4 +186,45 @@ test("release and remake draft an invoice inside their transaction, after the jo
   const shop = source.slice(source.indexOf("export async function createShopLabOrder"), source.indexOf("function boardWhere"));
   assert.match(shop, /createShopInvoice\(tx, \{ labOrderId: plan\.labOrder\.id, clientUserId, quote, transactionId \}\)/);
   assert.match(source, /tx\.transaction\(\(sp\) => step\(sp, order\)\)/, "billing runs in a savepoint");
+});
+
+test("mutateIn runs inside the caller's transaction; mutate is its one-line wrapper", () => {
+  assert.equal(typeof mod.mutateIn, "function");
+  assert.match(source, /export function mutate\(id, expectedVersion, plan, database = db\) \{\s*return database\.transaction\(\(tx\) => mutateIn\(tx, id, expectedVersion, plan\)\);/);
+});
+
+const notePlan = () => ({ patch: { version: 4 }, event: { labOrderId: "lo-1", type: "note", note: null, at: new Date() } });
+const isStale = (e) => e instanceof LabOrderError && e.code === "STALE";
+
+test("mutateIn: a system move (null version) skips the freshness check and applies when the conditional UPDATE matches", async () => {
+  const tx = fakeTx({ selects: [[baseRow]], updates: [[{ ...baseRow, version: 4 }]] });
+  const out = await mod.mutateIn(tx, "lo-1", null, notePlan);
+  assert.equal(out.changed, true);
+  assert.equal(out.order.version, 4);
+  assert.equal(tx.log.filter((l) => l.op === "insert").length, 1, "the event was written");
+});
+
+test("mutateIn: a mismatched integer version is refused by the freshness check, before any write", async () => {
+  const tx = fakeTx({ selects: [[baseRow]], updates: [[{ ...baseRow, version: 4 }]] });
+  await assert.rejects(mod.mutateIn(tx, "lo-1", 2, notePlan), isStale);
+  assert.equal(tx.log.filter((l) => l.op === "update" || l.op === "insert").length, 0);
+});
+
+test("mutateIn: even a system move can't lose an update (conditional UPDATE matching no row is STALE)", async () => {
+  const tx = fakeTx({ selects: [[baseRow]], updates: [[]] });
+  await assert.rejects(mod.mutateIn(tx, "lo-1", null, notePlan), isStale);
+  assert.equal(tx.log.filter((l) => l.op === "insert").length, 0);
+});
+
+test("the order page's shipment block comes from the summary map (SUMMARY has no label image)", async () => {
+  const { SUMMARY } = await import("../shipping/shipments.service.js");
+  assert.equal("labelData" in SUMMARY, false);
+  const body = source.slice(source.indexOf("export async function getLabOrderDetail"), source.indexOf("export async function labOrdersForCases"));
+  assert.match(body, /shipmentSummaries\(\[order\.shipmentId\]\)/);
+});
+
+test("the doctor view's lab orders carry the current shipment's public facts only", () => {
+  const body = source.slice(source.indexOf("export async function labOrdersForCases"), source.indexOf("export async function mutateIn"));
+  assert.match(body, /leftJoin\(shipments, eq\(shipments\.id, labOrders\.shipmentId\)\)/);
+  assert.doesNotMatch(body, /labelData|shipTo|chargeCents|trackingError/);
 });

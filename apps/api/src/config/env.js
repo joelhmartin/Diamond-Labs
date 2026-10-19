@@ -81,6 +81,36 @@ const envSchema = z.object({
   INVOICE_NUMBER_START: z.coerce.number().int().positive().default(500000),
   // Net terms: an invoice issued on ship is due this many days later.
   INVOICE_TERMS_DAYS: z.coerce.number().int().min(0).max(365).default(30),
+  // ── Shipping (own-the-lab piece 4) ──
+  // The lab's identity: config/lab-identity.js is the only reader. The street
+  // address is the ship-from on every label; UPS/FedEx stay disabled until
+  // LAB_ADDRESS_LINE1, LAB_CITY, LAB_STATE, LAB_ZIP and LAB_PHONE are all set.
+  // Unset or blank = "Diamond Orthotic Laboratory" (lab-identity.js DEFAULT_LAB_NAME).
+  LAB_NAME: z.string().optional(),
+  LAB_PHONE: z.string().optional(),
+  LAB_ADDRESS_LINE1: z.string().optional(),
+  LAB_ADDRESS_LINE2: z.string().optional(),
+  LAB_CITY: z.string().optional(),
+  LAB_STATE: z.string().optional(),
+  LAB_ZIP: z.string().optional(),
+  // Carrier credentials (Secret Manager in prod). A carrier with any of its
+  // values unset is simply disabled; nothing fails at boot.
+  UPS_CLIENT_ID: z.string().optional(),
+  UPS_CLIENT_SECRET: z.string().optional(),
+  UPS_ACCOUNT_NUMBER: z.string().optional(),
+  FEDEX_API_KEY: z.string().optional(),
+  FEDEX_SECRET_KEY: z.string().optional(),
+  FEDEX_ACCOUNT_NUMBER: z.string().optional(),
+  // sandbox | production. Under APP_ENV=staging it is always sandbox
+  // (config/app-env.js effectiveCarrierEnv).
+  CARRIER_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
+  // image = UPS GIF / FedEx PNG printed through the browser; zpl = raw Zebra files.
+  LABEL_FORMAT: z.enum(["image", "zpl"]).default("image"),
+  // What a shipment adds to the draft invoice: none | carrier_cost | flat.
+  // Stays "none" until the lab decides how it bills shipping.
+  SHIPPING_CHARGE_POLICY: z.enum(["none", "carrier_cost", "flat"]).default("none"),
+  SHIPPING_FLAT_CENTS: z.coerce.number().int().min(0).max(100000).default(0),
+  SHIPPED_EMAIL_ENABLED: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
   // Shared secret for the HTTP job trigger. Required in production only.
   JOBS_TRIGGER_SECRET: z.string().optional(),
   // Opt-in dev-only in-process interval trigger (see jobs/triggers/interval.js).
@@ -126,6 +156,11 @@ function parseEnv() {
     console.error(
       `APP_URL must be the real public origin in production (got "${result.data.APP_URL}") — emailed links depend on it.`
     );
+    process.exit(1);
+  }
+  // A flat shipping fee of 0 would silently bill nothing; the policy needs a real amount.
+  if (result.data.SHIPPING_CHARGE_POLICY === "flat" && !(result.data.SHIPPING_FLAT_CENTS > 0)) {
+    console.error("SHIPPING_FLAT_CENTS must be a positive whole number of cents when SHIPPING_CHARGE_POLICY=flat.");
     process.exit(1);
   }
   return result.data;

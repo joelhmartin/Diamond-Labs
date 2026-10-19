@@ -38,6 +38,8 @@ import { AdminAutoPayPage } from "./pages/app/AdminAutoPayPage.jsx";
 import { AdminJobsPage } from "./pages/app/AdminJobsPage.jsx";
 import { AdminOrdersPage } from "./pages/app/AdminOrdersPage.jsx";
 import { AdminDepartmentsPage } from "./pages/app/AdminDepartmentsPage.jsx";
+import { ShipmentsPage } from "./pages/lab/ShipmentsPage.jsx";
+import { ShipmentLabelPrintPage } from "./pages/lab/ShipmentLabelPrintPage.jsx";
 import { MyCasesPage } from "./pages/doctor/MyCasesPage.jsx";
 import { AdminRxMappingPage } from "./pages/app/AdminRxMappingPage.jsx";
 import { AdminRxCasesPage } from "./pages/app/AdminRxCasesPage.jsx";
@@ -239,9 +241,15 @@ function AppRoutes() {
         <Route element={<RequireStaff />}>
           <Route path="/lab" element={<LabBoardPage />} />
           <Route path="/lab/orders/:id" element={<LabOrderDetailPage />} />
+          <Route path="/admin/shipments" element={<ShipmentsPage />} />
           <Route path="/admin/rx-cases" element={<AdminRxCasesPage />} />
           <Route path="/admin/rx-cases/:id" element={<AdminRxCaseDetailPage />} />
         </Route>
+      </Route>
+
+      {/* Label print page: staff only, no app shell (prints on a 4×6 page) */}
+      <Route element={<RequireStaff />}>
+        <Route path="/lab/shipments/:id/print" element={<ShipmentLabelPrintPage />} />
       </Route>
 
       {/* Protected doctor routes */}

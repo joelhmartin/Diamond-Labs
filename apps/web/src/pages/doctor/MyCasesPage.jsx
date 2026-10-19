@@ -44,7 +44,7 @@ export function MyCasesPage() {
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
           <table className="w-full text-left text-sm">
             <thead className="bg-gray-50 text-xs uppercase text-gray-500">
-              <tr><th className="px-4 py-3">Case</th><th className="px-4 py-3">Patient</th><th className="px-4 py-3">Device</th><th className="px-4 py-3">Submitted</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Due</th></tr>
+              <tr><th className="px-4 py-3">Case</th><th className="px-4 py-3">Patient</th><th className="px-4 py-3">Device</th><th className="px-4 py-3">Submitted</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Due</th><th className="px-4 py-3">Tracking</th></tr>
             </thead>
             <tbody>
               {cases.map((c) => (
@@ -58,6 +58,16 @@ export function MyCasesPage() {
                     {c.isRemake && <span className="ml-1 inline-flex items-center gap-0.5 text-[11px] font-semibold text-violet-700"><RotateCcw size={10} /> Remake</span>}
                   </td>
                   <td className="px-4 py-3 text-gray-600">{formatUsDate(c.dueDate) || "—"}</td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {c.tracking ? (
+                      <>
+                        {c.tracking.url
+                          ? <a href={c.tracking.url} target="_blank" rel="noreferrer" className="text-brand-600 hover:underline">{c.tracking.carrier} {c.tracking.trackingNumber}</a>
+                          : <span>{c.tracking.carrier} {c.tracking.trackingNumber}</span>}
+                        {c.tracking.deliveredAt && <div className="text-[11px] text-emerald-700">Delivered {dateText(c.tracking.deliveredAt)}</div>}
+                      </>
+                    ) : "—"}
+                  </td>
                 </tr>
               ))}
             </tbody>

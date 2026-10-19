@@ -9,6 +9,8 @@
  *   any non-terminal → on_hold (reason) → back to where it was held from
  *   any non-terminal → cancelled (reason)
  */
+import { trackingUrl, carrierName } from "../shipping/shipping.js";
+
 export const LAB_ORDER_STATUSES = [
   "received", "in_production", "quality_check", "ready_to_ship", "shipped", "on_hold", "cancelled",
 ];
@@ -47,8 +49,11 @@ export function isTerminalLabStatus(status) {
  * resumes; an on-hold row without a usable one resumes at received rather
  * than being stuck with no way out but cancel.
  */
-export function allowedNextStatuses(status, { heldFrom = null } = {}) {
+export function allowedNextStatuses(status, { heldFrom = null, labelled = false } = {}) {
   if (!LAB_ORDER_STATUSES.includes(status) || isTerminalLabStatus(status)) return [];
+  // A labelled order (live shipping label) only ships: anything else would
+  // strand the label, so staff void the label first.
+  if (labelled) return status === "ready_to_ship" ? ["shipped"] : [];
   if (status === "on_hold") {
     const resume = FLOW[heldFrom] ? heldFrom : "received";
     return [resume, "cancelled"];
@@ -137,6 +142,18 @@ export function caseSummary(caseRow) {
 }
 
 /**
+ * Tracking a doctor may see: only for a SHIPPED lab order whose shipment has
+ * a tracking number and wasn't voided (a label bought today can still be
+ * voided tomorrow). Carrier, number, public link and delivered date; nothing
+ * else from the shipment.
+ */
+export function doctorTracking(labOrder) {
+  const s = labOrder?.shipment;
+  if (labOrder?.status !== "shipped" || !s?.trackingNumber || s.status === "voided") return null;
+  return { carrier: carrierName(s), trackingNumber: s.trackingNumber, url: trackingUrl(s.carrier, s.trackingNumber), deliveredAt: s.deliveredAt ?? null };
+}
+
+/**
  * One row of a doctor's "My cases".
  * @param {object} caseRow   DECRYPTED rx_cases row (or the redacted placeholder a failed decrypt yields)
  * @param {Array}  labOrders lab_orders rows for this case — only allow-listed fields are read
@@ -154,5 +171,6 @@ export function doctorCaseView(caseRow, labOrders = []) {
     dueDate: current?.dueDate ?? caseRow.dueDate ?? null,
     isRemake: Boolean(current?.isRemake),
     orderNumber: current?.orderNumber ?? null,
+    tracking: doctorTracking(current),
   };
 }

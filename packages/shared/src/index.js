@@ -39,3 +39,7 @@ export * from "./money.js";
 export * from "./billing/billing.js";
 export * from "./billing/allocation.js";
 export * from "./schemas/billing.schema.js";
+
+// Shipping
+export * from "./shipping/shipping.js";
+export * from "./schemas/shipping.schema.js";

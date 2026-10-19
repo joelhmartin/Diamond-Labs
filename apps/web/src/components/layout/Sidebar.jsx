@@ -18,6 +18,7 @@ import {
   LayoutGrid,
   Building2,
   Landmark,
+  Truck,
 } from "lucide-react";
 import { brand } from "../../config/brand.js";
 import { isStaffRole } from "@my-app/shared";
@@ -35,6 +36,7 @@ const mainItems = [
 const staffItems = [
   { label: "Production", to: ROUTES.LAB_BOARD,      icon: LayoutGrid },
   { label: "Rx Cases",   to: ROUTES.ADMIN_RX_CASES, icon: ClipboardCheck },
+  { label: "Shipments",  to: ROUTES.ADMIN_SHIPMENTS, icon: Truck },
 ];
 
 const adminItems = [

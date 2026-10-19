@@ -7,10 +7,9 @@ import { useToast } from "../../components/ui/Toast.jsx";
 import { Modal } from "../../components/ui/Modal.jsx";
 import { ROUTES, labOrderPath } from "../../config/routes.js";
 import { describeEvent } from "../../lib/lab-board.js";
+import { INPUT } from "../../components/lab/form-styles.js";
+import { ShippingPanel } from "../../components/lab/ShippingPanel.jsx";
 import { errorText, blobErrorText, isStale, openInNewTab, openPdf } from "../../lib/requests.js";
-
-const INPUT =
-  "w-full px-3 py-2 rounded-lg bg-white border border-surface-300/60 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10";
 
 function moveLabel(from, to) {
   if (to === "on_hold") return "Put on hold";
@@ -128,8 +127,8 @@ export function LabOrderDetailPage() {
     );
   }
 
-  const { order, lines, events, rxCase, files, shopOrder } = detail;
-  const moves = allowedNextStatuses(order.status, { heldFrom: order.heldFrom });
+  const { order, lines, events, rxCase, files, shopOrder, shipment } = detail;
+  const moves = allowedNextStatuses(order.status, { heldFrom: order.heldFrom, labelled: Boolean(order.shipmentId) });
   const answerGroups = rxCase ? groupRxAnswers(getRxForm(rxCase.formType), rxCase.formData) : [];
   const devices = lines.filter((l) => !l.noteOnly);
   const instructions = lines.filter((l) => l.noteOnly);
@@ -278,6 +277,8 @@ export function LabOrderDetailPage() {
         </div>
 
         <div className="space-y-5">
+          <ShippingPanel order={order} shipment={shipment} onChanged={load} />
+
           <Panel title="Status">
             <div className="flex flex-col gap-2">
               {moves.length === 0 && <p className="text-sm text-navy/50">This order is closed.</p>}

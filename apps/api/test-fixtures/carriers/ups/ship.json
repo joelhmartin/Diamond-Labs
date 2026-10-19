@@ -1,0 +1,18 @@
+{
+  "ShipmentResponse": {
+    "Response": { "ResponseStatus": { "Code": "1", "Description": "Success" } },
+    "ShipmentResults": {
+      "ShipmentCharges": { "TotalCharges": { "CurrencyCode": "USD", "MonetaryValue": "14.86" } },
+      "NegotiatedRateCharges": { "TotalCharge": { "CurrencyCode": "USD", "MonetaryValue": "11.42" } },
+      "ShipmentIdentificationNumber": "1Z999AA10123456784",
+      "PackageResults": {
+        "TrackingNumber": "1Z999AA10123456784",
+        "ShippingLabel": {
+          "ImageFormat": { "Code": "GIF" },
+          "GraphicImage": "R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
+          "HTMLImage": "PGh0bWw+PC9odG1sPg=="
+        }
+      }
+    }
+  }
+}

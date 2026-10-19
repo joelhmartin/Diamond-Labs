@@ -1,15 +1,15 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { isoDateIn, LAB_TIMEZONE, CREDIT_SOURCE, manualPaymentSource } from "@my-app/shared";
 import { db } from "../../config/database.js";
 import { redis } from "../../config/redis.js";
 import { env } from "../../config/env.js";
 import { PRICING } from "../../config/pricing.js";
-import { invoices, invoiceLines, invoicePayments, users } from "../../db/schema/index.js";
+import { invoices, invoicePayments, users } from "../../db/schema/index.js";
 import { createId } from "../../lib/id.js";
 import { withInvoiceLocks, InvoiceLockedError } from "../../lib/payment-helpers.js";
 import { paidCentsByInvoice, openInvoicesForClient } from "./ledger.service.js";
-import { auditInvoice, loadLines } from "./invoices.service.js";
-import { sealInvoice, openInvoice, sealLine, sealLedgerRow } from "./invoice-crypto.js";
+import { auditInvoice, loadLines, applyLinePlan, commitPatch } from "./invoices.service.js";
+import { openInvoice, sealLedgerRow } from "./invoice-crypto.js";
 import {
   InvoiceError, assertFreshInvoice, planLineEdit, planIssue, planVoid, planCredit, planManualPayment, deriveBalance,
 } from "./invoice-rules.js";
@@ -31,16 +31,6 @@ async function lockInvoice(tx, id) {
   return openInvoice(row);
 }
 
-async function commitPatch(tx, invoice, patch) {
-  const [updated] = await tx
-    .update(invoices)
-    .set(sealInvoice(patch))
-    .where(and(eq(invoices.id, invoice.id), eq(invoices.version, invoice.version)))
-    .returning();
-  if (!updated) throw new InvoiceError("STALE", "This invoice changed — reload.");
-  return openInvoice(updated);
-}
-
 /** Run fn holding the card-payment lock on each invoice; a held lock is a 409 LOCKED. */
 async function underInvoiceLocks(invoiceIds, fn) {
   try {
@@ -59,12 +49,7 @@ export function editDraft(id, { edit, expectedVersion, byUserId }, database = db
     const invoice = await lockInvoice(tx, id);
     assertFreshInvoice(invoice, expectedVersion);
     const plan = planLineEdit(invoice, await loadLines(tx, id), edit, { now: new Date(), taxRateBps: PRICING.taxRateBps });
-    if (plan.op.insert) await tx.insert(invoiceLines).values(sealLine({ ...plan.op.insert, id: createId() }));
-    if (plan.op.update) await tx.update(invoiceLines).set(sealLine(plan.op.update.values)).where(eq(invoiceLines.id, plan.op.update.id));
-    if (plan.op.delete) await tx.delete(invoiceLines).where(eq(invoiceLines.id, plan.op.delete));
-    const updated = await commitPatch(tx, invoice, plan.patch);
-    await auditInvoice(tx, "invoice.edited", invoice, byUserId, plan.audit);
-    return updated;
+    return applyLinePlan(tx, invoice, plan, byUserId);
   });
 }
 

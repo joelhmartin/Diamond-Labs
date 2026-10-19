@@ -1,0 +1,24 @@
+{
+  "transactionId": "fixture-rate",
+  "output": {
+    "rateReplyDetails": [
+      {
+        "serviceType": "FEDEX_GROUND",
+        "serviceName": "FedEx Ground®",
+        "packagingType": "YOUR_PACKAGING",
+        "ratedShipmentDetails": [
+          { "rateType": "ACCOUNT", "totalNetCharge": 12.38 },
+          { "rateType": "LIST", "totalNetCharge": 15.9 }
+        ],
+        "commit": { "dateDetail": { "dayFormat": "2026-10-23T23:59:00" } }
+      },
+      {
+        "serviceType": "FEDEX_2_DAY",
+        "serviceName": "FedEx 2Day®",
+        "packagingType": "YOUR_PACKAGING",
+        "ratedShipmentDetails": [{ "rateType": "LIST", "totalNetCharge": 31.07 }],
+        "commit": { "dateDetail": { "dayFormat": "2026-10-22T16:30:00" } }
+      }
+    ]
+  }
+}

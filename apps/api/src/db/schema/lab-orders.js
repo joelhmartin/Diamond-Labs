@@ -52,6 +52,9 @@ export const labOrders = pgTable("lab_orders", {
   // Encrypted free text (see header).
   holdReason: text("hold_reason"),
   labNotes: text("lab_notes"),
+  // The current shipment (piece 4). One shipment can carry several orders
+  // ("ship together"); voiding clears it. History lives in lab_order_events (type "shipment").
+  shipmentId: varchar("shipment_id", { length: 128 }),
   // Optimistic concurrency: every mutation increments it; a client that saw
   // an older version gets 409 "This order changed — reload".
   version: integer("version").notNull().default(1),
@@ -67,6 +70,7 @@ export const labOrders = pgTable("lab_orders", {
   index("lab_orders_source_lookup_idx").on(t.source, t.sourceId),
   index("lab_orders_status_idx").on(t.status),
   index("lab_orders_client_idx").on(t.clientUserId),
+  index("lab_orders_shipment_idx").on(t.shipmentId),
 ]);
 
 /** Snapshotted at release: later catalog or case edits never change a job on the bench. */
@@ -86,7 +90,7 @@ export const labOrderLines = pgTable("lab_order_lines", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("lab_order_lines_order_idx").on(t.labOrderId)]);
 
-/** Append-only history; drives the timeline. type: status | assign | department | due | note | hold | release */
+/** Append-only history; drives the timeline. type: status | assign | department | due | note | hold | release | shipment */
 export const labOrderEvents = pgTable("lab_order_events", {
   id: varchar("id", { length: 128 }).primaryKey(),
   labOrderId: varchar("lab_order_id", { length: 128 }).notNull(),
@@ -98,4 +102,8 @@ export const labOrderEvents = pgTable("lab_order_events", {
   // Encrypted free text.
   note: text("note"),
   at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [index("lab_order_events_order_idx").on(t.labOrderId, t.at)]);
+}, (t) => [
+  index("lab_order_events_order_idx").on(t.labOrderId, t.at),
+  // The Shipments list filters events by type = 'shipment' and the shipment id in to_value.
+  index("lab_order_events_type_to_idx").on(t.type, t.to),
+]);
