@@ -53,10 +53,14 @@ async function smoke(adapter, config) {
     writeFileSync(file, Buffer.from(label.labelData, "base64"));
     console.log(`  saved ${file}`);
   }
-  const [tracked] = await adapter.track([label.trackingNumber]);
-  console.log(`✓ ${adapter.label} track: status=${tracked?.status ?? "unmapped"} rawCode=${tracked?.carrierCode ?? "-"}${tracked?.error ? ` error=${tracked.error.code}: ${tracked.error.message}` : ""}`);
-  const voided = await adapter.voidLabel(label);
-  if (!voided.ok) throw new Error(`void failed: ${voided.reason}`);
+  try {
+    const [tracked] = await adapter.track([label.trackingNumber]);
+    console.log(`✓ ${adapter.label} track: status=${tracked?.status ?? "unmapped"} rawCode=${tracked?.carrierCode ?? "-"}${tracked?.error ? ` error=${tracked.error.code}: ${tracked.error.message}` : ""}`);
+  } finally {
+    // The sandbox label is always voided once bought, even when tracking throws.
+    const voided = await adapter.voidLabel(label);
+    if (!voided.ok) throw new Error(`void failed: ${voided.reason}`);
+  }
   console.log(`✓ ${adapter.label} void`);
 }
 

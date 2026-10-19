@@ -37,11 +37,58 @@ Admin › Shipments › Carriers as disabled, and the panel says why.
    - Email the scans with the Label Cover Sheet to label@fedex.com.
    - Check whether UPS has an equivalent gate on the developer portal (unverified).
 5. **Production.** Set `CARRIER_ENV=production` and the `LABEL_FORMAT` that matches the printer.
-6. **Tracking job.** Run `shipping-tracking-sync` every 2 hours. This is NOT the AutoPay setup as-is: the existing `diamond-labs-jobs` Cloud Run Job (`docs/autopay-operations.md` §1.3) has fixed args (`autopay --live`) and autopay-only secrets, so pointing a scheduler at it unchanged would run AutoPay, and a sync run there would silently check 0 shipments (no carrier config). Use one of:
-   - **A second Job** (cleaner): create `diamond-labs-shipping-sync` from the same image with `--args=apps/api/src/jobs/cli.js,shipping-tracking-sync,--live`; or
-   - **Scheduler overrides** on `diamond-labs-jobs`: the Scheduler HTTP body for `:run` carries `{"overrides":{"containerOverrides":[{"args":["apps/api/src/jobs/cli.js","shipping-tracking-sync","--live"]}]}}`.
+6. **Tracking job.** Run `shipping-tracking-sync` every 2 hours. This is NOT the AutoPay setup as-is: the existing `diamond-labs-jobs` Cloud Run Job (`docs/autopay-operations.md` §1.3) has fixed args (`autopay --live`) and autopay-only secrets, so pointing a scheduler at it unchanged would run AutoPay, and a sync run there would silently check 0 shipments (no carrier config). Variables below (`$PROJECT_ID`, `$REGION`, `$IMAGE`, `$SQL_INSTANCE`, `$RUNTIME_SA`, `$EXISTING_SECRETS`) are defined in `docs/autopay-operations.md` §1 and §1.1.
 
-   Either way that Job needs, besides the database/JWT secrets it already has: `UPS_*`, `FEDEX_*`, `LAB_*`, `CARRIER_ENV`, `LABEL_FORMAT` (env or Secret Manager), and the `PHI_ENCRYPTION_KEY` secret (shipment rows carry ship-to details). Set `--task-timeout` to at least **40m**: one run checks up to 150 shipments, and the UPS worst case is 15 s each. Keep `--max-retries=0` (the job takes a per-name lock). Create a separate Scheduler job (`0 */2 * * *`) and invoker binding as in §1.4-1.5. Do one dry run first (omit `--live`), then live.
+   **What the Job needs.** Copy `$EXISTING_SECRETS` (§1.1: the secret references the running API service uses; it already holds `DATABASE_URL`, `JWT_SECRET`, `PHI_ENCRYPTION_KEY` and the mail settings). Make sure it includes the PHI key (shipment rows carry ship-to details) and the mail variables, because the sync also sends the shipped email: `MAILGUN_API_KEY` (secret), `MAILGUN_DOMAIN`, `MAILGUN_API_BASE`, `EMAIL_FROM`, `APP_URL` (must be the real public origin: the email links use it) and `SHIPPED_EMAIL_ENABLED`. Add the carrier and lab settings, as secrets or plain env: `UPS_CLIENT_ID`, `UPS_CLIENT_SECRET`, `UPS_ACCOUNT_NUMBER`, `FEDEX_API_KEY`, `FEDEX_SECRET_KEY`, `FEDEX_ACCOUNT_NUMBER`, `LAB_NAME`, `LAB_PHONE`, `LAB_ADDRESS_LINE1`, `LAB_ADDRESS_LINE2`, `LAB_CITY`, `LAB_STATE`, `LAB_ZIP`, `CARRIER_ENV`, `LABEL_FORMAT`. Without the carrier settings the sync silently checks 0 shipments. Set `--task-timeout=40m` or more: one run checks up to 150 shipments, and the UPS worst case is 15 s each. Keep `--max-retries=0` (the job takes a per-name lock).
+
+   Choose one:
+
+   **A. A second Job (cleaner).** Same image and service account as §1.3, different args and secrets:
+
+   ```bash
+   gcloud run jobs create diamond-labs-shipping-sync \
+     --project=$PROJECT_ID --region=$REGION --image=$IMAGE \
+     --command=node \
+     --args=apps/api/src/jobs/cli.js,shipping-tracking-sync,--live \
+     --service-account=$RUNTIME_SA --set-cloudsql-instances=$SQL_INSTANCE \
+     --set-secrets="$EXISTING_SECRETS,UPS_CLIENT_ID=ups-client-id:latest,UPS_CLIENT_SECRET=ups-client-secret:latest,UPS_ACCOUNT_NUMBER=ups-account-number:latest,FEDEX_API_KEY=fedex-api-key:latest,FEDEX_SECRET_KEY=fedex-secret-key:latest,FEDEX_ACCOUNT_NUMBER=fedex-account-number:latest" \
+     --set-env-vars="CARRIER_ENV=production,LABEL_FORMAT=image,LAB_PHONE=...,LAB_ADDRESS_LINE1=...,LAB_CITY=...,LAB_STATE=...,LAB_ZIP=..." \
+     --max-retries=0 --task-timeout=40m
+   ```
+
+   (Secret names above are examples: use the ones created in step 1. Add `SHIPPED_EMAIL_ENABLED` to the env vars only if it is not already in `$EXISTING_SECRETS`.) Dry run first, which only counts and writes nothing (omits `--live`):
+
+   ```bash
+   gcloud run jobs execute diamond-labs-shipping-sync \
+     --project=$PROJECT_ID --region=$REGION \
+     --args=apps/api/src/jobs/cli.js,shipping-tracking-sync --wait
+   ```
+
+   Then schedule it (invoker binding as in §1.4):
+
+   ```bash
+   gcloud scheduler jobs create http shipping-tracking-sync-2h \
+     --project=$PROJECT_ID --location=$REGION \
+     --schedule="0 */2 * * *" --time-zone="America/Chicago" \
+     --uri="https://${REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${PROJECT_ID}/jobs/diamond-labs-shipping-sync:run" \
+     --http-method=POST \
+     --oauth-service-account-email="autopay-scheduler-invoker@${PROJECT_ID}.iam.gserviceaccount.com"
+   ```
+
+   **B. Scheduler overrides on `diamond-labs-jobs`.** Add the carrier, lab and mail settings above to that Job (`gcloud run jobs update`), raise its `--task-timeout` to 40m or more (this also affects AutoPay runs), and have Scheduler override the args per run:
+
+   ```bash
+   gcloud scheduler jobs create http shipping-tracking-sync-2h \
+     --project=$PROJECT_ID --location=$REGION \
+     --schedule="0 */2 * * *" --time-zone="America/Chicago" \
+     --uri="https://${REGION}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${PROJECT_ID}/jobs/diamond-labs-jobs:run" \
+     --http-method=POST \
+     --headers="Content-Type=application/json" \
+     --message-body='{"overrides":{"containerOverrides":[{"args":["apps/api/src/jobs/cli.js","shipping-tracking-sync","--live"]}]}}' \
+     --oauth-service-account-email="autopay-scheduler-invoker@${PROJECT_ID}.iam.gserviceaccount.com"
+   ```
+
+   Dry run for this option: `gcloud run jobs execute diamond-labs-jobs --project=$PROJECT_ID --region=$REGION --args=apps/api/src/jobs/cli.js,shipping-tracking-sync --wait`.
 7. **Billing.** The lab chooses `SHIPPING_CHARGE_POLICY`.
 
 ## Alerts (Cloud Logging)
