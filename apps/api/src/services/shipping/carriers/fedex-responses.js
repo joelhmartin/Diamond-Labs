@@ -5,7 +5,8 @@ import { dollarsToCents as cents, emptyTrackResult } from "./carrier-util.js";
 /** Pure FedEx response parsers. Dollars (JSON numbers) become cents HERE, once. */
 const tidy = (name) => (name ? String(name).replace(/[®™]/g, "").trim() : null);
 /** The account (negotiated) rate when FedEx sent one, else the first. */
-const accountCharge = (details = []) => (details.find((d) => /ACCOUNT/.test(d?.rateType ?? "")) ?? details[0])?.totalNetCharge;
+const accountDetail = (details = []) => details.find((d) => /ACCOUNT/.test(d?.rateType ?? ""));
+const accountCharge = (details = []) => (accountDetail(details) ?? details[0])?.totalNetCharge;
 const place = (loc) => [loc?.city, loc?.stateOrProvinceCode].filter(Boolean).join(", ") || null;
 const when = (s) => {
   const d = s ? new Date(s) : null;
@@ -47,7 +48,8 @@ export function parseFedexLabel(body, { serviceCode, labelFormat }) {
     carrierShipmentId: s.masterTrackingNumber ?? trackingNumber,
     labelFormat: labelFormat === "zpl" ? "zpl" : "png",
     labelData: doc.encodedLabel,
-    chargeCents: cents(accountCharge(s?.completedShipmentDetail?.shipmentRating?.shipmentRateDetails)),
+    // ACCOUNT-rated only: a list price recorded as our cost would over-bill (R6a).
+    chargeCents: cents(accountDetail(s?.completedShipmentDetail?.shipmentRating?.shipmentRateDetails)?.totalNetCharge),
     currency: "USD",
     serviceCode,
     serviceName: tidy(s.serviceName) || `FedEx ${serviceCode}`,

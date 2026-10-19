@@ -225,6 +225,13 @@
       "when": 1792438050512,
       "tag": "0031_light_the_leader",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1792438911656,
+      "tag": "0032_dark_songbird",
+      "breakpoints": true
     }
   ]
 }

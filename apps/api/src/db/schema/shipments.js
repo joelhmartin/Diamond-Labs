@@ -28,7 +28,8 @@ export const shipments = pgTable("shipments", {
   carrierShipmentId: varchar("carrier_shipment_id", { length: 80 }),
   trackingNumber: varchar("tracking_number", { length: 60 }),
   status: varchar("status", { length: 20 }).notNull().default("label_created"),
-  chargeCents: integer("charge_cents").notNull().default(0),
+  // null = the carrier reported no readable charge (never coerced to 0).
+  chargeCents: integer("charge_cents"),
   currency: varchar("currency", { length: 3 }).notNull().default("USD"),
   // { preset, weightOz, lengthIn, widthIn, heightIn }
   parcel: jsonb("parcel").notNull(),

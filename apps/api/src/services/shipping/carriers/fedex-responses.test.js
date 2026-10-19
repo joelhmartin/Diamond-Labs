@@ -28,6 +28,12 @@ test("label: an unreadable or missing charge is null, never 0", () => {
   assert.equal(parseFedexLabel(garbled, { serviceCode: "FEDEX_GROUND" }).chargeCents, null);
 });
 
+test("label: a list-only rating is not our cost, so the charge is null (rates may still fall back to list)", () => {
+  const listOnly = structuredClone(fixture("fedex", "ship"));
+  listOnly.output.transactionShipments[0].completedShipmentDetail.shipmentRating.shipmentRateDetails = [{ rateType: "LIST", totalNetCharge: 20.5 }];
+  assert.equal(parseFedexLabel(listOnly, { serviceCode: "FEDEX_GROUND" }).chargeCents, null);
+});
+
 test("cancel: confirmed or FedEx's reason", () => {
   assert.deepEqual(parseFedexCancel(fixture("fedex", "cancel")), { ok: true });
   assert.deepEqual(parseFedexCancel({ output: { cancelledShipment: false, message: "Already tendered" } }), { ok: false, reason: "Already tendered" });

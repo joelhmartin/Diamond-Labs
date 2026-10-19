@@ -23,6 +23,7 @@ test("a shipment carries the carrier, money in cents, snapshots and the label", 
     "voidedAt", "lastTrackedAt", "trackingError", "createdAt", "updatedAt",
   ]);
   assert.equal(shipments.chargeCents.columnType, "PgInteger");
+  assert.equal(shipments.chargeCents.notNull, false, "null = no readable charge");
   assert.equal(shipments.status.default, "label_created");
   assert.equal(shipments.labelData.notNull, false, "a manual shipment has no label");
   assert.equal(shipments.trackingNumber.notNull, false, "a hand delivery has no tracking number");
