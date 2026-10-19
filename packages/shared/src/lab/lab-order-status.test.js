@@ -2,7 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   LAB_ORDER_STATUSES, LAB_BOARD_COLUMNS, LAB_STATUS_LABELS, allowedNextStatuses, canMoveLabOrder,
-  reasonRequiredFor, isOverdue, isoDateIn, doctorStatusFor, doctorCaseView, formatUsDate, formatLabDate, caseSummary,
+  reasonRequiredFor, isOverdue, isoDateIn, doctorStatusFor, doctorCaseView, doctorTracking, formatUsDate, formatLabDate, caseSummary,
 } from "./lab-order-status.js";
 
 // The whole table, written out. Every pair not listed here must be refused.
@@ -101,7 +101,7 @@ test("a case on hold shows On hold to the doctor and never the reason, notes, or
     assert.ok(!json.includes(secret), `leaked ${secret}`);
   }
   assert.deepEqual(Object.keys(view).sort(), [
-    "caseNumber", "deviceSummary", "dueDate", "id", "isRemake", "orderNumber", "patientName", "status", "submittedAt",
+    "caseNumber", "deviceSummary", "dueDate", "id", "isRemake", "orderNumber", "patientName", "status", "submittedAt", "tracking",
   ]);
 });
 
@@ -156,4 +156,28 @@ test("a labelled order only ships: hold, cancel and back-to-QC would strand its 
   assert.deepEqual(allowedNextStatuses("ready_to_ship", { labelled: true }), ["shipped"]);
   assert.deepEqual(allowedNextStatuses("ready_to_ship", { labelled: false }), ["shipped", "quality_check", "on_hold", "cancelled"]);
   assert.deepEqual(allowedNextStatuses("shipped", { labelled: true }), []);
+});
+
+const shippedLo = {
+  status: "shipped", isRemake: false, orderNumber: 100245, dueDate: null, createdAt: "2026-10-02T10:00:00Z",
+  shipment: { carrier: "ups", serviceName: "UPS Ground", trackingNumber: "1Z999AA10123456784", status: "in_transit", deliveredAt: null },
+};
+
+test("a shipped case shows carrier, number, link and delivered date — nothing else from the shipment", () => {
+  assert.deepEqual(doctorCaseView(caseRow, [shippedLo]).tracking, {
+    carrier: "UPS", trackingNumber: "1Z999AA10123456784", url: "https://www.ups.com/track?loc=en_US&tracknum=1Z999AA10123456784", deliveredAt: null,
+  });
+});
+
+test("no tracking before the order ships (a label can still be voided), for a voided label, or without a number", () => {
+  assert.equal(doctorTracking({ ...shippedLo, status: "ready_to_ship" }), null);
+  assert.equal(doctorTracking({ ...shippedLo, shipment: { ...shippedLo.shipment, status: "voided" } }), null);
+  assert.equal(doctorTracking({ ...shippedLo, shipment: { ...shippedLo.shipment, trackingNumber: null } }), null);
+  assert.equal(doctorTracking({ ...shippedLo, shipment: null }), null);
+  assert.equal(doctorTracking(null), null);
+});
+
+test("a manual shipment shows what staff typed, with no link", () => {
+  const t = doctorTracking({ ...shippedLo, shipment: { carrier: "manual", serviceName: "Lone Star Courier", trackingNumber: "LS-1234567", status: "in_transit", deliveredAt: null } });
+  assert.deepEqual(t, { carrier: "Lone Star Courier", trackingNumber: "LS-1234567", url: null, deliveredAt: null });
 });

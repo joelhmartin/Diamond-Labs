@@ -1,3 +1,4 @@
+import { trackingUrl, carrierName } from "../shipping/shipping.js";
 /**
  * Lab order status rules — the ONE table both the API (lab-order-rules.js,
  * lab.routes.js) and the web (board, order detail, doctor "My cases") read,
@@ -144,6 +145,18 @@ export function caseSummary(caseRow) {
  * @param {object} caseRow   DECRYPTED rx_cases row (or the redacted placeholder a failed decrypt yields)
  * @param {Array}  labOrders lab_orders rows for this case — only allow-listed fields are read
  */
+/**
+ * Tracking a doctor may see: only for a SHIPPED lab order whose shipment has
+ * a tracking number and wasn't voided (a label bought today can still be
+ * voided tomorrow). Carrier, number, public link and delivered date; nothing
+ * else from the shipment.
+ */
+export function doctorTracking(labOrder) {
+  const s = labOrder?.shipment;
+  if (labOrder?.status !== "shipped" || !s?.trackingNumber || s.status === "voided") return null;
+  return { carrier: carrierName(s), trackingNumber: s.trackingNumber, url: trackingUrl(s.carrier, s.trackingNumber), deliveredAt: s.deliveredAt ?? null };
+}
+
 export function doctorCaseView(caseRow, labOrders = []) {
   const current = currentLabOrder(labOrders);
   const { patientName, deviceSummary } = caseSummary(caseRow);
@@ -157,5 +170,6 @@ export function doctorCaseView(caseRow, labOrders = []) {
     dueDate: current?.dueDate ?? caseRow.dueDate ?? null,
     isRemake: Boolean(current?.isRemake),
     orderNumber: current?.orderNumber ?? null,
+    tracking: doctorTracking(current),
   };
 }

@@ -3,6 +3,7 @@ import { env } from "../config/env.js";
 import { stagingRewrite } from "../config/app-env.js";
 import { formatUsDate } from "@my-app/shared";
 import { formatCents } from "../lib/money.js";
+import { labIdentity } from "../config/lab-identity.js";
 
 /**
  * Dispatch an email through Mailgun's HTTP API. Returns `true` when the message
@@ -578,4 +579,38 @@ export async function sendStatementNotice({ to, monthLabel, closingCents }) {
       <p style="margin:0;font-size:12px;color:#8a98a6;">Sign in to the Diamond Orthotic Laboratory portal to download the statement.</p>
     </div>`;
   return deliver({ to, subject: `${monthLabel} statement — Diamond Orthotic Laboratory`, html });
+}
+
+/**
+ * "Your order has shipped" — one per shipment, after the box leaves
+ * (lab-shipping.service markShipmentShipped). Order numbers, carrier, tracking
+ * number and link ONLY: it reads nothing else from its input, so shipping
+ * never carries clinical content. Sent only when there is a tracking number.
+ * Never throws (deliver()).
+ */
+export async function sendShippedNotice({ to, orderNumbers = [], carrier, trackingNumber, trackingUrl = null }) {
+  if (!to || !trackingNumber) return false;
+  const lab = labIdentity().name;
+  const numbers = orderNumbers.map((n) => `#${n}`).join(", ");
+  const button = trackingUrl
+    ? `<p style="margin:0 0 24px;"><a href="${esc(trackingUrl)}" style="display:inline-block;padding:12px 24px;background:#13AEEF;color:#fff;text-decoration:none;border-radius:999px;font-weight:600;">Track your package</a></p>`
+    : "";
+  const html = `
+    <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a2733;">
+      <h1 style="font-size:20px;margin:0 0 12px;">Your order has shipped</h1>
+      <p style="margin:0 0 6px;">Order${orderNumbers.length === 1 ? "" : "s"}: <strong>${esc(numbers)}</strong></p>
+      <p style="margin:0 0 6px;">Carrier: <strong>${esc(carrier)}</strong></p>
+      <p style="margin:0 0 20px;">Tracking number: <strong>${esc(trackingNumber)}</strong></p>
+      ${button}
+      <p style="margin:0;font-size:12px;color:#8a98a6;">${esc(lab)}</p>
+    </div>`;
+  const text = [
+    "Your order has shipped",
+    `Order${orderNumbers.length === 1 ? "" : "s"}: ${numbers}`,
+    `Carrier: ${carrier}`,
+    `Tracking number: ${trackingNumber}`,
+    trackingUrl ? `Track your package: ${trackingUrl}` : null,
+    lab,
+  ].filter(Boolean).join("\n");
+  return deliver({ to, subject: `Your order has shipped — ${lab}`, html, text });
 }

@@ -222,3 +222,9 @@ test("the order page's shipment block comes from the summary map (SUMMARY has no
   const body = source.slice(source.indexOf("export async function getLabOrderDetail"), source.indexOf("export async function labOrdersForCases"));
   assert.match(body, /shipmentSummaries\(\[order\.shipmentId\]\)/);
 });
+
+test("the doctor view's lab orders carry the current shipment's public facts only", () => {
+  const body = source.slice(source.indexOf("export async function labOrdersForCases"), source.indexOf("export async function mutateIn"));
+  assert.match(body, /leftJoin\(shipments, eq\(shipments\.id, labOrders\.shipmentId\)\)/);
+  assert.doesNotMatch(body, /labelData|shipTo|chargeCents|trackingError/);
+});

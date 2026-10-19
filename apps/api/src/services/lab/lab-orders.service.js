@@ -4,7 +4,7 @@ import { isoDateIn, isOverdue, LAB_TIMEZONE, STAFF_ROLES, caseSummary } from "@m
 import { db } from "../../config/database.js";
 import { env } from "../../config/env.js";
 import {
-  labOrders, labOrderLines, labOrderEvents, labDepartments, rxCases, rxCaseFiles, rxCaseLines, orders, users, productVariants,
+  labOrders, labOrderLines, labOrderEvents, labDepartments, rxCases, rxCaseFiles, rxCaseLines, orders, users, productVariants, shipments,
 } from "../../db/schema/index.js";
 import { createId } from "../../lib/id.js";
 import { encryptField, decryptField, fieldSealer } from "../../lib/crypto.js";
@@ -287,7 +287,10 @@ export async function getLabOrderDetail(id, now = new Date()) {
   };
 }
 
-/** The lab orders behind each case — allow-listed columns only (doctor view, Rx case detail). */
+/**
+ * The lab orders behind each case — allow-listed columns only (doctor view,
+ * Rx case detail), plus the CURRENT shipment's public facts for doctorTracking.
+ */
 export async function labOrdersForCases(caseIds) {
   const out = new Map();
   if (caseIds.length === 0) return out;
@@ -295,12 +298,18 @@ export async function labOrdersForCases(caseIds) {
     .select({
       id: labOrders.id, sourceId: labOrders.sourceId, status: labOrders.status, orderNumber: labOrders.orderNumber,
       dueDate: labOrders.dueDate, isRemake: labOrders.isRemake, createdAt: labOrders.createdAt,
+      shipCarrier: shipments.carrier, shipServiceName: shipments.serviceName, shipTracking: shipments.trackingNumber,
+      shipStatus: shipments.status, shipDeliveredAt: shipments.deliveredAt,
     })
     .from(labOrders)
+    .leftJoin(shipments, eq(shipments.id, labOrders.shipmentId))
     .where(and(eq(labOrders.source, "rx_case"), inArray(labOrders.sourceId, caseIds)));
-  for (const { sourceId, ...lo } of rows) {
+  for (const { sourceId, shipCarrier, shipServiceName, shipTracking, shipStatus, shipDeliveredAt, ...lo } of rows) {
+    const shipment = shipCarrier
+      ? { carrier: shipCarrier, serviceName: shipServiceName, trackingNumber: shipTracking, status: shipStatus, deliveredAt: shipDeliveredAt }
+      : null;
     if (!out.has(sourceId)) out.set(sourceId, []);
-    out.get(sourceId).push(lo);
+    out.get(sourceId).push({ ...lo, shipment });
   }
   return out;
 }
