@@ -61,10 +61,15 @@ export default async function labRoutes(fastify) {
     run(reply, async () => {
       const args = { ...request.body, byUserId: request.user.id };
       // A labelled order ships with its whole box (and its shipped email): lab-shipping.service markOrderShipped.
-      const { order } = request.body.to === "shipped"
+      const out = request.body.to === "shipped"
         ? await labShipping.markOrderShipped(request.params.id, args)
         : await labOrdersService.changeStatus(request.params.id, args);
+      const { order } = out;
       audit(request, "lab_order.status_changed", order.id, { to: order.status, version: order.version });
+      // Same audit as /lab/shipments/:id/mark-shipped when this move shipped a labelled box.
+      if (out.shipmentId && (out.ordersShipped.length > 0 || !out.alreadyShipped)) {
+        audit(request, "shipment.marked_shipped", out.shipmentId, { ordersShipped: out.ordersShipped, alreadyShipped: out.alreadyShipped }, "shipment");
+      }
       return { id: order.id, status: order.status, version: order.version };
     }));
 

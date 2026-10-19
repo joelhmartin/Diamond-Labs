@@ -8,7 +8,7 @@ import { ConfirmButton } from "../../components/ui/ConfirmButton.jsx";
 import { CarriersPanel } from "../../components/lab/CarriersPanel.jsx";
 import { labOrderPath, shipmentPrintPath } from "../../config/routes.js";
 import { errorText } from "../../lib/requests.js";
-import { INPUT_BASE as INPUT } from "../../components/lab/form-styles.js";
+import { INPUT_BASE } from "../../components/lab/form-styles.js";
 import { shipmentLine, shipmentStatusLabel, shipmentListParams } from "../../lib/shipping.js";
 
 const ROW_BTN = "rounded-full bg-surface-100 px-2.5 py-1 text-[11px] font-semibold text-navy hover:bg-surface-200 disabled:opacity-40";
@@ -74,16 +74,16 @@ export function ShipmentsPage() {
       <CarriersPanel carriers={carriers} />
 
       <div className="flex flex-wrap gap-2">
-        <select className={INPUT} value={filters.status} onChange={setFilter("status")}>
+        <select className={INPUT_BASE} value={filters.status} onChange={setFilter("status")}>
           <option value="">Any status</option>
           {SHIPMENT_STATUSES.map((s) => <option key={s} value={s}>{shipmentStatusLabel(s)}</option>)}
         </select>
-        <select className={INPUT} value={filters.carrier} onChange={setFilter("carrier")}>
+        <select className={INPUT_BASE} value={filters.carrier} onChange={setFilter("carrier")}>
           <option value="">Any carrier</option>
           {CARRIERS.map((c) => <option key={c} value={c}>{CARRIER_LABELS[c]}</option>)}
         </select>
-        <input type="date" className={INPUT} value={filters.from} onChange={setFilter("from")} aria-label="From" />
-        <input type="date" className={INPUT} value={filters.to} onChange={setFilter("to")} aria-label="To" />
+        <input type="date" className={INPUT_BASE} value={filters.from} onChange={setFilter("from")} aria-label="From" />
+        <input type="date" className={INPUT_BASE} value={filters.to} onChange={setFilter("to")} aria-label="To" />
       </div>
 
       {loadError && !data ? (

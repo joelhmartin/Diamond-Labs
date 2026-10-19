@@ -588,10 +588,12 @@ export async function sendStatementNotice({ to, monthLabel, closingCents }) {
  * never carries clinical content. Sent only when there is a tracking number.
  * Never throws (deliver()).
  */
-export async function sendShippedNotice({ to, orderNumbers = [], carrier, trackingNumber, trackingUrl = null }) {
+export async function sendShippedNotice({ to, orderNumbers = [], shopOrderNumber = null, carrier, trackingNumber, trackingUrl = null }) {
   if (!to || !trackingNumber) return false;
   const lab = labIdentity().name;
-  const numbers = orderNumbers.map((n) => `#${n}`).join(", ");
+  const labNumbers = orderNumbers.map((n) => `#${n}`).join(", ");
+  // A guest shop customer knows their shop order number (DOL-…), not our lab order number: lead with it.
+  const numbers = shopOrderNumber ? `${shopOrderNumber} (lab order ${labNumbers})` : labNumbers;
   const button = typeof trackingUrl === "string" && trackingUrl.startsWith("https:")
     ? `<p style="margin:0 0 24px;"><a href="${esc(trackingUrl)}" style="display:inline-block;padding:12px 24px;background:#13AEEF;color:#fff;text-decoration:none;border-radius:999px;font-weight:600;">Track your package</a></p>`
     : "";

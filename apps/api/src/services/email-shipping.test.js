@@ -32,6 +32,15 @@ test("one shipped email per box: every order number, the carrier, the tracking n
   vi.unstubAllGlobals();
 });
 
+test("a shop-order box leads with the customer's shop order number, alongside the lab order number", async () => {
+  const f = capture();
+  await email.sendShippedNotice({ to: "guest@x.com", orderNumbers: [100300], shopOrderNumber: "DOL-12345678", carrier: "UPS", trackingNumber: "1Z1", trackingUrl: null });
+  const p = sent(f);
+  assert.match(p.get("html"), /DOL-12345678 \(lab order #100300\)/);
+  assert.match(p.get("text"), /Order: DOL-12345678 \(lab order #100300\)/);
+  vi.unstubAllGlobals();
+});
+
 test("a manual shipment names the carrier staff typed and has no link; no tracking number means no email", async () => {
   const f = capture();
   await email.sendShippedNotice({ to: "dr@x.com", orderNumbers: [100245], carrier: "Lone Star Courier", trackingNumber: "LS-1", trackingUrl: null });
@@ -46,7 +55,7 @@ test("a manual shipment names the carrier staff typed and has no link; no tracki
 test("the shipped email renders only order numbers, carrier and tracking — patient-looking input never appears", async () => {
   const f = capture();
   await email.sendShippedNotice({
-    to: "dr@x.com", orderNumbers: [100245], carrier: "UPS", trackingNumber: "1Z999AA10123456784", trackingUrl: null,
+    to: "dr@x.com", orderNumbers: [100245], shopOrderNumber: "DOL-12345678", carrier: "UPS", trackingNumber: "1Z999AA10123456784", trackingUrl: null,
     patientFirst: "Zelda", patientLast: "Quimby", patientName: "Zelda Quimby", deviceSummary: "Orthotic, 3/4 length",
     caseNumber: "RX-00042", formData: { notes: "plantar fasciitis" }, attachments: [{ filename: "rx.pdf" }],
   });
@@ -56,6 +65,7 @@ test("the shipped email renders only order numbers, carrier and tracking — pat
     assert.ok(!everything.includes(leaked), `${leaked} must not be rendered`);
   }
   assert.match(everything, /#100245/);
+  assert.match(everything, /DOL-12345678/);
   assert.equal(p.get("attachment"), null);
   vi.unstubAllGlobals();
 });

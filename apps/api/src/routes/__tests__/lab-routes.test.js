@@ -78,3 +78,8 @@ test("→ shipped goes through markOrderShipped (a labelled order ships its whol
   assert.match(body, /: await labOrdersService\.changeStatus\(/);
   assert.match(read("../lab-route-helpers.js"), /labErrorReply\(err\) \?\? shippingErrorReply\(err\)/);
 });
+
+test("→ shipped on a labelled order also writes the shipment.marked_shipped audit (ids and ordersShipped)", () => {
+  const body = handlerSource(labSource, 'fastify.post("/lab/orders/:id/status",');
+  assert.match(body, /out\.shipmentId[\s\S]*audit\(request, "shipment\.marked_shipped", out\.shipmentId, \{ ordersShipped: out\.ordersShipped, alreadyShipped: out\.alreadyShipped \}, "shipment"\)/);
+});

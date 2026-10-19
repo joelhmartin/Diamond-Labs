@@ -25,7 +25,7 @@ export function ordersOnShipment(shipmentId, database = db) {
 async function shopOrderFor(labOrder, database) {
   if (labOrder?.source !== "shop_order") return null;
   const [s] = await database
-    .select({ id: orders.id, email: orders.email, phone: orders.phone, shipping: orders.shipping })
+    .select({ id: orders.id, orderNumber: orders.orderNumber, email: orders.email, phone: orders.phone, shipping: orders.shipping })
     .from(orders)
     .where(eq(orders.id, labOrder.sourceId));
   return s ?? null;
@@ -62,12 +62,16 @@ export async function shipContext(labOrderId, database = db) {
   };
 }
 
-/** Who gets the shipped email: the client doctor, else the shop order's email (a guest). */
+/**
+ * Who gets the shipped email: the client doctor, else the shop order's email (a guest).
+ * `shopOrderNumber` is the customer's own order number (DOL-…) for a shop-order box.
+ */
 export async function shipmentRecipient(boxed, database = db) {
   const first = boxed[0];
   if (!first) return null;
-  if (first.clientUserId) return (await loadClient(first.clientUserId, database))?.email ?? null;
-  return (await shopOrderFor(first, database))?.email ?? null;
+  const shop = await shopOrderFor(first, database);
+  const email = first.clientUserId ? (await loadClient(first.clientUserId, database))?.email : shop?.email;
+  return email ? { email, shopOrderNumber: shop?.orderNumber ?? null } : null;
 }
 
 /**

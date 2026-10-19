@@ -1,5 +1,5 @@
 import { Loader2, AlertCircle } from "lucide-react";
-import { formatCents } from "@my-app/shared";
+import { formatCents, CARRIER_LABELS } from "@my-app/shared";
 import { INPUT } from "./form-styles.js";
 import { quoteId } from "../../lib/shipping.js";
 
@@ -22,7 +22,7 @@ export function RateChooser({ rates, stale, choice, manual, busy, carriers = [],
       {stale && <p className="mb-2 text-xs text-amber-700">The box or address changed — get rates again before buying.</p>}
       {off.map((c) => <p key={c.id} className="text-xs text-navy/40">{c.reason}</p>)}
       {rates?.errors.map((e) => (
-        <p key={e.carrier} className="flex items-center gap-1 text-xs text-red-700"><AlertCircle size={11} /> {e.carrier.toUpperCase()}: {e.message}</p>
+        <p key={e.carrier} className="flex items-center gap-1 text-xs text-red-700"><AlertCircle size={11} /> {CARRIER_LABELS[e.carrier] ?? e.carrier}: {e.message}</p>
       ))}
       <div className="mt-2 space-y-1">
         {rates?.quotes.map((q) => (
