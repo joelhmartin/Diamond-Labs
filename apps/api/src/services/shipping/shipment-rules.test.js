@@ -70,20 +70,29 @@ test("tracking: a carrier error (or no answer) is stored for staff and retried n
   assert.equal(planTrackingUpdate(base, undefined, now).patch.trackingError, "No tracking result returned.");
 });
 
-test("tracking: 'not found / no information yet' on a fresh label is no news, not a stored error", () => {
+test("tracking: 'not found / no information yet' on a label under 72h old is no news, not a stored error", () => {
+  const fresh = { ...base, status: "label_created", trackingError: "old", purchasedAt: new Date(now.getTime() - 3_600_000) };
   for (const error of [
     { carrier: "ups", code: "151044", message: "No tracking information available" },
     { carrier: "fedex", code: "TRACKING.TRACKINGNUMBER.NOTFOUND", message: "Tracking number cannot be found." },
     { carrier: "fedex", code: "NO_RESULT", message: "FedEx returned no result for this number." },
   ]) {
-    const plan = planTrackingUpdate({ ...base, status: "label_created", trackingError: "old" }, { error }, now);
+    const plan = planTrackingUpdate(fresh, { error }, now);
     assert.deepEqual(plan.patch, { lastTrackedAt: now, trackingError: null, updatedAt: now });
     assert.equal(plan.event, null);
     assert.equal(plan.moved, false);
   }
-  // once it has moved, "not found" is a real problem again
-  const moving = planTrackingUpdate({ ...base, status: "in_transit" }, { error: { carrier: "ups", code: "151044", message: "No tracking information available" } }, now);
-  assert.equal(moving.patch.trackingError, "No tracking information available");
+});
+
+test("tracking: the same answer is still an error once moving, after 72h, or when it isn't the tracking-not-found answer", () => {
+  const notFound = { error: { carrier: "ups", code: "151044", message: "No tracking information available" } };
+  const fresh = { ...base, purchasedAt: new Date(now.getTime() - 3_600_000) };
+  assert.equal(planTrackingUpdate({ ...fresh, status: "in_transit" }, notFound, now).patch.trackingError, "No tracking information available");
+  assert.equal(planTrackingUpdate({ ...fresh, purchasedAt: new Date(now.getTime() - 73 * 3_600_000) }, notFound, now).patch.trackingError, "No tracking information available");
+  assert.equal(planTrackingUpdate(base, notFound, now).patch.trackingError, "No tracking information available", "unknown purchase time is not fresh");
+  for (const error of [{ carrier: "ups", code: "HTTP_404", message: "Not found" }, { carrier: "fedex", code: "ACCOUNT.NOTFOUND", message: "Account not found" }]) {
+    assert.equal(planTrackingUpdate(fresh, { error }, now).patch.trackingError, error.message);
+  }
 });
 
 test("tracking: a moving shipment whose orders never shipped is healed on the next run", () => {

@@ -63,15 +63,20 @@ export function planVoided(shipment, { now }) {
  * scanned. Expected for a fresh label; for any other status it is a real problem.
  * (Matches UPS's "No tracking information available" and FedEx's TRACKING.TRACKINGNUMBER.NOTFOUND / NO_RESULT.)
  */
-const NO_NEWS_YET = /not\s*found|notfound|no\s+tracking\s+information|no\s+information|no[_\s]result/i;
-const isNoNewsYet = (error) => NO_NEWS_YET.test(`${error?.code ?? ""} ${error?.message ?? ""}`);
+const NO_NEWS_YET_MS = 72 * 3_600_000;
+const NO_NEWS_CODE = /TRACKINGNUMBER\.NOTFOUND|^NO_RESULT$/i;
+const NO_NEWS_MESSAGE = /no\s+tracking\s+information|tracking\s+number.{0,40}(not\s+found|cannot\s+be\s+found)/i;
+// Only the carrier's tracking-not-found answer: a 404 from a wrong path or "account not found" is a real error.
+const isNoNewsYet = (error) => NO_NEWS_CODE.test(String(error?.code ?? "")) || NO_NEWS_MESSAGE.test(String(error?.message ?? ""));
+const isFreshLabel = (shipment, now) =>
+  shipment.status === "label_created" && shipment.purchasedAt instanceof Date && now.getTime() - shipment.purchasedAt.getTime() < NO_NEWS_YET_MS;
 
 const NOTHING = { patch: null, event: null, moved: false, unknownCode: null };
 
 /**
  * One carrier answer → what to write.
  * - A terminal shipment never changes (a stale scan after "delivered" is ignored).
- * - An error, or no answer, is stored (except "not found yet" on a label_created shipment: no news) as trackingError and retried next run.
+ * - An error, or no answer, is stored (except "not found yet" on a label_created shipment bought < 72h ago: no news) as trackingError and retried next run.
  * - An unknown code changes only lastTrackedAt; the code comes back for the log.
  * - A new status writes ONE event; delivered stamps deliveredAt.
  * - `moved` = the shipment is (now) moving and its orders were never marked
@@ -80,7 +85,7 @@ const NOTHING = { patch: null, event: null, moved: false, unknownCode: null };
 export function planTrackingUpdate(shipment, result, now) {
   if (isTerminalShipmentStatus(shipment.status)) return NOTHING;
   // A label-created shipment nobody has scanned yet: "not found" is no news, not an error to show staff.
-  if (result?.error && shipment.status === "label_created" && isNoNewsYet(result.error)) {
+  if (result?.error && isFreshLabel(shipment, now) && isNoNewsYet(result.error)) {
     return { ...NOTHING, patch: { lastTrackedAt: now, trackingError: null, updatedAt: now }, noNews: true };
   }
   if (!result || result.error) {

@@ -1,6 +1,6 @@
 import { formatUsDate } from "@my-app/shared";
 import { normalizeCarrierStatus } from "./carrier-status.js";
-import { dollarsToCents as cents, emptyTrackResult } from "./carrier-util.js";
+import { dollarsToCents as cents, emptyTrackResult, isAlreadyVoidedAnswer } from "./carrier-util.js";
 
 /** Pure FedEx response parsers. Dollars (JSON numbers) become cents HERE, once. */
 const tidy = (name) => (name ? String(name).replace(/[®™]/g, "").trim() : null);
@@ -57,11 +57,10 @@ export function parseFedexLabel(body, { serviceCode, labelFormat }) {
 }
 
 /**
- * [UNVERIFIED] FedEx's "already cancelled" answer, like the cancel path itself: matched on
- * the words (and an ALREADY..CANCEL code) conservatively. Confirm in the sandbox re-void.
+ * [UNVERIFIED] FedEx's "already cancelled" answer, like the cancel path itself: matched strictly
+ * (isAlreadyVoidedAnswer) on the code and the words. Confirm in the sandbox re-void.
  */
-export const fedexAlreadyCancelled = (code, message) =>
-  /already\s+(been\s+)?(void|cancel)/i.test(String(message ?? "")) || /ALREADY.*(CANCEL|VOID)/i.test(String(code ?? ""));
+export const fedexAlreadyCancelled = isAlreadyVoidedAnswer;
 
 export function parseFedexCancel(body) {
   return body?.output?.cancelledShipment === true

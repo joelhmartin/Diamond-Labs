@@ -1,6 +1,6 @@
 import { upsServiceName } from "./ups-requests.js";
 import { normalizeCarrierStatus } from "./carrier-status.js";
-import { asList as list, dollarsToCents as cents, emptyTrackResult } from "./carrier-util.js";
+import { asList as list, dollarsToCents as cents, emptyTrackResult, isAlreadyVoidedAnswer } from "./carrier-util.js";
 
 /**
  * Pure UPS response parsers. Dollars become cents HERE, once. UPS returns an
@@ -54,7 +54,7 @@ export function parseUpsLabel(body, { serviceCode, labelFormat }) {
  * [UNVERIFIED] UPS's "already voided" answer: no code is documented, so this matches the
  * words conservatively. Confirm against the sandbox re-void (docs/shipping-operations.md).
  */
-export const upsAlreadyVoided = (code, message) => /already\s+(been\s+)?(void|cancel)/i.test(String(message ?? ""));
+export const upsAlreadyVoided = isAlreadyVoidedAnswer;
 
 export function parseUpsVoid(body) {
   const status = body?.VoidShipmentResponse?.Response?.ResponseStatus;

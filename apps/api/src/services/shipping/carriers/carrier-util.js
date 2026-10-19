@@ -27,3 +27,15 @@ export const emptyTrackResult = (trackingNumber) => ({
 
 /** The API's one-item-object-instead-of-array quirk: always a list. */
 export const asList = (v) => (v == null ? [] : Array.isArray(v) ? v : [v]);
+
+/**
+ * Does a carrier's void answer mean "this label was already voided/cancelled"?
+ * Strict on purpose: it needs "already [been] voided/cancelled" side by side, and any
+ * hint of a refusal (cannot, not allowed, unable, tendered, picked up, in transit)
+ * wins, so "already tendered, cannot cancel" or a mixed message stays a refusal.
+ */
+export function isAlreadyVoidedAnswer(code, message) {
+  const text = `${code ?? ""} ${message ?? ""}`;
+  if (/CANNOT|CAN'?T|NOT[._\s-]*ALLOWED|UNABLE|TENDERED|PICKED|PICK[._\s-]*UP|IN[._\s-]*TRANSIT/i.test(text)) return false;
+  return /ALREADY[._\s-]*(BEEN[._\s-]*)?(CANCEL|VOID)/i.test(text);
+}

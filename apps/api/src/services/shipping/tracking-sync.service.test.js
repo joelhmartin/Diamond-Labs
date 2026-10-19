@@ -63,7 +63,7 @@ test("delivered is counted and stamped; an already-shipped box isn't shipped aga
 
 test("a fresh label the carrier has no information on yet is no news: no stored error, not counted as an error", async () => {
   const ups = fakeAdapter("ups", { track: async () => [result({ status: null, error: { carrier: "ups", code: "151044", message: "No tracking information available" } })] });
-  const database = fakeTx({ selects: [[row()]], updates: [[{ id: "sh1" }]] });
+  const database = fakeTx({ selects: [[row({ purchasedAt: new Date(now.getTime() - 3_600_000) })]], updates: [[{ id: "sh1" }]] });
   const out = await syncTracking({ now, database, registry: fakeRegistry([ups]), onMoved: async () => {} });
   assert.equal(out.errors, 0);
   assert.equal(database.log.find((l) => l.op === "set").values.trackingError, null);

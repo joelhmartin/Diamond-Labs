@@ -27,3 +27,16 @@ test("emptyTrackResult and asList", () => {
   assert.deepEqual(asList({ a: 1 }), [{ a: 1 }]);
   assert.deepEqual(asList([1]), [1]);
 });
+
+test("already-voided matcher: genuine answers succeed; refusals (even ones containing 'already') do not", async () => {
+  const { isAlreadyVoidedAnswer } = await import("./carrier-util.js");
+  for (const [code, msg] of [["SHIPMENT.ALREADY.CANCELLED", "x"], [null, "Shipment has already been voided"], [null, "Already cancelled"], ["ALREADY_VOIDED", null]]) {
+    assert.equal(isAlreadyVoidedAnswer(code, msg), true, `${code} ${msg}`);
+  }
+  for (const [code, msg] of [
+    ["SHIPMENT.ALREADY.TENDERED.CANNOT.CANCEL", "x"], ["SHIPMENT.ALREADY.PICKEDUP.CANCEL.NOTALLOWED", "x"],
+    [null, "Cannot void, package in transit"], [null, "Shipment already cancelled or has been tendered"], [null, "Shipment already picked up"],
+  ]) {
+    assert.equal(isAlreadyVoidedAnswer(code, msg), false, `${code} ${msg}`);
+  }
+});

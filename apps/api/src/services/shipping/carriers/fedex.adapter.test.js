@@ -57,10 +57,15 @@ test("void never throws a carrier error: it reports FedEx's reason", async () =>
 test("void treats FedEx's already-cancelled answer as success", async () => {
   const byMessage = make([TOKEN, { status: 400, body: { errors: [{ code: "SHIPMENT.ALREADY.CANCELLED", message: "Shipment has already been cancelled" }] } }]);
   assert.deepEqual(await byMessage.fedex.voidLabel({ trackingNumber: "1" }), { ok: true });
-  const byCode = make([TOKEN, { status: 400, body: { errors: [{ code: "SHIPMENT.ALREADY.CANCELLED", message: "Cannot process" }] } }]);
+  const byCode = make([TOKEN, { status: 400, body: { errors: [{ code: "SHIPMENT.ALREADY.CANCELLED", message: "Request failed" }] } }]);
   assert.deepEqual(await byCode.fedex.voidLabel({ trackingNumber: "1" }), { ok: true });
   const ok200 = make([TOKEN, { status: 200, body: { output: { cancelledShipment: false, message: "Shipment already cancelled" } } }]);
   assert.deepEqual(await ok200.fedex.voidLabel({ trackingNumber: "1" }), { ok: true });
+});
+
+test("void: refusals whose code mentions 'already' stay refusals", async () => {
+  const r = make([TOKEN, { status: 400, body: { errors: [{ code: "SHIPMENT.ALREADY.TENDERED.CANNOT.CANCEL", message: "Cannot cancel" }] } }]);
+  assert.equal((await r.fedex.voidLabel({ trackingNumber: "1" })).ok, false);
 });
 
 test("track: batches of 30; a failed batch marks only its own numbers", async () => {

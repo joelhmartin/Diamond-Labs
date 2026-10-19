@@ -144,7 +144,8 @@ test("a shop-order box emails the guest with the shop order number (DOL-…) as 
 test("mark shipped twice (staff and the tracking sync racing): the second sends nothing", async () => {
   sentEmails.length = 0;
   const shippedA = order({ shipmentId: "sh1", status: "shipped" });
-  const tx = fakeTx({ selects: [[{ ...shipment, shippedAt: new Date() }], [shippedA]], updates: [[]] });
+  const tx = fakeTx({ selects: [[{ ...shipment, shippedAt: new Date() }], [{ ...shipment, shippedAt: new Date() }], [shippedA]], updates: [[]] });
+  // shipment read, the re-read after the lost claim (not voided), then the box: the order is already shipped and skipped
   const out = await svc.markShipmentShipped("sh1", { byUserId: null }, deps(tx));
   assert.deepEqual(out, { shipmentId: "sh1", ordersShipped: [], alreadyShipped: true });
   assert.equal(sentEmails.length, 0);

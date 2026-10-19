@@ -81,7 +81,7 @@ export async function syncTracking({
   const trackers = registry.enabled().filter((a) => a.tracks).map((a) => a.id);
   if (trackers.length === 0) return summary;
   const found = await database
-    .select({ id: shipments.id, carrier: shipments.carrier, trackingNumber: shipments.trackingNumber, status: shipments.status, shippedAt: shipments.shippedAt })
+    .select({ id: shipments.id, carrier: shipments.carrier, trackingNumber: shipments.trackingNumber, status: shipments.status, shippedAt: shipments.shippedAt, purchasedAt: shipments.purchasedAt })
     .from(shipments)
     .where(candidatesWhere({ shipmentIds, trackers, now }))
     .orderBy(sql`${shipments.lastTrackedAt} asc nulls first`)
