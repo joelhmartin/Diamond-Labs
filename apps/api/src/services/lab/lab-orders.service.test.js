@@ -33,7 +33,7 @@ test("a release claims the case before inserting, so a double click can't make t
 });
 
 test("hold reasons, lab notes and event notes are sealed on write and opened on read", () => {
-  assert.match(source, /SECRET_ORDER_FIELDS = \["holdReason", "labNotes"\]/);
+  assert.match(source, /SECRET_ORDER_FIELDS = \["holdReason", "labNotes", "legacyPatient"\]/);
   assert.match(source, /encryptField/);
   assert.match(source, /decryptField/);
 });

@@ -29,7 +29,7 @@ const actor = alias(users, "actor");
 
 // Free text staff type can name a patient, so it is encrypted at rest like
 // rx_cases' free-text fields (B4 / phi-crypto.js).
-const SECRET_ORDER_FIELDS = ["holdReason", "labNotes"];
+const SECRET_ORDER_FIELDS = ["holdReason", "labNotes", "legacyPatient"];
 
 const orderSecrets = fieldSealer(SECRET_ORDER_FIELDS);
 const sealOrder = orderSecrets.seal;

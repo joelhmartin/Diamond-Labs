@@ -54,6 +54,9 @@ Pre-check before the transaction: every plan table and column must exist live ("
 | invoices.notes, invoices.void_reason | phi | NULL (staff free text, encrypted at rest; can name a patient) |
 | invoice_lines.description | phi | `Shipping` for shipping lines; otherwise the catalog name for `code` (`product_variants.code` first, then `products.code`), else `Line`. Free-form lines are staff-typed |
 | invoice_lines.price_note | phi | NULL (why a price was overridden: staff free text, encrypted) |
+| invoices.legacy_patient | phi | NULL (Seazona's patient on an imported invoice; encrypted at rest) |
+| invoice_lines.legacy_description | phi | NULL (an imported Seazona line's text; can name a patient; encrypted) |
+| lab_orders.legacy_patient | phi | NULL (a legacy Seazona order's patient; encrypted) |
 | invoice_payments.reference | pii | NULL (staff-typed check number / ACH trace) |
 | invoice_payments.note | phi | NULL (a credit's reason: staff free text, encrypted) |
 | shipments.ship_to | pii | a fixed placeholder address (practice or guest customer address snapshot) |

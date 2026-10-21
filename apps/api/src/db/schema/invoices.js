@@ -26,6 +26,9 @@ export const invoices = pgTable("invoices", {
   labOrderId: varchar("lab_order_id", { length: 128 }),
   // Piece 5's import key.
   legacySeazonaInvoiceId: varchar("legacy_seazona_invoice_id", { length: 128 }),
+  // Piece 5: Seazona's `patient` on an imported invoice (the doctor matches the
+  // bill by it). Encrypted (invoice-crypto.js). Null on every non-legacy invoice.
+  legacyPatient: text("legacy_patient"),
   // draft | issued | void
   status: varchar("status", { length: 10 }).notNull().default("draft"),
   // Optimistic concurrency, as on lab orders: every change increments it.
@@ -61,11 +64,14 @@ export const invoiceLines = pgTable("invoice_lines", {
   variantId: varchar("variant_id", { length: 128 }),
   code: varchar("code", { length: 60 }),
   description: text("description").notNull(),
+  // Piece 5: an imported line's Seazona text (can name a patient). Encrypted;
+  // `description` then holds LEGACY_LINE_DESCRIPTION. Null on every other line.
+  legacyDescription: text("legacy_description"),
   qty: integer("qty").notNull().default(1),
   unitCents: integer("unit_cents").notNull(),
   lineCents: integer("line_cents").notNull(),
   taxable: boolean("taxable").notNull().default(false),
-  // client | base | manual | remake | unpriced | shipment
+  // client | base | manual | remake | unpriced | shipment | legacy
   priceSource: varchar("price_source", { length: 10 }).notNull(),
   // Why staff overrode the price. Encrypted.
   priceNote: text("price_note"),

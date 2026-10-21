@@ -285,6 +285,7 @@ export const SCRUB_PLAN = {
       department_id: K, assignee_user_id: K, due_date: K, rush: K, rush_tier: K, is_remake: K, remake_of_order_id: K,
       hold_reason: phi("NULL"),
       lab_notes: phi("NULL"),
+      legacy_patient: phi("NULL"), // a Seazona order's patient (encrypted)
       shipment_id: K,
       version: K, received_at: K, started_at: K, shipped_at: K, cancelled_at: K, created_at: K, updated_at: K,
     },
@@ -317,6 +318,7 @@ export const SCRUB_PLAN = {
       id: K, invoice_number: K, kind: K, client_user_id: K, lab_order_id: K, legacy_seazona_invoice_id: K,
       status: K, version: K, issued_at: K, due_date: K, voided_at: K,
       void_reason: phi("NULL"),
+      legacy_patient: phi("NULL"), // Seazona's patient on an imported invoice (encrypted)
       subtotal_cents: K, tax_cents: K, shipping_cents: K, total_cents: K,
       notes: phi("NULL"),
       created_at: K, updated_at: K,
@@ -331,6 +333,7 @@ export const SCRUB_PLAN = {
       description: phi(`CASE WHEN "invoice_lines"."kind" = 'shipping' THEN 'Shipping' ELSE LEFT(COALESCE(${catalogNameFor('"invoice_lines"."code"')}, 'Line'), 255) END`),
       qty: K, unit_cents: K, line_cents: K, taxable: K, price_source: K,
       price_note: phi("NULL"), // why a price was overridden: staff free text, encrypted
+      legacy_description: phi("NULL"), // an imported Seazona line's text (encrypted)
       lab_order_line_id: K, shipment_id: K, created_at: K,
     },
   },
