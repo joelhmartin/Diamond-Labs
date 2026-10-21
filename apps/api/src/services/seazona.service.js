@@ -271,6 +271,14 @@ export async function getInvoicesResult(lastModified) {
 
 // Seazona truncates the invoice and order lists at LIST_PAGE_CAP rows (seazona-limits.js).
 
+/** ts + 1s as an ISO string; null when ts is not a parseable timestamp (never throws). */
+function bumpOneSecond(ts) {
+  const d = new Date(ts.endsWith("Z") ? ts : `${ts}Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  d.setUTCSeconds(d.getUTCSeconds() + 1);
+  return d.toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
 /**
  * Walk a capped Seazona list (the invoice and order lists truncate at 10,000
  * rows sorted by id) forward by `field`, re-requesting from the page's newest
@@ -280,6 +288,10 @@ export async function getInvoicesResult(lastModified) {
  * value may lie past the cap (the list is sorted by id), and skipping past the
  * value would drop them silently. The invoice archive was bulk-restamped, so
  * this is a real case: it fails the walk for operator attention, never guesses.
+ * The one exception (ruling F3b) is `acceptCappedTimestamp`: the operator names
+ * the ONE known bulk stamp, and a full page sharing exactly that instant is
+ * paged past by one second. The walk then reports `possiblyIncomplete` with
+ * `cappedPages` [{ timestamp, pageSize }]; any other shared stamp still fails.
  *
  * Options (piece 5's fetcher): `maxPages` caps the requests (default 50); running
  * out of pages mid-walk is `truncated`. `beforePage` is awaited before every
@@ -287,7 +299,7 @@ export async function getInvoicesResult(lastModified) {
  * when the walk ran out of pages while still advancing (a stall is truncated but
  * not budgetExhausted).
  */
-async function walkCapped(fetchPage, field, { maxPages = 50, beforePage } = {}) {
+async function walkCapped(fetchPage, field, { maxPages = 50, beforePage, acceptCappedTimestamp = null } = {}) {
   const seen = new Map();
   const noId = []; // records without an id can't be de-duped; keep them all
   const instant = (ts) => Date.parse(ts.endsWith("Z") ? ts : `${ts}Z`);
@@ -297,6 +309,7 @@ async function walkCapped(fetchPage, field, { maxPages = 50, beforePage } = {}) 
   let done = false; // false after the loop = the page budget ran out mid-walk
   let status = 200;
   let requests = 0;
+  const cappedPages = [];
   for (let i = 0; i < maxPages && !done; i++) {
     if (beforePage) await beforePage();
     const page = await fetchPage(cursor);
@@ -312,13 +325,21 @@ async function walkCapped(fetchPage, field, { maxPages = 50, beforePage } = {}) 
     const values = page.records.map((rec) => rec[field]).filter((v) => typeof v === "string" && Number.isFinite(instant(v)));
     if (values.length === 0) { truncated = true; done = true; break; }
     const max = values.reduce((m, v) => (instant(v) > instant(m) ? v : m));
+    const sameStamp = page.records.every((rec) => rec[field] === max);
+    if (sameStamp && acceptCappedTimestamp != null && instant(max) === instant(acceptCappedTimestamp)) {
+      const next = bumpOneSecond(max);
+      if (next === null) { truncated = true; done = true; break; }
+      cappedPages.push({ timestamp: max, pageSize: page.records.length });
+      cursor = next;
+      continue;
+    }
     // A full page sharing one value can't be paged past without dropping rows; the cursor must also move forward.
-    if (page.records.every((rec) => rec[field] === max) || !(instant(max) > instant(cursor))) { truncated = true; done = true; break; }
+    if (sameStamp || !(instant(max) > instant(cursor))) { truncated = true; done = true; break; }
     cursor = max;
   }
   const budgetExhausted = !done;
   if (budgetExhausted) truncated = true;
-  return { reachable, status, records: [...seen.values(), ...noId], requests, truncated, budgetExhausted };
+  return { reachable, status, records: [...seen.values(), ...noId], requests, truncated, budgetExhausted, possiblyIncomplete: cappedPages.length > 0, cappedPages };
 }
 
 /** The FULL invoice archive past the 10k cap (see walkCapped). */
@@ -336,7 +357,10 @@ export async function getAllInvoicesResult(options) {
     const r = await getInvoicesResult(cursor);
     return { reachable: r.reachable, status: r.status, records: r.invoices };
   }, "lastModified", options);
-  return { reachable: w.reachable, status: w.status, invoices: w.records, requests: w.requests, truncated: w.truncated, budgetExhausted: w.budgetExhausted };
+  return {
+    reachable: w.reachable, status: w.status, invoices: w.records, requests: w.requests, truncated: w.truncated, budgetExhausted: w.budgetExhausted,
+    possiblyIncomplete: w.possiblyIncomplete, cappedPages: w.cappedPages,
+  };
 }
 
 /**

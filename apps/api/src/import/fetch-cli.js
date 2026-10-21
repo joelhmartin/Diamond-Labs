@@ -2,6 +2,9 @@
  * Piece 5 fetcher. Operator machine only (refuses on Cloud Run). DRY RUN BY DEFAULT.
  *
  *   pnpm --filter @my-app/api import:fetch <clients|users|products|invoices|orders> [--live]
+ *   pnpm --filter @my-app/api import:fetch invoices --accept-capped-timestamp <ISO> [--live]
+ *     (F3b: page past a full 10k page sharing EXACTLY that one stamp, the archive's known bulk
+ *      restamp; the run is marked possiblyIncomplete and parity promotes invoice-number gaps)
  *   pnpm --filter @my-app/api import:fetch <invoices|orders> --detail <filter> [--refetch] [--live [--approved <n>]]
  *     filters: --ids <id,id> | --since YYYY-MM-DD | --open (orders) | --open-balance --file-id <id> [--columns …] (invoices)
  *     --refetch  re-fetch detail even when the stored record looks fresh. Orders carry no
@@ -40,13 +43,13 @@ import { assertNotCloudRun, resolveImportDb, connect } from "./targets.js";
 import { assertImportKey } from "./key-check.js";
 import { rawStore } from "./raw-store.js";
 import { readExport, parseColumnsFlag } from "./export-table.js";
-import { SUMMARY_ENTITIES, DETAIL_ENTITIES, APPROVAL_THRESHOLD, REQUESTS_PER_MINUTE, detailFilterProblem, selectDetailIds } from "./fetch-plan.js";
+import { SUMMARY_ENTITIES, DETAIL_ENTITIES, APPROVAL_THRESHOLD, REQUESTS_PER_MINUTE, detailFilterProblem, selectDetailIds, normalizeCappedTimestamp } from "./fetch-plan.js";
 import { runSummaryCommand, runDetailCommand, createPacer } from "./seazona-fetch.js";
 import { makeFetchLock } from "./fetch-lock.js";
 import { printLines, printReport, runIfMain } from "./report.js";
 
 const FLAGS = {
-  allowed: ["live", "detail", "ids", "since", "open", "open-balance", "file-id", "columns", "refetch", "resume", "approved", "file", "balances", "mark-stale"],
+  allowed: ["live", "detail", "ids", "since", "open", "open-balance", "file-id", "columns", "refetch", "resume", "approved", "file", "balances", "mark-stale", "accept-capped-timestamp"],
   booleans: ["live", "detail", "open", "open-balance", "refetch"],
 };
 
@@ -55,7 +58,7 @@ const EXPORTS = {
   "per-client": { fileKind: "balances_client", parseKind: "client" },
 };
 
-const FETCH_ONLY_FLAGS = ["live", "detail", "ids", "since", "open", "open-balance", "file-id", "refetch", "resume", "approved", "mark-stale"];
+const FETCH_ONLY_FLAGS = ["live", "detail", "ids", "since", "open", "open-balance", "file-id", "refetch", "resume", "approved", "mark-stale", "accept-capped-timestamp"];
 const FILTER_FLAGS = ["ids", "since", "open", "open-balance", "file-id", "refetch"];
 
 /** The default dependencies; tests pass fakes for any of them. */
@@ -170,6 +173,9 @@ function outcomeLines(mode, out) {
   const r = out.result;
   lines.push(`Run ${out.runId}: ${r.status}; ${r.requests} request(s); ${r.count ?? r.fetched ?? 0} stored; ${r.missing?.length ?? 0} not found.`);
   if (r.missing?.length) lines.push(`Not found (first 20): ${r.missing.slice(0, 20).join(", ")}`);
+  for (const p of r.cappedPages ?? []) {
+    lines.push(`POSSIBLY INCOMPLETE: paged past a full page of ${p.pageSize} rows all stamped ${p.timestamp} (--accept-capped-timestamp). Rows past the cap with that stamp may be missing; run import:parity and read invoices.seazonaNumberGaps (a gap there is the difference seazona_invoice_numbers_missing).`);
+  }
   if (r.status !== "done") {
     lines.push(...stopLines(r));
     if (!r.truncated && !(r.dropped > 0)) lines.push(mode === "detail" ? `Resume later with --detail --resume ${out.runId}.` : "Re-run the summary fetch later.");
@@ -186,9 +192,20 @@ function checkShape(name, entity, flags, positional) {
     throw new ImportRefusal(`Usage: import:fetch <${Object.keys(SUMMARY_ENTITIES).join("|")}|export> [--detail <filter>] [--live]`);
   }
   if (flags.detail && !DETAIL_ENTITIES[name]) throw new ImportRefusal(`${name} has no detail fetch (invoices and orders do).`);
+  if (flags["accept-capped-timestamp"] !== undefined && (name !== "invoices" || flags.detail)) {
+    throw new ImportRefusal("--accept-capped-timestamp applies only to the invoices summary fetch (parity checks invoice numbers for gaps; orders have no such check).");
+  }
   if (!flags.detail && FILTER_FLAGS.concat("resume").some((f) => flags[f] !== undefined) && name !== "export") {
     throw new ImportRefusal("That flag belongs to --detail.");
   }
+}
+
+/** `--accept-capped-timestamp` normalized; a value that is not one exact ISO instant is refused (never a blanket bypass). */
+function cappedTimestampFlag(flags) {
+  if (flags["accept-capped-timestamp"] === undefined) return null;
+  const ts = normalizeCappedTimestamp(flags["accept-capped-timestamp"]);
+  if (!ts) throw new ImportRefusal("--accept-capped-timestamp needs one exact ISO date-time, e.g. 2025-11-29T15:05:50Z (no zone = UTC).");
+  return ts;
 }
 
 /** Refuse a live run while a run of the same entity is still marked running (other than the one being resumed). */
@@ -230,7 +247,7 @@ export async function main(argv, env = process.env, overrides = {}) {
       const { ids, start, run } = await detailIds({ name, entity, flags, store, deps, tryLock });
       out = await runDetailCommand({ ...common, entity: DETAIL_ENTITIES[name], ids, start, run, lastModifiedById: await store.index(entity) });
     } else {
-      out = await runSummaryCommand({ ...common, entity });
+      out = await runSummaryCommand({ ...common, entity, acceptCappedTimestamp: cappedTimestampFlag(flags) });
     }
     if (out.refused) throw new ImportRefusal(out.refused);
     const { lines, code } = outcomeLines(flags.detail ? "detail" : "summary", out);

@@ -211,3 +211,35 @@ test("a list with an id-less record says so once, in plain words, and exits 3", 
   assert.match(text(r.out), /1 record\(s\) in the list had no id\. The set is incomplete/);
   assert.doesNotMatch(text(r.out), /had no id and had no id/);
 });
+
+// F3b
+test("--accept-capped-timestamp is normalized, invoices-summary only, and a malformed value is refused before any call", async () => {
+  const { normalizeCappedTimestamp } = await import("./fetch-plan.js");
+  assert.equal(normalizeCappedTimestamp("2025-11-29T15:05:50"), "2025-11-29T15:05:50Z");
+  assert.equal(normalizeCappedTimestamp("2025-11-29T09:05:50-06:00"), "2025-11-29T15:05:50Z");
+  assert.equal(normalizeCappedTimestamp("2025-11-29"), null, "a day is not an exact instant");
+  assert.equal(normalizeCappedTimestamp("*"), null);
+  const r = rig();
+  await assert.rejects(r.run(["orders", "--accept-capped-timestamp", "2025-11-29T15:05:50Z", "--live"]), /invoices summary fetch/);
+  await assert.rejects(r.run(["invoices", "--detail", "--ids", "a", "--accept-capped-timestamp", "2025-11-29T15:05:50Z"]), /invoices summary fetch/);
+  await assert.rejects(r.run(["invoices", "--accept-capped-timestamp", "yesterday", "--live"]), /exact ISO date-time/);
+  assert.equal(r.out.loads, 0);
+});
+
+test("a live invoices summary with the accepted stamp passes it to the walk, records possiblyIncomplete on the run row and prints it", async () => {
+  const seen = [];
+  const seazona = {
+    getAllInvoicesResult: async (walk) => {
+      seen.push(walk.acceptCappedTimestamp);
+      return { reachable: true, truncated: false, status: 200, invoices: [{ id: "i1", lastModified: "2025-11-29T15:05:50" }], requests: 2, possiblyIncomplete: true, cappedPages: [{ timestamp: "2025-11-29T15:05:50", pageSize: 10000 }] };
+    },
+  };
+  const r = rig({ seazona });
+  assert.equal(await r.run(["invoices", "--accept-capped-timestamp", "2025-11-29T15:05:50", "--live"]), 0);
+  assert.deepEqual(seen, ["2025-11-29T15:05:50Z"]);
+  const run = r.store.runs.get("run1");
+  assert.equal(run.status, "done");
+  assert.match(run.note, /^possiblyIncomplete: paged past a full page of 10000 sharing 2025-11-29T15:05:50/);
+  assert.match(text(r.out), /POSSIBLY INCOMPLETE: paged past a full page of 10000 rows all stamped 2025-11-29T15:05:50/);
+  assert.equal((await r.store.latestDoneSummaryRun("invoice")).id, "run1");
+});

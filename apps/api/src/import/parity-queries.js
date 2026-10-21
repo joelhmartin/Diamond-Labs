@@ -1,4 +1,5 @@
 import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { isPossiblyIncomplete } from "./seazona-fetch.js";
 import { isOpeningBalanceInvoice, isoDateIn, LAB_TIMEZONE, LEGACY_SETTLEMENT_SOURCE, OPENING_BALANCE_PREFIX, TERMINAL_LAB_STATUSES } from "@my-app/shared";
 import { users, invoices, invoicePayments, labOrders } from "../db/schema/index.js";
 import { paidCentsFor } from "../services/billing/paid-cents.js";
@@ -14,6 +15,8 @@ const isOpenStatus = (status) => !TERMINAL_LAB_STATUSES.includes(status);
 
 /** The raw store's side of parity. Opens records in memory; returns ids, numbers, statuses and cents only. */
 export async function readSeazonaSide(raw) {
+  // F3b: the invoice summary the store holds came from a walk that paged past an accepted capped stamp.
+  const invoiceRun = await raw.latestDoneSummaryRun("invoice");
   const clients = await raw.records("client");
   const summaries = await raw.records("invoice");
   const details = new Map((await raw.records("invoice_detail")).map((r) => [r.seazonaId, r.payload]));
@@ -21,6 +24,7 @@ export async function readSeazonaSide(raw) {
   return {
     clientIds: clients.map((c) => c.seazonaId),
     invoices: seazonaInvoiceFacts(summaries, details),
+    invoiceSummaryPossiblyIncomplete: isPossiblyIncomplete(invoiceRun) ? { runId: invoiceRun.id, note: invoiceRun.note } : null,
     orders: orders.map(({ seazonaId, payload }) => {
       const m = orderStatusFor(payload.status);
       return {

@@ -36,6 +36,13 @@ export function numberGaps(nums) {
   return { missingNumbers, gapCount, ranges };
 }
 
+/** The first `cap` missing numbers, expanded from numberGaps' ranges. */
+const firstMissing = (ranges, cap = LIST_CAP) => {
+  const out = [];
+  for (const [from, to] of ranges) for (let n = from; n <= to && out.length < cap; n++) out.push(n);
+  return out;
+};
+
 /** The calendar year of a "YYYY-MM-DD" day, or "unknown" (never a truncated word). */
 export const yearOf = (day) => (typeof day === "string" && /^\d{4}/.test(day) ? day.slice(0, 4) : "unknown");
 
@@ -111,10 +118,19 @@ function invoiceSection(seazona, app, differences) {
   // AR skips invoices with no client, so an unowned balance is money nobody can see or pay.
   const unowned = app.unowned ?? { count: 0, openCents: 0, invoiceNumbers: [] };
   if (unowned.openCents > 0) differences.push("unowned invoices with a balance");
+  const gaps = numberGaps(sInv.map((i) => i.number));
+  // F3b: after a walk paged past an accepted capped stamp, a gap may be rows that were never fetched: the operator must look.
+  const capped = seazona.invoiceSummaryPossiblyIncomplete ?? null;
+  const numbersMissing = capped && gaps.missingNumbers > 0
+    ? { count: gaps.missingNumbers, numbers: firstMissing(gaps.ranges), runId: capped.runId }
+    : null;
+  if (numbersMissing) differences.push("seazona_invoice_numbers_missing");
   return {
     seazonaCount: sInv.length, appCount: app.invoices.length, byYear, seazonaTotalCents, appTotalCents,
     numberRange: { seazona: range(sInv.map((i) => i.number)), app: range(app.invoices.map((i) => i.number)) },
-    seazonaNumberGaps: numberGaps(sInv.map((i) => i.number)),
+    seazonaNumberGaps: gaps,
+    summaryPossiblyIncomplete: capped,
+    seazonaNumbersMissing: numbersMissing,
     missingCount: missing.length, missingIds: missing.slice(0, LIST_CAP), openingInvoices: app.openingInvoices,
     unowned: { count: unowned.count, openCents: unowned.openCents, invoiceNumbers: unowned.invoiceNumbers.slice(0, LIST_CAP) },
     historyWithoutSettlement: app.historyWithoutSettlement ?? null,
@@ -181,7 +197,7 @@ export function buildParity({ seazona, app, seeds }) {
 export const DIFFERENCE_KINDS = [
   "clients", "invoice counts", "invoice totals", "invoices not loaded", "unowned invoices with a balance",
   "balances", "no balance export compared", "balance export problems",
-  "open orders", "orders not loaded", "unowned open orders", "seeds",
+  "open orders", "orders not loaded", "unowned open orders", "seeds", "seazona_invoice_numbers_missing",
 ];
 
 /**

@@ -130,7 +130,7 @@ gcloud logging read 'resource.labels.service_name="diamond-labs-api" AND (textPa
 
 Every `[Seazona][PAYMENT_WRITE_FAILED]` (paid by card, never written to Seazona) and `[PAYMENT][CAPTURED_NOT_RECORDED]` line is money Seazona's export still shows as owed: the lab records it in Seazona (or confirms it already did) before exporting. Reconciled: ___
 
-1. Summaries (about 6 requests): `import:fetch clients|invoices|orders --live`.
+1. Summaries (about 6 requests): `import:fetch clients --live`, `import:fetch orders --live`, and `import:fetch invoices --accept-capped-timestamp 2025-11-29T15:05:50Z --live` (the archive's known bulk stamp; see `docs/import-operations.md`, Fetch step 7). Parity's `seazona_invoice_numbers_missing`, if raised, goes to the user as at rehearsal.
 2. Details for what changed (dry run first; the count is small; with the user's OK `--live --approved N`):
    - `import:fetch invoices --detail --since <last rehearsal fetch date>`
    - `import:fetch orders --detail --open --refetch` (**`--refetch` is required**: an order has no `lastModified`, so without it a stored open order is never re-read and its status would be stale).

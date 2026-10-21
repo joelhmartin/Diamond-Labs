@@ -17,7 +17,13 @@ const SUMMARY_CALLS = {
   client: async (s) => { const r = await s.listClientsResult(""); return { ok: r.ok, status: r.status, records: r.clients, requests: 1 }; },
   user: async (s) => { const r = await s.listUsersResult(); return { ok: r.ok, status: r.status, records: r.users, requests: 1 }; },
   product: async (s) => { const r = await s.listProductsResult(); return { ok: r.ok, status: r.status, records: r.products, requests: 1 }; },
-  invoice: async (s, walk) => { const r = await s.getAllInvoicesResult(walk); return { ok: r.reachable && !r.truncated, truncated: r.truncated === true, budgetExhausted: r.budgetExhausted === true, status: r.status, records: r.invoices, requests: r.requests }; },
+  invoice: async (s, walk) => {
+    const r = await s.getAllInvoicesResult(walk);
+    return {
+      ok: r.reachable && !r.truncated, truncated: r.truncated === true, budgetExhausted: r.budgetExhausted === true, status: r.status, records: r.invoices, requests: r.requests,
+      possiblyIncomplete: r.possiblyIncomplete === true, cappedPages: r.cappedPages ?? [],
+    };
+  },
   order: async (s, walk) => { const r = await s.getAllOrdersResult(walk); return { ok: r.reachable && !r.truncated, truncated: r.truncated === true, budgetExhausted: r.budgetExhausted === true, status: r.status, records: r.orders, requests: r.requests }; },
 };
 
@@ -25,6 +31,15 @@ const DETAIL_CALLS = {
   invoice_detail: async (s, id) => { const r = await s.getInvoiceResult(id); return { ok: r.ok, status: r.status, record: r.invoice }; },
   order_detail: async (s, id) => { const r = await s.getOrderResult(id); return { ok: r.ok, status: r.status, record: r.order }; },
 };
+
+/**
+ * The run-row note of a summary run that paged past an accepted capped stamp
+ * (F3b). Parity reads it back with isPossiblyIncomplete: one prefix, one place.
+ */
+export const POSSIBLY_INCOMPLETE_PREFIX = "possiblyIncomplete:";
+export const possiblyIncompleteNote = (pages) =>
+  `${POSSIBLY_INCOMPLETE_PREFIX} paged past ${pages.map((p) => `a full page of ${p.pageSize} sharing ${p.timestamp}`).join("; ")} (--accept-capped-timestamp); rows past the cap with that stamp may be missing: parity's invoice-number gaps decide.`;
+export const isPossiblyIncomplete = (run) => typeof run?.note === "string" && run.note.startsWith(POSSIBLY_INCOMPLETE_PREFIX);
 
 const stopStatus = (httpStatus) => (httpStatus === 403 ? "blocked" : "failed");
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -48,7 +63,7 @@ export function createPacer({ intervalMs = PACE_INTERVAL_MS, now = Date.now, sle
  * and fails (`needsMorePages`): re-plan rather than fetch past the plan. Records
  * without an id are counted in `dropped`; any makes the run failed, never done.
  */
-export async function fetchSummaries({ entity, seazona, store, maxPages, pace }) {
+export async function fetchSummaries({ entity, seazona, store, maxPages, pace, acceptCappedTimestamp = null }) {
   const runId = await store.startRun({ entity, mode: "summary" });
   // Pages whose pace gate passed: each is followed by a request, so this is the true count when the walk is
   // interrupted (a lost fetch lock throws from the gate) before the service returns its own tally.
@@ -58,7 +73,7 @@ export async function fetchSummaries({ entity, seazona, store, maxPages, pace })
     pagesStarted += 1;
   };
   try {
-    const r = await SUMMARY_CALLS[entity](seazona, { maxPages, beforePage });
+    const r = await SUMMARY_CALLS[entity](seazona, { maxPages, beforePage, acceptCappedTimestamp });
     pagesStarted = Math.max(pagesStarted, r.requests); // a later failure (a store write) keeps the service's own tally
     if (!r.ok) {
       const status = stopStatus(r.status);
@@ -80,8 +95,10 @@ export async function fetchSummaries({ entity, seazona, store, maxPages, pace })
       return { runId, status: "failed", requests: r.requests, count: 0, dropped, lastStatus: r.status, truncated: false, needsMorePages: false };
     }
     await store.upsert(entity, records, runId);
-    await store.finishRun(runId, { status: "done", cursor: records.length, requestCount: r.requests, errorCount: 0, lastStatus: r.status });
-    return { runId, status: "done", requests: r.requests, count: records.length, dropped: 0, lastStatus: r.status, truncated: false, needsMorePages: false };
+    const capped = r.possiblyIncomplete ? r.cappedPages : [];
+    const note = capped.length ? possiblyIncompleteNote(capped) : null;
+    await store.finishRun(runId, { status: "done", cursor: records.length, requestCount: r.requests, errorCount: 0, lastStatus: r.status, note });
+    return { runId, status: "done", requests: r.requests, count: records.length, dropped: 0, lastStatus: r.status, truncated: false, needsMorePages: false, possiblyIncomplete: capped.length > 0, cappedPages: capped };
   } catch (err) {
     await store.finishRun(runId, { status: "failed", cursor: 0, requestCount: pagesStarted, errorCount: 1, note: "stopped by an unexpected error" }).catch(() => {});
     throw err;
@@ -124,7 +141,7 @@ export async function fetchDetails({ entity, ids, start = 0, runId, seazona, sto
 }
 
 /** Plan, then (only with --live) fetch every summary of one entity. */
-export async function runSummaryCommand({ entity, live, approved, seazona, store, pace = createPacer() }) {
+export async function runSummaryCommand({ entity, live, approved, seazona, store, pace = createPacer(), acceptCappedTimestamp = null }) {
   const requests = summaryRequests(entity, (await store.index(entity)).size);
   const plan = { requests, minutes: minutesFor(requests) };
   const refused = approvalProblem({ count: requests, live, approved });
@@ -132,7 +149,7 @@ export async function runSummaryCommand({ entity, live, approved, seazona, store
   if (!live) return { plan, dryRun: true };
   // --approved is the operator's explicit cap: it can lower the plan, or raise it when the walk needs more pages than estimated.
   const maxPages = Number.isSafeInteger(approved) ? approved : requests;
-  const result = await fetchSummaries({ entity, seazona, store, maxPages, pace });
+  const result = await fetchSummaries({ entity, seazona, store, maxPages, pace, acceptCappedTimestamp });
   return { plan, runId: result.runId, result };
 }
 

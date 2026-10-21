@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { createId } from "../lib/id.js";
 import { encryptJson, decryptJson, encryptField, decryptField } from "../lib/crypto.js";
@@ -76,6 +76,14 @@ export async function findRunningRun(importDb, entity) {
   return run ?? null;
 }
 
+/** The newest finished (`done`) summary run of an entity, or null: its rows are what the store holds. */
+export async function latestDoneSummaryRun(importDb, entity) {
+  const [run] = await importDb.select().from(fetchRuns)
+    .where(and(eq(fetchRuns.entity, entity), eq(fetchRuns.mode, "summary"), eq(fetchRuns.status, "done")))
+    .orderBy(desc(fetchRuns.finishedAt)).limit(1);
+  return run ?? null;
+}
+
 export async function getRun(importDb, runId) {
   const [run] = await importDb.select().from(fetchRuns).where(eq(fetchRuns.id, runId));
   return run ?? null;
@@ -118,6 +126,7 @@ export function rawStore(importDb) {
     saveProgress: (runId, p) => saveProgress(importDb, runId, p),
     finishRun: (runId, p) => finishRun(importDb, runId, p),
     getRun: (runId) => getRun(importDb, runId),
+    latestDoneSummaryRun: (entity) => latestDoneSummaryRun(importDb, entity),
     findRunning: (entity) => findRunningRun(importDb, entity),
     saveFile: (o) => saveFile(importDb, o),
     readFile: (id) => readFile(importDb, id),

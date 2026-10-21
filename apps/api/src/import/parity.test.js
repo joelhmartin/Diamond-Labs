@@ -167,3 +167,22 @@ test("Seazona invoice-number gaps are reported as information, never a differenc
   assert.equal(r.invoices.seazonaNumberGaps.missingNumbers, 6);
   assert.ok(!r.differences.some((d) => /gap/.test(d)), "information only");
 });
+
+test("after a possibly-incomplete invoice walk, number gaps become the difference seazona_invoice_numbers_missing (F3b)", () => {
+  const gappy = { ...seazona, invoices: [...seazona.invoices, { seazonaId: "z", number: 9, status: "void", totalCents: 0, year: "2026" }] };
+  const flagged = { ...gappy, invoiceSummaryPossiblyIncomplete: { runId: "run-c", note: "possiblyIncomplete: ..." } };
+  const r = buildParity({ seazona: flagged, app, seeds });
+  assert.ok(r.differences.includes("seazona_invoice_numbers_missing"));
+  assert.deepEqual(r.invoices.seazonaNumbersMissing, { count: 6, numbers: [3, 4, 5, 6, 7, 8], runId: "run-c" });
+  assert.ok(DIFFERENCE_KINDS.includes("seazona_invoice_numbers_missing"), "--accept can take it");
+  assert.equal(applyAccepted(r, ["seazona_invoice_numbers_missing"]).differences.includes("seazona_invoice_numbers_missing"), false);
+  // No gaps → no difference even when flagged; gaps without the flag stay information only.
+  assert.ok(!buildParity({ seazona: { ...seazona, invoiceSummaryPossiblyIncomplete: { runId: "x" } }, app, seeds }).differences.includes("seazona_invoice_numbers_missing"));
+  assert.ok(!buildParity({ seazona: gappy, app, seeds }).differences.includes("seazona_invoice_numbers_missing"));
+  const many = numberGapsCap();
+  assert.equal(many.length, 50, "at most 50 numbers listed");
+});
+function numberGapsCap() {
+  const inv = [{ seazonaId: "a", number: 1, status: "issued", totalCents: 0, year: "2026" }, { seazonaId: "b", number: 200, status: "issued", totalCents: 0, year: "2026" }];
+  return buildParity({ seazona: { ...seazona, invoices: inv, invoiceSummaryPossiblyIncomplete: { runId: "r" } }, app, seeds }).invoices.seazonaNumbersMissing.numbers;
+}

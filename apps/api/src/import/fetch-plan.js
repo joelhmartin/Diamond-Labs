@@ -21,6 +21,18 @@ export const PACE_INTERVAL_MS = Math.ceil(RATE_LIMIT_WINDOW_MS / REQUESTS_PER_MI
 export const SUMMARY_ENTITIES = { clients: "client", users: "user", products: "product", invoices: "invoice", orders: "order" };
 export const DETAIL_ENTITIES = { invoices: "invoice_detail", orders: "order_detail" };
 
+/**
+ * `--accept-capped-timestamp` → its normalized ISO instant (UTC, seconds,
+ * "Z"), or null when not a timestamp. A value without a zone is read as UTC,
+ * like Seazona's own stamps; the walker compares instants exactly (F3b).
+ */
+export function normalizeCappedTimestamp(value) {
+  const s = String(value ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/.test(s)) return null;
+  const d = new Date(/(Z|[+-]\d{2}:\d{2})$/.test(s) ? s : `${s}Z`);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString().replace(/\.000Z$/, "Z");
+}
+
 export const minutesFor = (requests) => Math.ceil(requests / REQUESTS_PER_MINUTE);
 
 /**

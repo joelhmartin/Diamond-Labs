@@ -16,6 +16,7 @@ const raw = {
     invoice_detail: [],
     order: [{ seazonaId: "o1", payload: { id: "o1", clientId: 7, status: "In Production" } }, { seazonaId: "o2", payload: { id: "o2", status: "Shipped" } }, { seazonaId: "o3", payload: { id: "o3", status: "Mystery" } }],
   })[entity] ?? [],
+  latestDoneSummaryRun: async () => ({ id: "run-full", note: null }),
 };
 
 const users = [
@@ -71,4 +72,12 @@ test("readOnly refuses every write path and still reads", async () => {
   const db = readOnly(fakeTx({ selects: [[{ n: 1 }]] }));
   for (const m of ["insert", "update", "delete", "transaction", "execute"]) assert.throws(() => db[m](), /read-only/);
   assert.deepEqual(await db.select().from(), [{ n: 1 }]);
+});
+
+test("the Seazona side flags an invoice summary run that paged past an accepted capped stamp (F3b)", async () => {
+  const { possiblyIncompleteNote } = await import("./seazona-fetch.js");
+  assert.equal((await readSeazonaSide(raw)).invoiceSummaryPossiblyIncomplete, null, "a complete walk");
+  const note = possiblyIncompleteNote([{ timestamp: "2025-11-29T15:05:50", pageSize: 10000 }]);
+  const capped = await readSeazonaSide({ ...raw, latestDoneSummaryRun: async (e) => (e === "invoice" ? { id: "run-c", note } : null) });
+  assert.deepEqual(capped.invoiceSummaryPossiblyIncomplete, { runId: "run-c", note });
 });

@@ -161,3 +161,33 @@ test("a stall on the last allowed page is truncated but not budgetExhausted", as
   assert.equal(r.truncated, true);
   assert.equal(r.budgetExhausted, false);
 });
+
+// F3b: the archive's known bulk stamp, named exactly by the operator.
+test("--accept-capped-timestamp pages past a full page sharing EXACTLY that stamp and reports possiblyIncomplete", async () => {
+  const stamped = Array.from({ length: 10_000 }, (_, i) => ({ id: `i${i}`, lastModified: "2025-11-29T15:05:50" }));
+  const f = stub(ok(stamped), ok([{ id: "late", lastModified: "2026-01-02T00:00:00" }]));
+  const r = await seazona.getAllInvoicesResult({ acceptCappedTimestamp: "2025-11-29T15:05:50Z" });
+  assert.equal(r.truncated, false);
+  assert.equal(r.possiblyIncomplete, true);
+  assert.deepEqual(r.cappedPages, [{ timestamp: "2025-11-29T15:05:50", pageSize: 10_000 }]);
+  assert.equal(r.invoices.length, 10_001);
+  assert.equal(query(f, 1, "lastModified"), "2025-11-29T15:05:51Z");
+});
+
+test("--accept-capped-timestamp for any OTHER stamp still fails the walk (exact instant only)", async () => {
+  for (const other of ["2025-11-29T15:05:49Z", "2025-11-29T15:05:51Z", "2025-11-29T00:00:00Z"]) {
+    const stamped = Array.from({ length: 10_000 }, (_, i) => ({ id: `i${i}`, lastModified: "2025-11-29T15:05:50" }));
+    stub(ok(stamped), ok([]));
+    const r = await seazona.getAllInvoicesResult({ acceptCappedTimestamp: other });
+    assert.equal(r.truncated, true, other);
+    assert.equal(r.possiblyIncomplete, false);
+    seazona.__resetRateLimiter();
+  }
+});
+
+test("a complete walk is never possiblyIncomplete", async () => {
+  stub(ok([{ id: "a", lastModified: "2026-01-01T00:00:00" }]));
+  const r = await seazona.getAllInvoicesResult({ acceptCappedTimestamp: "2025-11-29T15:05:50Z" });
+  assert.equal(r.possiblyIncomplete, false);
+  assert.deepEqual(r.cappedPages, []);
+});

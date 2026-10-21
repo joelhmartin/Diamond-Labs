@@ -78,3 +78,9 @@ test("a fetch run records counts and its resume cursor", async () => {
   assert.equal(sets[1].lastStatus, 403);
   assert.ok(sets[1].finishedAt instanceof Date);
 });
+
+test("latestDoneSummaryRun returns the newest done summary run, or null", async () => {
+  assert.deepEqual(await store.latestDoneSummaryRun(fakeTx({ selects: [[{ id: "r9", note: "possiblyIncomplete: x" }]] }), "invoice"), { id: "r9", note: "possiblyIncomplete: x" });
+  assert.equal(await store.latestDoneSummaryRun(fakeTx(), "invoice"), null);
+  assert.equal(typeof store.rawStore(fakeTx()).latestDoneSummaryRun, "function");
+});

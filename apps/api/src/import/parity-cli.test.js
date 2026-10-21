@@ -19,6 +19,7 @@ function rig({ files = {}, selects, lockHeld = true } = {}) {
   const records = { client: [{ seazonaId: "c1", payload: { id: "c1", accountNumber: "1324" } }] };
   const raw = {
     records: async (e) => records[e] ?? [],
+    latestDoneSummaryRun: async () => null,
     readFile: async (id) => files[id] ?? null,
     saveParityReport: async (o) => { out.saved.push(o); return "p1"; },
   };
