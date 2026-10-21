@@ -1,0 +1,7 @@
+[
+  { "id": "c-1324", "accountNumber": "1324", "fullName": "Dr. Example One", "company": "Example Dental", "email": "one@example.test", "phone": "210-555-0100", "address1": "1 Example St", "city": "San Antonio", "state": "TX", "zip": "78201" },
+  { "id": "c-2001", "accountNumber": "2001", "fullName": "Dr. Sample Two", "company": "Sample Ortho & Co", "email": "two@example.test; billing@example.test" },
+  { "id": "c-3005", "accountNumber": "3005", "fullName": "Placeholder Clinic", "company": "", "email": "", "address1": "9 Test Ave", "city": "Austin", "state": "TX", "zip": "73301" },
+  { "id": "c-4000", "accountNumber": "4000", "fullName": "Shared Inbox", "company": "Shared", "email": "TWO@example.test" },
+  { "id": "c-9999", "accountNumber": "9999", "fullName": "Already Linked", "company": "Linked", "email": "linked@example.test" }
+]

@@ -21,6 +21,9 @@ const modules = [
   "./seazona-fetch.js",
   "./fetch-lock.js",
   "./report.js",
+  "./problems.js",
+  "./map-clients.js",
+  "./load-clients.js",
   // loads without env; the Seazona service is imported only when a live run starts
   "./fetch-cli.js",
 ];
