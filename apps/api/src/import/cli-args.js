@@ -16,7 +16,9 @@ export function parseArgs(argv, { allowed = [], booleans = [] } = {}) {
     }
     const [name, inline] = arg.slice(2).split(/=(.*)/s, 2);
     if (!allowed.includes(name)) throw new ImportRefusal(`Unknown flag --${name}.`);
+    if (name in flags) throw new ImportRefusal(`--${name} was given more than once.`);
     if (booleans.includes(name)) {
+      if (inline !== undefined) throw new ImportRefusal(`--${name} takes no value.`);
       flags[name] = true;
       continue;
     }
@@ -32,8 +34,9 @@ export function parseArgs(argv, { allowed = [], booleans = [] } = {}) {
 
 export function intFlag(flags, name) {
   if (flags[name] === undefined) return undefined;
-  const n = Number(flags[name]);
-  if (!Number.isSafeInteger(n) || n < 0) throw new ImportRefusal(`--${name} must be a whole number.`);
+  const raw = String(flags[name]);
+  const n = Number(raw);
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(n)) throw new ImportRefusal(`--${name} must be a whole number.`);
   return n;
 }
 

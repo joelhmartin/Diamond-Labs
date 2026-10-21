@@ -6,7 +6,8 @@ import { ImportRefusal } from "./import-errors.js";
  * Every piece-5 CLI must seal with PRODUCTION's PHI_ENCRYPTION_KEY: a raw store
  * or a load sealed with a developer's key (`node --env-file=.env` picks one up
  * when the shell sets none) would be unreadable in production. The import DB
- * keeps one sealed constant; a target is checked against a sealed rx_cases value.
+ * keeps one sealed constant (the FIRST run records whatever PHI_ENCRYPTION_KEY is
+ * present, so make it with production's key exported; the runbook repeats this); a target is checked against a sealed rx_cases value.
  */
 export const KEY_CHECK_PLAINTEXT = "diamond-labs-import-key-check-v1";
 

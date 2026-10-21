@@ -23,3 +23,11 @@ test("integer and list flags", () => {
   assert.throws(() => intFlag({ approved: "12.5" }, "approved"), /whole number/);
   assert.deepEqual(listFlag({ ids: "a, b,,c" }, "ids"), ["a", "b", "c"]);
 });
+
+test("boolean flags take no value; repeated flags and non-digit numbers are refused", () => {
+  assert.throws(() => parseArgs(["--live=false"], opts), /--live takes no value/);
+  assert.throws(() => parseArgs(["--target", "a", "--target", "b"], opts), /more than once/);
+  assert.throws(() => parseArgs(["--live", "--live"], opts), /more than once/);
+  for (const bad of ["1e3", "0x10", " 5", "5 ", "-1", ""]) assert.throws(() => intFlag({ approved: bad }, "approved"), ImportRefusal);
+  assert.equal(intFlag({ approved: "007" }, "approved"), 7);
+});
