@@ -1,4 +1,4 @@
-import { allowedNextStatuses, reasonRequiredFor, isTerminalLabStatus, isOverdue, LAB_STATUS_LABELS } from "@my-app/shared";
+import { canRemake, allowedNextStatuses, reasonRequiredFor, isTerminalLabStatus, isOverdue, LAB_STATUS_LABELS } from "@my-app/shared";
 import { canRelease } from "../rx/case-gates.js";
 
 /**
@@ -120,7 +120,8 @@ export function planShopLabOrder({ orderId, clientUserId = null, quoteLines, ord
  * (piece 3) both ask. Whether it is charged is piece 3's concern.
  */
 export function planRemake({ original, originalLines, reason, orderNumber, labOrderId, byUserId = null, now }) {
-  if (original.status !== "shipped") throw new LabOrderError("INVALID", "Only a shipped order can be remade.");
+  if (original.source === "legacy") throw new LabOrderError("INVALID", "Seazona orders can't be remade here — start a new Rx case for the remake.");
+  if (!canRemake(original)) throw new LabOrderError("INVALID", "Only a shipped order can be remade.");
   const why = typeof reason === "string" ? reason.trim() : "";
   if (!why) throw new LabOrderError("REASON_REQUIRED", "Say why this order is being remade.");
   const labOrder = {

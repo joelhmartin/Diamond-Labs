@@ -34,4 +34,5 @@ test("batches, and counts rows the database refused as conflicts", async () => {
   const r = await insertMissing(returning, { id: "id" }, rows, { keyOf, existingKeys: new Set() });
   assert.deepEqual([...r.insertedIds], ["1"]);
   assert.equal(r.conflicts, 2);
+  assert.deepEqual(r.droppedKeys, ["b", "c"], "the report can name what did not land");
 });

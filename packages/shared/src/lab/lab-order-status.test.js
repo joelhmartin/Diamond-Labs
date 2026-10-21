@@ -2,7 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   LAB_ORDER_SOURCES, LAB_ORDER_SOURCE_LABELS, LAB_ORDER_STATUSES, LAB_BOARD_COLUMNS, LAB_STATUS_LABELS, allowedNextStatuses, canMoveLabOrder,
-  reasonRequiredFor, isOverdue, isoDateIn, doctorStatusFor, doctorCaseView, doctorTracking, formatUsDate, formatLabDate, caseSummary,
+  reasonRequiredFor, canRemake, isOverdue, isoDateIn, doctorStatusFor, doctorCaseView, doctorTracking, formatUsDate, formatLabDate, caseSummary,
 } from "./lab-order-status.js";
 
 // The whole table, written out. Every pair not listed here must be refused.
@@ -186,4 +186,11 @@ test("lab orders come from an Rx case, a shop order, or Seazona history", () => 
   assert.deepEqual(LAB_ORDER_SOURCES, ["rx_case", "shop_order", "legacy"]);
   for (const s of LAB_ORDER_SOURCES) assert.ok(LAB_ORDER_SOURCE_LABELS[s], s);
   assert.equal(LAB_ORDER_SOURCE_LABELS.legacy, "Seazona history");
+});
+
+test("canRemake: shipped orders only, never a legacy (Seazona) order", () => {
+  assert.equal(canRemake({ status: "shipped", source: "rx_case" }), true);
+  assert.equal(canRemake({ status: "shipped", source: "shop_order" }), true);
+  assert.equal(canRemake({ status: "shipped", source: "legacy" }), false);
+  assert.equal(canRemake({ status: "in_production", source: "rx_case" }), false);
 });

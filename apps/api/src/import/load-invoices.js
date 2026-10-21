@@ -6,7 +6,8 @@ import { loadOwners, normAccount } from "./owners.js";
 import { planInvoices } from "./map-invoices.js";
 import { insertMissing } from "./load-writer.js";
 import { enforceSeeds } from "./seed-check.js";
-import { reattachOwners as reattachRows, planAttach } from "./reattach.js";
+import { problem } from "./problems.js";
+import { reattachOwners as reattachRows, planAttach, stillUnowned } from "./reattach.js";
 
 const BATCH = 500;
 
@@ -44,11 +45,19 @@ export async function loadInvoices({ raw, db, live, target, starts = {} }) {
   });
   const reattach = reattachPlan(existing, summaries, owners);
   plan.counts.reattached = [...reattach.values()].reduce((n, ids) => n + ids.length, 0); // planned; a live run overwrites with what changed
+  const clientOfInvoice = new Map(summaries.map((r) => [r.seazonaId, String(r.payload.clientId)]));
+  const waiting = stillUnowned(
+    existing.filter((r) => r.seazonaId && !r.seazonaId.startsWith(OPENING_BALANCE_PREFIX)).map((r) => ({ clientUserId: r.clientUserId, clientId: clientOfInvoice.get(r.seazonaId) })),
+    owners.byClient,
+  );
+  plan.counts.loadedStillUnowned = waiting.records;
+  if (waiting.clients.length) plan.problems.push(problem("loaded_invoices_still_unowned_client", waiting.clients));
   const report = { step: "invoices", live, counts: plan.counts, seeds: seeds.summary, problems: plan.problems };
   if (!live) return report;
 
   let written = 0;
   let conflicts = 0;
+  const dropped = [];
   for (let i = 0; i < plan.rows.length; i += BATCH) {
     const chunk = plan.rows.slice(i, i + BATCH);
     await db.transaction(async (tx) => {
@@ -59,9 +68,11 @@ export async function loadInvoices({ raw, db, live, target, starts = {} }) {
       for (let j = 0; j < lines.length; j += BATCH) await tx.insert(invoiceLines).values(lines.slice(j, j + BATCH));
       written += r.insertedIds.size;
       conflicts += r.conflicts;
+      dropped.push(...r.droppedKeys);
     });
   }
   report.written = { invoices: written, conflicts };
+  if (dropped.length) report.problems.push(problem("invoice_not_loaded_conflict", dropped));
   plan.counts.reattached = await reattachOwners(db, reattach);
   return report;
 }

@@ -9,9 +9,10 @@ const BATCH = 500;
  * `version` and writes one audit entry (owner id, planned and changed counts,
  * Seazona ids; no PHI). `plan` is owner user id → legacy keys.
  *
- * cfg: { table, ownerCol, keyCol, versionCol, updatedCol, scope (a where
- * condition: e.g. kind = legacy), action, targetType, metadataKey, guard? }.
- * Returns how many rows were attached.
+ * cfg: { table, ownerField (the owner column's property name), ownerCol,
+ * keyCol, versionCol, scope (a where condition: e.g. kind = legacy), action,
+ * targetType, metadataKey, guard? }. `version` and `updatedAt` are set by
+ * property name (every target table has both). Returns how many rows were attached.
  */
 export async function reattachOwners(db, plan, cfg) {
   let attached = 0;
@@ -42,3 +43,20 @@ export function planAttach(out, owner, key) {
   out.set(owner, [...(out.get(owner) ?? []), key]);
 }
 
+
+/**
+ * Clients whose already-loaded records are STILL unowned after this run's
+ * reattach plan (so a re-run's report doesn't go quiet while records wait on a
+ * link fix). rows: [{ clientUserId, clientId }] of loaded records; `ownerByClient`
+ * is the resolved byClient map. Returns { records, clients: [client ids] }.
+ */
+export function stillUnowned(rows, ownerByClient) {
+  const clients = new Set();
+  let records = 0;
+  for (const r of rows) {
+    if (r.clientUserId || !r.clientId || ownerByClient.has(r.clientId)) continue;
+    records += 1;
+    clients.add(r.clientId);
+  }
+  return { records, clients: [...clients] };
+}

@@ -148,3 +148,12 @@ test("an account resolves to the same owner in the invoices reattach and the bal
   assert.deepEqual(inv.log.filter((e) => e.op === "set").map((e) => e.values.clientUserId), ["u-acct"]);
   assert.equal(report.reconciliation.loadedOpenCents, 500, "owned, not unowned");
 });
+
+test("a re-run still reports clients whose loaded invoices remain unowned", async () => {
+  const all = load("invoices.json");
+  const existing = [{ seazonaId: all[0].id, number: 1, clientUserId: null }];
+  const tx = db(existing, [users[1]]);
+  const report = await loadInvoices({ raw, db: tx, live: false, target: "rehearsal", starts: {} });
+  assert.equal(report.counts.loadedStillUnowned, 1);
+  assert.deepEqual(report.problems.find((p) => p.kind === "loaded_invoices_still_unowned_client").seazonaIds, [String(all[0].clientId)]);
+});

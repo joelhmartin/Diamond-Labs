@@ -6,8 +6,9 @@ import { loadOwners } from "./owners.js";
 import { planOrders } from "./map-orders.js";
 import { insertMissing } from "./load-writer.js";
 import { enforceSeeds } from "./seed-check.js";
-import { reattachOwners, planAttach } from "./reattach.js";
+import { reattachOwners, planAttach, stillUnowned } from "./reattach.js";
 import { withLoadLock } from "./load-lock.js";
+import { problem } from "./problems.js";
 import { ImportRefusal } from "./import-errors.js";
 
 const BATCH = 500;
@@ -46,6 +47,9 @@ async function run({ raw, db, live, target, starts, guard }) {
   });
   const reattach = reattachPlan(existing, summaries, owners.byClient);
   plan.counts.reattached = [...reattach.values()].reduce((n, ids) => n + ids.length, 0); // planned; a live run overwrites with what changed
+  const waiting = stillUnowned(existing.map((r) => ({ clientUserId: r.clientUserId, clientId: clientIdOf(summaries, r.sourceId) })), owners.byClient);
+  plan.counts.loadedStillUnowned = waiting.records;
+  if (waiting.clients.length) plan.problems.push(problem("loaded_orders_still_unowned_client", waiting.clients));
   const report = { step: "orders", live, counts: plan.counts, seeds: seeds.summary, problems: plan.problems };
   if (!live) return report;
   if (plan.problems.some((p) => p.kind === "unknown_status")) {
@@ -55,6 +59,7 @@ async function run({ raw, db, live, target, starts, guard }) {
   const variants = await variantIdsForCodes(db, plan.rows.flatMap((r) => r.lines.map((l) => l.code)));
   let written = 0;
   let conflicts = 0;
+  const dropped = [];
   for (let i = 0; i < plan.rows.length; i += BATCH) {
     const chunk = plan.rows.slice(i, i + BATCH);
     guard();
@@ -64,12 +69,19 @@ async function run({ raw, db, live, target, starts, guard }) {
       for (let j = 0; j < lines.length; j += BATCH) await tx.insert(labOrderLines).values(lines.slice(j, j + BATCH));
       written += r.insertedIds.size;
       conflicts += r.conflicts;
+      dropped.push(...r.droppedKeys);
     });
   }
   report.written = { orders: written, conflicts };
+  if (dropped.length) report.problems.push(problem("order_not_loaded_conflict", dropped));
   plan.counts.reattached = await reattachLegacyOrders(db, reattach, guard);
   return report;
 }
+
+const clientIdOf = (summaries, sourceId) => {
+  const c = summaries.find((s) => s.seazonaId === sourceId)?.payload.clientId;
+  return c == null ? null : String(c);
+};
 
 /** Loaded legacy orders with no owner whose Seazona client now has one: owner id → Seazona order ids. */
 export function reattachPlan(existing, summaries, ownerByClient) {

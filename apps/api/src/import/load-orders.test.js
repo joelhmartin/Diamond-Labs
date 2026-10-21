@@ -89,3 +89,26 @@ test("every run reattaches loaded unowned orders once the client resolves to one
   assert.equal(r2.counts.reattached, 0);
   assert.equal(raced.log.some((e) => e.op === "insert" && e.values?.action), false);
 });
+
+test("a re-run still reports clients whose loaded orders remain unowned", async () => {
+  const existing = [{ sourceId: "ord-2", number: 97950, clientUserId: null }, { sourceId: "ord-1", number: 98000, clientUserId: "u-1324" }];
+  const tx = db(existing, [users[0], doctor("u-2001", "c-2001", "2001"), doctor("u-2001b", "c-2001", "2001")]);
+  const report = await loadOrders({ raw: rawWith(known), db: tx, live: false, target: "rehearsal", starts: {} });
+  assert.equal(report.counts.loadedStillUnowned, 1);
+  assert.deepEqual(report.problems.find((p) => p.kind === "loaded_orders_still_unowned_client").seazonaIds, ["c-2001"]);
+});
+
+test("an order the database refused (number clash) is named in the report, not just counted", async () => {
+  const tx = db();
+  // Make the orders insert land nothing: every row conflicts.
+  const refusing = {
+    ...tx,
+    transaction: (fn) => fn({ ...tx, insert: () => {
+      const chain = new Proxy(function () {}, { get: (_t, p) => (p === "then" ? (res) => Promise.resolve([]).then(res) : () => chain) });
+      return chain;
+    } }),
+  };
+  const report = await loadOrders({ raw: rawWith(known), db: refusing, live: true, target: "rehearsal", starts: {}, lock: lock() });
+  assert.equal(report.written.conflicts, 4);
+  assert.deepEqual(report.problems.find((p) => p.kind === "order_not_loaded_conflict").seazonaIds.sort(), ["ord-1", "ord-2", "ord-3", "ord-5"]);
+});
