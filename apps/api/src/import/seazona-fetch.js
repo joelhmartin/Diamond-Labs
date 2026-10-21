@@ -17,8 +17,8 @@ const SUMMARY_CALLS = {
   client: async (s) => { const r = await s.listClientsResult(""); return { ok: r.ok, status: r.status, records: r.clients, requests: 1 }; },
   user: async (s) => { const r = await s.listUsersResult(); return { ok: r.ok, status: r.status, records: r.users, requests: 1 }; },
   product: async (s) => { const r = await s.listProductsResult(); return { ok: r.ok, status: r.status, records: r.products, requests: 1 }; },
-  invoice: async (s, walk) => { const r = await s.getAllInvoicesResult(walk); return { ok: r.reachable && !r.truncated, truncated: r.truncated === true, status: r.status, records: r.invoices, requests: r.requests }; },
-  order: async (s, walk) => { const r = await s.getAllOrdersResult(walk); return { ok: r.reachable && !r.truncated, truncated: r.truncated === true, status: r.status, records: r.orders, requests: r.requests }; },
+  invoice: async (s, walk) => { const r = await s.getAllInvoicesResult(walk); return { ok: r.reachable && !r.truncated, truncated: r.truncated === true, budgetExhausted: r.budgetExhausted === true, status: r.status, records: r.invoices, requests: r.requests }; },
+  order: async (s, walk) => { const r = await s.getAllOrdersResult(walk); return { ok: r.reachable && !r.truncated, truncated: r.truncated === true, budgetExhausted: r.budgetExhausted === true, status: r.status, records: r.orders, requests: r.requests }; },
 };
 
 const DETAIL_CALLS = {
@@ -42,19 +42,22 @@ export function createPacer({ intervalMs = PACE_INTERVAL_MS, now = Date.now, sle
 }
 
 /**
- * One summary list. `maxPages` (the plan's request count, never above --approved)
- * caps a capped-list walk and `pace` is awaited before each of its pages, so the
+ * One summary list. `maxPages` (--approved when given, else the plan's request
+ * count) caps a capped-list walk and `pace` is awaited before each of its pages, so the
  * walk honours the plan the user saw. A walk that needs more pages is truncated
  * and fails (`needsMorePages`): re-plan rather than fetch past the plan. Records
  * without an id are counted in `dropped`; any makes the run failed, never done.
  */
 export async function fetchSummaries({ entity, seazona, store, maxPages, pace }) {
   const runId = await store.startRun({ entity, mode: "summary" });
+  let requestsMade = 0;
   try {
     const r = await SUMMARY_CALLS[entity](seazona, { maxPages, beforePage: pace });
+    requestsMade = r.requests;
     if (!r.ok) {
       const status = stopStatus(r.status);
-      const needsMorePages = r.truncated === true && maxPages !== undefined && r.requests >= maxPages;
+      // Only a walk that was still advancing when its pages ran out needs a bigger cap; a stall is a different problem.
+      const needsMorePages = r.truncated === true && r.budgetExhausted === true;
       const note = needsMorePages
         ? "list walk needs more pages than planned: nothing stored, re-plan"
         : r.truncated ? "list walk truncated: the set is incomplete, nothing stored" : null;
@@ -65,12 +68,16 @@ export async function fetchSummaries({ entity, seazona, store, maxPages, pace })
       .filter((rec) => rec?.id != null)
       .map((rec) => ({ seazonaId: String(rec.id), payload: rec, lastModified: typeof rec.lastModified === "string" ? rec.lastModified : null }));
     const dropped = r.records.length - records.length;
+    if (dropped > 0) {
+      // Fail before writing: a partial set must not sit in the store looking complete.
+      await store.finishRun(runId, { status: "failed", cursor: 0, requestCount: r.requests, errorCount: dropped, lastStatus: r.status, note: `${dropped} record(s) had no id: the set is incomplete, nothing stored` });
+      return { runId, status: "failed", requests: r.requests, count: 0, dropped, lastStatus: r.status, truncated: false, needsMorePages: false };
+    }
     await store.upsert(entity, records, runId);
-    const status = dropped > 0 ? "failed" : "done";
-    await store.finishRun(runId, { status, cursor: records.length, requestCount: r.requests, errorCount: dropped, lastStatus: r.status, note: dropped > 0 ? `${dropped} record(s) had no id and were not stored` : null });
-    return { runId, status, requests: r.requests, count: records.length, dropped, lastStatus: r.status, truncated: false, needsMorePages: false };
+    await store.finishRun(runId, { status: "done", cursor: records.length, requestCount: r.requests, errorCount: 0, lastStatus: r.status });
+    return { runId, status: "done", requests: r.requests, count: records.length, dropped: 0, lastStatus: r.status, truncated: false, needsMorePages: false };
   } catch (err) {
-    await store.finishRun(runId, { status: "failed", cursor: 0, requestCount: 0, errorCount: 1, note: "stopped by an unexpected error" }).catch(() => {});
+    await store.finishRun(runId, { status: "failed", cursor: 0, requestCount: requestsMade, errorCount: 1, note: "stopped by an unexpected error" }).catch(() => {});
     throw err;
   }
 }
@@ -117,7 +124,8 @@ export async function runSummaryCommand({ entity, live, approved, seazona, store
   const refused = approvalProblem({ count: requests, live, approved });
   if (refused) return { plan, refused };
   if (!live) return { plan, dryRun: true };
-  const maxPages = Number.isSafeInteger(approved) ? Math.min(requests, approved) : requests;
+  // --approved is the operator's explicit cap: it can lower the plan, or raise it when the walk needs more pages than estimated.
+  const maxPages = Number.isSafeInteger(approved) ? approved : requests;
   const result = await fetchSummaries({ entity, seazona, store, maxPages, pace });
   return { plan, runId: result.runId, result };
 }

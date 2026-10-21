@@ -5,13 +5,13 @@ import { ImportRefusal } from "./import-errors.js";
 import { fakeRawStore } from "../test/fake-raw-store.js";
 
 // main() is driven with injected fakes: no database, no Seazona, no env file.
-function rig({ store = fakeRawStore(), seazona = {}, files = {} } = {}) {
-  const out = { lines: [], reports: [], loads: 0 };
+function rig({ store = fakeRawStore(), seazona = {}, files = {}, lockFree = true } = {}) {
+  const out = { lines: [], reports: [], loads: 0, lock: { free: lockFree, taken: 0 } };
   const deps = {
     print: (l) => out.lines.push(...l),
     printReport: (r) => out.reports.push(r),
     readFile: async (p) => files[p] ?? Buffer.from(""),
-    openStore: async () => ({ store, close: async () => {} }),
+    openStore: async () => ({ store, close: async () => {}, tryLock: async () => { out.lock.taken += 1; return out.lock.free; } }),
     loadSeazona: async () => { out.loads += 1; return seazona; },
     pace: async () => {},
   };
@@ -142,14 +142,41 @@ test("a crashed detail run can be resumed even though it is still marked running
 });
 
 test("a list that needs more pages than planned exits 3 with a re-plan message", async () => {
-  const seazona = { getAllInvoicesResult: async (o) => ({ reachable: true, status: 200, invoices: [], requests: o.maxPages, truncated: true }) };
+  const seazona = { getAllInvoicesResult: async (o) => ({ reachable: true, status: 200, invoices: [], requests: o.maxPages, truncated: true, budgetExhausted: true }) };
   const r = rig({ seazona });
   assert.equal(await r.run(["invoices", "--live"]), 3);
-  assert.match(text(r.out), /more pages than the plan allowed/);
+  assert.match(text(r.out), /needed more pages than allowed \(2 used\).*--approved 4/);
 });
 
 test("export refuses flags that only apply to fetches", async () => {
   const r = rig();
   await assert.rejects(r.run(["export", "--balances", "per-invoice", "--file", "x", "--live"]), /export takes only/);
   await assert.rejects(r.run(["export", "--balances", "per-invoice", "--file", "x", "--approved", "5"]), /export takes only/);
+});
+
+test("a second live fetch is refused while another process holds the lock; dry runs never take it", async () => {
+  const seazona = { listClientsResult: async () => ({ ok: true, status: 200, clients: [{ id: "c1" }] }) };
+  const held = rig({ seazona, lockFree: false });
+  await assert.rejects(held.run(["clients", "--live"]), /Another live fetch is running/);
+  assert.equal(held.out.loads, 0);
+  assert.equal(held.store.runs.size, 0, "refused before startRun");
+  assert.equal(await held.run(["clients"]), 0);
+  assert.equal(held.out.lock.taken, 1, "only the refused live run asked for the lock");
+  const free = rig({ seazona });
+  assert.equal(await free.run(["clients", "--live"]), 0);
+});
+
+test("--mark-stale and resuming a running run need the lock to be free", async () => {
+  const seazona = { getInvoiceResult: async (id) => ({ ok: true, status: 200, invoice: { id } }) };
+  const r = rig({ seazona, lockFree: false });
+  const id = await r.store.startRun({ entity: "invoice_detail", mode: "detail", plannedIds: ["a"] });
+  await assert.rejects(r.run(["invoices", "--mark-stale", id]), /holds the fetch lock/);
+  assert.equal(r.store.runs.get(id).status, "running");
+  await assert.rejects(r.run(["invoices", "--detail", "--resume", id]), /may still be alive/);
+  await assert.rejects(r.run(["invoices", "--detail", "--resume", id, "--live"]), /Another live fetch is running/);
+  r.out.lock.free = true;
+  assert.equal(await r.run(["invoices", "--detail", "--resume", id, "--live"]), 0);
+  const id2 = await r.store.startRun({ entity: "invoice_detail", mode: "detail", plannedIds: ["a"] });
+  assert.equal(await r.run(["invoices", "--mark-stale", id2]), 0);
+  assert.equal(r.store.runs.get(id2).status, "failed");
 });

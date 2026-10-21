@@ -288,7 +288,9 @@ function bumpOneSecond(ts) {
  *
  * Options (piece 5's fetcher): `maxPages` caps the requests (default 50); running
  * out of pages mid-walk is `truncated`. `beforePage` is awaited before every
- * page request, so the caller can pace the walk.
+ * page request, so the caller can pace the walk. `budgetExhausted` is true only
+ * when the walk ran out of pages while still advancing (a stall is truncated but
+ * not budgetExhausted).
  */
 async function walkCapped(fetchPage, field, { maxPages = 50, beforePage } = {}) {
   const seen = new Map();
@@ -320,8 +322,9 @@ async function walkCapped(fetchPage, field, { maxPages = 50, beforePage } = {}) 
     if (next === null || !(instant(next) > instant(cursor))) { truncated = true; done = true; break; }
     cursor = next;
   }
-  if (!done) truncated = true;
-  return { reachable, status, records: [...seen.values(), ...noId], requests, truncated };
+  const budgetExhausted = !done;
+  if (budgetExhausted) truncated = true;
+  return { reachable, status, records: [...seen.values(), ...noId], requests, truncated, budgetExhausted };
 }
 
 /** The FULL invoice archive past the 10k cap (see walkCapped). */
@@ -339,7 +342,7 @@ export async function getAllInvoicesResult(options) {
     const r = await getInvoicesResult(cursor);
     return { reachable: r.reachable, status: r.status, records: r.invoices };
   }, "lastModified", options);
-  return { reachable: w.reachable, status: w.status, invoices: w.records, requests: w.requests, truncated: w.truncated };
+  return { reachable: w.reachable, status: w.status, invoices: w.records, requests: w.requests, truncated: w.truncated, budgetExhausted: w.budgetExhausted };
 }
 
 /**
@@ -376,7 +379,7 @@ export async function getAllOrdersResult(options) {
     const r = await getOrdersResult(cursor);
     return { reachable: r.reachable, status: r.status, records: r.orders };
   }, "ordered", options);
-  return { reachable: w.reachable, status: w.status, orders: w.records, requests: w.requests, truncated: w.truncated };
+  return { reachable: w.reachable, status: w.status, orders: w.records, requests: w.requests, truncated: w.truncated, budgetExhausted: w.budgetExhausted };
 }
 
 /** Get a single order with products, files, settings. */

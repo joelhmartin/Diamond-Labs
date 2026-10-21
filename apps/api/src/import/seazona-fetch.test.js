@@ -9,7 +9,7 @@ import { fetchSummaries, runSummaryCommand, runDetailCommand, createPacer } from
 const pace = async () => {}; // tests never wait on the real 2s pacer
 
 // A fake seazona.service: records every call; `detail(id, n)` scripts each answer.
-function fakeSeazona({ detail = () => ({ ok: true, status: 200, record: { id: "x" } }), invoices = [], truncated = false, pages = 2 } = {}) {
+function fakeSeazona({ stallAfter = null, detail = () => ({ ok: true, status: 200, record: { id: "x" } }), invoices = [], truncated = false, pages = 2 } = {}) {
   const calls = [];
   const answer = (id) => {
     calls.push(id);
@@ -23,10 +23,11 @@ function fakeSeazona({ detail = () => ({ ok: true, status: 200, record: { id: "x
     getAllInvoicesResult: async (opts = {}) => {
       let n = 0;
       for (let i = 0; i < pages; i++) {
-        if (opts.maxPages !== undefined && i >= opts.maxPages) return { reachable: true, status: 200, invoices: [], requests: n, truncated: true };
+        if (opts.maxPages !== undefined && i >= opts.maxPages) return { reachable: true, status: 200, invoices: [], requests: n, truncated: true, budgetExhausted: true };
         await opts.beforePage?.();
         calls.push("page");
         n += 1;
+        if (stallAfter !== null && n >= stallAfter) return { reachable: true, status: 200, invoices: [], requests: n, truncated: true, budgetExhausted: false };
       }
       return { reachable: true, status: 200, invoices, requests: n, truncated };
     },
@@ -101,9 +102,13 @@ test("summaries: stored with their lastModified; a failed list stores nothing", 
   assert.equal(r.status, "failed", "a record without an id makes the set incomplete: never done");
   assert.equal(r.dropped, 1);
   assert.match(store.runs.get(r.runId).note, /1 record\(s\) had no id/);
-  assert.equal(r.count, 2);
+  assert.equal(r.count, 0, "the partial set is not written");
+  assert.equal(store.recs.size, 0);
   assert.equal(r.requests, 2);
-  assert.equal(store.recs.get("invoice:a").lastModified, "2026-10-01T00:00:00");
+  const ok = fakeStore();
+  const good = await fetchSummaries({ entity: "invoice", seazona: fakeSeazona({ invoices: [{ id: "a", lastModified: "2026-10-01T00:00:00" }, { id: "b" }] }), store: ok });
+  assert.equal(good.status, "done");
+  assert.equal(ok.recs.get("invoice:a").lastModified, "2026-10-01T00:00:00");
   const failed = await fetchSummaries({ entity: "client", seazona, store: fakeStore() });
   assert.equal(failed.status, "failed");
   assert.equal(failed.count, 0);
@@ -207,4 +212,29 @@ test("a store error during a summary marks the run failed, then rethrows", async
   await assert.rejects(fetchSummaries({ entity: "invoice", seazona: fakeSeazona({ invoices: [{ id: "a" }] }), store }), /db down/);
   const [run] = store.runs.values();
   assert.equal(run.status, "failed");
+});
+
+test("--approved larger than the plan raises the cap: the way forward when a list needs more pages", async () => {
+  const store = fakeStore();
+  const seazona = fakeSeazona({ invoices: [{ id: "a" }], pages: 4 });
+  const capped = await runSummaryCommand({ entity: "invoice", live: true, seazona, store, pace });
+  assert.equal(capped.result.needsMorePages, true);
+  assert.equal(capped.result.requests, 2, "reports the pages used");
+  const raised = await runSummaryCommand({ entity: "invoice", live: true, approved: 4, seazona: fakeSeazona({ invoices: [{ id: "a" }], pages: 4 }), store, pace });
+  assert.equal(raised.result.status, "done");
+  assert.equal(raised.result.requests, 4);
+});
+
+test("a stall on exactly the last allowed page is truncated, not 'needs more pages'", async () => {
+  const r = await fetchSummaries({ entity: "invoice", seazona: fakeSeazona({ pages: 2, stallAfter: 2 }), store: fakeStore(), maxPages: 2, pace });
+  assert.equal(r.status, "failed");
+  assert.equal(r.truncated, true);
+  assert.equal(r.needsMorePages, false);
+});
+
+test("the unexpected-error path records the real request count", async () => {
+  const store = fakeStore();
+  store.upsert = async () => { throw new Error("db down"); };
+  await assert.rejects(fetchSummaries({ entity: "invoice", seazona: fakeSeazona({ invoices: [{ id: "a" }] }), store }), /db down/);
+  assert.equal([...store.runs.values()][0].requestCount, 2);
 });

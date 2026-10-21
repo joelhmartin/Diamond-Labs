@@ -138,6 +138,15 @@ test("a walk honours maxPages and awaits beforePage before every page; no option
   const r = await seazona.getAllOrdersResult({ maxPages: 3, beforePage: async () => { paced += 1; } });
   assert.equal(r.requests, 3);
   assert.equal(r.truncated, true, "out of pages mid-walk is truncated");
+  assert.equal(r.budgetExhausted, true);
   assert.equal(paced, 3);
   assert.equal(f.mock.calls.length, 3);
+});
+
+test("a stall on the last allowed page is truncated but not budgetExhausted", async () => {
+  const same = page(10_000, (i) => ({ id: `s${i}`, ordered: i === 0 ? "1900-01-01T00:00:00" : "1899-12-31T00:00:00" }));
+  stub(ok(same));
+  const r = await seazona.getAllOrdersResult({ maxPages: 1 });
+  assert.equal(r.truncated, true);
+  assert.equal(r.budgetExhausted, false);
 });

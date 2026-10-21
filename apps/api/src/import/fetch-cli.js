@@ -14,6 +14,10 @@
  *   pnpm --filter @my-app/api import:fetch <invoices|orders|…> --mark-stale <runId>
  *     (marks a run left "running" by a crash or Ctrl-C as failed so a new live run may start)
  *
+ * Only ONE live fetch runs at a time: a live run takes a Postgres advisory lock on the
+ * import DB for its whole life and refuses if another process holds it. --mark-stale and
+ * resuming a run still marked running work only while that lock is free.
+ *
  * Ctrl-C is safe: the cursor is saved every 25 records, so --detail --resume
  * re-fetches at most the last 24. A live run refuses to start while another run
  * of the same entity is still marked running (resume it, or --mark-stale it).
@@ -38,6 +42,7 @@ import { rawStore } from "./raw-store.js";
 import { readExport, parseColumnsFlag } from "./export-table.js";
 import { SUMMARY_ENTITIES, DETAIL_ENTITIES, APPROVAL_THRESHOLD, REQUESTS_PER_MINUTE, detailFilterProblem, selectDetailIds } from "./fetch-plan.js";
 import { runSummaryCommand, runDetailCommand } from "./seazona-fetch.js";
+import { makeFetchLock } from "./fetch-lock.js";
 import { printLines, printReport, runIfMain } from "./report.js";
 
 const FLAGS = {
@@ -59,14 +64,16 @@ const defaultDeps = {
   printReport,
   readFile,
   async openStore(env) {
-    const importDb = connect(resolveImportDb(env), importSchema);
+    const resolved = resolveImportDb(env);
+    const importDb = connect(resolved, importSchema);
     try {
       await assertImportKey(importDb.db, { keyCheck: importSchema.keyCheck });
     } catch (err) {
       await importDb.close();
       throw err;
     }
-    return { store: rawStore(importDb.db), close: () => importDb.close() };
+    const lock = makeFetchLock(resolved.url);
+    return { store: rawStore(importDb.db), tryLock: lock.tryLock, close: async () => { await lock.close(); await importDb.close(); } };
   },
   loadSeazona: () => import("../services/seazona.service.js"),
 };
@@ -105,18 +112,20 @@ async function openInvoiceNumbers(flags, store, deps) {
   return new Set(rows.filter((r) => r.cents > 0).map((r) => r.key));
 }
 
-async function resumedRun({ detailEntity, flags, store }) {
+async function resumedRun({ detailEntity, flags, store, tryLock }) {
   const given = FILTER_FLAGS.filter((f) => flags[f] !== undefined);
   if (given.length) throw new ImportRefusal(`--resume replays the run's own id list; drop --${given.join(", --")}.`);
   const run = await store.getRun(flags.resume);
   if (!run || run.entity !== detailEntity || run.mode !== "detail") throw new ImportRefusal(`No ${detailEntity} run ${flags.resume}.`);
   if (run.status === "done") throw new ImportRefusal(`Run ${run.id} already finished.`);
+  // A run still marked running is only resumable when no live process owns it, which holding the lock proves.
+  if (run.status === "running" && !(await tryLock())) throw new ImportRefusal(`Run ${run.id} is marked running and another live fetch holds the fetch lock, so it may still be alive. Wait for it to end.`);
   return { ids: run.plannedIds ?? [], start: run.cursor, run };
 }
 
-async function detailIds({ name, entity, flags, store, deps }) {
+async function detailIds({ name, entity, flags, store, deps, tryLock }) {
   const detailEntity = DETAIL_ENTITIES[name];
-  if (flags.resume) return resumedRun({ detailEntity, flags, store });
+  if (flags.resume) return resumedRun({ detailEntity, flags, store, tryLock });
   if (flags.open && entity !== "order") throw new ImportRefusal("--open applies to orders only.");
   if (flags["open-balance"] && entity !== "invoice") throw new ImportRefusal("--open-balance applies to invoices only.");
   const filters = {
@@ -133,8 +142,8 @@ async function detailIds({ name, entity, flags, store, deps }) {
 }
 
 function stopLines(r) {
-  if (r.dropped > 0) return [`${r.dropped} record(s) in the list had no id and were not stored. The set is incomplete, so the run is marked failed; needs operator attention.`];
-  if (r.needsMorePages) return ["The list walk needs more pages than the plan allowed (or than --approved): NOTHING was stored. Re-plan (dry run) and get the new count approved."];
+  if (r.dropped > 0) return [`${r.dropped} record(s) in the list had no id and had no id. The set is incomplete, so NOTHING was stored and the run is marked failed; needs operator attention.`];
+  if (r.needsMorePages) return [`The list walk needed more pages than allowed (${r.requests} used): NOTHING was stored. Get a larger count approved and re-run with --live --approved ${r.requests + 2}.`];
   if (r.status === "blocked") return ["Seazona refused with 403: the integration is BLOCKED (production too). Do not retry. Tell the user; check /health/seazona later."];
   if (r.truncated) return ["The list walk did not complete (Seazona's capped list gave no cursor to advance by, or the page budget ran out). The set is incomplete: NOTHING was stored or marked complete. Needs operator attention; do not load from this."];
   if (r.lastStatus === 0) return ["Seazona is unavailable (disabled, credentials or network); nothing more was attempted."];
@@ -181,7 +190,8 @@ async function assertNoRunningRun(store, entityName, exceptId) {
   }
 }
 
-async function markStale(store, entityNames, flags, deps) {
+async function markStale(store, entityNames, flags, deps, tryLock) {
+  if (!(await tryLock())) throw new ImportRefusal("Another live fetch holds the fetch lock, so a run marked running may still be alive. Wait for it to end; --mark-stale only works when no live fetch is running.");
   const run = await store.getRun(flags["mark-stale"]);
   if (!run || !entityNames.includes(run.entity)) throw new ImportRefusal(`No run ${flags["mark-stale"]} for this entity.`);
   if (run.status !== "running") throw new ImportRefusal(`Run ${run.id} is ${run.status}, not running.`);
@@ -197,17 +207,18 @@ export async function main(argv, env = process.env, overrides = {}) {
   const name = positional[0];
   const entity = SUMMARY_ENTITIES[name];
   checkShape(name, entity, flags, positional);
-  const { store, close } = await deps.openStore(env);
+  const { store, close, tryLock } = await deps.openStore(env);
   try {
     if (name === "export") return await storeExport(flags, store, deps);
     const storeEntity = flags.detail ? DETAIL_ENTITIES[name] : entity;
-    if (flags["mark-stale"]) return await markStale(store, [entity, DETAIL_ENTITIES[name]], flags, deps);
+    if (flags["mark-stale"]) return await markStale(store, [entity, DETAIL_ENTITIES[name]], flags, deps, tryLock);
     const live = flags.live === true;
+    if (live && !(await tryLock())) throw new ImportRefusal("Another live fetch is running (it holds the import database's fetch lock). Only one live fetch at a time: wait for it to finish.");
     if (live) await assertNoRunningRun(store, storeEntity, flags.resume);
     const common = { live, approved: intFlag(flags, "approved"), seazona: lazySeazona(deps.loadSeazona), store, pace: deps.pace };
     let out;
     if (flags.detail) {
-      const { ids, start, run } = await detailIds({ name, entity, flags, store, deps });
+      const { ids, start, run } = await detailIds({ name, entity, flags, store, deps, tryLock });
       out = await runDetailCommand({ ...common, entity: DETAIL_ENTITIES[name], ids, start, run, lastModifiedById: await store.index(entity) });
     } else {
       out = await runSummaryCommand({ ...common, entity });
