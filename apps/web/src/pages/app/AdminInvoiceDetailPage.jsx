@@ -119,6 +119,8 @@ export function AdminInvoiceDetailPage() {
   const { invoice, lines, payments, labOrder, client, activity } = data;
   const draft = invoice.status === "draft";
   const issued = invoice.status === "issued";
+  // An imported Seazona invoice with no matched client: Credit and Void wait until an admin links an owner (the server refuses too).
+  const unownedLegacy = invoice.kind === "legacy" && !invoice.clientUserId;
   const edit = (e) => act(() => api.patch(`/admin/invoices/${invoice.id}/lines`, { expectedVersion: invoice.version, edit: e }));
   const pdf = () => openPdf(api, `/admin/invoices/${invoice.id}/pdf`).catch(async (err) => addToast({ message: await blobErrorText(err), type: "error" }));
   const email = async () => {
@@ -172,8 +174,13 @@ export function AdminInvoiceDetailPage() {
               onClick={async () => { if (await edit({ op: "notes", notes: notes || null })) notesDirty.current = false; }}>Save notes</button>
           </section>
         )}
-        {issued && <CreditPanel invoice={invoice} busy={busy} act={act} />}
-        {(draft || (issued && invoice.paidCents === 0)) && <VoidPanel invoice={invoice} busy={busy} act={act} />}
+        {unownedLegacy && (
+          <section className="rounded-2xl border border-surface-300/50 bg-white p-4 text-sm text-navy/70 md:col-span-2">
+            This carried-over Seazona invoice has no client yet, so it can't be credited or voided. Link its client first (the import's invoices step then attaches it).
+          </section>
+        )}
+        {issued && !unownedLegacy && <CreditPanel invoice={invoice} busy={busy} act={act} />}
+        {!unownedLegacy && (draft || (issued && invoice.paidCents === 0)) && <VoidPanel invoice={invoice} busy={busy} act={act} />}
       </div>
 
       {payments.some((p) => p.reference || p.note) && (

@@ -105,3 +105,21 @@ test("parity takes the load lock, refuses while a load holds it, and releases it
   assert.equal(busy.out.saved.length, 0);
   assert.equal(busy.out.closed, 1);
 });
+
+test("--accept saves the requested kinds and names each one that was not in the report", async () => {
+  const r = rig();
+  assert.equal(await r.run(["--target", "rehearsal", "--accept", "clients,seeds,open orders"]), 4);
+  assert.deepEqual(r.out.saved[0].report.acceptRequested, ["clients", "seeds", "open orders"]);
+  assert.deepEqual(r.out.reports[0].acceptRequested, ["clients", "seeds", "open orders"]);
+  assert.ok(r.out.lines.some((l) => /Requested to accept but not present in this report: .*open orders/.test(l)));
+  const none = rig();
+  await none.run(["--target", "rehearsal"]);
+  assert.equal(none.out.saved[0].report.acceptRequested, undefined);
+});
+
+test("a lock release that throws still closes the session", async () => {
+  const r = rig();
+  r.out.lock.close = async () => { throw new Error("lock close failed"); };
+  await assert.rejects(r.run(["--target", "rehearsal"]), /lock close failed/);
+  assert.equal(r.out.closed, 1);
+});

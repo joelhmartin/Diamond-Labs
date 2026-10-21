@@ -292,3 +292,15 @@ test("ordinary lines carry no shipment", () => {
   });
   assert.equal(lines[0].shipmentId, null);
 });
+
+test("an unowned legacy invoice cannot be credited or voided until an owner is linked; owned and non-legacy invoices are unchanged", () => {
+  const unowned = draft({ status: "issued", kind: "legacy", clientUserId: null });
+  assert.throws(() => planCredit(unowned, { amountCents: 100, reason: "r", balanceCents: 10000 }), (e) => isCode("INVALID_TRANSITION")(e) && /no client yet/.test(e.message));
+  assert.throws(() => planVoid(unowned, { paidCents: 0, reason: "r", now }), isCode("INVALID_TRANSITION"));
+  const owned = { ...unowned, clientUserId: "doc1" };
+  assert.deepEqual(planCredit(owned, { amountCents: 100, reason: "r", balanceCents: 10000 }), { reason: "r" });
+  assert.equal(planVoid(owned, { paidCents: 0, reason: "r", now }).patch.status, "void");
+  // A guest shop invoice has no client by design and stays actionable.
+  const shop = draft({ status: "issued", kind: "shop", clientUserId: null });
+  assert.equal(planVoid(shop, { paidCents: 0, reason: "r", now }).patch.status, "void");
+});

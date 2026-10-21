@@ -62,18 +62,26 @@ export async function main(argv, env = process.env, overrides = {}) {
   // Never read a half-written target: a live load holds this lock for its whole run.
   const lock = session.makeLock();
   try {
-    if (!(await lock.tryLock())) throw new ImportRefusal("A load is running against this target (the load lock is held). Wait for it to finish, then re-run parity.");
-    const target = readOnly(session.db);
-    const app = await readAppSide(target, session.raw);
-    const seazona = { ...(await readSeazonaSide(session.raw)), ...(await exportSide(session.raw, flags, app)) };
-    const seeds = (await enforceSeeds({ raw: session.raw, db: target, target: session.target.name, live: false, starts })).summary;
-    const report = applyAccepted(buildParity({ seazona, app, seeds }), accept);
-    const reportId = await session.raw.saveParityReport({ target: session.target.name, clean: report.clean, report });
-    deps.printReport({ target: session.target.name, database: session.target.database, reportId, ...report });
-    deps.print([`Saved as parity report ${reportId}.${report.accepted?.length ? ` Accepted: ${report.accepted.join(", ")}.` : ""}`]);
-    return report.clean ? 0 : 4;
+    try {
+      if (!(await lock.tryLock())) throw new ImportRefusal("A load is running against this target (the load lock is held). Wait for it to finish, then re-run parity.");
+      const target = readOnly(session.db);
+      const app = await readAppSide(target, session.raw);
+      const seazona = { ...(await readSeazonaSide(session.raw)), ...(await exportSide(session.raw, flags, app)) };
+      const seeds = (await enforceSeeds({ raw: session.raw, db: target, target: session.target.name, live: false, starts })).summary;
+      const applied = applyAccepted(buildParity({ seazona, app, seeds }), accept);
+      // The saved report records what the operator asked to accept, not only what matched, so a typo'd or stale accept is auditable.
+      const report = accept.length ? { ...applied, acceptRequested: accept } : applied;
+      const absent = accept.filter((k) => !(report.accepted ?? []).includes(k));
+      const reportId = await session.raw.saveParityReport({ target: session.target.name, clean: report.clean, report });
+      deps.printReport({ target: session.target.name, database: session.target.database, reportId, ...report });
+      deps.print([`Saved as parity report ${reportId}.${report.accepted?.length ? ` Accepted: ${report.accepted.join(", ")}.` : ""}`]);
+      if (absent.length) deps.print([`Requested to accept but not present in this report: ${absent.join(", ")}.`]);
+      return report.clean ? 0 : 4;
+    } finally {
+      // A failing lock release must not leave the session (two connections) open.
+      await lock.close();
+    }
   } finally {
-    await lock.close();
     await session.close();
   }
 }

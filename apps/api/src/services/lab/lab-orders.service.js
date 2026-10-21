@@ -258,6 +258,7 @@ export async function getLabOrderDetail(id, now = new Date()) {
       .select({ id: rxCases.id, caseNumber: rxCases.caseNumber })
       .from(rxCases)
       .where(eq(rxCases.seazonaOrderId, order.sourceId))
+      .orderBy(asc(rxCases.createdAt), asc(rxCases.id)) // deterministic if two cases ever share a Seazona order
       .limit(1);
     legacy = { seazonaOrderId: order.sourceId, patientName: order.legacyPatient ?? null, caseId: c?.id ?? null, caseNumber: c?.caseNumber ?? null };
   }
