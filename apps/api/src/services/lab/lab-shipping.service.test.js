@@ -127,6 +127,21 @@ test("mark shipped: every order in the box ships, and ONE email lists them all",
   });
 });
 
+test("marking a legacy (Seazona) order shipped issues and drafts no invoice: its bill is the imported legacy invoice", async () => {
+  sentEmails.length = 0;
+  const a = order({ shipmentId: "sh1", source: "legacy", sourceId: "ord-1" });
+  const client = { id: "doc1", name: "Dr. Ada", email: "dr@x.com", role: "doctor", accountNumber: null, profile: null };
+  const tx = fakeTx({
+    // shipment, the box, the order row, then the billing follow-up's reads (no invoice; the legacy order), then the email's reads
+    selects: [[shipment], [a], [a], [], [a], [a], [client]],
+    updates: [[{ id: "sh1" }], [{ ...a, status: "shipped", version: 4 }]],
+  });
+  const out = await svc.markShipmentShipped("sh1", { byUserId: "u1" }, deps(tx));
+  assert.deepEqual(out.ordersShipped, [100245]);
+  assert.equal(inserts(tx).some((v) => v && ("invoiceNumber" in v || "invoiceId" in v)), false, "no invoice or invoice line written");
+  assert.equal(tx.log.some((l) => l.op === "update" && l.values?.status === "issued"), false);
+});
+
 test("a shop-order box emails the guest with the shop order number (DOL-…) as well", async () => {
   sentEmails.length = 0;
   const a = order({ shipmentId: "sh1", source: "shop_order", sourceId: "so1", clientUserId: null });

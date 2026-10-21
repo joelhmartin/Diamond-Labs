@@ -33,6 +33,13 @@ test("shippable: a shop order ships alone even for a registered doctor", () => {
   assert.equal(planShippable([shop], ["s"]).length, 1);
 });
 
+test("shippable: a legacy (Seazona) order ships alone, never in a box with another order", () => {
+  const legacy = o({ id: "l", source: "legacy" });
+  assert.throws(() => planShippable([o({ id: "a" }), legacy], ["a", "l"]), (e) => notShippable(e) && /legacy .* ships on its own/.test(e.message));
+  assert.throws(() => planShippable([legacy, o({ id: "l2", orderNumber: 100246, source: "legacy" })], ["l", "l2"]), notShippable);
+  assert.equal(planShippable([legacy], ["l"]).length, 1);
+});
+
 test("the label reference is order numbers only, within the carriers' 30 characters", () => {
   assert.equal(shipmentReference([100246, 100245]), "Order 100245, 100246");
   assert.equal(shipmentReference([100245, 100246, 100247, 100248]), "Orders 100245 +3");

@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { OPENING_BALANCE_PREFIX } from "@my-app/shared";
 import { invoices, invoiceLines } from "../db/schema/index.js";
 import { sealInvoice, sealLine } from "../services/billing/invoice-crypto.js";
@@ -6,7 +6,7 @@ import { loadOwners, normAccount } from "./owners.js";
 import { planInvoices } from "./map-invoices.js";
 import { insertMissing } from "./load-writer.js";
 import { enforceSeeds } from "./seed-check.js";
-import { auditImport } from "./audit.js";
+import { reattachOwners as reattachRows, planAttach } from "./reattach.js";
 
 const BATCH = 500;
 
@@ -78,31 +78,16 @@ export function reattachPlan(existing, summaries, owners) {
     const owner = r.seazonaId.startsWith(OPENING_BALANCE_PREFIX)
       ? owners.byAccount.get(normAccount(r.seazonaId.slice(OPENING_BALANCE_PREFIX.length)))
       : owners.byClient.get(clientOf.get(r.seazonaId));
-    if (owner) out.set(owner, [...(out.get(owner) ?? []), r.seazonaId]);
+    if (owner) planAttach(out, owner, r.seazonaId);
   }
   return out;
 }
 
-/** Guarded: only a legacy invoice that is still unowned changes. Returns how many were attached; one audit row per changed batch. */
-export async function reattachOwners(db, plan) {
-  let attached = 0;
-  for (const [owner, ids] of plan) {
-    for (let i = 0; i < ids.length; i += BATCH) {
-      const batch = ids.slice(i, i + BATCH);
-      await db.transaction(async (tx) => {
-        const rows = await tx.update(invoices)
-          .set({ clientUserId: owner, version: sql`${invoices.version} + 1`, updatedAt: new Date() })
-          .where(and(eq(invoices.kind, "legacy"), isNull(invoices.clientUserId), inArray(invoices.legacySeazonaInvoiceId, batch)))
-          .returning({ id: invoices.id });
-        attached += rows.length;
-        if (rows.length) {
-          await auditImport(tx, {
-            action: "import.legacy_invoices_reattached", targetType: "invoice",
-            metadata: { ownerUserId: owner, planned: batch.length, changed: rows.length, legacyInvoiceIds: batch },
-          });
-        }
-      });
-    }
-  }
-  return attached;
+/** Guarded (reattach.js): only a legacy invoice that is still unowned changes. Returns how many were attached. */
+export function reattachOwners(db, plan) {
+  return reattachRows(db, plan, {
+    table: invoices, ownerField: "clientUserId", ownerCol: invoices.clientUserId, keyCol: invoices.legacySeazonaInvoiceId,
+    versionCol: invoices.version, scope: eq(invoices.kind, "legacy"),
+    action: "import.legacy_invoices_reattached", targetType: "invoice", metadataKey: "legacyInvoiceIds",
+  });
 }

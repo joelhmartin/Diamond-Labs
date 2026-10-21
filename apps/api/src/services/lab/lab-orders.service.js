@@ -4,10 +4,12 @@ import { isoDateIn, isOverdue, LAB_TIMEZONE, STAFF_ROLES, caseSummary } from "@m
 import { db } from "../../config/database.js";
 import { env } from "../../config/env.js";
 import {
-  labOrders, labOrderLines, labOrderEvents, labDepartments, rxCases, rxCaseFiles, rxCaseLines, orders, users, productVariants, shipments,
+  labOrders, labOrderLines, labOrderEvents, labDepartments, rxCases, rxCaseFiles, rxCaseLines, orders, users, shipments,
 } from "../../db/schema/index.js";
 import { createId } from "../../lib/id.js";
-import { encryptField, decryptField, fieldSealer } from "../../lib/crypto.js";
+import { encryptField, decryptField } from "../../lib/crypto.js";
+import { sealOrder, openOrder } from "./lab-order-crypto.js";
+import { variantIdsForCodes } from "./lab-variants.js";
 import { decryptRxPhi } from "../rx/phi-crypto.js";
 import { shipmentSummaries } from "../shipping/shipments.service.js";
 import { allocateSequenceNumber } from "../sequence.service.js";
@@ -27,13 +29,6 @@ const client = alias(users, "client");
 const assignee = alias(users, "assignee");
 const actor = alias(users, "actor");
 
-// Free text staff type can name a patient, so it is encrypted at rest like
-// rx_cases' free-text fields (B4 / phi-crypto.js).
-const SECRET_ORDER_FIELDS = ["holdReason", "labNotes", "legacyPatient"];
-
-const orderSecrets = fieldSealer(SECRET_ORDER_FIELDS);
-const sealOrder = orderSecrets.seal;
-const openOrder = orderSecrets.open;
 function sealEvent(e) {
   return { ...e, id: createId(), note: e.note == null ? null : encryptField(e.note) };
 }
@@ -48,16 +43,6 @@ export function allocateOrderNumber(tx) {
   return allocateSequenceNumber(tx, {
     lockId: LAB_ORDER_NUMBER_LOCK, table: labOrders, column: labOrders.orderNumber, start: env.LAB_ORDER_NUMBER_START,
   });
-}
-
-async function variantIdsForCodes(tx, codes) {
-  const unique = [...new Set(codes.filter(Boolean).map(String))];
-  if (unique.length === 0) return new Map();
-  const rows = await tx
-    .select({ id: productVariants.id, code: productVariants.code })
-    .from(productVariants)
-    .where(inArray(productVariants.code, unique));
-  return new Map(rows.map((r) => [r.code, r.id]));
 }
 
 async function insertPlan(tx, { labOrder, lines, events }) {

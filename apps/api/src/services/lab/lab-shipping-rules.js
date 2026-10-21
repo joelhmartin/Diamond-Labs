@@ -27,6 +27,10 @@ export function planShippable(orders, requestedIds) {
   if (sorted.length > 1 && sorted.some((o) => o.source === "shop_order")) {
     problems.push("A shop order ships on its own: its customer's address is its own, so it can't share a box.");
   }
+  // A legacy (Seazona) order has no Rx case or invoice of ours; it is labelled and shipped on its own.
+  if (sorted.length > 1 && sorted.some((o) => o.source === "legacy")) {
+    problems.push("A legacy (Seazona) order ships on its own and can't share a box.");
+  }
   const clients = new Set(sorted.map((o) => o.clientUserId ?? null));
   if (sorted.length > 1 && (clients.size > 1 || clients.has(null))) {
     problems.push("Orders in one box must belong to the same client, and a guest order ships on its own.");

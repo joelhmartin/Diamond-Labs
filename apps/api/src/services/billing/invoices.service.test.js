@@ -184,3 +184,10 @@ test("a draft edited by staff meanwhile is a 409, not a lost update", async () =
   const tx = fakeTx({ selects: [[shipDraftRow], [shipItemLine]], updates: [[]] });
   await assert.rejects(mod.addShipmentLine(tx, { labOrderId: "lo1", shipmentId: "sh1", description: "S", unitCents: 100 }), (e) => e.code === "STALE");
 });
+
+test("a legacy (Seazona) lab order is never billed again when it ships: its bill is the imported invoice", async () => {
+  const tx = fakeTx({ selects: [[], [{ id: "lo-1", source: "legacy", sourceId: "ord-1", clientUserId: "u-1" }]] });
+  const r = await mod.issueForShippedLabOrder(tx, { labOrderId: "lo-1", shippedAt: new Date() });
+  assert.deepEqual(r, { issued: false, reason: "legacy" });
+  assert.equal(tx.log.some((e) => e.op === "insert" || e.op === "update"), false);
+});

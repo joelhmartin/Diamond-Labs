@@ -109,6 +109,9 @@ export async function issueForShippedLabOrder(tx, { labOrderId, shippedAt, byUse
     // A shop order's invoice is written at checkout; a missing one is a
     // [LAB][SHOP_ORDER_FAILED] case for the shop-lab-orders-repair sweep, not something to invent here.
     if (!labOrder || labOrder.source === "shop_order") return { issued: false, reason: "no_invoice" };
+    // An order imported at cutover (piece 5) was billed by the old system; that
+    // bill is its imported legacy invoice. Never draft a second one.
+    if (labOrder.source === "legacy") return { issued: false, reason: "legacy" };
     const lines = await tx.select().from(labOrderLines).where(eq(labOrderLines.labOrderId, labOrderId)).orderBy(asc(labOrderLines.position));
     await createDraftForLabOrder(tx, { labOrder, lines, byUserId });
     invoice = await invoiceForLabOrder(tx, labOrderId);

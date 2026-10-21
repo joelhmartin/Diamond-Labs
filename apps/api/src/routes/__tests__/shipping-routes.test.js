@@ -261,6 +261,20 @@ test("the ship context route returns the context, or 404 for an unknown order", 
   assert.equal(await shipContext("nope", fakeTx({ selects: [[]] })), null);
 });
 
+test("a legacy (Seazona) order is not offered ship-together siblings and is never offered as one", async () => {
+  const { shipContext } = await import("../../services/lab/lab-shipping-queries.js");
+  const legacy = { id: "o1", orderNumber: 98000, status: "ready_to_ship", source: "legacy", sourceId: "ord-1", clientUserId: "doc1", isRemake: false, shipmentId: null, version: 1 };
+  const tx = fakeTx({ selects: [[legacy], [{ id: "doc1", name: "Dr. Ada" }], [{ id: "o2", orderNumber: 100246, source: "rx_case", isRemake: false }]] });
+  const context = await shipContext("o1", tx);
+  assert.deepEqual(context.siblings, [], "a legacy order ships alone");
+  // The order read and the client read only: the sibling query never runs for it.
+  assert.equal(tx.log.filter((e) => e.op === "select").length, 2);
+  // And the sibling query itself admits Rx-case orders only, so a legacy order is never offered to another box.
+  const queries = read("../../services/lab/lab-shipping-queries.js");
+  assert.match(queries, /eq\(labOrders\.source, "rx_case"\)/);
+  assert.doesNotMatch(queries, /ne\(labOrders\.source, "shop_order"\)/);
+});
+
 test("Refresh tracking is staff-only, runs the lab sync for one shipment, and is audited", () => {
   const body = handlerSource(src, 'fastify.post("/lab/shipments/:id/refresh-tracking",');
   assert.match(body, /STAFF/);

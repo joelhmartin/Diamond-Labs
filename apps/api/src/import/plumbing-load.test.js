@@ -33,6 +33,12 @@ const modules = [
   "./audit.js",
   "./balance-plan.js",
   "./load-balances.js",
+  "./reattach.js",
+  "./load-lock.js",
+  "../services/lab/lab-order-crypto.js",
+  "../services/lab/lab-variants.js",
+  "./map-orders.js",
+  "./load-orders.js",
   // loads without env; the Seazona service is imported only when a live run starts
   "./fetch-cli.js",
 ];

@@ -11,6 +11,7 @@ import { insertMissing } from "./load-writer.js";
 import { enforceSeeds } from "./seed-check.js";
 import { problemList } from "./problems.js";
 import { ImportRefusal } from "./import-errors.js";
+import { withLoadLock } from "./load-lock.js";
 import { EXPORT_PROBLEM_KINDS } from "./export-table.js";
 
 const BATCH = 500;
@@ -169,13 +170,8 @@ export async function loadBalances({
     const summary = parsed.problems.map((p) => `${p.kind} x${p.count} (rows ${p.lines.slice(0, 10).join(", ")})`).join("; ");
     throw new ImportRefusal(`The balance export has problems: ${summary}. ${NO_KEY_WARNING} Fix the file, or pass --accept-export-problems: rows with an unreadable or duplicated balance then stay open (nothing is settled for them), but keyless rows still cannot be matched.`);
   }
-  if (live && !lock) throw new TypeError("A live balances run needs the load lock (makeFetchLock with LOAD_LOCK_KEY on the target).");
-  if (lock && live && !(await lock.tryLock())) throw new ImportRefusal("Another load is running against this target (the load lock is held). Wait for it to finish.");
-  try {
-    return await run({ raw, db, live, target, mode, parsed, fileId, starts, cutoverAt, paidCents, guard: () => lock?.assertHeld() });
-  } finally {
-    if (lock && live) await lock.close();
-  }
+  return withLoadLock({ lock, live, step: "balances" }, (guard) =>
+    run({ raw, db, live, target, mode, parsed, fileId, starts, cutoverAt, paidCents, guard }));
 }
 
 async function run({ raw, db, live, target, mode, parsed, fileId, starts, cutoverAt, paidCents, guard }) {
