@@ -5934,7 +5934,7 @@ Added by this plan:
 7. **Order files** are not copied; the probe is one approved request, and copying is a follow-up if it works (Spec correction 14).
 8. **Doctor profiles** for imported doctors are created from a complete Seazona address with a blank NPI (Spec correction 4). Say "no" and the clients step can skip profiles (drop `plan.profiles` from the write).
 9. **Open legacy orders are worked on the board but never billed again** (Spec correction 9). If the lab instead wants open orders billed by the new system and their Seazona invoices voided, that is a different design; raise it before the rehearsal.
-10. **Shop checkout is not paused** during the freeze (it writes no invoice ledger on `main`; on the new revision a shop invoice is paid in full at checkout).
+10. **Shop checkout is not paused** during the freeze (it stays open; on the new revision it records shop invoices and ledger rows normally, which is fine).
 
 ## Self-review (done while writing; kept for the executor)
 

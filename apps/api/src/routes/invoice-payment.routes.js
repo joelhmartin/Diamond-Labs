@@ -1,4 +1,6 @@
 import { authenticate } from "../middleware/authenticate.js";
+import { paymentsPaused } from "../middleware/payments-paused.js";
+import { env } from "../config/env.js";
 import { requireApprovedDoctor } from "../middleware/require-role.js";
 import { validate } from "../middleware/validate.js";
 import * as authorizenetService from "../services/authorizenet.service.js";
@@ -228,7 +230,9 @@ async function hostedComplete(request, reply) {
  * are module functions (the function-length rule); registration is at the end.
  */
 export default async function invoicePaymentRoutes(fastify) {
-  fastify.post("/payments/charge-saved", { ...CHARGE_RATE_LIMIT, preHandler: [authenticate, requireApprovedDoctor, validate(chargeSavedSchema)] }, chargeSaved);
-  fastify.post("/payments/hosted-token", { ...CHARGE_RATE_LIMIT, preHandler: [authenticate, requireApprovedDoctor, validate(hostedTokenSchema)] }, hostedToken);
+  fastify.post("/payments/charge-saved", { ...CHARGE_RATE_LIMIT, preHandler: [authenticate, requireApprovedDoctor, paymentsPaused, validate(chargeSavedSchema)] }, chargeSaved);
+  fastify.post("/payments/hosted-token", { ...CHARGE_RATE_LIMIT, preHandler: [authenticate, requireApprovedDoctor, paymentsPaused, validate(hostedTokenSchema)] }, hostedToken);
   fastify.post("/payments/hosted-complete", { ...CHARGE_RATE_LIMIT, preHandler: [authenticate, requireApprovedDoctor, validate(hostedCompleteSchema)] }, hostedComplete);
+  // The doctor pages read this to show the pause banner instead of a Pay button.
+  fastify.get("/payments/status", { preHandler: [authenticate] }, async () => ({ data: { paused: env.PAYMENTS_PAUSED === true } }));
 }

@@ -1,4 +1,5 @@
 import { authenticate } from "../middleware/authenticate.js";
+import { paymentsPaused } from "../middleware/payments-paused.js";
 import { requireAdmin } from "../middleware/require-role.js";
 import { validate } from "../middleware/validate.js";
 import { autopayAdminEnrollSchema, chargeSavedSchema, ERROR_CODES } from "@my-app/shared";
@@ -388,7 +389,7 @@ export default async function adminPaymentRoutes(fastify) {
   // "payment.charge" entry recordPaymentAndAllocations already writes.
   fastify.post("/admin/users/:userId/payments/charge-saved", {
     ...ADMIN_CHARGE_RATE_LIMIT,
-    preHandler: [...guard, validate(chargeSavedSchema)],
+    preHandler: [...guard, paymentsPaused, validate(chargeSavedSchema)],
   }, async (request, reply) => {
     try {
       const doctor = await loadDoctor(request.params.userId);

@@ -58,6 +58,11 @@ const envSchema = z.object({
   // card. Gated dark. Flip only after reading a
   // dry run's `would_charge` attempts.
   AUTOPAY_LIVE_RUN: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  // Cutover freeze (own-the-lab piece 5): "true" refuses every route that
+  // starts a card payment or writes the invoice ledger by hand
+  // (middleware/payments-paused.js). Anything else, or unset, is off. Never set
+  // outside a maintenance window.
+  PAYMENTS_PAUSED: z.string().optional().transform((v) => v === "true"),
   // Enrollment floor in dollars. An admin may override it per doctor.
   AUTOPAY_MIN_AMOUNT: z.coerce.number().positive().default(200),
   // What "the 15th" means. The lab is in San Antonio.

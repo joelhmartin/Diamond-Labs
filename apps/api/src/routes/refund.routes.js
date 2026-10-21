@@ -1,4 +1,5 @@
 import { authenticate } from "../middleware/authenticate.js";
+import { paymentsPaused } from "../middleware/payments-paused.js";
 import { requireAdmin } from "../middleware/require-role.js";
 import { validate } from "../middleware/validate.js";
 import { sendRefundReceipt } from "../services/email.service.js";
@@ -33,7 +34,7 @@ export default async function refundRoutes(fastify) {
   // always cached rather than followed by a lock release that permits a re-refund.
   // ───────────────────────────────────────────────────────────────
   fastify.post("/admin/payments/refund", {
-    preHandler: [authenticate, requireAdmin, validate(refundSchema)],
+    preHandler: [authenticate, requireAdmin, paymentsPaused, validate(refundSchema)],
   }, async (request, reply) => {
     const { transactionId, allocations } = request.body;
     const txid = String(transactionId);
