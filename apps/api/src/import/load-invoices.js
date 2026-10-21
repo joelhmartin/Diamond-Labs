@@ -1,10 +1,12 @@
-import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { OPENING_BALANCE_PREFIX } from "@my-app/shared";
 import { invoices, invoiceLines, users } from "../db/schema/index.js";
 import { sealInvoice, sealLine } from "../services/billing/invoice-crypto.js";
 import { OWNER_COLUMNS, resolveOwners } from "./owners.js";
 import { planInvoices } from "./map-invoices.js";
 import { insertMissing } from "./load-writer.js";
 import { enforceSeeds } from "./seed-check.js";
+import { auditImport } from "./audit.js";
 
 const BATCH = 500;
 
@@ -22,7 +24,10 @@ const BATCH = 500;
  * REATTACHES already-loaded legacy invoices that have no owner (client_user_id
  * null) once their Seazona client resolves to exactly one eligible owner
  * (counts.reattached; a dry run reports what it would do). An invoice that
- * already has an owner is never changed.
+ * already has an owner is never changed. This also attaches the per-client
+ * opening-balance invoices (`opening:<account>`, balances step) that loaded
+ * unowned, by account number. Each batch that changes rows writes one audit
+ * entry (owner id, planned and changed counts, Seazona invoice ids; no PHI).
  */
 export async function loadInvoices({ raw, db, live, target, starts = {} }) {
   const summaries = await raw.records("invoice");
@@ -38,7 +43,7 @@ export async function loadInvoices({ raw, db, live, target, starts = {} }) {
     summaries, details, owners: owners.byClient, unownedClients: owners.rejectedClients, ambiguousClients: owners.ambiguousClients,
     existingSeazonaIds, existingNumbers: new Set(existing.map((r) => r.number)),
   });
-  const reattach = reattachPlan(existing, summaries, owners.byClient);
+  const reattach = reattachPlan(existing, summaries, owners);
   plan.counts.reattached = [...reattach.values()].reduce((n, ids) => n + ids.length, 0); // planned; a live run overwrites with what changed
   const report = { step: "invoices", live, counts: plan.counts, seeds: seeds.summary, problems: plan.problems };
   if (!live) return report;
@@ -62,29 +67,41 @@ export async function loadInvoices({ raw, db, live, target, starts = {} }) {
   return report;
 }
 
-/** Loaded legacy invoices with no owner whose Seazona client now has one: owner id → Seazona invoice ids. */
-function reattachPlan(existing, summaries, byClient) {
+/**
+ * Loaded legacy invoices with no owner whose Seazona client (or, for an
+ * opening-balance invoice, account number) now has one: owner id → legacy invoice ids.
+ */
+export function reattachPlan(existing, summaries, owners) {
   const clientOf = new Map(summaries.map((r) => [r.seazonaId, String(r.payload.clientId)]));
   const out = new Map();
   for (const r of existing) {
     if (!r.seazonaId || r.clientUserId) continue;
-    const owner = byClient.get(clientOf.get(r.seazonaId));
+    const owner = r.seazonaId.startsWith(OPENING_BALANCE_PREFIX)
+      ? owners.byAccount.get(r.seazonaId.slice(OPENING_BALANCE_PREFIX.length))
+      : owners.byClient.get(clientOf.get(r.seazonaId));
     if (owner) out.set(owner, [...(out.get(owner) ?? []), r.seazonaId]);
   }
   return out;
 }
 
-/** Guarded: only a legacy invoice that is still unowned changes. Returns how many were attached. */
-async function reattachOwners(db, plan) {
+/** Guarded: only a legacy invoice that is still unowned changes. Returns how many were attached; one audit row per changed batch. */
+export async function reattachOwners(db, plan) {
   let attached = 0;
   for (const [owner, ids] of plan) {
     for (let i = 0; i < ids.length; i += BATCH) {
+      const batch = ids.slice(i, i + BATCH);
       await db.transaction(async (tx) => {
         const rows = await tx.update(invoices)
-          .set({ clientUserId: owner, updatedAt: new Date() })
-          .where(and(eq(invoices.kind, "legacy"), isNull(invoices.clientUserId), inArray(invoices.legacySeazonaInvoiceId, ids.slice(i, i + BATCH))))
+          .set({ clientUserId: owner, version: sql`${invoices.version} + 1`, updatedAt: new Date() })
+          .where(and(eq(invoices.kind, "legacy"), isNull(invoices.clientUserId), inArray(invoices.legacySeazonaInvoiceId, batch)))
           .returning({ id: invoices.id });
         attached += rows.length;
+        if (rows.length) {
+          await auditImport(tx, {
+            action: "import.legacy_invoices_reattached", targetType: "invoice",
+            metadata: { ownerUserId: owner, planned: batch.length, changed: rows.length, legacyInvoiceIds: batch },
+          });
+        }
       });
     }
   }

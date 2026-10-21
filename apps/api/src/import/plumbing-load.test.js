@@ -30,6 +30,9 @@ const modules = [
   "./load-writer.js",
   "./seed-check.js",
   "./load-invoices.js",
+  "./audit.js",
+  "./balance-plan.js",
+  "./load-balances.js",
   // loads without env; the Seazona service is imported only when a live run starts
   "./fetch-cli.js",
 ];

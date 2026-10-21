@@ -13,7 +13,10 @@ import { pgTable, varchar, timestamp, integer, date, text, index } from "drizzle
  * credit, or the checkout's id for a shop order.
  *
  * Seazona-era rows (before own-the-lab piece 3) carry `seazonaClientId` /
- * `seazonaInvoiceId` and no `invoiceId`; piece 5's import fills `invoiceId`.
+ * `seazonaInvoiceId` and no `invoiceId`, and keep it that way: their money is
+ * already inside Seazona's open balances, which piece 5 carries over as
+ * `legacy_settlement` rows (transactionId `legacy:<seazonaInvoiceId>`, or
+ * `legacy-full:` on the per-client path). Linking them would count it twice.
  */
 export const invoicePayments = pgTable("invoice_payments", {
   id: varchar("id", { length: 128 }).primaryKey(),
@@ -32,7 +35,7 @@ export const invoicePayments = pgTable("invoice_payments", {
   // Set only on refund/void reversal rows → the ORIGINAL charge's transaction id.
   refundsTransactionId: varchar("refunds_transaction_id", { length: 100 }),
   // doctor_card | doctor_hosted | admin_card | autopay | refund | shop_card |
-  // admin_check | admin_cash | admin_ach | admin_other | credit
+  // admin_check | admin_cash | admin_ach | admin_other | credit | legacy_settlement
   // (admin_offline on Seazona-era rows; null on rows older than the column).
   source: varchar("source", { length: 32 }),
   // The day a manual payment was received (staff-entered). Null → the row's lab-local created date.

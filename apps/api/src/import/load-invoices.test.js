@@ -104,3 +104,32 @@ test("an ambiguous client stays unowned (not reattached)", async () => {
   assert.equal(report.counts.reattached, 0);
   assert.deepEqual(report.problems.find((p) => p.kind === "client_has_multiple_owners").seazonaIds, ["c-1324"]);
 });
+
+test("the reattach guard: rows the guarded update did not change are not counted, and only changed batches are audited", async () => {
+  const existing = ["inv-a", "inv-b", "inv-c"].map((id, i) => ({ seazonaId: id, number: 11114 + i, clientUserId: null }));
+  // u-1324 has inv-a and inv-b planned; the update only changes one (the other was attached meanwhile). u-2001's inv-c changes none.
+  const tx = fakeTx({ selects: [[{ n: 0 }], [{ n: 0 }], users, existing], updates: [[{ id: "i1" }], []] });
+  const report = await loadInvoices({ raw, db: tx, live: true, target: "rehearsal", starts: {} });
+  assert.equal(report.counts.reattached, 1, "planned 3, changed 1");
+  const audits = tx.log.filter((e) => e.op === "insert" && e.values?.action === "import.legacy_invoices_reattached").map((e) => e.values);
+  assert.equal(audits.length, 1, "no audit row for a batch that changed nothing");
+  assert.equal(audits[0].metadata.ownerUserId, "u-1324");
+  assert.equal(audits[0].metadata.planned, 2);
+  assert.equal(audits[0].metadata.changed, 1);
+  assert.deepEqual(audits[0].metadata.legacyInvoiceIds, ["inv-a", "inv-b"]);
+  assert.equal(audits[0].userId, null);
+  const set = tx.log.find((e) => e.op === "set").values;
+  assert.ok(set.version, "the version is bumped");
+});
+
+test("an unowned per-client opening invoice is attached by account number once the account has one eligible owner", async () => {
+  const existing = [
+    { seazonaId: "inv-a", number: 11114, clientUserId: "u" },
+    { seazonaId: "opening:2001", number: 16211, clientUserId: null },
+    { seazonaId: "opening:9999", number: 16212, clientUserId: null },
+  ];
+  const tx = fakeTx({ selects: [[{ n: 0 }], [{ n: 0 }], users, existing], updates: [[{ id: "o1" }]] });
+  const report = await loadInvoices({ raw, db: tx, live: true, target: "rehearsal", starts: {} });
+  assert.equal(report.counts.reattached, 1, "account 9999 has no owner and stays unowned");
+  assert.deepEqual(tx.log.filter((e) => e.op === "set").map((e) => e.values.clientUserId), ["u-2001"]);
+});

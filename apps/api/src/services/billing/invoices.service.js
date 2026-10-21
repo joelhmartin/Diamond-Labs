@@ -4,7 +4,7 @@ import { env } from "../../config/env.js";
 import { PRICING } from "../../config/pricing.js";
 import { invoices, invoiceLines, invoicePayments, labOrders, labOrderLines } from "../../db/schema/index.js";
 import { createId } from "../../lib/id.js";
-import { allocateSequenceNumber } from "../sequence.service.js";
+import { allocateSequenceNumber, INVOICE_NUMBER_LOCK } from "../sequence.service.js";
 import { priceLabOrderLines } from "../pricing.service.js";
 import * as auditService from "../audit.service.js";
 import { sealInvoice, openInvoice, sealLine, openLine } from "./invoice-crypto.js";
@@ -18,8 +18,8 @@ import { planDraftInvoice, planShopInvoice, asRemakeLines, hasUnpriced, planIssu
  * and writes. Audit rows are written through the same transaction.
  */
 
-// Serialises invoice-number allocation (services/sequence.service.js).
-export const INVOICE_NUMBER_LOCK = 7300422;
+// Serialises invoice-number allocation (the id lives in services/sequence.service.js).
+export { INVOICE_NUMBER_LOCK };
 
 export function allocateInvoiceNumber(tx) {
   return allocateSequenceNumber(tx, {
