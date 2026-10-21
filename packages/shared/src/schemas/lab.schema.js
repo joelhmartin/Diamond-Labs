@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { id, isoDate } from "./common.schema.js";
-import { LAB_ORDER_STATUSES } from "../lab/lab-order-status.js";
+import { LAB_ORDER_STATUSES, LAB_ORDER_SOURCES } from "../lab/lab-order-status.js";
 import { ROLE_CHANGE_CHOICES } from "../constants/user-roles.js";
 
 const version = z.number().int().positive();
@@ -35,7 +35,7 @@ export const labDepartmentUpdateSchema = z.object({
 
 export const labOrderListQuerySchema = z.object({
   status: z.enum(LAB_ORDER_STATUSES).optional(),
-  source: z.enum(["rx_case", "shop_order"]).optional(),
+  source: z.enum(LAB_ORDER_SOURCES).optional(),
   departmentId: id.optional(),
   assigneeUserId: id.optional(),
   rush: flag,

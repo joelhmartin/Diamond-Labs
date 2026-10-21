@@ -7,11 +7,12 @@
 export const INVOICE_STATUSES = ["draft", "issued", "void"];
 export const INVOICE_KINDS = ["order", "shop", "legacy"];
 export const INVOICE_LINE_KINDS = ["item", "shipping", "fee", "adjustment"];
-export const PRICE_SOURCES = ["client", "base", "manual", "remake", "unpriced", "shipment"];
+export const PRICE_SOURCES = ["client", "base", "manual", "remake", "unpriced", "shipment", "legacy"];
 
 export const LINE_KIND_LABELS = { item: "Item", shipping: "Shipping", fee: "Fee", adjustment: "Adjustment" };
 export const PRICE_SOURCE_LABELS = {
   client: "Client price", base: "Base price", manual: "Manual", remake: "Remake (no charge)", unpriced: "Needs a price", shipment: "Shipping label",
+  legacy: "Seazona",
 };
 
 export const MANUAL_PAYMENT_METHODS = ["check", "cash", "ach", "other"];
@@ -25,6 +26,24 @@ export const isManualPaymentSource = (source) => MANUAL_PAYMENT_METHODS.some((m)
 export const CREDIT_SOURCE = "credit";
 /** The ledger row that pays a shop invoice at checkout. */
 export const SHOP_PAYMENT_SOURCE = "shop_card";
+/**
+ * Own-the-lab piece 5. A legacy invoice's settled part (total - Seazona's open
+ * balance) is one ledger row with this source and transactionId
+ * `legacy:<seazonaInvoiceId>`. It is bookkeeping, not a payment anyone made.
+ */
+export const LEGACY_SETTLEMENT_SOURCE = "legacy_settlement";
+/** Ledger rows kept out of payment history and the refund screen. */
+export const HISTORY_EXCLUDED_SOURCES = [SHOP_PAYMENT_SOURCE, LEGACY_SETTLEMENT_SOURCE];
+/** legacySeazonaInvoiceId of a per-client opening-balance invoice: `opening:<account number>`. */
+export const OPENING_BALANCE_PREFIX = "opening:";
+export const isOpeningBalanceInvoice = (inv) =>
+  inv?.kind === "legacy" && String(inv?.legacySeazonaInvoiceId ?? "").startsWith(OPENING_BALANCE_PREFIX);
+/**
+ * The default/summary-line description on an imported Seazona invoice. Other
+ * imported lines may carry other fixed strings; the real text is sealed in
+ * legacy_description.
+ */
+export const LEGACY_LINE_DESCRIPTION = "Carried over from Seazona";
 
 export const AGING_BUCKETS = [
   { key: "current", label: "Current" },

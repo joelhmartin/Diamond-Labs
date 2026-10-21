@@ -45,3 +45,8 @@ test("only lab and user can be granted here", () => {
   assert.ok(userRoleChangeSchema.safeParse({ role: "lab" }).success);
   assert.equal(userRoleChangeSchema.safeParse({ role: "admin" }).success, false);
 });
+
+test("the order list filters by every lab order source, legacy included", () => {
+  assert.equal(labOrderListQuerySchema.parse({ source: "legacy" }).source, "legacy");
+  assert.equal(labOrderListQuerySchema.safeParse({ source: "seazona" }).success, false);
+});

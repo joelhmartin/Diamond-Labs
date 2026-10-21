@@ -1,7 +1,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
-  LAB_ORDER_STATUSES, LAB_BOARD_COLUMNS, LAB_STATUS_LABELS, allowedNextStatuses, canMoveLabOrder,
+  LAB_ORDER_SOURCES, LAB_ORDER_SOURCE_LABELS, LAB_ORDER_STATUSES, LAB_BOARD_COLUMNS, LAB_STATUS_LABELS, allowedNextStatuses, canMoveLabOrder,
   reasonRequiredFor, isOverdue, isoDateIn, doctorStatusFor, doctorCaseView, doctorTracking, formatUsDate, formatLabDate, caseSummary,
 } from "./lab-order-status.js";
 
@@ -180,4 +180,10 @@ test("no tracking before the order ships (a label can still be voided), for a vo
 test("a manual shipment shows what staff typed, with no link", () => {
   const t = doctorTracking({ ...shippedLo, shipment: { carrier: "manual", serviceName: "Lone Star Courier", trackingNumber: "LS-1234567", status: "in_transit", deliveredAt: null } });
   assert.deepEqual(t, { carrier: "Lone Star Courier", trackingNumber: "LS-1234567", url: null, deliveredAt: null });
+});
+
+test("lab orders come from an Rx case, a shop order, or Seazona history", () => {
+  assert.deepEqual(LAB_ORDER_SOURCES, ["rx_case", "shop_order", "legacy"]);
+  for (const s of LAB_ORDER_SOURCES) assert.ok(LAB_ORDER_SOURCE_LABELS[s], s);
+  assert.equal(LAB_ORDER_SOURCE_LABELS.legacy, "Seazona history");
 });
