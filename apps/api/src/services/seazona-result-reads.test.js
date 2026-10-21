@@ -69,3 +69,47 @@ test("the limiter constants are exported for the fetcher to import, not copy", (
   assert.equal(seazona.MAX_REQUESTS_PER_WINDOW, 50);
   assert.equal(seazona.RATE_LIMIT_WINDOW_MS, 60_000);
 });
+
+const page = (n, make) => Array.from({ length: n }, (_, i) => make(i));
+
+test("a capped page whose newest value does not advance the cursor stops the walk as truncated", async () => {
+  // equal to the cursor instant (cursor carries Z, record value does not)
+  const same = page(10_000, (i) => ({ id: `a${i}`, ordered: i === 0 ? "1900-01-01T00:00:00" : "1899-12-31T00:00:00" }));
+  const f = stub(ok(same), ok([]));
+  const r = await seazona.getAllOrdersResult();
+  assert.equal(r.truncated, true);
+  assert.equal(r.requests, 1);
+  assert.equal(f.mock.calls.length, 1);
+  // backwards
+  const back = page(10_000, (i) => ({ id: `b${i}`, ordered: "1800-01-01T00:00:00" }));
+  stub(ok(back));
+  assert.equal((await seazona.getAllOrdersResult()).truncated, true);
+});
+
+test("exhausting the page budget is reported as truncated", async () => {
+  let n = 0;
+  const f = vi.fn(async () => { n += 1; return ok(page(10_000, (i) => ({ id: `p${n}-${i}`, ordered: minuteStamp(n * 20_000 + i) }))); });
+  vi.stubGlobal("fetch", f);
+  const r = await seazona.getAllOrdersResult();
+  assert.equal(r.requests, 50);
+  assert.equal(r.truncated, true);
+});
+
+test("a normal end (empty or short page) is not truncated", async () => {
+  stub(ok([]));
+  const r = await seazona.getAllOrdersResult();
+  assert.equal(r.truncated, false);
+  assert.equal(r.reachable, true);
+  stub(ok([{ id: "x", lastModified: "2024-01-01T00:00:00" }]));
+  assert.equal((await seazona.getAllInvoicesResult()).truncated, false);
+});
+
+test("records without an id are all kept, not collapsed into one", async () => {
+  stub(ok([{ ordered: "2024-01-01T00:00:00" }, { ordered: "2024-01-02T00:00:00" }, { id: "k", ordered: "2024-01-03T00:00:00" }]));
+  assert.equal((await seazona.getAllOrdersResult()).orders.length, 3);
+});
+
+test("a 2xx with a junk body is not an ok list read", async () => {
+  stub(ok({ message: "nope" }));
+  assert.deepEqual(await seazona.listProductsResult(), { ok: false, status: 200, products: [] });
+});

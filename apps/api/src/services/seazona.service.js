@@ -219,7 +219,7 @@ export async function checkLoginExists(email) {
  */
 export async function listClientsResult(lastModified = "") {
   const r = await requestRaw(`v1/clients/?lastModified=${encodeURIComponent(lastModified)}`);
-  return { ok: r.ok, status: r.status, clients: Array.isArray(r.data) ? r.data : [] };
+  return { ok: r.ok && Array.isArray(r.data), status: r.status, clients: Array.isArray(r.data) ? r.data : [] };
 }
 
 /** List all clients ([] on any failure). */
@@ -285,27 +285,35 @@ function bumpOneSecond(ts) {
  */
 async function walkCapped(fetchPage, field) {
   const seen = new Map();
+  const noId = []; // records without an id can't be de-duped; keep them all
+  const instant = (ts) => Date.parse(ts.endsWith("Z") ? ts : `${ts}Z`);
   let cursor = "1900-01-01T00:00:00Z";
   let reachable = true;
   let truncated = false;
+  let done = false; // false after the loop = the page budget ran out mid-walk
   let status = 200;
   let requests = 0;
-  for (let i = 0; i < 50; i++) {
+  for (let i = 0; i < 50 && !done; i++) {
     const page = await fetchPage(cursor);
     requests += 1;
     status = page.status;
-    if (!page.reachable) { reachable = false; break; }
-    if (!page.records.length) break;
-    for (const rec of page.records) seen.set(rec.id, rec);
-    if (page.records.length < LIST_PAGE_CAP) break;
+    if (!page.reachable) { reachable = false; done = true; break; }
+    if (!page.records.length) { done = true; break; }
+    for (const rec of page.records) {
+      if (rec.id === undefined || rec.id === null) noId.push(rec);
+      else seen.set(rec.id, rec);
+    }
+    if (page.records.length < LIST_PAGE_CAP) { done = true; break; }
     const values = page.records.map((rec) => rec[field]).filter((v) => typeof v === "string");
-    if (values.length === 0) { truncated = true; break; }
-    const max = values.reduce((m, v) => (v > m ? v : m));
+    if (values.length === 0) { truncated = true; done = true; break; }
+    const max = values.reduce((m, v) => (instant(v) > instant(m) ? v : m));
     const next = page.records.every((rec) => rec[field] === max) ? bumpOneSecond(max) : max;
-    if (next === cursor) { truncated = true; break; }
+    // The cursor must move strictly forward in time, or the walk is stalled.
+    if (!(instant(next) > instant(cursor))) { truncated = true; done = true; break; }
     cursor = next;
   }
-  return { reachable, status, records: [...seen.values()], requests, truncated };
+  if (!done) truncated = true;
+  return { reachable, status, records: [...seen.values(), ...noId], requests, truncated };
 }
 
 /** The FULL invoice archive past the 10k cap (see walkCapped). */
@@ -389,9 +397,10 @@ export async function getPayment(id) {
   return request(`v1/payments/${encodeURIComponent(id)}`);
 }
 
+/** Products with the call's status (a 2xx with a non-array body is not ok). */
 export async function listProductsResult() {
   const r = await requestRaw("v1/products/");
-  return { ok: r.ok, status: r.status, products: Array.isArray(r.data) ? r.data : [] };
+  return { ok: r.ok && Array.isArray(r.data), status: r.status, products: Array.isArray(r.data) ? r.data : [] };
 }
 
 /**
@@ -407,9 +416,10 @@ export async function getProduct(id) {
   return request(`v1/products/${encodeURIComponent(id)}`);
 }
 
+/** Seazona users with the call's status (a 2xx with a non-array body is not ok). */
 export async function listUsersResult() {
   const r = await requestRaw("v1/users/");
-  return { ok: r.ok, status: r.status, users: Array.isArray(r.data) ? r.data : [] };
+  return { ok: r.ok && Array.isArray(r.data), status: r.status, users: Array.isArray(r.data) ? r.data : [] };
 }
 
 /**
