@@ -35,3 +35,10 @@ for (const [name, run] of Object.entries(steps)) {
     await run({ live: false });
   });
 }
+
+test("a tryLock that throws still closes the lock", async () => {
+  const lock = fakeLock();
+  lock.tryLock = async () => { lock.calls.push("tryLock"); throw new Error("connect failed"); };
+  await assert.rejects(loadClients({ raw, db: fakeTx({ selects: [[], [], []] }), live: true, lock }), /connect failed/);
+  assert.deepEqual(lock.calls, ["tryLock", "close"]);
+});

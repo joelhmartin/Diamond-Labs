@@ -124,3 +124,14 @@ test("slugs truncate to 50 with the suffix kept; clientEmail takes the first of 
   assert.equal(two.create.length, 1);
   assert.deepEqual(two.skipped.emailTaken, ["c-9"]);
 });
+
+test("a deleted user is never linked by email and never counts as a client's linked owner", () => {
+  const rows = [
+    { id: "gone", status: "deleted", role: "doctor", approvalStatus: "approved", emailVerifiedAt: new Date("2026-01-01"), email: "gone@example.test", seazonaClientId: null, seazonaAccountNumber: null, createdAt: new Date("2026-01-01") },
+    { id: "gone-linked", status: "deleted", role: "doctor", approvalStatus: "approved", emailVerifiedAt: new Date("2026-01-01"), email: "gl@example.test", seazonaClientId: "c-x", seazonaAccountNumber: null, createdAt: new Date("2026-01-01") },
+  ];
+  assert.equal(linkedClientIndex(rows).has("c-x"), false);
+  const plan = planClients([{ id: "c-y", email: "gone@example.test" }], existingFromRows(rows, [], []), { now });
+  assert.deepEqual(plan.link, []);
+  assert.deepEqual(plan.skipped.emailNotLinkable, ["c-y"]);
+});

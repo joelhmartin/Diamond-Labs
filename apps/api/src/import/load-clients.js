@@ -20,7 +20,7 @@ export async function loadClients({ raw, db, live, noEmail = "placeholder", now 
 async function run({ raw, db, live, noEmail, now, guard }) {
   const clients = (await raw.records("client")).map((r) => r.payload);
   const userRows = await db
-    .select({ id: users.id, email: users.email, seazonaClientId: users.seazonaClientId, seazonaAccountNumber: users.seazonaAccountNumber, role: users.role, approvalStatus: users.approvalStatus, emailVerifiedAt: users.emailVerifiedAt, createdAt: users.createdAt })
+    .select({ id: users.id, email: users.email, seazonaClientId: users.seazonaClientId, seazonaAccountNumber: users.seazonaAccountNumber, role: users.role, approvalStatus: users.approvalStatus, emailVerifiedAt: users.emailVerifiedAt, status: users.status, createdAt: users.createdAt })
     .from(users);
   const slugRows = await db.select({ slug: accounts.slug }).from(accounts);
   const profileRows = await db.select({ userId: doctorProfiles.userId }).from(doctorProfiles);

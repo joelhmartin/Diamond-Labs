@@ -266,7 +266,8 @@ export async function getInvoices(lastModified) {
 export async function getInvoicesResult(lastModified) {
   const since = lastModified || "1900-01-01T00:00:00Z";
   const r = await requestRaw(`v1/invoices/?lastModified=${encodeURIComponent(since)}`);
-  return { reachable: r.data !== null, status: r.status, invoices: Array.isArray(r.data) ? r.data : [] };
+  // A 2xx whose body is not a list is a failed read, never an empty archive.
+  return { reachable: Array.isArray(r.data), status: r.status, invoices: Array.isArray(r.data) ? r.data : [] };
 }
 
 // Seazona truncates the invoice and order lists at LIST_PAGE_CAP rows (seazona-limits.js).
@@ -384,7 +385,7 @@ export async function getInvoiceResult(id) {
 export async function getOrdersResult(ordered) {
   const since = ordered || "1900-01-01T00:00:00Z";
   const r = await requestRaw(`v1/orders/?ordered=${encodeURIComponent(since)}`);
-  return { reachable: r.data !== null, status: r.status, orders: Array.isArray(r.data) ? r.data : [] };
+  return { reachable: Array.isArray(r.data), status: r.status, orders: Array.isArray(r.data) ? r.data : [] };
 }
 
 export async function getOrders(ordered) {

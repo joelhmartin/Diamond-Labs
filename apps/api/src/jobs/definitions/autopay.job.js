@@ -9,7 +9,7 @@ defineJob({
     // TWO independent switches. The runner's own dryRun flag AND the
     // AUTOPAY_LIVE_RUN environment gate must both permit a charge. A
     // misconfigured scheduler alone cannot move money.
-    const effectiveDryRun = dryRun || !env.AUTOPAY_LIVE_RUN;
+    const effectiveDryRun = dryRun || !env.AUTOPAY_LIVE_RUN || env.PAYMENTS_PAUSED === true;
     if (dryRun !== effectiveDryRun) {
       log?.warn?.("AutoPay asked for a live run but AUTOPAY_LIVE_RUN is false — running dry");
     }

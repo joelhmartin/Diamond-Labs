@@ -75,6 +75,16 @@ test("a walk that hits a block stops and reports it", async () => {
   assert.equal(r.requests, 2);
 });
 
+test("a 2xx non-array body is unreachable, and a walk never ends complete on it", async () => {
+  stub(ok({ message: "maintenance" }));
+  const one = await seazona.getInvoicesResult();
+  assert.equal(one.reachable, false);
+  stub(ok(Array.from({ length: 10_000 }, (_, i) => ({ id: `i${i}`, lastModified: minuteStamp(i) }))), ok({ message: "maintenance" }));
+  const r = await seazona.getAllInvoicesResult();
+  assert.equal(r.reachable, false);
+  assert.equal(r.requests, 2);
+});
+
 test("the limiter constants are exported for the fetcher to import, not copy", () => {
   assert.equal(seazona.LIST_PAGE_CAP, 10_000);
   assert.equal(seazona.MAX_REQUESTS_PER_WINDOW, 50);

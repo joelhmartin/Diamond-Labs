@@ -120,7 +120,9 @@ async function resolveOpenInvoices(doctor) {
  * throws: one doctor's failure must not abort the sweep.
  * @param {Array<{ id, invoiceNumber, balanceCents, dueDate }>} invoices
  */
-export async function processEnrollment({ enrollment, doctor, invoices, dryRun, now, runId, log, cycleKey }) {
+export async function processEnrollment({ enrollment, doctor, invoices, dryRun: requestedDryRun, now, runId, log, cycleKey }) {
+  // Cutover freeze (middleware/payments-paused.js flag): no card is charged while payments are paused.
+  const dryRun = requestedDryRun || env.PAYMENTS_PAUSED === true;
   const base = attemptBase({ enrollment, doctor, runId, now, dryRun, cycleKey });
 
   try {

@@ -213,6 +213,21 @@ describe("processEnrollment", () => {
   });
 
   // The whole point of the gate: a dry run must produce a full plan and no charge.
+  it("charges nothing on a live request while PAYMENTS_PAUSED, recording a dry-run would_charge", async () => {
+    const { env } = await import("../../config/env.js");
+    const original = env.PAYMENTS_PAUSED;
+    env.PAYMENTS_PAUSED = true;
+    try {
+      const attempt = await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r1" });
+      expect(charged).toHaveLength(0);
+      expect(recorded).toHaveLength(0);
+      expect(attempt.status).toBe("would_charge");
+      expect(attempt.dryRun).toBe(true);
+    } finally {
+      env.PAYMENTS_PAUSED = original;
+    }
+  });
+
   it("records would_charge and does not charge on a dry run", async () => {
     const attempt = await processEnrollment({ enrollment, doctor, invoices, dryRun: true, now, runId: "r1" });
     expect(charged).toHaveLength(0);
@@ -599,6 +614,26 @@ describe("autopay job — two-switch dry-run gate", () => {
       expect(spy.mock.calls[0][0]).toMatchObject({ dryRun: true });
     } finally {
       env.AUTOPAY_LIVE_RUN = original;
+      spy.mockRestore();
+    }
+  });
+
+  it("stays dry when a live run is requested but PAYMENTS_PAUSED", async () => {
+    const { env } = await import("../../config/env.js");
+    const [origLive, origPaused] = [env.AUTOPAY_LIVE_RUN, env.PAYMENTS_PAUSED];
+    env.AUTOPAY_LIVE_RUN = true;
+    env.PAYMENTS_PAUSED = true;
+    const runnerModule = await import("../../services/autopay-runner.service.js");
+    const spy = vi.spyOn(runnerModule, "runAutopaySweep").mockResolvedValue({ considered: 0 });
+    try {
+      await import("./autopay.job.js");
+      const { getJob } = await import("../registry.js");
+      const out = await getJob("autopay").handler({ dryRun: false, log: undefined, runId: "r1" });
+      expect(spy.mock.calls[0][0]).toMatchObject({ dryRun: true });
+      expect(out.dryRun).toBe(true);
+    } finally {
+      env.AUTOPAY_LIVE_RUN = origLive;
+      env.PAYMENTS_PAUSED = origPaused;
       spy.mockRestore();
     }
   });

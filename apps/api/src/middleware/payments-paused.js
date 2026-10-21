@@ -17,3 +17,8 @@ export function paymentsPausedGuard(isPaused = () => env.PAYMENTS_PAUSED === tru
 }
 
 export const paymentsPaused = paymentsPausedGuard();
+
+/** Refuses only a request that would run LIVE (body.dryRun === false); a dry run moves no money and passes. */
+export const paymentsPausedWhenLive = (guard = paymentsPaused) => async (request, reply) => {
+  if (request.body?.dryRun === false) return guard(request, reply);
+};
