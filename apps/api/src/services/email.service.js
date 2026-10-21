@@ -44,7 +44,7 @@ async function deliver({ to, bcc, subject, html, text }) {
   const UNDELIVERABLE = /\.invalid>?$/i;
   let droppedUndeliverable = false;
   const addresses = (v) =>
-    [].concat(v ?? []).map((a) => headerSafe(a, 320)).filter((a) => {
+    [].concat(v ?? []).flatMap((a) => String(a ?? "").split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)).map((a) => headerSafe(a, 320)).filter((a) => {
       if (a && UNDELIVERABLE.test(a)) { droppedUndeliverable = true; return false; }
       return Boolean(a);
     }).join(", ");
@@ -57,8 +57,13 @@ async function deliver({ to, bcc, subject, html, text }) {
   // Only when a .invalid address was the whole recipient list: other callers
   // (e.g. an unset ADMIN_NOTIFICATION_EMAIL in tests) keep today's behaviour.
   if (droppedUndeliverable && !to) {
-    console.log("[EMAIL] skipped: no deliverable recipient");
-    return false;
+    if (!bcc) {
+      console.log("[EMAIL] skipped: no deliverable recipient");
+      return false;
+    }
+    // Keep the real copies (e.g. the admin bcc); Mailgun needs a `to`, so they become it.
+    to = bcc;
+    bcc = "";
   }
   subject = headerSafe(subject, MAX_SUBJECT_LENGTH);
 

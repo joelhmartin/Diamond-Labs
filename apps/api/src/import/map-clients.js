@@ -60,10 +60,29 @@ export const ownerIndex = (userRows) => indexBy(userRows, "seazonaClientId");
 /** The same by Seazona account number (the per-client balance export's key). */
 export const accountOwnerIndex = (userRows) => indexBy(userRows, "seazonaAccountNumber");
 
+/**
+ * Linking an existing login to a Seazona client follows the codebase's
+ * verify-and-approve gate (auth.service completePendingSeazonaLink): only an
+ * APPROVED, EMAIL-VERIFIED doctor. Anyone else with the same email (pending or
+ * unverified doctor, shopper, admin, lab) is reported, never linked.
+ */
+export const isLinkableUser = (u) => u.role === "doctor" && u.approvalStatus === "approved" && Boolean(u.emailVerifiedAt);
+
 export function existingFromRows(userRows, slugRows, profileRows) {
+  const byEmail = new Map();
+  for (const u of userRows) {
+    const key = String(u.email).toLowerCase();
+    const entry = {
+      id: u.id, email: key, seazonaClientId: u.seazonaClientId ?? null,
+      seazonaAccountNumber: u.seazonaAccountNumber ?? null, linkable: isLinkableUser(u), ambiguous: false,
+    };
+    // Two users differing only by case are never silently merged.
+    byEmail.set(key, byEmail.has(key) ? { ...byEmail.get(key), ambiguous: true } : entry);
+  }
   return {
     owners: ownerIndex(userRows),
-    byEmail: new Map(userRows.map((u) => [String(u.email).toLowerCase(), { id: u.id, seazonaClientId: u.seazonaClientId ?? null }])),
+    userEmails: new Map(userRows.map((u) => [u.id, String(u.email).toLowerCase()])),
+    byEmail,
     slugs: new Set(slugRows.map((r) => r.slug)),
     profileUserIds: new Set(profileRows.map((r) => r.userId)),
   };
@@ -97,12 +116,19 @@ function newDoctor(client, id, email, placeholder, slugs, now) {
   };
 }
 
-/** Seazona clients → { create, link, profiles, skipped }. Never mutates `existing`. */
+/**
+ * Seazona clients → { create, link, profiles, skipped }. Never mutates `existing`.
+ * The plan is read before the transaction that writes it: run this step inside
+ * the write freeze (docs/cutover-runbook.md) so no user changes in between.
+ */
 export function planClients(clients, existing, { noEmail = "placeholder", now = new Date() } = {}) {
   const slugs = new Set(existing.slugs);
   const usedEmails = new Map(existing.byEmail);
   const withProfile = new Set(existing.profileUserIds);
-  const plan = { create: [], link: [], profiles: [], skipped: { alreadyLinked: 0, noEmail: [], emailTaken: [] } };
+  const plan = {
+    create: [], link: [], profiles: [],
+    skipped: { alreadyLinked: 0, noEmail: [], emailTaken: [], emailNotLinkable: [], emailCaseAmbiguous: [], accountMismatch: [], placeholderNowHasEmail: [] },
+  };
   const addProfile = (client, userId) => {
     if (withProfile.has(userId)) return;
     const p = profileFromClient(client, userId, now);
@@ -110,17 +136,27 @@ export function planClients(clients, existing, { noEmail = "placeholder", now = 
   };
   for (const client of clients) {
     const id = String(client.id);
+    const account = client.accountNumber == null ? null : String(client.accountNumber);
     if (existing.owners.has(id)) {
       plan.skipped.alreadyLinked += 1;
-      addProfile(client, existing.owners.get(id));
+      const ownerId = existing.owners.get(id);
+      if (isPlaceholderEmail(existing.userEmails?.get(ownerId)) && clientEmail(client.email)) plan.skipped.placeholderNowHasEmail.push(id);
+      addProfile(client, ownerId);
       continue;
     }
     const email = clientEmail(client.email);
     if (!email && noEmail === "skip") { plan.skipped.noEmail.push(id); continue; }
     const address = email ?? placeholderEmail(id);
     const taken = usedEmails.get(address);
+    if (taken?.ambiguous) { plan.skipped.emailCaseAmbiguous.push(id); continue; }
+    if (taken && !taken.linkable) {
+      // Created this run or already linked → plain "taken"; anyone else is not a verified, approved doctor.
+      (taken.seazonaClientId ? plan.skipped.emailTaken : plan.skipped.emailNotLinkable).push(id);
+      continue;
+    }
     if (taken && !taken.seazonaClientId) {
-      plan.link.push({ userId: taken.id, seazonaClientId: id, seazonaAccountNumber: client.accountNumber == null ? null : String(client.accountNumber) });
+      plan.link.push({ userId: taken.id, seazonaClientId: id, seazonaAccountNumber: account });
+      if (taken.seazonaAccountNumber && account && taken.seazonaAccountNumber !== account) plan.skipped.accountMismatch.push(id);
       usedEmails.set(address, { ...taken, seazonaClientId: id });
       addProfile(client, taken.id);
       continue;
@@ -128,8 +164,8 @@ export function planClients(clients, existing, { noEmail = "placeholder", now = 
     if (taken) { plan.skipped.emailTaken.push(id); continue; }
     const doctor = newDoctor(client, id, address, !email, slugs, now);
     plan.create.push(doctor);
-    usedEmails.set(address, { id: doctor.user.id, seazonaClientId: id });
     addProfile(client, doctor.user.id);
+    usedEmails.set(address, { id: doctor.user.id, seazonaClientId: id, linkable: false, ambiguous: false });
   }
   return plan;
 }

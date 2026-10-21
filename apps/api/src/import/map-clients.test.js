@@ -9,8 +9,8 @@ import {
 const clients = JSON.parse(readFileSync(new URL("../../test-fixtures/seazona/clients.json", import.meta.url), "utf8"));
 const now = new Date("2026-11-01T00:00:00Z");
 const userRows = [
-  { id: "u-old", email: "one@example.test", seazonaClientId: null, seazonaAccountNumber: null, createdAt: new Date("2026-01-01") },
-  { id: "u-linked", email: "linked@example.test", seazonaClientId: "c-9999", seazonaAccountNumber: "9999", createdAt: new Date("2026-01-02") },
+  { id: "u-old", role: "doctor", approvalStatus: "approved", emailVerifiedAt: new Date("2026-01-01"), email: "one@example.test", seazonaClientId: null, seazonaAccountNumber: null, createdAt: new Date("2026-01-01") },
+  { id: "u-linked", role: "doctor", approvalStatus: "approved", emailVerifiedAt: new Date("2026-01-01"), email: "linked@example.test", seazonaClientId: "c-9999", seazonaAccountNumber: "9999", createdAt: new Date("2026-01-02") },
 ];
 
 test("the first plausible email; placeholders use the reserved .invalid domain", () => {
@@ -72,4 +72,56 @@ test("--no-email skip leaves email-less clients out and says so", () => {
 test("an existing profile is never replaced", () => {
   const plan = planClients(clients, existingFromRows(userRows, [], [{ userId: "u-old" }]), { now });
   assert.equal(plan.profiles.some((p) => p.userId === "u-old"), false);
+});
+
+const rowFor = (over) => ({ id: "u-x", email: "one@example.test", role: "doctor", approvalStatus: "approved", emailVerifiedAt: new Date("2026-01-01"), seazonaClientId: null, seazonaAccountNumber: null, createdAt: new Date("2026-01-01"), ...over });
+const one = [clients[0]];
+
+for (const [label, over] of [
+  ["pending doctor", { approvalStatus: "pending" }],
+  ["unverified doctor", { emailVerifiedAt: null }],
+  ["shopper", { role: "user", approvalStatus: "not_required" }],
+  ["admin", { role: "admin", approvalStatus: "not_required" }],
+  ["lab", { role: "lab", approvalStatus: "not_required" }],
+]) {
+  test(`${label} with the same email: reported, not linked, no profile, not created`, () => {
+    const plan = planClients(one, existingFromRows([rowFor(over)], [], []), { now });
+    assert.deepEqual(plan.skipped.emailNotLinkable, ["c-1324"]);
+    assert.equal(plan.link.length, 0);
+    assert.equal(plan.profiles.length, 0);
+    assert.equal(plan.create.length, 0);
+  });
+}
+
+test("a link keeps the existing account number and reports a mismatch", () => {
+  const plan = planClients(one, existingFromRows([rowFor({ seazonaAccountNumber: "5555" })], [], []), { now });
+  assert.equal(plan.link.length, 1);
+  assert.deepEqual(plan.skipped.accountMismatch, ["c-1324"]);
+});
+
+test("email matching is case-insensitive; two users differing only by case are reported, not merged", () => {
+  const upper = planClients(one, existingFromRows([rowFor({ email: "ONE@Example.test" })], [], []), { now });
+  assert.equal(upper.link.length, 1);
+  const rows = [rowFor({ id: "a", email: "one@example.test" }), rowFor({ id: "b", email: "One@example.test" })];
+  const plan = planClients(one, existingFromRows(rows, [], []), { now });
+  assert.deepEqual(plan.skipped.emailCaseAmbiguous, ["c-1324"]);
+  assert.equal(plan.link.length, 0);
+});
+
+test("a placeholder doctor whose client now has a real email is counted", () => {
+  const rows = [rowFor({ id: "p", email: placeholderEmail("c-1324"), seazonaClientId: "c-1324" })];
+  const plan = planClients(one, existingFromRows(rows, [], []), { now });
+  assert.deepEqual(plan.skipped.placeholderNowHasEmail, ["c-1324"]);
+});
+
+test("slugs truncate to 50 with the suffix kept; clientEmail takes the first of a comma list; placeholder ids that collide are reported", () => {
+  const long = "x".repeat(80);
+  const root = slugify(long).slice(0, 50);
+  const plan = planClients([{ id: "c-a", email: "a@example.test", company: long, fullName: "A" }], existingFromRows([], [{ slug: root }], []), { now });
+  assert.equal(plan.create[0].account.slug.length, 50);
+  assert.ok(plan.create[0].account.slug.endsWith("-1"));
+  assert.equal(clientEmail("a@x.test, b@x.test"), "a@x.test");
+  const two = planClients([{ id: "C-9", fullName: "A" }, { id: "c-9", fullName: "B" }], existingFromRows([], [], []), { now });
+  assert.equal(two.create.length, 1);
+  assert.deepEqual(two.skipped.emailTaken, ["c-9"]);
 });

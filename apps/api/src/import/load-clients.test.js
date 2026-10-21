@@ -6,8 +6,8 @@ import { loadClients } from "./load-clients.js";
 
 const clients = JSON.parse(readFileSync(new URL("../../test-fixtures/seazona/clients.json", import.meta.url), "utf8"));
 const raw = { records: async (entity) => (entity === "client" ? clients.map((c) => ({ seazonaId: c.id, payload: c })) : []) };
-const userRows = [{ id: "u-old", email: "one@example.test", seazonaClientId: null, seazonaAccountNumber: null, createdAt: new Date("2026-01-01") }];
-const db = () => fakeTx({ selects: [userRows, [], []] });
+const userRows = [{ id: "u-old", role: "doctor", approvalStatus: "approved", emailVerifiedAt: new Date("2026-01-01"), email: "one@example.test", seazonaClientId: null, seazonaAccountNumber: null, createdAt: new Date("2026-01-01") }];
+const db = (updates = [[{ id: "u-old" }]]) => fakeTx({ selects: [userRows, [], []], updates });
 
 test("a dry run reports counts and writes nothing", async () => {
   const tx = db();
@@ -30,4 +30,18 @@ test("a live run writes users, accounts, memberships, links and profiles in one 
   assert.equal(inserts.filter((v) => "npiNumber" in v).length, 2);
   const set = tx.log.find((e) => e.op === "set").values;
   assert.equal(set.seazonaClientId, "c-1324");
+});
+
+test("a link whose guarded update touches 0 rows is reported, not counted", async () => {
+  const tx = db([[]]);
+  const report = await loadClients({ raw, db: tx, live: true });
+  assert.equal(report.counts.link, 0);
+  assert.deepEqual(report.problems.find((p) => p.kind === "link_skipped_already_linked").seazonaIds, ["c-1324"]);
+  assert.equal(tx.log.filter((e) => e.op === "insert" && "npiNumber" in (e.values ?? {})).length, 1, "no profile for the unlinked user");
+});
+
+test("a shopper with a client's email is reported as a new problem kind", async () => {
+  const tx = fakeTx({ selects: [[{ ...userRows[0], role: "user", approvalStatus: "not_required" }], [], []] });
+  const report = await loadClients({ raw, db: tx, live: false });
+  assert.deepEqual(report.problems.find((p) => p.kind === "email_matches_unverified_or_non_doctor_user").seazonaIds, ["c-1324"]);
 });
