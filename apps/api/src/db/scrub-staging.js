@@ -14,9 +14,9 @@
 const NOT_SCRUBBED = "[scrub] staging DB NOT scrubbed — do not serve it; drop or re-run";
 const die = (msg, code = 2) => { console.error(`[scrub] ${msg}`); console.error(NOT_SCRUBBED); process.exit(code); };
 
-let postgres, runScrub, knownMapKeys;
+let createPgClient, runScrub, knownMapKeys;
 try {
-  ({ default: postgres } = await import("postgres"));
+  ({ createPgClient } = await import("../config/pg-client.js"));
   ({ runScrub } = await import("./scrub/run.js"));
   ({ knownMapKeys } = await import("./scrub/known-map-keys.js"));
 } catch (err) {
@@ -26,20 +26,10 @@ try {
 const url = process.env.DATABASE_URL;
 if (!url) die("DATABASE_URL is not set", 1);
 
-// Same Cloud SQL unix-socket handling as migrate.js / config/database.js.
-const socketMatch = url.match(/^postgres(?:ql)?:\/\/([^:]+):([^@]+)@\/([^?]+)\?host=(.+)$/);
+// Cloud SQL unix-socket URLs are handled by the one parser in config/pg-client.js.
 let client;
 try {
-  client = socketMatch
-  ? postgres({
-      host: decodeURIComponent(socketMatch[4]),
-      database: socketMatch[3],
-      username: decodeURIComponent(socketMatch[1]),
-      password: decodeURIComponent(socketMatch[2]),
-      max: 1,
-      onnotice: () => {},
-    })
-  : postgres(url, { max: 1, onnotice: () => {} });
+  client = createPgClient(url, { max: 1, onnotice: () => {} });
 } catch (err) {
   die(`could not create the database client: ${String(err?.message ?? err)}`);
 }
