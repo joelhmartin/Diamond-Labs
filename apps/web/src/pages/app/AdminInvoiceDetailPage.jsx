@@ -5,6 +5,7 @@ import api from "../../config/api.js";
 import { ROUTES, labOrderPath } from "../../config/routes.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { ConfirmButton } from "../../components/ui/ConfirmButton.jsx";
+import { legacyOrderBlock } from "../../lib/invoices.js";
 import { InvoiceView } from "../../components/billing/InvoiceView.jsx";
 import { DraftLinesEditor } from "../../components/admin/DraftLinesEditor.jsx";
 import { RecordPaymentModal } from "../../components/admin/RecordPaymentModal.jsx";
@@ -130,14 +131,14 @@ export function AdminInvoiceDetailPage() {
     <div className="mx-auto max-w-5xl p-6 md:p-8">
       <Link to={ROUTES.ADMIN_INVOICES} className="mb-6 inline-flex items-center gap-1 text-xs text-navy/60 hover:text-navy"><ArrowLeft size={12} /> Invoices</Link>
       <p className="mb-2 text-sm text-navy/60">
-        {client ? (client.practice || client.name) : "Guest (shop)"}
+        {client ? (client.practice || client.name) : (invoice.kind === "legacy" ? "Unowned (Seazona history)" : "Guest (shop)")}
         {client?.accountNumber ? ` · Account ${client.accountNumber}` : ""}
         {labOrder ? <> · <Link className="text-brand-700 hover:underline" to={labOrderPath(labOrder.id)}>Lab order #{labOrder.orderNumber}</Link></> : null}
       </p>
 
       <InvoiceView
         invoice={invoice}
-        order={labOrder}
+        order={labOrder ?? legacyOrderBlock(invoice)}
         lines={lines}
         payments={payments}
         linesSlot={draft ? <DraftLinesEditor lines={lines} onEdit={edit} busy={busy} /> : null}
