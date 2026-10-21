@@ -39,8 +39,15 @@ const modules = [
   "../services/lab/lab-variants.js",
   "./map-orders.js",
   "./load-orders.js",
+  "../services/billing/paid-cents.js",
+  "./fetch-lock.js",
+  "./cli-session.js",
+  "./parity.js",
+  "./parity-queries.js",
   // loads without env; the Seazona service is imported only when a live run starts
   "./fetch-cli.js",
+  "./load-cli.js",
+  "./parity-cli.js",
 ];
 
 for (const m of modules) {

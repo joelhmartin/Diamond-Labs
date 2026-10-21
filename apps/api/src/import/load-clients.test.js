@@ -2,6 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fakeTx } from "../test/fake-tx.js";
+import { fakeLock } from "../test/fake-lock.js";
 import { loadClients } from "./load-clients.js";
 
 const clients = JSON.parse(readFileSync(new URL("../../test-fixtures/seazona/clients.json", import.meta.url), "utf8"));
@@ -23,7 +24,7 @@ test("a dry run reports counts and writes nothing", async () => {
 
 test("a live run writes users, accounts, memberships, links and profiles in one transaction", async () => {
   const tx = db();
-  const report = await loadClients({ raw, db: tx, live: true });
+  const report = await loadClients({ raw, db: tx, live: true, lock: fakeLock() });
   const inserts = tx.log.filter((e) => e.op === "insert").map((e) => e.values);
   assert.equal(inserts.filter((v) => v.role === "doctor").length, 3);
   assert.equal(inserts.filter((v) => v.role === "owner").length, 3);
@@ -35,7 +36,7 @@ test("a live run writes users, accounts, memberships, links and profiles in one 
 
 test("a link whose guarded update touches 0 rows is reported, not counted", async () => {
   const tx = db([[]]);
-  const report = await loadClients({ raw, db: tx, live: true });
+  const report = await loadClients({ raw, db: tx, live: true, lock: fakeLock() });
   assert.equal(report.counts.link, 0);
   assert.equal(report.counts.profiles, 1, "live profiles count is what was written, not planned");
   assert.deepEqual(report.problems.find((p) => p.kind === "link_skipped_already_linked").seazonaIds, ["c-1324"]);
@@ -55,6 +56,6 @@ test("counts.profiles is the rows the database actually inserted", async () => {
     const chain = real(table);
     return { values: (v) => (v && "npiNumber" in v ? { onConflictDoNothing: () => ({ returning: async () => [] }) } : chain.values(v)) };
   };
-  const report = await loadClients({ raw, db: tx, live: true });
+  const report = await loadClients({ raw, db: tx, live: true, lock: fakeLock() });
   assert.equal(report.counts.profiles, 0, "every profile conflicted");
 });

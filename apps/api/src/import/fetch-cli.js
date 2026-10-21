@@ -150,7 +150,7 @@ async function detailIds({ name, entity, flags, store, deps, tryLock }) {
 }
 
 function stopLines(r) {
-  if (r.dropped > 0) return [`${r.dropped} record(s) in the list had no id and had no id. The set is incomplete, so NOTHING was stored and the run is marked failed; needs operator attention.`];
+  if (r.dropped > 0) return [`${r.dropped} record(s) in the list had no id. The set is incomplete, so NOTHING was stored and the run is marked failed; needs operator attention.`];
   if (r.needsMorePages) return [`The list walk needed more pages than allowed (${r.requests} used): NOTHING was stored. Get a larger count approved and re-run with --live --approved ${r.requests + 2}.`];
   if (r.status === "blocked") return ["Seazona refused with 403: the integration is BLOCKED (production too). Do not retry. Tell the user; check /health/seazona later."];
   if (r.truncated) return ["The list walk did not complete (Seazona's capped list gave no cursor to advance by, or the page budget ran out). The set is incomplete: NOTHING was stored or marked complete. Needs operator attention; do not load from this."];

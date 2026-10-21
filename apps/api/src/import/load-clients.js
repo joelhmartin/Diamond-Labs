@@ -2,6 +2,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { users, accounts, memberships, doctorProfiles } from "../db/schema/index.js";
 import { planClients, existingFromRows } from "./map-clients.js";
 import { problemList } from "./problems.js";
+import { withLoadLock } from "./load-lock.js";
 
 /**
  * `import:load clients`: raw-store clients → doctors. Dry run (live=false)
@@ -9,9 +10,14 @@ import { problemList } from "./problems.js";
  * transaction (a few hundred rows). The plan is read BEFORE the transaction, so
  * run this step inside the write freeze (runbook, T16). The load reads ALL users (any role): an
  * email already used by a shopper is linked, not duplicated. Re-runnable: linked clients are skipped,
- * a link only fills an empty seazonaClientId, profiles never overwrite.
+ * a link only fills an empty seazonaClientId, profiles never overwrite. A live run holds the
+ * target's load lock (`lock`, load-lock.js) like every other live load step.
  */
-export async function loadClients({ raw, db, live, noEmail = "placeholder", now = new Date() }) {
+export async function loadClients({ raw, db, live, noEmail = "placeholder", now = new Date(), lock = null }) {
+  return withLoadLock({ lock, live, step: "clients" }, (guard) => run({ raw, db, live, noEmail, now, guard }));
+}
+
+async function run({ raw, db, live, noEmail, now, guard }) {
   const clients = (await raw.records("client")).map((r) => r.payload);
   const userRows = await db
     .select({ id: users.id, email: users.email, seazonaClientId: users.seazonaClientId, seazonaAccountNumber: users.seazonaAccountNumber, role: users.role, approvalStatus: users.approvalStatus, emailVerifiedAt: users.emailVerifiedAt, createdAt: users.createdAt })
@@ -41,6 +47,7 @@ export async function loadClients({ raw, db, live, noEmail = "placeholder", now 
   ]);
   if (!live) return { step: "clients", live, counts, problems: problemsFor([]) };
 
+  guard();
   const linkSkipped = [];
   const notLinked = new Set();
   let profilesToWrite = [];

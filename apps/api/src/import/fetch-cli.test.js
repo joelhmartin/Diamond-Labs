@@ -203,3 +203,11 @@ test("a lost lock during a list walk fails the run before the next page", async 
   await assert.rejects(r.run(["invoices", "--live"]), FetchLockLost);
   assert.equal(r.store.runs.get("run1").status, "failed");
 });
+
+test("a list with an id-less record says so once, in plain words, and exits 3", async () => {
+  const seazona = { getAllInvoicesResult: async () => ({ reachable: true, status: 200, invoices: [{ id: "a" }, { noId: true }], requests: 1, truncated: false }) };
+  const r = rig({ seazona });
+  assert.equal(await r.run(["invoices", "--live"]), 3);
+  assert.match(text(r.out), /1 record\(s\) in the list had no id\. The set is incomplete/);
+  assert.doesNotMatch(text(r.out), /had no id and had no id/);
+});

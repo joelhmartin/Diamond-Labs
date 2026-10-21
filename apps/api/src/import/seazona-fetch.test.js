@@ -238,3 +238,17 @@ test("the unexpected-error path records the real request count", async () => {
   await assert.rejects(fetchSummaries({ entity: "invoice", seazona: fakeSeazona({ invoices: [{ id: "a" }] }), store }), /db down/);
   assert.equal([...store.runs.values()][0].requestCount, 2);
 });
+
+test("a lost fetch lock mid-walk records the requests already made, not zero", async () => {
+  const store = fakeStore();
+  let gates = 0;
+  const lostOnThird = async () => {
+    gates += 1;
+    if (gates === 3) throw new Error("lock lost");
+  };
+  const seazona = fakeSeazona({ pages: 5 });
+  await assert.rejects(fetchSummaries({ entity: "invoice", seazona, store, pace: lostOnThird }), /lock lost/);
+  const run = [...store.runs.values()][0];
+  assert.equal(run.status, "failed");
+  assert.equal(run.requestCount, 2, "two pages were requested before the gate threw on the third");
+});

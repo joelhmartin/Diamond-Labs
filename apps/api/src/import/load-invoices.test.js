@@ -4,6 +4,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fakeTx } from "../test/fake-tx.js";
+import { fakeLock } from "../test/fake-lock.js";
 
 const { loadInvoices } = await import("./load-invoices.js");
 const load = (n) => JSON.parse(readFileSync(new URL(`../../test-fixtures/seazona/${n}`, import.meta.url), "utf8"));
@@ -30,7 +31,7 @@ test("dry run: counts and seeds, no writes, no PHI in the report", async () => {
 
 test("live: invoices sealed, lines sealed, each invoice's lines follow it", async () => {
   const tx = db();
-  const report = await loadInvoices({ raw, db: tx, live: true, target: "rehearsal", starts: {} });
+  const report = await loadInvoices({ raw, db: tx, live: true, lock: fakeLock(), target: "rehearsal", starts: {} });
   const inserts = tx.log.filter((e) => e.op === "insert").map((e) => e.values);
   const invoiceRows = inserts.find((v) => v[0]?.kind === "legacy");
   assert.equal(invoiceRows.length, 4);
@@ -45,7 +46,7 @@ test("live: invoices sealed, lines sealed, each invoice's lines follow it", asyn
 test("a re-run inserts nothing new", async () => {
   const existing = ["inv-a", "inv-b", "inv-c", "inv-d"].map((id, i) => ({ seazonaId: id, number: 11114 + i, clientUserId: "u" }));
   const tx = db(existing);
-  const report = await loadInvoices({ raw, db: tx, live: true, target: "rehearsal", starts: {} });
+  const report = await loadInvoices({ raw, db: tx, live: true, lock: fakeLock(), target: "rehearsal", starts: {} });
   assert.equal(tx.log.some((e) => e.op === "insert"), false);
   assert.equal(report.counts.alreadyLoaded, 4);
 });
@@ -54,7 +55,7 @@ test("an invoice whose client is linked to a non-approved or unverified user is 
   const stranger = { ...users[0], role: "user", approvalStatus: "not_required" };
   const unverified = { ...users[1], emailVerifiedAt: null, hasPassword: true };
   const tx = db([], [stranger, unverified]);
-  const report = await loadInvoices({ raw, db: tx, live: true, target: "rehearsal", starts: {} });
+  const report = await loadInvoices({ raw, db: tx, live: true, lock: fakeLock(), target: "rehearsal", starts: {} });
   assert.equal(tx.log.some((e) => e.op === "insert"), false);
   const p = report.problems.find((x) => x.kind === "client_owner_not_approved_doctor");
   assert.deepEqual(p.seazonaIds, ["c-1324", "c-2001"], "clients, not invoices");
@@ -69,12 +70,12 @@ test("an import shell (passwordless, unverified placeholder doctor) owns its cli
 });
 
 test("a live production load is refused when the invoice start is not above Seazona's highest", async () => {
-  await assert.rejects(loadInvoices({ raw, db: db(), live: true, target: "production", starts: { invoice: 11130 } }), /INVOICE_NUMBER_START/);
+  await assert.rejects(loadInvoices({ raw, db: db(), live: true, lock: fakeLock(), target: "production", starts: { invoice: 11130 } }), /INVOICE_NUMBER_START/);
 });
 
 test("legacy rows keep Seazona's numbers (no allocator)", async () => {
   const tx = db();
-  await loadInvoices({ raw, db: tx, live: true, target: "rehearsal", starts: {} });
+  await loadInvoices({ raw, db: tx, live: true, lock: fakeLock(), target: "rehearsal", starts: {} });
   const rows = tx.log.filter((e) => e.op === "insert").map((e) => e.values).find((v) => v[0]?.kind === "legacy");
   assert.deepEqual(rows.map((r) => r.invoiceNumber), [11114, 11115, 11120, 11121]);
 });
@@ -82,7 +83,7 @@ test("legacy rows keep Seazona's numbers (no allocator)", async () => {
 test("a re-run reattaches an unowned loaded invoice once its client has exactly one eligible owner", async () => {
   const existing = ["inv-a", "inv-b", "inv-c", "inv-d"].map((id, i) => ({ seazonaId: id, number: 11114 + i, clientUserId: id === "inv-d" ? "someone" : null }));
   const tx = fakeTx({ selects: [[{ n: 0 }], [{ n: 0 }], users, existing], updates: [[{ id: "i1" }, { id: "i2" }], [{ id: "i3" }]] });
-  const report = await loadInvoices({ raw, db: tx, live: true, target: "rehearsal", starts: {} });
+  const report = await loadInvoices({ raw, db: tx, live: true, lock: fakeLock(), target: "rehearsal", starts: {} });
   assert.equal(report.counts.reattached, 3);
   const sets = tx.log.filter((e) => e.op === "set").map((e) => e.values.clientUserId);
   assert.deepEqual(sets, ["u-1324", "u-2001"], "inv-d already has an owner and is never touched");
@@ -100,7 +101,7 @@ test("an ambiguous client stays unowned (not reattached)", async () => {
   const dup = [users[0], { ...users[0], id: "u-other" }, users[1]];
   const existing = [{ seazonaId: "inv-a", number: 11114, clientUserId: null }];
   const tx = fakeTx({ selects: [[{ n: 0 }], [{ n: 0 }], dup, existing] });
-  const report = await loadInvoices({ raw, db: tx, live: true, target: "rehearsal", starts: {} });
+  const report = await loadInvoices({ raw, db: tx, live: true, lock: fakeLock(), target: "rehearsal", starts: {} });
   assert.equal(report.counts.reattached, 0);
   assert.deepEqual(report.problems.find((p) => p.kind === "client_has_multiple_owners").seazonaIds, ["c-1324"]);
 });
@@ -109,7 +110,7 @@ test("the reattach guard: rows the guarded update did not change are not counted
   const existing = ["inv-a", "inv-b", "inv-c"].map((id, i) => ({ seazonaId: id, number: 11114 + i, clientUserId: null }));
   // u-1324 has inv-a and inv-b planned; the update only changes one (the other was attached meanwhile). u-2001's inv-c changes none.
   const tx = fakeTx({ selects: [[{ n: 0 }], [{ n: 0 }], users, existing], updates: [[{ id: "i1" }], []] });
-  const report = await loadInvoices({ raw, db: tx, live: true, target: "rehearsal", starts: {} });
+  const report = await loadInvoices({ raw, db: tx, live: true, lock: fakeLock(), target: "rehearsal", starts: {} });
   assert.equal(report.counts.reattached, 1, "planned 3, changed 1");
   const audits = tx.log.filter((e) => e.op === "insert" && e.values?.action === "import.legacy_invoices_reattached").map((e) => e.values);
   assert.equal(audits.length, 1, "no audit row for a batch that changed nothing");
@@ -129,7 +130,7 @@ test("an unowned per-client opening invoice is attached by account number once t
     { seazonaId: "opening:9999", number: 16212, clientUserId: null },
   ];
   const tx = fakeTx({ selects: [[{ n: 0 }], [{ n: 0 }], users, existing], updates: [[{ id: "o1" }]] });
-  const report = await loadInvoices({ raw, db: tx, live: true, target: "rehearsal", starts: {} });
+  const report = await loadInvoices({ raw, db: tx, live: true, lock: fakeLock(), target: "rehearsal", starts: {} });
   assert.equal(report.counts.reattached, 1, "account 9999 has no owner and stays unowned");
   assert.deepEqual(tx.log.filter((e) => e.op === "set").map((e) => e.values.clientUserId), ["u-2001"]);
 });
@@ -139,7 +140,7 @@ test("an account resolves to the same owner in the invoices reattach and the bal
   const set = [{ ...doctor, id: "u-acct", seazonaClientId: null, seazonaAccountNumber: " Ab7 " }];
   const lock = { tryLock: async () => true, assertHeld() {}, close: async () => {} };
   const inv = fakeTx({ selects: [[{ n: 0 }], [{ n: 0 }], set, [{ seazonaId: "opening:ab7", number: 16211, clientUserId: null }]], updates: [[{ id: "o" }]] });
-  await loadInvoices({ raw, db: inv, live: true, target: "rehearsal", starts: {} });
+  await loadInvoices({ raw, db: inv, live: true, lock: fakeLock(), target: "rehearsal", starts: {} });
   const bal = fakeTx({ selects: [[], [], set, [{ n: 0 }], [{ n: 0 }]] });
   const report = await loadBalances({
     raw: { records: async () => [] }, db: bal, live: false, target: "rehearsal", mode: "per-client", paidCents: async () => new Map(),

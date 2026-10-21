@@ -50,10 +50,16 @@ export function createPacer({ intervalMs = PACE_INTERVAL_MS, now = Date.now, sle
  */
 export async function fetchSummaries({ entity, seazona, store, maxPages, pace }) {
   const runId = await store.startRun({ entity, mode: "summary" });
-  let requestsMade = 0;
+  // Pages whose pace gate passed: each is followed by a request, so this is the true count when the walk is
+  // interrupted (a lost fetch lock throws from the gate) before the service returns its own tally.
+  let pagesStarted = 0;
+  const beforePage = async () => {
+    await pace?.();
+    pagesStarted += 1;
+  };
   try {
-    const r = await SUMMARY_CALLS[entity](seazona, { maxPages, beforePage: pace });
-    requestsMade = r.requests;
+    const r = await SUMMARY_CALLS[entity](seazona, { maxPages, beforePage });
+    pagesStarted = Math.max(pagesStarted, r.requests); // a later failure (a store write) keeps the service's own tally
     if (!r.ok) {
       const status = stopStatus(r.status);
       // Only a walk that was still advancing when its pages ran out needs a bigger cap; a stall is a different problem.
@@ -77,7 +83,7 @@ export async function fetchSummaries({ entity, seazona, store, maxPages, pace })
     await store.finishRun(runId, { status: "done", cursor: records.length, requestCount: r.requests, errorCount: 0, lastStatus: r.status });
     return { runId, status: "done", requests: r.requests, count: records.length, dropped: 0, lastStatus: r.status, truncated: false, needsMorePages: false };
   } catch (err) {
-    await store.finishRun(runId, { status: "failed", cursor: 0, requestCount: requestsMade, errorCount: 1, note: "stopped by an unexpected error" }).catch(() => {});
+    await store.finishRun(runId, { status: "failed", cursor: 0, requestCount: pagesStarted, errorCount: 1, note: "stopped by an unexpected error" }).catch(() => {});
     throw err;
   }
 }

@@ -47,7 +47,8 @@ async function run({ raw, db, live, target, starts, guard }) {
   });
   const reattach = reattachPlan(existing, summaries, owners.byClient);
   plan.counts.reattached = [...reattach.values()].reduce((n, ids) => n + ids.length, 0); // planned; a live run overwrites with what changed
-  const waiting = stillUnowned(existing.map((r) => ({ clientUserId: r.clientUserId, clientId: clientIdOf(summaries, r.sourceId) })), owners.byClient);
+  const clientOf = clientIdByOrder(summaries);
+  const waiting = stillUnowned(existing.map((r) => ({ clientUserId: r.clientUserId, clientId: clientOf.get(r.sourceId) ?? null })), owners.byClient);
   plan.counts.loadedStillUnowned = waiting.records;
   if (waiting.clients.length) plan.problems.push(problem("loaded_orders_still_unowned_client", waiting.clients));
   const report = { step: "orders", live, counts: plan.counts, seeds: seeds.summary, problems: plan.problems };
@@ -78,14 +79,12 @@ async function run({ raw, db, live, target, starts, guard }) {
   return report;
 }
 
-const clientIdOf = (summaries, sourceId) => {
-  const c = summaries.find((s) => s.seazonaId === sourceId)?.payload.clientId;
-  return c == null ? null : String(c);
-};
+/** Seazona order id → its client id (string), null when the order has none. One pass, then O(1) lookups. */
+const clientIdByOrder = (summaries) => new Map(summaries.map((r) => [r.seazonaId, r.payload.clientId == null ? null : String(r.payload.clientId)]));
 
 /** Loaded legacy orders with no owner whose Seazona client now has one: owner id → Seazona order ids. */
 export function reattachPlan(existing, summaries, ownerByClient) {
-  const clientOf = new Map(summaries.map((r) => [r.seazonaId, r.payload.clientId == null ? null : String(r.payload.clientId)]));
+  const clientOf = clientIdByOrder(summaries);
   const out = new Map();
   for (const r of existing) {
     if (r.clientUserId) continue;

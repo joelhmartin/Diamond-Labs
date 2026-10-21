@@ -94,7 +94,7 @@ async function accountOwners(db) {
  * accountNumber. Independent of who owns the invoice, so an unowned invoice
  * still has its account. Invoices it can't derive are absent from the map.
  */
-async function accountsByInvoice(raw, legacy) {
+export async function accountsByInvoice(raw, legacy) {
   const clientOf = new Map((await raw.records("invoice")).map((r) => [String(r.seazonaId), String(r.payload.clientId)]));
   const accountOf = new Map((await raw.records("client")).map((r) => [String(r.seazonaId), normAccount(r.payload.accountNumber)]));
   const out = new Map();

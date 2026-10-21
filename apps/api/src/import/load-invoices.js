@@ -7,6 +7,7 @@ import { planInvoices } from "./map-invoices.js";
 import { insertMissing } from "./load-writer.js";
 import { enforceSeeds } from "./seed-check.js";
 import { problem } from "./problems.js";
+import { withLoadLock } from "./load-lock.js";
 import { reattachOwners as reattachRows, planAttach, stillUnowned } from "./reattach.js";
 
 const BATCH = 500;
@@ -29,8 +30,14 @@ const BATCH = 500;
  * opening-balance invoices (`opening:<account>`, balances step) that loaded
  * unowned, by account number. Each batch that changes rows writes one audit
  * entry (owner id, planned and changed counts, Seazona invoice ids; no PHI).
+ *
+ * A live run holds the target's load lock (`lock`, load-lock.js), like every live load step.
  */
-export async function loadInvoices({ raw, db, live, target, starts = {} }) {
+export async function loadInvoices({ raw, db, live, target, starts = {}, lock = null }) {
+  return withLoadLock({ lock, live, step: "invoices" }, (guard) => run({ raw, db, live, target, starts, guard }));
+}
+
+async function run({ raw, db, live, target, starts, guard }) {
   const summaries = await raw.records("invoice");
   const details = new Map((await raw.records("invoice_detail")).map((r) => [r.seazonaId, r.payload]));
   const seeds = await enforceSeeds({ raw, db, target, live, starts, invoiceSummaries: summaries });
@@ -60,6 +67,7 @@ export async function loadInvoices({ raw, db, live, target, starts = {} }) {
   const dropped = [];
   for (let i = 0; i < plan.rows.length; i += BATCH) {
     const chunk = plan.rows.slice(i, i + BATCH);
+    guard();
     await db.transaction(async (tx) => {
       const r = await insertMissing(tx, invoices, chunk.map((x) => sealInvoice(x.invoice)), {
         keyOf: (inv) => inv.legacySeazonaInvoiceId, existingKeys: existingSeazonaIds,
@@ -73,7 +81,7 @@ export async function loadInvoices({ raw, db, live, target, starts = {} }) {
   }
   report.written = { invoices: written, conflicts };
   if (dropped.length) report.problems.push(problem("invoice_not_loaded_conflict", dropped));
-  plan.counts.reattached = await reattachOwners(db, reattach);
+  plan.counts.reattached = await reattachOwners(db, reattach, guard);
   return report;
 }
 
@@ -95,8 +103,9 @@ export function reattachPlan(existing, summaries, owners) {
 }
 
 /** Guarded (reattach.js): only a legacy invoice that is still unowned changes. Returns how many were attached. */
-export function reattachOwners(db, plan) {
+export function reattachOwners(db, plan, guard) {
   return reattachRows(db, plan, {
+    guard,
     table: invoices, ownerField: "clientUserId", ownerCol: invoices.clientUserId, keyCol: invoices.legacySeazonaInvoiceId,
     versionCol: invoices.version, scope: eq(invoices.kind, "legacy"),
     action: "import.legacy_invoices_reattached", targetType: "invoice", metadataKey: "legacyInvoiceIds",
