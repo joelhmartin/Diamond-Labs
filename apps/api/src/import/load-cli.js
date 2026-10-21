@@ -5,7 +5,8 @@
  *   pnpm --filter @my-app/api import:load <step> --target production --confirm-production diamond_labs \
  *        --invoice-start <n> --order-start <n> [--live]
  *   clients:  [--no-email placeholder|skip]
- *   invoices: [--invoice-start <n> --order-start <n>]   (production needs BOTH starts on invoices, balances and orders)
+ *   invoices: [--invoice-start <n> --order-start <n>] [--allow-after-balances]
+ *             (production needs BOTH starts on invoices, balances and orders)
  *   balances: --balances per-invoice|per-client (--file <export.xls> | --file-id <id>) [--columns name="Header",…]
  *             [--cutover-at <ISO>] [--invoice-start <n> --order-start <n>] [--accept-export-problems]
  *   orders:   [--invoice-start <n> --order-start <n>]
@@ -20,7 +21,9 @@
  * A live `clients` run reads its plan before it writes, so run it inside the
  * write freeze (docs/cutover-runbook.md). A live `balances` run refuses when the
  * export had problems unless --accept-export-problems; the problems (row numbers
- * and keys only) are always printed.
+ * and keys only) are always printed. A live `invoices` run that would insert
+ * invoices after balances already ran refuses unless --allow-after-balances;
+ * then re-run balances with the same --file-id (the report says so).
  *
  * Exit codes: 0 ok, 2 refused, 1 failed.
  */
@@ -43,13 +46,13 @@ const STARTS = ["invoice-start", "order-start"];
 /** Per step: the flags it accepts beyond COMMON. Anything else is refused, never ignored. */
 const STEP_FLAGS = {
   clients: ["no-email"],
-  invoices: STARTS,
+  invoices: [...STARTS, "allow-after-balances"],
   balances: [...STARTS, "balances", "file", "file-id", "columns", "cutover-at", "accept-export-problems"],
   orders: STARTS,
 };
 const FLAGS = {
   allowed: [...new Set([...COMMON, ...Object.values(STEP_FLAGS).flat()])],
-  booleans: ["live", "accept-export-problems"],
+  booleans: ["live", "accept-export-problems", "allow-after-balances"],
 };
 
 const defaultDeps = { print: printLines, printReport, readFile, openSession: openTargetSession };
@@ -94,7 +97,10 @@ async function parsedExport({ raw, flags, opts, deps }) {
 
 const STEPS = {
   clients: (c) => loadClients({ raw: c.raw, db: c.db, live: c.live, noEmail: c.opts.noEmail, lock: c.lock }),
-  invoices: (c) => loadInvoices({ raw: c.raw, db: c.db, live: c.live, target: c.target, starts: c.opts.starts, lock: c.lock }),
+  invoices: (c) => loadInvoices({
+    raw: c.raw, db: c.db, live: c.live, target: c.target, starts: c.opts.starts, lock: c.lock,
+    allowAfterBalances: c.flags["allow-after-balances"] === true,
+  }),
   orders: (c) => loadOrders({ raw: c.raw, db: c.db, live: c.live, target: c.target, starts: c.opts.starts, lock: c.lock }),
   async balances(c) {
     const { parsed, fileId } = await parsedExport(c);
@@ -121,6 +127,7 @@ export async function main(argv, env = process.env, overrides = {}) {
     }
     const report = await STEPS[step]({ raw: session.raw, db: session.db, live, target: session.target.name, opts, flags, deps, lock: session.makeLock() });
     deps.printReport({ target: session.target.name, database: session.target.database, ...report });
+    if (report.next) deps.print([`NEXT: ${report.next}`]);
     if (!live) deps.print(["Dry run: nothing was written to the target. Re-run with --live."]);
     return 0;
   } finally {

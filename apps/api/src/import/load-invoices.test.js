@@ -12,7 +12,7 @@ const asRecords = (list) => list.map((p) => ({ seazonaId: p.id, payload: p, last
 const raw = {
   records: async (e) => ({ invoice: asRecords(load("invoices.json")), invoice_detail: asRecords(load("invoice-details.json")) })[e] ?? [],
 };
-const doctor = { role: "doctor", approvalStatus: "approved", status: "active", emailVerifiedAt: new Date(0), hasPassword: true, createdAt: new Date(0) };
+const doctor = { role: "doctor", approvalStatus: "approved", status: "active", createdAt: new Date(0) };
 const users = [
   { ...doctor, id: "u-1324", seazonaClientId: "c-1324", seazonaAccountNumber: "1324" },
   { ...doctor, id: "u-2001", seazonaClientId: "c-2001", seazonaAccountNumber: "2001" },
@@ -51,22 +51,28 @@ test("a re-run inserts nothing new", async () => {
   assert.equal(report.counts.alreadyLoaded, 4);
 });
 
-test("an invoice whose client is linked to a non-approved or unverified user is reported, never owned", async () => {
+test("an invoice whose client is linked to a non-doctor or unapproved user loads UNOWNED and is reported", async () => {
   const stranger = { ...users[0], role: "user", approvalStatus: "not_required" };
-  const unverified = { ...users[1], emailVerifiedAt: null, hasPassword: true };
-  const tx = db([], [stranger, unverified]);
+  const pending = { ...users[1], approvalStatus: "pending" };
+  const tx = db([], [stranger, pending]);
   const report = await loadInvoices({ raw, db: tx, live: true, lock: fakeLock(), target: "rehearsal", starts: {} });
-  assert.equal(tx.log.some((e) => e.op === "insert"), false);
+  const rows = tx.log.filter((e) => e.op === "insert").map((e) => e.values).find((v) => v[0]?.kind === "legacy");
+  assert.equal(rows.length, 4);
+  assert.ok(rows.every((r) => r.clientUserId === null), "never owned by an ineligible user");
   const p = report.problems.find((x) => x.kind === "client_owner_not_approved_doctor");
   assert.deepEqual(p.seazonaIds, ["c-1324", "c-2001"], "clients, not invoices");
   assert.equal(p.count, 2);
-  assert.equal(report.counts.skippedNoOwner, 5);
+  assert.equal(report.counts.unowned, 4);
 });
 
-test("an import shell (passwordless, unverified placeholder doctor) owns its client's invoices", async () => {
-  const shell = { ...users[0], emailVerifiedAt: null, hasPassword: false, status: "suspended" };
-  const report = await loadInvoices({ raw, db: db([], [shell, users[1]]), live: false, target: "rehearsal", starts: {} });
+test("an approved doctor who reset a password but was never email-verified owns its client's invoices (F1)", async () => {
+  // The old importer created doctors unverified; resetPassword sets a password and never verifies.
+  const resetDoctor = { ...users[0], emailVerifiedAt: null, hasPassword: true };
+  const shell = { ...users[1], emailVerifiedAt: null, hasPassword: false, status: "suspended" };
+  const report = await loadInvoices({ raw, db: db([], [resetDoctor, shell]), live: false, target: "rehearsal", starts: {} });
   assert.equal(report.counts.toInsert, 4);
+  assert.equal(report.counts.unowned, 0);
+  assert.equal(report.problems.some((p) => p.kind === "client_owner_not_approved_doctor"), false);
 });
 
 test("a live production load is refused when the invoice start is not above Seazona's highest", async () => {
@@ -130,7 +136,8 @@ test("an unowned per-client opening invoice is attached by account number once t
     { seazonaId: "opening:9999", number: 16212, clientUserId: null },
   ];
   const tx = fakeTx({ selects: [[{ n: 0 }], [{ n: 0 }], users, existing], updates: [[{ id: "o1" }]] });
-  const report = await loadInvoices({ raw, db: tx, live: true, lock: fakeLock(), target: "rehearsal", starts: {} });
+  // Opening invoices mean balances ran; inserting the rest of the history then needs the explicit flag (F2).
+  const report = await loadInvoices({ raw, db: tx, live: true, lock: fakeLock(), target: "rehearsal", starts: {}, allowAfterBalances: true });
   assert.equal(report.counts.reattached, 1, "account 9999 has no owner and stays unowned");
   assert.deepEqual(tx.log.filter((e) => e.op === "set").map((e) => e.values.clientUserId), ["u-2001"]);
 });
@@ -140,7 +147,7 @@ test("an account resolves to the same owner in the invoices reattach and the bal
   const set = [{ ...doctor, id: "u-acct", seazonaClientId: null, seazonaAccountNumber: " Ab7 " }];
   const lock = { tryLock: async () => true, assertHeld() {}, close: async () => {} };
   const inv = fakeTx({ selects: [[{ n: 0 }], [{ n: 0 }], set, [{ seazonaId: "opening:ab7", number: 16211, clientUserId: null }]], updates: [[{ id: "o" }]] });
-  await loadInvoices({ raw, db: inv, live: true, lock: fakeLock(), target: "rehearsal", starts: {} });
+  await loadInvoices({ raw, db: inv, live: true, lock: fakeLock(), target: "rehearsal", starts: {}, allowAfterBalances: true });
   const bal = fakeTx({ selects: [[], [], set, [{ n: 0 }], [{ n: 0 }]] });
   const report = await loadBalances({
     raw: { records: async () => [] }, db: bal, live: false, target: "rehearsal", mode: "per-client", paidCents: async () => new Map(),
@@ -165,4 +172,32 @@ test("coupling: a production load with only --invoice-start is refused for the m
     loadInvoices({ raw: withOrders, db: db(), live: true, lock: fakeLock(), target: "production", starts: { invoice: 99999 } }),
     /--order-start is required for a production load/,
   );
+});
+
+// F2: history inserted after balances would be unsettled (its full total owed).
+test("after balances ran (settlement rows exist), a live insert is refused without --allow-after-balances", async () => {
+  const tx = fakeTx({ selects: [[{ n: 0 }], [{ n: 0 }], users, [], [{ id: "settlement-1" }]] });
+  await assert.rejects(
+    loadInvoices({ raw, db: tx, live: true, lock: fakeLock(), target: "rehearsal", starts: {} }),
+    (err) => err.name === "ImportRefusal" && /--allow-after-balances/.test(err.message) && /balances/.test(err.message),
+  );
+  assert.equal(tx.log.some((e) => e.op === "insert"), false);
+});
+
+test("after balances ran (an opening invoice exists), a dry run reports it and an allowed live run tells the operator to re-run balances", async () => {
+  const existing = [{ seazonaId: "opening:1324", number: 20001, clientUserId: "u-1324" }];
+  const dry = await loadInvoices({ raw, db: fakeTx({ selects: [[{ n: 0 }], [{ n: 0 }], users, existing] }), live: false, target: "rehearsal", starts: {} });
+  assert.equal(dry.problems.find((p) => p.kind === "invoices_inserted_after_balances").count, 4);
+  const tx = fakeTx({ selects: [[{ n: 0 }], [{ n: 0 }], users, existing] });
+  const report = await loadInvoices({ raw, db: tx, live: true, lock: fakeLock(), target: "rehearsal", starts: {}, allowAfterBalances: true });
+  assert.equal(report.written.invoices, 4);
+  assert.match(report.next, /re-run `import:load balances` with the same --balances mode and --file-id/i);
+});
+
+test("a re-run that inserts nothing never checks or refuses on balances", async () => {
+  const existing = ["inv-a", "inv-b", "inv-c", "inv-d"].map((id, i) => ({ seazonaId: id, number: 11114 + i, clientUserId: "u" }));
+  const tx = fakeTx({ selects: [[{ n: 0 }], [{ n: 0 }], users, existing, [{ id: "settlement-1" }]] });
+  const report = await loadInvoices({ raw, db: tx, live: true, lock: fakeLock(), target: "rehearsal", starts: {} });
+  assert.equal(report.next, undefined);
+  assert.equal(report.problems.some((p) => p.kind === "invoices_inserted_after_balances"), false);
 });

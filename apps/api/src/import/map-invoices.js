@@ -89,7 +89,8 @@ function buildLines(invoiceId, items, subtotalCents) {
 
 /**
  * `unowned: true` maps an invoice with no owner (a client shared by several
- * eligible doctors: clientUserId stays null until an admin decides).
+ * eligible doctors, or linked only to a user who can't own it: clientUserId
+ * stays null until an admin fixes the link and a re-run reattaches it).
  */
 export function mapLegacyInvoice({ summary, detail = null, ownerUserId, unowned = false }) {
   // The summary's number is the authority; the detail's is never borrowed.
@@ -125,9 +126,11 @@ export function mapLegacyInvoice({ summary, detail = null, ownerUserId, unowned 
 /**
  * Every summary → rows to insert (unsealed), with counts and problems (Seazona
  * ids only). `owners` is client id → eligible owner, `unownedClients` the linked
- * clients with no eligible owner (their invoices are skipped) and
- * `ambiguousClients` those shared by several eligible users (their invoices load
- * unowned) — all from owners.js resolveOwners. `existingNumbers` is EVERY number
+ * clients with no eligible owner and `ambiguousClients` those shared by several
+ * eligible users — all from owners.js resolveOwners. Both load UNOWNED and are
+ * reported by client (ruling F2, the same as the orders step), so `balances`
+ * settles them and a later `invoices` run only reattaches them. A client with
+ * no linked user at all is `client_not_loaded` per invoice (run clients first). `existingNumbers` is EVERY number
  * already in the table, loaded legacy rows included, so a duplicate Seazona
  * number is flagged with its id.
  */
@@ -138,17 +141,17 @@ export function planInvoices({ summaries, details, owners, existingSeazonaIds, e
   const counts = { seazona: summaries.length, toInsert: 0, unowned: 0, droppedDetailItems: 0, alreadyLoaded: 0, detailed: 0, summaryOnly: 0, approximatedDates: 0, void: 0, totalCents: 0 };
   const numbers = new Set(existingNumbers);
   // Owner problems name CLIENTS (count = clients), so the id cap can't hide one;
-  // the invoice totals are in counts.unowned / counts.skippedNoOwner.
+  // the invoice totals are in counts.unowned.
   const clientKinds = new Map();
   const flagClient = (kind, clientId) => (clientKinds.has(kind) ? clientKinds.get(kind).add(clientId) : clientKinds.set(kind, new Set([clientId])));
-  counts.skippedNoOwner = 0;
   for (const { seazonaId, payload } of summaries) {
     const clientId = String(payload.clientId);
-    const unowned = ambiguousClients.has(clientId) && !owners.has(clientId);
-    if (unowned) flagClient("client_has_multiple_owners", clientId);
+    const ownerKind = owners.has(clientId) ? null
+      : ambiguousClients.has(clientId) ? "client_has_multiple_owners"
+        : unownedClients.has(clientId) ? "client_owner_not_approved_doctor" : null;
+    const unowned = ownerKind != null;
+    if (unowned) flagClient(ownerKind, clientId);
     if (existingSeazonaIds.has(seazonaId)) { counts.alreadyLoaded += 1; continue; }
-    // A client whose linked user is not an eligible owner (owners.js) gets its own problem kind.
-    if (unownedClients.has(clientId) && !owners.has(clientId)) { flagClient("client_owner_not_approved_doctor", clientId); counts.skippedNoOwner += 1; continue; }
     const mapped = mapLegacyInvoice({ summary: payload, detail: details.get(seazonaId) ?? null, ownerUserId: owners.get(clientId), unowned });
     if (mapped.problem) { flag(mapped.problem, seazonaId); continue; }
     if (numbers.has(mapped.invoice.invoiceNumber)) { flag("invoice_number_taken", seazonaId); continue; }

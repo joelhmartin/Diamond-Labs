@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
-import { OPENING_BALANCE_PREFIX } from "@my-app/shared";
-import { invoices, invoiceLines } from "../db/schema/index.js";
+import { LEGACY_SETTLEMENT_SOURCE, OPENING_BALANCE_PREFIX } from "@my-app/shared";
+import { invoices, invoiceLines, invoicePayments } from "../db/schema/index.js";
+import { ImportRefusal } from "./import-errors.js";
 import { sealInvoice, sealLine } from "../services/billing/invoice-crypto.js";
 import { loadOwners, normAccount } from "./owners.js";
 import { planInvoices } from "./map-invoices.js";
@@ -15,8 +16,10 @@ const BATCH = 500;
 /**
  * `import:load invoices`: one `kind: legacy` invoice per Seazona invoice, with
  * its lines. Owners come from the clients step (run it first) and only
- * approved doctors qualify (owners.js); a client without one is reported and
- * its invoices are skipped; a client shared by several eligible doctors loads unowned (reported). Legacy invoices keep Seazona's numbers: they never
+ * approved doctors qualify (owners.js). A client linked only to a user who
+ * can't own it, or shared by several eligible doctors, loads UNOWNED and is
+ * reported (ruling F2, the same as the orders step); a client with no linked
+ * user at all is client_not_loaded and skipped. Legacy invoices keep Seazona's numbers: they never
  * pass through the live number allocator. Each batch of 500 invoices and their
  * lines is one transaction; a re-run skips every invoice already loaded (by
  * legacy_seazona_invoice_id).
@@ -31,13 +34,29 @@ const BATCH = 500;
  * unowned, by account number. Each batch that changes rows writes one audit
  * entry (owner id, planned and changed counts, Seazona invoice ids; no PHI).
  *
+ * After `balances` (ruling F2): once the target has settlement rows or
+ * opening-balance invoices, newly inserted history would load UNSETTLED (its
+ * full total owed). A live run that would insert refuses unless
+ * `allowAfterBalances` (`--allow-after-balances`), and then the report tells
+ * the operator to re-run `balances` with the same --file-id (idempotent).
+ *
  * A live run holds the target's load lock (`lock`, load-lock.js), like every live load step.
  */
-export async function loadInvoices({ raw, db, live, target, starts = {}, lock = null }) {
-  return withLoadLock({ lock, live, step: "invoices" }, (guard) => run({ raw, db, live, target, starts, guard }));
+export async function loadInvoices({ raw, db, live, target, starts = {}, lock = null, allowAfterBalances = false }) {
+  return withLoadLock({ lock, live, step: "invoices" }, (guard) => run({ raw, db, live, target, starts, guard, allowAfterBalances }));
 }
 
-async function run({ raw, db, live, target, starts, guard }) {
+export const RERUN_BALANCES_NOTE =
+  "This run inserted invoices after balances had run: they are UNSETTLED. Re-run `import:load balances` with the same --balances mode and --file-id now, before parity.";
+
+/** True when a balances run has written to the target (settlement rows or opening-balance invoices). */
+async function balancesHaveRun(db, existing) {
+  if (existing.some((r) => r.seazonaId?.startsWith(OPENING_BALANCE_PREFIX))) return true;
+  const rows = await db.select({ id: invoicePayments.id }).from(invoicePayments).where(eq(invoicePayments.source, LEGACY_SETTLEMENT_SOURCE)).limit(1);
+  return rows.length > 0;
+}
+
+async function run({ raw, db, live, target, starts, guard, allowAfterBalances }) {
   const summaries = await raw.records("invoice");
   const details = new Map((await raw.records("invoice_detail")).map((r) => [r.seazonaId, r.payload]));
   const seeds = await enforceSeeds({ raw, db, target, live, starts, invoiceSummaries: summaries });
@@ -60,7 +79,13 @@ async function run({ raw, db, live, target, starts, guard }) {
   plan.counts.loadedStillUnowned = waiting.records;
   if (waiting.clients.length) plan.problems.push(problem("loaded_invoices_still_unowned_client", waiting.clients));
   const report = { step: "invoices", live, counts: plan.counts, seeds: seeds.summary, problems: plan.problems };
+  const afterBalances = plan.rows.length > 0 && (await balancesHaveRun(db, existing));
+  if (afterBalances) report.problems.push(problem("invoices_inserted_after_balances", plan.rows.map((r) => r.invoice.legacySeazonaInvoiceId)));
   if (!live) return report;
+  if (afterBalances && !allowAfterBalances) {
+    throw new ImportRefusal(`${plan.rows.length} invoice(s) would be inserted after balances already ran, so they would load unsettled. `
+      + "Re-run with --allow-after-balances, then re-run `import:load balances` with the same --file-id before parity.");
+  }
 
   let written = 0;
   let conflicts = 0;
@@ -80,6 +105,7 @@ async function run({ raw, db, live, target, starts, guard }) {
     });
   }
   report.written = { invoices: written, conflicts };
+  if (afterBalances && written > 0) report.next = RERUN_BALANCES_NOTE;
   if (dropped.length) report.problems.push(problem("invoice_not_loaded_conflict", dropped));
   plan.counts.reattached = await reattachOwners(db, reattach, guard);
   return report;

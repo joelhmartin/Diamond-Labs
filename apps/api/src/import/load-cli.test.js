@@ -71,7 +71,7 @@ test("balances: paidCents is the app's ledger sum, bound to the target db by the
   const text = r.out.lines.join("\n");
   assert.match(text, /Stored the export as file f1/);
   assert.match(text, /export-row-bad-balance x1: rows 6; keys 11121/);
-  assert.match(text, /export-row-no-key x1: rows 8/);
+  assert.doesNotMatch(text, /export-row-no-key/, "the footer Total row is not a problem (F4)");
   assert.ok(!/Example|Sample/.test(text), "no client names");
 });
 
@@ -147,4 +147,14 @@ test("a production live run of invoices, orders and balances takes BOTH starts (
     assert.equal(await r.run([step, "--target", "production", "--confirm-production", "diamond_labs", "--invoice-start", "11200", "--order-start", "5100", "--live", ...extra]), 0, step);
     assert.deepEqual(last()[1].starts, { invoice: 11200, order: 5100 }, step);
   }
+});
+
+test("--allow-after-balances is an invoices-only boolean, passed through; a step's NEXT note is printed", async () => {
+  const r = rig();
+  assert.equal(await r.run(["invoices", "--target", "rehearsal", "--live", "--allow-after-balances"]), 0);
+  assert.equal(last()[1].allowAfterBalances, true);
+  const plain = rig();
+  await plain.run(["invoices", "--target", "rehearsal", "--live"]);
+  assert.equal(last()[1].allowAfterBalances, false);
+  await assert.rejects(rig().run(["orders", "--target", "rehearsal", "--allow-after-balances"]), ImportRefusal);
 });

@@ -90,16 +90,18 @@ test("plan: skips loaded invoices, refuses a taken number, counts what it approx
   assert.ok(!JSON.stringify(plan.problems).includes("Patient"));
 });
 
-test("plan: a client whose linked user is not an eligible owner is reported, its invoices get no owner", () => {
+test("plan: a client whose linked user is not an eligible owner loads UNOWNED and is reported (F2: same as orders)", () => {
   const records = summaries.map((p) => ({ seazonaId: p.id, payload: p }));
   const plan = planInvoices({
     summaries: records, details, owners: new Map([["c-2001", "u-2001"]]), unownedClients: new Set(["c-1324"]),
     existingSeazonaIds: new Set(), existingNumbers: new Set(),
   });
-  assert.deepEqual(plan.rows.map((r) => r.invoice.legacySeazonaInvoiceId), ["inv-c", "inv-d"]);
+  assert.deepEqual(plan.rows.map((r) => r.invoice.legacySeazonaInvoiceId), ["inv-a", "inv-b", "inv-c", "inv-d"]);
+  assert.equal(plan.rows.find((r) => r.invoice.legacySeazonaInvoiceId === "inv-a").invoice.clientUserId, null);
   const kinds = Object.fromEntries(plan.problems.map((p) => [p.kind, p.seazonaIds]));
   assert.deepEqual(kinds.client_owner_not_approved_doctor, ["c-1324"], "client ids");
-  assert.equal(plan.counts.skippedNoOwner, 2);
+  assert.equal(plan.counts.unowned, 2);
+  assert.equal(plan.counts.skippedNoOwner, undefined, "nothing is skipped for an owner problem any more");
   assert.ok(plan.problems.every((p) => p.count === p.seazonaIds.length));
 });
 

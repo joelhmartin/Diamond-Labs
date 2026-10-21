@@ -2,12 +2,12 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import { isInvoiceOwner, resolveOwners } from "./owners.js";
 
-const base = { id: "u1", role: "doctor", approvalStatus: "approved", status: "active", emailVerifiedAt: new Date(1), hasPassword: true, createdAt: new Date(1), seazonaClientId: "c1", seazonaAccountNumber: "1" };
+const base = { id: "u1", role: "doctor", approvalStatus: "approved", status: "active", createdAt: new Date(1), seazonaClientId: "c1", seazonaAccountNumber: "1" };
 
-test("only an approved doctor that is verified, or a passwordless import shell, may own", () => {
+test("only an approved, non-deleted doctor carrying the link may own (F1)", () => {
   assert.equal(isInvoiceOwner(base), true);
   assert.equal(isInvoiceOwner({ ...base, status: "suspended", emailVerifiedAt: null, hasPassword: false }), true, "placeholder shell");
-  assert.equal(isInvoiceOwner({ ...base, emailVerifiedAt: null }), false, "unverified registrant with a password");
+  assert.equal(isInvoiceOwner({ ...base, emailVerifiedAt: null, hasPassword: true }), true, "old-importer doctor who reset a password (never verified)");
   assert.equal(isInvoiceOwner({ ...base, approvalStatus: "pending" }), false);
   assert.equal(isInvoiceOwner({ ...base, approvalStatus: "rejected" }), false);
   assert.equal(isInvoiceOwner({ ...base, role: "user" }), false);

@@ -1,28 +1,27 @@
 import { users } from "../db/schema/index.js";
-import { isNotNull, or, sql } from "drizzle-orm";
+import { isNotNull, or } from "drizzle-orm";
 
 /**
  * Who may own imported money records (invoices, opening balances, orders).
- * One rule for every load step. A Seazona client's records go to the doctor
- * linked to it ONLY when that user is:
- *  - a doctor, APPROVED, not deleted, and
- *  - either email-verified, or an import shell: no password and never
- *    verified (what the clients step creates, placeholders included — a
- *    suspended `.invalid` doctor exists for exactly this and cannot log in).
- * A self-registered account always has a password, so an unverified
- * registrant, a shopper, an admin, a lab user or a pending/rejected doctor
- * that carries a legacy link never receives a practice's PHI-bearing history:
- * those clients are reported (Seazona ids only) and their records get no owner.
+ * One rule for every load step (ruling F1): a Seazona client's records go to
+ * the user carrying its link ONLY when that user is a doctor, APPROVED and not
+ * deleted. Verification and password state are deliberately NOT part of the
+ * rule: links only come from the importer, an admin, or the verified
+ * pending-link flow (map-clients `isLinkableUser` still gates linking by
+ * email), so a linked approved doctor is the practice. Requiring a verified
+ * email orphaned real doctors whom the old importer created unverified and who
+ * then set a password through reset. A shopper, an admin, a lab user or a
+ * pending/rejected doctor that carries a legacy link never receives a
+ * practice's PHI-bearing history: those clients are reported (Seazona ids
+ * only) and their records get no owner.
  */
 export const isInvoiceOwner = (u) =>
-  u.role === "doctor" && u.approvalStatus === "approved" && u.status !== "deleted" &&
-  (Boolean(u.emailVerifiedAt) || !u.hasPassword);
+  u.role === "doctor" && u.approvalStatus === "approved" && u.status !== "deleted";
 
-/** Columns resolveOwners needs. The password hash itself is never selected. */
+/** Columns resolveOwners needs. */
 export const OWNER_COLUMNS = {
   id: users.id, seazonaClientId: users.seazonaClientId, seazonaAccountNumber: users.seazonaAccountNumber,
-  role: users.role, approvalStatus: users.approvalStatus, status: users.status,
-  emailVerifiedAt: users.emailVerifiedAt, hasPassword: sql`${users.passwordHash} is not null`, createdAt: users.createdAt,
+  role: users.role, approvalStatus: users.approvalStatus, status: users.status, createdAt: users.createdAt,
 };
 
 export const oldestFirst = (a, b) => new Date(a.createdAt) - new Date(b.createdAt) || String(a.id).localeCompare(String(b.id));
