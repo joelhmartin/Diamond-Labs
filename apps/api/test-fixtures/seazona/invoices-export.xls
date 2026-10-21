@@ -1,0 +1,14 @@
+<html xmlns:o="urn:schemas-microsoft-com:office:office">
+<head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"></head>
+<body>
+<table border="1">
+<tr><td colspan="5">Invoices &amp; Payments — Open balances</td></tr>
+<tr><th>Invoice #</th><th>Account</th><th>Client</th><th>Total</th><th>Open Balance</th></tr>
+<tr><td>11114</td><td>1324</td><td>Example Dental</td><td>$1,250.00</td><td>$1,250.00</td></tr>
+<tr><td>11115</td><td>1324</td><td>Example Dental</td><td>$300.00</td><td>$120.50</td></tr>
+<tr><td>11120</td><td>2001</td><td>Sample Ortho &amp; Co</td><td>$80.00</td><td>(20.00)</td></tr>
+<tr><td>11121</td><td>2001</td><td>Sample Ortho &amp; Co</td><td>$95.00</td><td>&nbsp;</td></tr>
+<tr><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>Total</td><td></td><td></td><td>$1,725.00</td><td>$1,350.50</td></tr>
+</table>
+</body></html>
