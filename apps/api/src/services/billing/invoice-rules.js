@@ -361,6 +361,10 @@ export function planManualPayment({ openInvoices, amountCents, allocations, paid
   }
   for (const a of planned) {
     const inv = byId.get(a.invoiceId);
+    // Defence in depth: the open list is built from the client's own invoices, so an ownerless (unlinked legacy) invoice never appears; if one ever did, it is refused like credit/void.
+    if (inv.clientUserId === null) {
+      throw new InvoiceError("INVALID_TRANSITION", `Invoice #${inv.invoiceNumber} has no client yet, so a payment cannot be applied to it. Link its owner first.`);
+    }
     if (inv.issuedOn && paidOn < inv.issuedOn) {
       throw new InvoiceError("INVALID", `The payment date is before invoice #${inv.invoiceNumber} was issued (${inv.issuedOn}).`);
     }

@@ -3,7 +3,6 @@ process.env.PHI_ENCRYPTION_KEY ||= "0123456789abcdef0123456789abcdef0123456789ab
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { fakeTx } from "../../test/fake-tx.js";
-import { encryptField } from "../../lib/crypto.js";
 import { sealInvoice, sealLine } from "./invoice-crypto.js";
 import { doctorInvoiceView } from "./invoice-views.js";
 
@@ -42,7 +41,8 @@ test("a sealed legacy patient and line text come back opened in the doctor's lis
 });
 
 test("an unreadable sealed patient shows no initials instead of failing the list", async () => {
-  const bad = { ...sealedInvoice, legacyPatient: encryptField("x").replace(/.$/, "A") };
+  const bad = { ...sealedInvoice, legacyPatient: "enc:v1:not-a-real-ciphertext" };
   const list = await listClientInvoices(["doc1"], {}, fakeTx({ selects: [[{ invoice: bad, labOrderNumber: null, caseNumber: null, patientFirst: null, patientLast: null }], []] }));
   assert.equal(list.length, 1);
+  assert.equal(list[0].patientInitials, null);
 });

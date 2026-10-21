@@ -49,32 +49,37 @@ After it deploys, verify on production that the flag is understood but off: `GET
 ## 1. Freeze
 
 1. The lab stops entering invoices, payments and orders in Seazona.
-2. **AutoPay must not charge during the freeze:** confirm `AUTOPAY_LIVE_RUN` is `false` or unset on the service and on `diamond-labs-jobs`. The AutoPay sweep and `/admin/jobs/:name/run` can still charge cards if it is `true`, and `PAYMENTS_PAUSED` does not stop them.
+2. **AutoPay must not charge during the freeze:** confirm `AUTOPAY_LIVE_RUN` is `false` or unset on the service AND on the `diamond-labs-jobs` Job (if it exists yet). The AutoPay sweep and `/admin/jobs/:name/run` can still charge cards if it is `true`, and `PAYMENTS_PAUSED` does not stop them.
 
    ```bash
    gcloud run services describe diamond-labs-api --region=us-central1 --project=diamond-labs-prod --format="value(spec.template.spec.containers[0].env)" | tr ';' '\n' | grep -i AUTOPAY_LIVE_RUN
+   gcloud run jobs describe diamond-labs-jobs --region=us-central1 --project=diamond-labs-prod --format="value(spec.template.spec.template.spec.containers[0].env)" | tr ';' '\n' | grep -i AUTOPAY_LIVE_RUN
    ```
 
+   If either is `true`, set it to `false` now and note it here to restore after the freeze (only on the user's say-so): ___
 3. Pause payments on the current production revision, **at least 35 minutes before step 4's migrate** (a hosted-payment binding lives 30 minutes, so none can still be completing when migration 0030 drops `applied_amount`):
 
    ```bash
    gcloud run services update diamond-labs-api --region=us-central1 --project=diamond-labs-prod --update-env-vars=PAYMENTS_PAUSED=true
    ```
 
-   Time set: ___ (earliest migrate: set time + 35 min).
+   Time set: ___ (the merge gate in step 4 is this time + 35 min).
 4. **Verify it took.** The new revision must be serving (a malformed value would leave the old one). `GET /api/v1/payments/status` returns `paused: true`, and a doctor pressing Pay sees "Payments are paused for an upgrade."
 
-## 2. Backup and record
+## 2. Record the rollback points
+
+The Cloud SQL backup is taken later (step 4), as the last action before the merge, so it contains everything the freeze produced. Record the code points now:
 
 ```bash
-gcloud sql backups create --instance=diamond-labs-db --project=diamond-labs-prod --description="pre-cutover"
-gcloud sql backups list --instance=diamond-labs-db --project=diamond-labs-prod --limit=1   # record BACKUP_ID
+git fetch origin
 git rev-parse origin/main                                                                   # record MAIN_SHA
 gcloud run services describe diamond-labs-api --region=us-central1 --project=diamond-labs-prod \
   --format="value(spec.template.spec.containers[0].image)"                                  # record IMAGE (digest)
+gcloud run jobs describe diamond-labs-jobs --region=us-central1 --project=diamond-labs-prod \
+  --format="value(spec.template.spec.template.spec.containers[0].image)"                    # record JOB_IMAGE (skip if the Job does not exist yet)
 ```
 
-Backup id ___ · main SHA ___ · image ___
+main SHA ___ · service image ___ · jobs image ___ (a deploy's `update-jobs` step moves the Job to the new image, so it must be rolled back too)
 
 ## 3. Final delta fetch and final balance export
 
@@ -85,20 +90,29 @@ Off-hours does not apply inside the window, but the fetcher still paces itself a
    - `import:fetch invoices --detail --since <last rehearsal fetch date>`
    - `import:fetch orders --detail --open --refetch` (**`--refetch` is required**: an order has no `lastModified`, so without it a stored open order is never re-read and its status would be stale).
 3. The lab produces the final balance export from the Seazona portal. Download to an encrypted disk, seal it at once, delete the local file and empty the Trash: `import:fetch export --balances <per-invoice|per-client, as chosen at T-1> --file <export.xls>` (prints the file id and any row problems; no Seazona call). **Fix problems with the lab and re-export now:** a corrected export after a live balances run means a restore, not a re-run.
-4. Seeds: the invoices dry run's `seeds.seazonaMax` (invoice and order) + 1 → `INVOICE_NUMBER_START`, `LAB_ORDER_NUMBER_START`.
+4. **Seeds (a hard prerequisite of step 4; do not merge without them).** After step 3.1's summary fetch, derive Seazona's highest invoice and order numbers with a **rehearsal** dry run: `import:load invoices --target rehearsal` (no `--live`), and read `seeds.seazonaMax` (invoice and order). The raw store is shared, so the numbers are the same for production. Do NOT use a production dry run for this: production's pre-merge schema has no `invoices` / `lab_orders` tables, so it fails. `INVOICE_NUMBER_START` = invoice max + 1, `LAB_ORDER_NUMBER_START` = order max + 1. Record: ___ / ___ . (The rehearsal must still be migrated and loadable; if it was dropped, re-clone it first.)
 
 ## 4. Merge `feat/own-the-lab` to `main` (user's explicit sign-off now)
 
-1. Attach the staged env and secrets, with the seeds, to the service **before** the merge so the new revision boots with them (`gcloud run services update ... --update-env-vars INVOICE_NUMBER_START=...,LAB_ORDER_NUMBER_START=... --update-secrets ...`; remove `RX_LIVE_PUSH`, `SEAZONA_ORDER_USER_ID`). Keep `PAYMENTS_PAUSED=true`.
-2. Open the PR `feat/own-the-lab` to `main` (hundreds of files: over CodeRabbit's cap; every piece was reviewed as its own PR, so say so in the body). If it conflicts on `middleware/payments-paused.js`, its test or `payments-paused-wiring.test.js`, the two sides are identical; on `env.js` / route files keep `feat/own-the-lab`'s side (it already has the flag).
-3. The user merges. Cloud Build (`deploy-api-on-main`) runs migrate (0025 to 0033, one transaction) then deploy. Watch it to completion: `gcloud builds list --project=diamond-labs-prod --limit=1` then `gcloud builds log <id> --project=diamond-labs-prod --stream`.
+1. Stage the env and secrets, with the seeds, **before** the merge so the new revision boots with them: on the service (`gcloud run services update ... --update-env-vars INVOICE_NUMBER_START=...,LAB_ORDER_NUMBER_START=... --update-secrets ...`; remove `RX_LIVE_PUSH`, `SEAZONA_ORDER_USER_ID`) **and on the `diamond-labs-jobs` Job if it exists** (`gcloud run jobs update diamond-labs-jobs ...` with the same seeds and the carrier / `LAB_*` / mail settings from `docs/shipping-operations.md`): the Job runs the same code, and its tracking and repair runs allocate invoice and order numbers, so without the seeds it would number from the defaults. Keep `PAYMENTS_PAUSED=true`.
+2. **Gate: it is now at least the recorded pause time + 35 minutes** (step 1.3). Now: ___ . If not, wait.
+3. **Take the backup now, as the last action before the merge** (after the final fetch, the export and the env staging):
+
+   ```bash
+   gcloud sql backups create --instance=diamond-labs-db --project=diamond-labs-prod --description="pre-cutover"
+   gcloud sql backups list --instance=diamond-labs-db --project=diamond-labs-prod --filter="description='pre-cutover'" --sort-by=~windowStartTime --limit=1   # record BACKUP_ID
+   ```
+
+   Backup id ___ · taken at ___
+4. Open the PR `feat/own-the-lab` to `main` (hundreds of files: over CodeRabbit's cap; every piece was reviewed as its own PR, so say so in the body). If it conflicts on `middleware/payments-paused.js`, its test or `payments-paused-wiring.test.js`, the two sides are identical; on `env.js` / route files keep `feat/own-the-lab`'s side (it already has the flag).
+5. The user merges. Cloud Build (`deploy-api-on-main`) runs migrate (0025 to 0033, one transaction) then deploy. Watch it to completion: `gcloud builds list --project=diamond-labs-prod --limit=1` then `gcloud builds log <id> --project=diamond-labs-prod --stream`.
 
 ## 5. Load into production, then parity
 
 The `clients` step reads its plan before it writes, so it runs here, inside the write freeze. Only `invoices`, `balances` and `orders` take the seeds; `clients` and `parity`'s target flags are separate.
 
 ```bash
-export PRODUCTION_DATABASE_URL="postgresql://<admin user>:<pw>@127.0.0.1:6001/diamond_labs"
+export PRODUCTION_DATABASE_URL="postgresql://<admin user>:$(gcloud secrets versions access latest --secret=<the secret holding the admin password> --project=diamond-labs-prod)@127.0.0.1:6001/diamond_labs"
 T="--target production --confirm-production diamond_labs"
 S="--invoice-start <INVOICE_NUMBER_START> --order-start <LAB_ORDER_NUMBER_START>"
 pnpm --filter @my-app/api import:load clients  $T [--no-email placeholder|skip]            # dry run, read it, then add --live
@@ -139,8 +153,9 @@ gcloud run services update diamond-labs-api --region=us-central1 --project=diamo
 
 ## 8. Rollback (before unfreeze, or within the first day if something is badly wrong)
 
-1. `gcloud run deploy diamond-labs-api --image=<IMAGE from step 2> --region=us-central1 --project=diamond-labs-prod`
-2. Restore the database from the step-2 backup: `gcloud sql backups restore <BACKUP_ID> --restore-instance=diamond-labs-db --project=diamond-labs-prod`. **A git revert is not enough: migration 0030 dropped a column (`applied_amount`) the old code needs.** This restores the whole instance, so `diamond_labs_staging`, `diamond_labs_import` and `diamond_labs_rehearsal` roll back too: re-run the staging scrub job afterwards (staging refuses to boot otherwise) and re-run step 3's fetches before any retry (the import DB loses everything fetched since the backup, including the sealed exports; re-fetch and re-seal).
+0. **Before restoring, list what happened since the backup so it can be re-entered.** Guest shop checkout stays open during the freeze, and a card captured after the backup would vanish from the database but not from Authorize.net. From the live database list the shop orders created since `taken at` in step 4.3, and from the Authorize.net merchant portal list every transaction since then; keep both lists (ids and amounts, no PHI in chat) and re-enter or refund them after the restore. Anything the lab entered after unfreeze is re-keyed by hand as well.
+1. Roll the code back: `gcloud run deploy diamond-labs-api --image=<service image from step 2> --region=us-central1 --project=diamond-labs-prod`, **and the Job**: `gcloud run jobs update diamond-labs-jobs --image=<jobs image from step 2> --region=us-central1 --project=diamond-labs-prod` (skip if it did not exist).
+2. Restore the database from the step-4.3 backup: `gcloud sql backups restore <BACKUP_ID> --restore-instance=diamond-labs-db --project=diamond-labs-prod`. **A git revert is not enough: migration 0030 dropped a column (`applied_amount`) the old code needs.** This restores the whole instance, so `diamond_labs_staging`, `diamond_labs_import` and `diamond_labs_rehearsal` roll back too: re-run the staging scrub job afterwards (staging refuses to boot otherwise) and re-run step 3's fetches before any retry (the import DB loses everything fetched since the backup, including the sealed exports; re-fetch and re-seal).
 3. Unset `PAYMENTS_PAUSED` (`--remove-env-vars`, not blank) once the old revision is serving. The lab resumes on Seazona.
 4. Revert the merge on `main` in a PR (user sign-off) so the next push doesn't redeploy it.
 

@@ -16,16 +16,25 @@ test("getLabOrderDetail's legacy block returns the sealed patient opened, and th
     holdReason: null, labNotes: null, legacyPatient: "Test Patient",
   });
   assert.match(order.legacyPatient, /^enc:v1:/, "fixture really is sealed");
-  holder.db = fakeTx({ selects: [
+  const tx = fakeTx({ selects: [
     [{ order, departmentName: null, assigneeName: null, clientName: "Dr Test" }],
     [], // lines
     [], // events
     [{ id: "case1", caseNumber: "RX-1" }], // the linked portal case
   ] });
+  // Record the method names called on each select chain so the case lookup's ordering can be pinned.
+  const chains = [];
+  holder.db = { ...tx, select: (...a) => {
+    const calls = [];
+    chains.push(calls);
+    const wrap = (b) => new Proxy(b, { get: (t, k) => (k === "then" ? t.then : (...args) => { calls.push(k); return wrap(t[k](...args)); }) });
+    return wrap(tx.select(...a));
+  } };
   const detail = await getLabOrderDetail("lo1");
   assert.equal(detail.legacy.patientName, "Test Patient");
   assert.deepEqual([detail.legacy.seazonaOrderId, detail.legacy.caseId, detail.legacy.caseNumber], ["ord-9", "case1", "RX-1"]);
   assert.equal("legacyPatient" in detail.order, false);
   assert.ok(!JSON.stringify(detail).includes("enc:v1:"));
-  assert.equal(holder.db.log.filter((e) => e.op === "select").length, 4);
+  assert.equal(chains.length, 4);
+  assert.ok(chains[3].includes("orderBy") && chains[3].indexOf("orderBy") < chains[3].indexOf("limit"), "the case lookup is ordered before it is limited");
 });
