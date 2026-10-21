@@ -49,7 +49,7 @@ test("an invoice with real payments is skipped and reported, and only unsettled 
 
 test("a live run refuses an export with problems unless accepted; the problems are always in the report", async () => {
   const bad = { rows: parsed.rows, problems: [{ kind: "export-row-bad-balance", count: 1, seazonaIds: ["2"], lines: [7] }] };
-  await assert.rejects(loadBalances({ ...base, db: fakeTx(), live: true, mode: "per-invoice", parsed: bad }), (e) => e instanceof ImportRefusal && /--accept-export-problems/.test(e.message) && /NO key.*PAID/.test(e.message));
+  await assert.rejects(loadBalances({ ...base, db: fakeTx(), live: true, mode: "per-invoice", parsed: bad }), (e) => e instanceof ImportRefusal && /--accept-export-problems/.test(e.message) && !/NO key/.test(e.message));
   const dry = await loadBalances({ ...base, db: fakeTx({ selects: [legacyRows, []] }), live: false, mode: "per-invoice", parsed: bad });
   assert.deepEqual(dry.exportProblems, bad.problems);
   const ok = await loadBalances({ ...base, db: fakeTx({ selects: [legacyRows, []] }), live: true, mode: "per-invoice", parsed: bad, acceptExportProblems: true });
@@ -234,4 +234,23 @@ test("the load lock: held elsewhere refuses; a live run without one is a coding 
   const tx = fakeTx({ selects: [legacyRows, []] });
   await assert.rejects(loadBalances({ ...base, lock: lost, db: tx, live: true, mode: "per-invoice", parsed }), /lost/);
   assert.equal(tx.log.some((e) => e.op === "insert"), false);
+});
+
+test("the refusal names keyless rows and a footer-total mismatch only when present (F4)", async () => {
+  const noKey = { rows: parsed.rows, problems: [{ kind: "export-row-no-key", count: 1, seazonaIds: [], lines: [9] }] };
+  await assert.rejects(loadBalances({ ...base, db: fakeTx(), live: true, mode: "per-invoice", parsed: noKey }), /NO key.*PAID/);
+  const mismatch = { rows: parsed.rows, problems: [{ kind: "export-total-mismatch", count: 1, seazonaIds: [], lines: [12] }], exportTotalCents: 401 };
+  await assert.rejects(loadBalances({ ...base, db: fakeTx(), live: true, mode: "per-invoice", parsed: mismatch }), (e) => /Total row/.test(e.message) && !/NO key/.test(e.message));
+  const dry = await loadBalances({ ...base, db: fakeTx({ selects: [legacyRows, []] }), live: false, mode: "per-invoice", parsed: mismatch });
+  assert.equal(dry.exportTotalCents, 401);
+});
+
+test("per-invoice balances runs the seed check too: a production run without both starts is refused (Minor 3)", async () => {
+  const rawWithMax = { records: async (e) => (e === "invoice" ? [{ seazonaId: "inv-1", payload: { invoiceNumber: "11130" } }] : []) };
+  await assert.rejects(
+    loadBalances({ ...base, raw: rawWithMax, target: "production", db: fakeTx({ selects: [legacyRows, []] }), live: true, mode: "per-invoice", parsed }),
+    /--invoice-start is required/,
+  );
+  const dry = await loadBalances({ ...base, raw: rawWithMax, db: fakeTx({ selects: [legacyRows, []] }), live: false, mode: "per-invoice", parsed });
+  assert.equal(dry.seeds.seazonaMax.invoice, 11130);
 });

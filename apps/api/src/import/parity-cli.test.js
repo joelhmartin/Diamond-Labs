@@ -51,7 +51,7 @@ test("with a stored export its rows and problems join the report", async () => {
   const report = r.out.reports[0];
   assert.equal(report.balances.exportTotalCents, 125000 + 12050);
   assert.equal(report.balances.creditCents, 2000);
-  assert.deepEqual(report.exportProblems.map((p) => [p.kind, p.lines]), [["export-row-bad-balance", [6]], ["export-row-no-key", [8]]]);
+  assert.deepEqual(report.exportProblems.map((p) => [p.kind, p.lines]), [["export-row-bad-balance", [6]]]);
   assert.ok(report.differences.includes("balance export problems"));
   assert.ok(!/Example|Sample/.test(JSON.stringify(report)));
 });

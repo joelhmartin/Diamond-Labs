@@ -104,11 +104,11 @@ test("export seals the file via saveFile and prints the grouped problem shape: i
   assert.equal(await r.run(["export", "--balances", "per-invoice", "--file", "balances.xls"]), 0);
   assert.equal(r.store.files.size, 1);
   assert.equal([...r.store.files.values()][0].kind, "balances_invoice");
-  assert.match(text(r.out), /Stored the per-invoice export as file file1: 1 usable row\(s\), 2 problem row\(s\)/);
+  assert.match(text(r.out), /Stored the per-invoice export as file file1: 1 usable row\(s\), 1 problem row\(s\)/);
+  assert.match(text(r.out), /Footer Total row: 1250 cents/);
   assert.deepEqual(r.out.reports[0], [
     { kind: "export-row-bad-balance", count: 1, seazonaIds: ["1002"], lines: [3] },
-    { kind: "export-row-no-key", count: 1, seazonaIds: [], lines: [4] },
-  ]);
+  ], "the closing Total row is the footer (F4), not a no-key problem");
   await assert.rejects(r.run(["export", "--balances", "weird", "--file", "x"]), /Usage/);
 });
 

@@ -16,6 +16,12 @@ import { ImportRefusal } from "./import-errors.js";
  *
  * Problems use the shared import shape { kind, count, seazonaIds }, plus the
  * 1-based `lines` they came from. Row numbers and keys only, never cell text.
+ *
+ * Footer (ruling F4): the portal always ends the table with a keyless
+ * "Total" / "Totals" / "Grand Total" row. When that is the LAST non-empty row
+ * it is read as `exportTotalCents` (not a no-key problem) and cross-checked:
+ * the parsed rows must sum to it to the cent, else `export-total-mismatch`.
+ * A keyless row anywhere else is still `export-row-no-key`.
  */
 export const EXPORT_KINDS = {
   invoice: {
@@ -38,7 +44,12 @@ export const EXPORT_PROBLEM_KINDS = {
   noKey: "export-row-no-key",
   badBalance: "export-row-bad-balance",
   duplicate: "export-row-duplicate-key",
+  totalMismatch: "export-total-mismatch",
 };
+
+const FOOTER_LABELS = new Set(["total", "totals", "grand total"]);
+/** A footer row: its key cell (or, when that is blank, its first non-empty cell) is a total label. */
+const isFooterLabel = (row, keyAt) => FOOTER_LABELS.has(fold(row[keyAt] || row.find(Boolean) || ""));
 
 const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
 
@@ -166,12 +177,21 @@ export function readExport(bytes, { kind, columns = {} }) {
   const out = [];
   const found = [];
   const seen = new Set();
+  let lastFilled = -1;
+  for (let i = rows.length - 1; i > header.index && lastFilled < 0; i--) if (rows[i].some(Boolean)) lastFilled = i;
+  let exportTotalCents = null;
   for (let i = header.index + 1; i < rows.length; i++) {
     const line = i + 1;
     const keyText = rows[i][header.at[spec.key]] ?? "";
     const balanceText = rows[i][header.at.balance] ?? "";
     if (rows[i].every((c) => !c)) continue; // spacer row: every cell empty
     const key = kind === "invoice" ? invoiceKey(keyText) : accountKey(keyText);
+    if (key == null && i === lastFilled && isFooterLabel(rows[i], header.at[spec.key])) {
+      exportTotalCents = exportCents(balanceText);
+      const sum = out.reduce((n, r) => n + r.cents, 0);
+      if (exportTotalCents == null || exportTotalCents !== sum) found.push({ kind: EXPORT_PROBLEM_KINDS.totalMismatch, line });
+      continue;
+    }
     if (key == null) {
       found.push({ kind: EXPORT_PROBLEM_KINDS.noKey, line }); // a total or note row?
       continue;
@@ -188,5 +208,5 @@ export function readExport(bytes, { kind, columns = {} }) {
     seen.add(key);
     out.push({ key, cents, line });
   }
-  return { rows: out, problems: groupProblems(found), headerLine: header.index + 1 };
+  return { rows: out, problems: groupProblems(found), headerLine: header.index + 1, exportTotalCents };
 }

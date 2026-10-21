@@ -24,6 +24,7 @@ export const leftOpenKeys = (parsed) =>
   new Set(parsed.problems.filter((p) => p.kind === EXPORT_PROBLEM_KINDS.badBalance || p.kind === EXPORT_PROBLEM_KINDS.duplicate).flatMap((p) => p.seazonaIds.map(String)));
 
 const NO_KEY_WARNING = "A row with NO key cannot be matched to an invoice or account, so whatever it owed will be settled as PAID unless the export is fixed.";
+const TOTAL_MISMATCH_WARNING = "The rows do not add up to the export's own Total row: some balance was not read. Find the row before accepting.";
 const noKeyRows = (parsed) => parsed.problems.find((p) => p.kind === EXPORT_PROBLEM_KINDS.noKey)?.count ?? 0;
 
 /** One opening-balance invoice in the caller's transaction, numbered from the live sequence. */
@@ -57,7 +58,7 @@ async function paymentsOn(candidates, paidCents, db) {
   return paid;
 }
 
-async function perInvoice({ db, live, legacy, parsed, existingTransactionIds, paidCents, report, guard }) {
+async function perInvoice({ raw, db, live, target, legacy, parsed, existingTransactionIds, paidCents, starts, report, guard }) {
   const paidByInvoice = await paymentsOn(settlementCandidates(legacy, "per-invoice", existingTransactionIds), paidCents, db);
   const plan = planInvoiceSettlements({ legacyInvoices: legacy, exportRows: parsed.rows, existingTransactionIds, paidByInvoice, leftOpenKeys: leftOpenKeys(parsed) });
   report.reconciliation = plan.reconciliation;
@@ -76,6 +77,8 @@ async function perInvoice({ db, live, legacy, parsed, existingTransactionIds, pa
     ["invoice_has_real_payments_not_settled", strings(plan.hasPayments)],
     ["credit_balance_for_staff", strings(plan.credits.map((c) => c.invoiceNumber))],
   ]);
+  // Settlements take no numbers, but the seed check runs on every balances run (as the CLI and runbook say), so a bad start is caught here too.
+  report.seeds = (await enforceSeeds({ raw, db, target, live, starts })).summary;
   if (live) report.written = { settlements: await writeSettlements(db, plan.rows, existingTransactionIds, guard) };
   return report;
 }
@@ -151,7 +154,9 @@ export async function loadBalances({
   if (typeof paidCents !== "function") throw new TypeError("loadBalances needs the injected paidCents(invoiceIds, db) ledger sum.");
   if (live && parsed.problems.length && !acceptExportProblems) {
     const summary = parsed.problems.map((p) => `${p.kind} x${p.count} (rows ${p.lines.slice(0, 10).join(", ")})`).join("; ");
-    throw new ImportRefusal(`The balance export has problems: ${summary}. ${NO_KEY_WARNING} Fix the file, or pass --accept-export-problems: rows with an unreadable or duplicated balance then stay open (nothing is settled for them), but keyless rows still cannot be matched.`);
+    const noKey = noKeyRows(parsed) ? `${NO_KEY_WARNING} ` : "";
+    const mismatch = parsed.problems.some((p) => p.kind === EXPORT_PROBLEM_KINDS.totalMismatch) ? `${TOTAL_MISMATCH_WARNING} ` : "";
+    throw new ImportRefusal(`The balance export has problems: ${summary}. ${noKey}${mismatch}Fix the file, or pass --accept-export-problems: rows with an unreadable or duplicated balance then stay open (nothing is settled for them), but keyless rows still cannot be matched.`);
   }
   return withLoadLock({ lock, live, step: "balances" }, (guard) =>
     run({ raw, db, live, target, mode, parsed, fileId, starts, cutoverAt, paidCents, guard }));
@@ -172,7 +177,7 @@ async function run({ raw, db, live, target, mode, parsed, fileId, starts, cutove
   if ([...existingTransactionIds].some((t) => t.startsWith(SETTLEMENT_PREFIX[other])) || (mode === "per-invoice" && hasOpening)) {
     throw new ImportRefusal(`Balances were already loaded ${other} on this target. Re-clone the rehearsal (or restore production from the cutover backup) before switching paths.`);
   }
-  const report = { step: "balances", live, mode, fileId, exportProblems: parsed.problems };
+  const report = { step: "balances", live, mode, fileId, exportProblems: parsed.problems, exportTotalCents: parsed.exportTotalCents ?? null };
   if (noKeyRows(parsed)) report.warnings = [NO_KEY_WARNING];
   const args = { raw, db, live, target, legacy, parsed, existingTransactionIds, paidCents, starts, cutoverAt, report, guard };
   return mode === "per-invoice" ? perInvoice(args) : perClient(args);

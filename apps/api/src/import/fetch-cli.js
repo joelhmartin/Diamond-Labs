@@ -99,10 +99,11 @@ async function storeExport(flags, store, deps) {
   const spec = EXPORTS[flags.balances];
   if (!spec || !flags.file) throw new ImportRefusal("Usage: import:fetch export --balances per-invoice|per-client --file <export.xls> [--columns name=Header,…]");
   const bytes = await deps.readFile(flags.file);
-  const { rows, problems } = readExport(bytes, { kind: spec.parseKind, columns: flags.columns ? parseColumnsFlag(flags.columns) : {} });
+  const { rows, problems, exportTotalCents } = readExport(bytes, { kind: spec.parseKind, columns: flags.columns ? parseColumnsFlag(flags.columns) : {} });
   const id = await store.saveFile({ kind: spec.fileKind, bytes });
   deps.print([
     `Stored the ${flags.balances} export as file ${id}: ${rows.length} usable row(s), ${problems.reduce((n, p) => n + p.count, 0)} problem row(s).`,
+    exportTotalCents == null ? "No footer Total row found." : `Footer Total row: ${exportTotalCents} cents (cross-checked against the rows; a mismatch is export-total-mismatch).`,
     "Delete the local copy now (and empty the Trash).",
   ]);
   if (problems.length) deps.print(["Export problems (ids and row numbers only):"]);
@@ -153,7 +154,7 @@ function stopLines(r) {
   if (r.dropped > 0) return [`${r.dropped} record(s) in the list had no id. The set is incomplete, so NOTHING was stored and the run is marked failed; needs operator attention.`];
   if (r.needsMorePages) return [`The list walk needed more pages than allowed (${r.requests} used): NOTHING was stored. Get a larger count approved and re-run with --live --approved ${r.requests + 2}.`];
   if (r.status === "blocked") return ["Seazona refused with 403: the integration is BLOCKED (production too). Do not retry. Tell the user; check /health/seazona later."];
-  if (r.truncated) return ["The list walk did not complete (Seazona's capped list gave no cursor to advance by, or the page budget ran out). The set is incomplete: NOTHING was stored or marked complete. Needs operator attention; do not load from this."];
+  if (r.truncated) return ["The list walk did not complete (Seazona's capped list gave no cursor to advance by: a full page sharing one timestamp, which can't be paged past without dropping rows; or the page budget ran out). The set is incomplete: NOTHING was stored or marked complete. Needs operator attention; do not load from this."];
   if (r.lastStatus === 0) return ["Seazona is unavailable (disabled, credentials or network); nothing more was attempted."];
   return [`Stopped on HTTP status ${r.lastStatus ?? "unknown"}; nothing more was attempted.`];
 }
