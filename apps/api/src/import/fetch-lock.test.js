@@ -75,3 +75,13 @@ test.skipIf(!REAL)("against a real Postgres: second holder refused, freed when t
     await b.close();
   }
 });
+
+test("the same lock machinery serves the load lock with a different key", async () => {
+  const { LOAD_LOCK_KEY, FETCH_LOCK_KEY } = await import("./fetch-lock.js");
+  assert.notEqual(LOAD_LOCK_KEY, FETCH_LOCK_KEY);
+  let seen;
+  const create = () => { const sql = async (_s, ...vals) => { seen = vals; return [{ ok: true }]; }; sql.end = async () => {}; return sql; };
+  const lock = makeFetchLock("postgresql://x/db", { createClient: create, key: LOAD_LOCK_KEY });
+  assert.equal(await lock.tryLock(), true);
+  assert.deepEqual(seen, [LOAD_LOCK_KEY]);
+});

@@ -40,3 +40,10 @@ test("two eligible users sharing a client id fail closed: no owner, reported as 
   assert.equal(r.byClient.get("c3"), "c");
   assert.equal(r.rejectedClients.size, 0);
 });
+
+test("account numbers compare trimmed and case-insensitively", async () => {
+  const { normAccount } = await import("./owners.js");
+  const r = resolveOwners([{ ...base, id: "a", seazonaAccountNumber: " Ab1 " }]);
+  assert.equal(r.byAccount.get(normAccount("ab1")), "a");
+  assert.equal(normAccount("  "), null);
+});

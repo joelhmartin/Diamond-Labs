@@ -1,8 +1,8 @@
-import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { OPENING_BALANCE_PREFIX } from "@my-app/shared";
-import { invoices, invoiceLines, users } from "../db/schema/index.js";
+import { invoices, invoiceLines } from "../db/schema/index.js";
 import { sealInvoice, sealLine } from "../services/billing/invoice-crypto.js";
-import { OWNER_COLUMNS, resolveOwners } from "./owners.js";
+import { loadOwners, normAccount } from "./owners.js";
 import { planInvoices } from "./map-invoices.js";
 import { insertMissing } from "./load-writer.js";
 import { enforceSeeds } from "./seed-check.js";
@@ -33,8 +33,7 @@ export async function loadInvoices({ raw, db, live, target, starts = {} }) {
   const summaries = await raw.records("invoice");
   const details = new Map((await raw.records("invoice_detail")).map((r) => [r.seazonaId, r.payload]));
   const seeds = await enforceSeeds({ raw, db, target, live, starts, invoiceSummaries: summaries });
-  const userRows = await db.select(OWNER_COLUMNS).from(users).where(isNotNull(users.seazonaClientId));
-  const owners = resolveOwners(userRows);
+  const owners = await loadOwners(db);
   const existing = await db
     .select({ seazonaId: invoices.legacySeazonaInvoiceId, number: invoices.invoiceNumber, clientUserId: invoices.clientUserId })
     .from(invoices);
@@ -77,7 +76,7 @@ export function reattachPlan(existing, summaries, owners) {
   for (const r of existing) {
     if (!r.seazonaId || r.clientUserId) continue;
     const owner = r.seazonaId.startsWith(OPENING_BALANCE_PREFIX)
-      ? owners.byAccount.get(r.seazonaId.slice(OPENING_BALANCE_PREFIX.length))
+      ? owners.byAccount.get(normAccount(r.seazonaId.slice(OPENING_BALANCE_PREFIX.length)))
       : owners.byClient.get(clientOf.get(r.seazonaId));
     if (owner) out.set(owner, [...(out.get(owner) ?? []), r.seazonaId]);
   }

@@ -1,5 +1,5 @@
 import { users } from "../db/schema/index.js";
-import { sql } from "drizzle-orm";
+import { isNotNull, or, sql } from "drizzle-orm";
 
 /**
  * Who may own imported money records (invoices, opening balances, orders).
@@ -41,11 +41,14 @@ export function oldestByKey(rows, key, include = () => true) {
   return out;
 }
 
-function index(rows, key) {
+/** Account numbers compare trimmed and case-insensitive on every side (export, users, opening-invoice keys). */
+export const normAccount = (v) => (v == null ? null : String(v).trim().toLowerCase() || null);
+
+function index(rows, key, norm = (v) => (v == null ? null : String(v))) {
   const eligible = new Map();
   const linked = new Set();
   for (const u of rows) {
-    const k = u[key] == null ? null : String(u[key]);
+    const k = norm(u[key]);
     if (!k) continue;
     linked.add(k);
     if (isInvoiceOwner(u)) eligible.set(k, [...(eligible.get(k) ?? []), u.id]);
@@ -68,9 +71,19 @@ function index(rows, key) {
  */
 export function resolveOwners(userRows) {
   const c = index(userRows, "seazonaClientId");
-  const a = index(userRows, "seazonaAccountNumber");
+  const a = index(userRows, "seazonaAccountNumber", normAccount);
   return {
     byClient: c.owners, byAccount: a.owners, rejectedClients: c.rejected, rejectedAccounts: a.rejected,
     ambiguousClients: c.ambiguous, ambiguousAccounts: a.ambiguous,
   };
+}
+
+/**
+ * THE owner query for every load step that attaches money to a doctor
+ * (invoices, balances, reattach): every user with a Seazona client id OR
+ * account number, resolved by resolveOwners. `byAccount` keys are normAccount.
+ */
+export async function loadOwners(db) {
+  const rows = await db.select(OWNER_COLUMNS).from(users).where(or(isNotNull(users.seazonaClientId), isNotNull(users.seazonaAccountNumber)));
+  return { rows, ...resolveOwners(rows) };
 }

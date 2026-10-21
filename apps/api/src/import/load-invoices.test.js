@@ -133,3 +133,18 @@ test("an unowned per-client opening invoice is attached by account number once t
   assert.equal(report.counts.reattached, 1, "account 9999 has no owner and stays unowned");
   assert.deepEqual(tx.log.filter((e) => e.op === "set").map((e) => e.values.clientUserId), ["u-2001"]);
 });
+
+test("an account resolves to the same owner in the invoices reattach and the balances step", async () => {
+  const { loadBalances } = await import("./load-balances.js");
+  const set = [{ ...doctor, id: "u-acct", seazonaClientId: null, seazonaAccountNumber: " Ab7 " }];
+  const lock = { tryLock: async () => true, assertHeld() {}, close: async () => {} };
+  const inv = fakeTx({ selects: [[{ n: 0 }], [{ n: 0 }], set, [{ seazonaId: "opening:ab7", number: 16211, clientUserId: null }]], updates: [[{ id: "o" }]] });
+  await loadInvoices({ raw, db: inv, live: true, target: "rehearsal", starts: {} });
+  const bal = fakeTx({ selects: [[], [], set, [{ n: 0 }], [{ n: 0 }]] });
+  const report = await loadBalances({
+    raw: { records: async () => [] }, db: bal, live: false, target: "rehearsal", mode: "per-client", paidCents: async () => new Map(),
+    parsed: { rows: [{ key: "AB7", cents: 500 }], problems: [] }, lock,
+  });
+  assert.deepEqual(inv.log.filter((e) => e.op === "set").map((e) => e.values.clientUserId), ["u-acct"]);
+  assert.equal(report.reconciliation.loadedOpenCents, 500, "owned, not unowned");
+});

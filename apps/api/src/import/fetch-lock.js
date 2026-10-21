@@ -8,6 +8,8 @@ import { createPgClient } from "../config/pg-client.js";
  * no live process owns a run still marked "running" (see --mark-stale, --resume).
  */
 export const FETCH_LOCK_KEY = 7_351_005_001;
+/** The load steps' lock (one balances/load run per target at a time), taken on the TARGET database with the same machinery. */
+export const LOAD_LOCK_KEY = 7_351_005_002;
 
 /**
  * Options for the lock's connection. postgres-js reads idle_timeout and
@@ -30,7 +32,7 @@ export class FetchLockLost extends Error {
  * process holds the lock (idempotent). If the lock connection closes while held, the
  * session (and so the lock) is gone: isHeld() turns false and assertHeld() throws.
  */
-export function makeFetchLock(url, { createClient = createPgClient } = {}) {
+export function makeFetchLock(url, { createClient = createPgClient, key = FETCH_LOCK_KEY } = {}) {
   let client = null;
   let held = false;
   let lost = false;
@@ -42,7 +44,7 @@ export function makeFetchLock(url, { createClient = createPgClient } = {}) {
     async tryLock() {
       if (held) return !lost;
       client ??= createClient(url, { ...LOCK_CLIENT_OPTIONS, onclose });
-      const [row] = await client`select pg_try_advisory_lock(${FETCH_LOCK_KEY}::bigint) as ok`;
+      const [row] = await client`select pg_try_advisory_lock(${key}::bigint) as ok`;
       held = row?.ok === true;
       if (!held) {
         closing = true;
