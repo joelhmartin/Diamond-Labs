@@ -70,6 +70,12 @@ export async function finishRun(importDb, runId, { status, cursor, requestCount,
   await importDb.update(fetchRuns).set({ status, cursor, requestCount, errorCount, lastStatus, note, finishedAt: now }).where(eq(fetchRuns.id, runId));
 }
 
+/** A run of this entity still marked running (another process, or one that died without finishing). */
+export async function findRunningRun(importDb, entity) {
+  const [run] = await importDb.select().from(fetchRuns).where(and(eq(fetchRuns.entity, entity), eq(fetchRuns.status, "running")));
+  return run ?? null;
+}
+
 export async function getRun(importDb, runId) {
   const [run] = await importDb.select().from(fetchRuns).where(eq(fetchRuns.id, runId));
   return run ?? null;
@@ -112,6 +118,7 @@ export function rawStore(importDb) {
     saveProgress: (runId, p) => saveProgress(importDb, runId, p),
     finishRun: (runId, p) => finishRun(importDb, runId, p),
     getRun: (runId) => getRun(importDb, runId),
+    findRunning: (entity) => findRunningRun(importDb, entity),
     saveFile: (o) => saveFile(importDb, o),
     readFile: (id) => readFile(importDb, id),
     saveParityReport: (o) => saveParityReport(importDb, o),

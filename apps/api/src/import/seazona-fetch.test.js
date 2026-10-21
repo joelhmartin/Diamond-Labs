@@ -9,7 +9,7 @@ import { fetchSummaries, runSummaryCommand, runDetailCommand, createPacer } from
 const pace = async () => {}; // tests never wait on the real 2s pacer
 
 // A fake seazona.service: records every call; `detail(id, n)` scripts each answer.
-function fakeSeazona({ detail = () => ({ ok: true, status: 200, record: { id: "x" } }), invoices = [], truncated = false } = {}) {
+function fakeSeazona({ detail = () => ({ ok: true, status: 200, record: { id: "x" } }), invoices = [], truncated = false, pages = 2 } = {}) {
   const calls = [];
   const answer = (id) => {
     calls.push(id);
@@ -19,7 +19,17 @@ function fakeSeazona({ detail = () => ({ ok: true, status: 200, record: { id: "x
     calls,
     getInvoiceResult: async (id) => { const a = answer(id); return { ok: a.ok, status: a.status, invoice: a.record ?? null }; },
     getOrderResult: async (id) => { const a = answer(id); return { ok: a.ok, status: a.status, order: a.record ?? null }; },
-    getAllInvoicesResult: async () => { calls.push("list"); return { reachable: true, status: 200, invoices, requests: 2, truncated }; },
+    // Emulates the service's walk: maxPages caps it (truncated), beforePage runs before each page.
+    getAllInvoicesResult: async (opts = {}) => {
+      let n = 0;
+      for (let i = 0; i < pages; i++) {
+        if (opts.maxPages !== undefined && i >= opts.maxPages) return { reachable: true, status: 200, invoices: [], requests: n, truncated: true };
+        await opts.beforePage?.();
+        calls.push("page");
+        n += 1;
+      }
+      return { reachable: true, status: 200, invoices, requests: n, truncated };
+    },
     listClientsResult: async () => { calls.push("clients"); return { ok: false, status: 500, clients: [] }; },
   };
 }
@@ -88,7 +98,9 @@ test("summaries: stored with their lastModified; a failed list stores nothing", 
   const store = fakeStore();
   const seazona = fakeSeazona({ invoices: [{ id: "a", lastModified: "2026-10-01T00:00:00" }, { id: "b" }, { noId: true }] });
   const r = await fetchSummaries({ entity: "invoice", seazona, store });
-  assert.equal(r.status, "done");
+  assert.equal(r.status, "failed", "a record without an id makes the set incomplete: never done");
+  assert.equal(r.dropped, 1);
+  assert.match(store.runs.get(r.runId).note, /1 record\(s\) had no id/);
   assert.equal(r.count, 2);
   assert.equal(r.requests, 2);
   assert.equal(store.recs.get("invoice:a").lastModified, "2026-10-01T00:00:00");
@@ -161,4 +173,38 @@ test("in src/import, only fetch-cli.js names seazona.service.js, and only throug
       assert.doesNotMatch(code, /seazona\.service/, f);
     }
   }
+});
+
+test("a summary walk honours the plan: paced before every page, capped at the planned count", async () => {
+  const events = [];
+  const seazona = fakeSeazona({ invoices: [{ id: "a" }] });
+  const out = await runSummaryCommand({ entity: "invoice", live: true, seazona, store: fakeStore(), pace: async () => { events.push("pace"); } });
+  assert.deepEqual(out.plan, { requests: 2, minutes: 1 });
+  assert.equal(out.result.status, "done");
+  assert.equal(events.length, 2, "the pacer ran before each of the 2 pages");
+
+  // The walk needs 3 pages but 2 were planned: failed, nothing stored, re-plan message.
+  const store = fakeStore();
+  const long = fakeSeazona({ invoices: [{ id: "a" }], pages: 3 });
+  const capped = await runSummaryCommand({ entity: "invoice", live: true, seazona: long, store, pace });
+  assert.equal(capped.result.status, "failed");
+  assert.equal(capped.result.needsMorePages, true);
+  assert.equal(store.recs.size, 0);
+  assert.match(store.runs.get(capped.runId).note, /more pages than planned/);
+  assert.equal(long.calls.filter((c) => c === "page").length, 2, "never a request past the plan");
+});
+
+test("--approved lowers the page cap below the plan", async () => {
+  const seazona = fakeSeazona({ invoices: [{ id: "a" }], pages: 2 });
+  const out = await runSummaryCommand({ entity: "invoice", live: true, approved: 1, seazona, store: fakeStore(), pace });
+  assert.equal(out.result.needsMorePages, true);
+  assert.equal(seazona.calls.length, 1);
+});
+
+test("a store error during a summary marks the run failed, then rethrows", async () => {
+  const store = fakeStore();
+  store.upsert = async () => { throw new Error("db down"); };
+  await assert.rejects(fetchSummaries({ entity: "invoice", seazona: fakeSeazona({ invoices: [{ id: "a" }] }), store }), /db down/);
+  const [run] = store.runs.values();
+  assert.equal(run.status, "failed");
 });

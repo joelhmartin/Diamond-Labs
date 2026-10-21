@@ -19,7 +19,8 @@ test("request counts and minutes at 30/min", () => {
   assert.equal(minutesFor(61), 3);
   assert.equal(summaryRequests("client", 0), 1);
   assert.equal(summaryRequests("invoice", 16_000), 2);
-  assert.equal(summaryRequests("invoice", 0), 1);
+  assert.equal(summaryRequests("invoice", 0), 2, "a first fetch of a capped list is at least 2 requests");
+  assert.equal(summaryRequests("order", 0), 2);
 });
 
 test("a live run over 100 requests needs --approved of at least the count", () => {

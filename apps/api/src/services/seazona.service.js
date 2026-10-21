@@ -285,8 +285,12 @@ function bumpOneSecond(ts) {
  * to a single lastModified, so a capped page that shares one value advances by
  * one second. De-dupes by id. `truncated` means a capped page gave no cursor to
  * advance by (the set is incomplete; never treat it as whole).
+ *
+ * Options (piece 5's fetcher): `maxPages` caps the requests (default 50); running
+ * out of pages mid-walk is `truncated`. `beforePage` is awaited before every
+ * page request, so the caller can pace the walk.
  */
-async function walkCapped(fetchPage, field) {
+async function walkCapped(fetchPage, field, { maxPages = 50, beforePage } = {}) {
   const seen = new Map();
   const noId = []; // records without an id can't be de-duped; keep them all
   const instant = (ts) => Date.parse(ts.endsWith("Z") ? ts : `${ts}Z`);
@@ -296,7 +300,8 @@ async function walkCapped(fetchPage, field) {
   let done = false; // false after the loop = the page budget ran out mid-walk
   let status = 200;
   let requests = 0;
-  for (let i = 0; i < 50 && !done; i++) {
+  for (let i = 0; i < maxPages && !done; i++) {
+    if (beforePage) await beforePage();
     const page = await fetchPage(cursor);
     requests += 1;
     status = page.status;
@@ -329,11 +334,11 @@ export async function getAllInvoices() {
  * set may be incomplete; `status` is that page's), distinguishing a true empty
  * archive from an outage or a block.
  */
-export async function getAllInvoicesResult() {
+export async function getAllInvoicesResult(options) {
   const w = await walkCapped(async (cursor) => {
     const r = await getInvoicesResult(cursor);
     return { reachable: r.reachable, status: r.status, records: r.invoices };
-  }, "lastModified");
+  }, "lastModified", options);
   return { reachable: w.reachable, status: w.status, invoices: w.records, requests: w.requests, truncated: w.truncated };
 }
 
@@ -366,11 +371,11 @@ export async function getOrders(ordered) {
 }
 
 /** Every order, walked past a possible 10k cap by `ordered` (see walkCapped). Piece 5's fetcher only. */
-export async function getAllOrdersResult() {
+export async function getAllOrdersResult(options) {
   const w = await walkCapped(async (cursor) => {
     const r = await getOrdersResult(cursor);
     return { reachable: r.reachable, status: r.status, records: r.orders };
-  }, "ordered");
+  }, "ordered", options);
   return { reachable: w.reachable, status: w.status, orders: w.records, requests: w.requests, truncated: w.truncated };
 }
 

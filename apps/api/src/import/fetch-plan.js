@@ -23,10 +23,14 @@ export const DETAIL_ENTITIES = { invoices: "invoice_detail", orders: "order_deta
 
 export const minutesFor = (requests) => Math.ceil(requests / REQUESTS_PER_MINUTE);
 
-/** One list call, or one per full page plus the short last page for the capped lists. */
+/**
+ * One list call, or for the capped lists (invoices, orders) one per full page
+ * plus the short last page. A first fetch assumes at least 2: the archive is
+ * over one page. The runner caps the walk at this number (see fetchSummaries).
+ */
 export function summaryRequests(entity, storedCount = 0) {
   if (entity !== "invoice" && entity !== "order") return 1;
-  return Math.floor(storedCount / LIST_PAGE_CAP) + 1;
+  return Math.max(2, Math.floor(storedCount / LIST_PAGE_CAP) + 1);
 }
 
 export function approvalProblem({ count, live, approved }) {

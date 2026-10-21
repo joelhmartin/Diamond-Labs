@@ -14,6 +14,7 @@ export function fakeRawStore() {
     startRun: async (o) => { const id = `run${runs.size + 1}`; runs.set(id, { id, ...o, cursor: 0, status: "running" }); return id; },
     saveProgress: async (id, p) => Object.assign(runs.get(id), p),
     finishRun: async (id, p) => Object.assign(runs.get(id), p),
+    findRunning: async (entity) => [...runs.values()].find((r) => r.entity === entity && r.status === "running") ?? null,
     getRun: async (id) => runs.get(id) ?? null,
     records: async (entity) => [...recs.entries()].filter(([k]) => k.startsWith(`${entity}:`)).map(([, r]) => r),
     files,

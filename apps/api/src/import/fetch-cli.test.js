@@ -24,7 +24,7 @@ const text = (out) => out.lines.join("\n");
 test("a dry run prints the plan and never loads the Seazona service", async () => {
   const r = rig();
   assert.equal(await r.run(["invoices"]), 0);
-  assert.match(text(r.out), /Plan: 1 Seazona request\(s\), about 1 min at 30\/min/);
+  assert.match(text(r.out), /Plan: 2 Seazona request\(s\), about 1 min at 30\/min/);
   assert.match(text(r.out), /Dry run/);
   assert.equal(r.out.loads, 0);
 });
@@ -119,4 +119,37 @@ test("--open-balance selects invoices whose stored export balance is positive", 
   assert.match(text(r.out), /Plan: 1 Seazona request/);
   await assert.rejects(r.run(["invoices", "--detail", "--open-balance"]), /needs --file-id/);
   await assert.rejects(r.run(["invoices", "--detail", "--open-balance", "--file-id", "nope"]), /No per-invoice export/);
+});
+
+test("a live run is refused while another run of the same entity is still running; --mark-stale clears it", async () => {
+  const seazona = { listClientsResult: async () => ({ ok: true, status: 200, clients: [{ id: "c1" }] }) };
+  const r = rig({ seazona });
+  await r.store.startRun({ entity: "client", mode: "summary" });
+  await assert.rejects(r.run(["clients", "--live"]), /Run run1 \(client\) is still marked running.*--mark-stale run1/);
+  assert.equal(r.out.loads, 0);
+  assert.equal(await r.run(["clients"]), 0, "a dry run is not blocked");
+  assert.equal(await r.run(["clients", "--mark-stale", "run1"]), 0);
+  assert.equal(r.store.runs.get("run1").status, "failed");
+  assert.equal(await r.run(["clients", "--live"]), 0);
+  await assert.rejects(r.run(["clients", "--mark-stale", "run1"]), /not running/);
+});
+
+test("a crashed detail run can be resumed even though it is still marked running", async () => {
+  const seazona = { getInvoiceResult: async (id) => ({ ok: true, status: 200, invoice: { id } }) };
+  const r = rig({ seazona });
+  const id = await r.store.startRun({ entity: "invoice_detail", mode: "detail", plannedIds: ["a", "b"] });
+  assert.equal(await r.run(["invoices", "--detail", "--resume", id, "--live"]), 0);
+});
+
+test("a list that needs more pages than planned exits 3 with a re-plan message", async () => {
+  const seazona = { getAllInvoicesResult: async (o) => ({ reachable: true, status: 200, invoices: [], requests: o.maxPages, truncated: true }) };
+  const r = rig({ seazona });
+  assert.equal(await r.run(["invoices", "--live"]), 3);
+  assert.match(text(r.out), /more pages than the plan allowed/);
+});
+
+test("export refuses flags that only apply to fetches", async () => {
+  const r = rig();
+  await assert.rejects(r.run(["export", "--balances", "per-invoice", "--file", "x", "--live"]), /export takes only/);
+  await assert.rejects(r.run(["export", "--balances", "per-invoice", "--file", "x", "--approved", "5"]), /export takes only/);
 });

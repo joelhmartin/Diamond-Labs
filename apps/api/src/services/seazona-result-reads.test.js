@@ -129,3 +129,15 @@ test("an unparseable value among parseable ones is ignored when choosing the cur
   assert.equal(r.truncated, false);
   assert.equal(query(f, 1, "lastModified"), minuteStamp(9999));
 });
+
+test("a walk honours maxPages and awaits beforePage before every page; no options keeps the default budget", async () => {
+  let n = 0;
+  const f = vi.fn(async () => { n += 1; return ok(page(10_000, (i) => ({ id: `q${n}-${i}`, ordered: minuteStamp(n * 20_000 + i) }))); });
+  vi.stubGlobal("fetch", f);
+  let paced = 0;
+  const r = await seazona.getAllOrdersResult({ maxPages: 3, beforePage: async () => { paced += 1; } });
+  assert.equal(r.requests, 3);
+  assert.equal(r.truncated, true, "out of pages mid-walk is truncated");
+  assert.equal(paced, 3);
+  assert.equal(f.mock.calls.length, 3);
+});
