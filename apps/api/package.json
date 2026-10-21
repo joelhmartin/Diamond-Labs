@@ -7,6 +7,8 @@
     "build": "echo 'No build step needed for Node.js ESM'",
     "start": "node --env-file=.env src/index.js",
     "db:generate": "drizzle-kit generate",
+    "import:db:generate": "drizzle-kit generate --config=drizzle.import.config.js",
+    "import:db:migrate": "node --env-file=.env src/import/db/migrate.js",
     "db:migrate": "drizzle-kit migrate",
     "db:migrate:run": "node --env-file=.env src/db/migrate.js",
     "db:scrub-staging": "node src/db/scrub-staging.js",

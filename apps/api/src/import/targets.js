@@ -20,11 +20,10 @@ export const TARGETS = {
 export function databaseName(url) {
   const m = /^postgres(?:ql)?:\/\/[^/]*\/([^?]+)/.exec(String(url ?? ""));
   if (!m) return null;
-  try {
-    return decodeURIComponent(m[1]);
-  } catch {
-    throw new ImportRefusal("The database URL has an unreadable (badly percent-encoded) database name.");
-  }
+  // postgres-js uses the raw path as the database name (it does not percent-decode),
+  // so a path with % could name something other than what we would check.
+  if (m[1].includes("%")) throw new ImportRefusal("The database URL's database name must not contain a % escape.");
+  return m[1];
 }
 
 // postgres-js lets ?database= override the path, so a URL naming one database
@@ -35,11 +34,17 @@ function assertSafeQuery(envVar, url) {
   const q = url.indexOf("?");
   if (q === -1) return;
   const socketForm = /^postgres(?:ql)?:\/\/[^/]*@\//.test(url);
-  for (const pair of url.slice(q + 1).split("&")) {
+  const pairs = url.slice(q + 1).split("&");
+  // postgres-js reads a socket URL's host= only when it is the first query key.
+  if (socketForm && pairs[0].split("=")[0] !== "host") {
+    throw new ImportRefusal(`${envVar} is a socket-form URL, so host= must be its first query option.`);
+  }
+  for (const pair of pairs) {
     if (!pair) continue;
     let key;
     try {
-      key = decodeURIComponent(pair.split("=")[0]).toLowerCase();
+      // Case-sensitive: postgres-js only recognises lowercase option names.
+      key = decodeURIComponent(pair.split("=")[0]);
     } catch {
       throw new ImportRefusal(`${envVar} has an unreadable query string.`);
     }

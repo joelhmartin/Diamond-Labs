@@ -62,3 +62,14 @@ test("refusals do not echo odd names, and a stray % is a refusal", () => {
   assert.doesNotMatch(err.message, /[@:]c|a@b/);
   assert.throws(() => databaseName("postgresql://u:p@h/bad%zz"), ImportRefusal);
 });
+
+test("query keys are matched case-sensitively; a socket URL needs host= first; the name is not percent-decoded", () => {
+  const rehearsal = "postgresql://admin:x@127.0.0.1:6002/diamond_labs_rehearsal";
+  const r = (u) => resolveTarget("rehearsal", { REHEARSAL_DATABASE_URL: u });
+  assert.throws(() => r(`${rehearsal}?SSLMODE=require`), /query option/);
+  assert.throws(() => r(`${rehearsal}?sslMode=require`), /query option/);
+  assert.throws(() => r("postgresql://u:p@/diamond_labs_rehearsal?sslmode=require&host=/cloudsql/x"), /host= must be its first/);
+  assert.equal(r("postgresql://u:p@/diamond_labs_rehearsal?host=/cloudsql/x&sslmode=require").database, "diamond_labs_rehearsal");
+  assert.throws(() => databaseName("postgresql://u:p@h/diamond%5Flabs"), ImportRefusal);
+  assert.equal(databaseName("postgresql://u:p@h/diamond_labs"), "diamond_labs");
+});
