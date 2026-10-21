@@ -2,6 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import { main } from "./fetch-cli.js";
 import { ImportRefusal } from "./import-errors.js";
+import { FetchLockLost } from "./fetch-lock.js";
 import { fakeRawStore } from "../test/fake-raw-store.js";
 
 // main() is driven with injected fakes: no database, no Seazona, no env file.
@@ -11,7 +12,7 @@ function rig({ store = fakeRawStore(), seazona = {}, files = {}, lockFree = true
     print: (l) => out.lines.push(...l),
     printReport: (r) => out.reports.push(r),
     readFile: async (p) => files[p] ?? Buffer.from(""),
-    openStore: async () => ({ store, close: async () => {}, tryLock: async () => { out.lock.taken += 1; return out.lock.free; } }),
+    openStore: async () => ({ store, close: async () => {}, assertHeld: () => out.lock.check?.(), tryLock: async () => { out.lock.taken += 1; return out.lock.free; } }),
     loadSeazona: async () => { out.loads += 1; return seazona; },
     pace: async () => {},
   };
@@ -179,4 +180,26 @@ test("--mark-stale and resuming a running run need the lock to be free", async (
   const id2 = await r.store.startRun({ entity: "invoice_detail", mode: "detail", plannedIds: ["a"] });
   assert.equal(await r.run(["invoices", "--mark-stale", id2]), 0);
   assert.equal(r.store.runs.get(id2).status, "failed");
+});
+
+test("a lost fetch lock stops the run before the next request and fails the run", async () => {
+  const calls = [];
+  const seazona = { getInvoiceResult: async (id) => { calls.push(id); return { ok: true, status: 200, invoice: { id } }; } };
+  const r = rig({ seazona });
+  let checks = 0;
+  r.out.lock.check = () => { checks += 1; if (checks === 3) throw new FetchLockLost(); };
+  await assert.rejects(r.run(["invoices", "--detail", "--ids", "a,b,c,d", "--live"]), FetchLockLost);
+  assert.deepEqual(calls, ["a", "b"], "no request after the lock was lost");
+  const run = r.store.runs.get("run1");
+  assert.equal(run.status, "failed");
+  assert.equal(run.cursor, 2, "resume continues from the cursor");
+});
+
+test("a lost lock during a list walk fails the run before the next page", async () => {
+  const seazona = { getAllInvoicesResult: async (o) => { await o.beforePage(); await o.beforePage(); return { reachable: true, status: 200, invoices: [], requests: 2, truncated: false }; } };
+  const r = rig({ seazona });
+  let checks = 0;
+  r.out.lock.check = () => { checks += 1; if (checks === 2) throw new FetchLockLost(); };
+  await assert.rejects(r.run(["invoices", "--live"]), FetchLockLost);
+  assert.equal(r.store.runs.get("run1").status, "failed");
 });

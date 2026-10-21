@@ -41,7 +41,7 @@ import { assertImportKey } from "./key-check.js";
 import { rawStore } from "./raw-store.js";
 import { readExport, parseColumnsFlag } from "./export-table.js";
 import { SUMMARY_ENTITIES, DETAIL_ENTITIES, APPROVAL_THRESHOLD, REQUESTS_PER_MINUTE, detailFilterProblem, selectDetailIds } from "./fetch-plan.js";
-import { runSummaryCommand, runDetailCommand } from "./seazona-fetch.js";
+import { runSummaryCommand, runDetailCommand, createPacer } from "./seazona-fetch.js";
 import { makeFetchLock } from "./fetch-lock.js";
 import { printLines, printReport, runIfMain } from "./report.js";
 
@@ -73,10 +73,18 @@ const defaultDeps = {
       throw err;
     }
     const lock = makeFetchLock(resolved.url);
-    return { store: rawStore(importDb.db), tryLock: lock.tryLock, close: async () => { await lock.close(); await importDb.close(); } };
+    return { store: rawStore(importDb.db), tryLock: lock.tryLock, assertHeld: lock.assertHeld, close: async () => { await lock.close(); await importDb.close(); } };
   },
   loadSeazona: () => import("../services/seazona.service.js"),
 };
+
+/** A pacer that first checks the fetch lock is still held: a lost lock stops the run before its next request. */
+function guardedPace(pace = createPacer(), assertHeld) {
+  return async () => {
+    assertHeld();
+    await pace();
+  };
+}
 
 /** The seazona.service.js API, loaded on first call (a dry run never loads it). */
 function lazySeazona(load) {
@@ -207,7 +215,7 @@ export async function main(argv, env = process.env, overrides = {}) {
   const name = positional[0];
   const entity = SUMMARY_ENTITIES[name];
   checkShape(name, entity, flags, positional);
-  const { store, close, tryLock } = await deps.openStore(env);
+  const { store, close, tryLock, assertHeld = () => {} } = await deps.openStore(env);
   try {
     if (name === "export") return await storeExport(flags, store, deps);
     const storeEntity = flags.detail ? DETAIL_ENTITIES[name] : entity;
@@ -215,7 +223,7 @@ export async function main(argv, env = process.env, overrides = {}) {
     const live = flags.live === true;
     if (live && !(await tryLock())) throw new ImportRefusal("Another live fetch is running (it holds the import database's fetch lock). Only one live fetch at a time: wait for it to finish.");
     if (live) await assertNoRunningRun(store, storeEntity, flags.resume);
-    const common = { live, approved: intFlag(flags, "approved"), seazona: lazySeazona(deps.loadSeazona), store, pace: deps.pace };
+    const common = { live, approved: intFlag(flags, "approved"), seazona: lazySeazona(deps.loadSeazona), store, pace: guardedPace(deps.pace, assertHeld) };
     let out;
     if (flags.detail) {
       const { ids, start, run } = await detailIds({ name, entity, flags, store, deps, tryLock });
