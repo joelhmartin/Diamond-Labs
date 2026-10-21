@@ -1,4 +1,4 @@
-import { test, vi } from "vitest";
+import { test, vi, afterEach } from "vitest";
 import assert from "node:assert/strict";
 
 process.env.DATABASE_URL ||= "postgres://u:p@localhost:5432/test";
@@ -27,22 +27,29 @@ test("not paused: the request passes untouched", async () => {
   assert.equal(reply.body, undefined);
 });
 
-test("PAYMENTS_PAUSED is off unless set to the string true", async () => {
+async function loadPaused(value) {
   const saved = process.env.PAYMENTS_PAUSED;
-  const load = async (value) => {
-    if (value === undefined) delete process.env.PAYMENTS_PAUSED;
-    else process.env.PAYMENTS_PAUSED = value;
-    vi.resetModules();
-    return (await import("../config/env.js")).env.PAYMENTS_PAUSED;
-  };
+  if (value === undefined) delete process.env.PAYMENTS_PAUSED;
+  else process.env.PAYMENTS_PAUSED = value;
+  vi.resetModules();
   try {
-    assert.equal(await load(undefined), false);
-    assert.equal(await load("true"), true);
-    assert.equal(await load("false"), false);
-    assert.equal(await load("1"), false);
-    assert.equal(await load("yes"), false);
+    return (await import("../config/env.js")).env.PAYMENTS_PAUSED;
   } finally {
     if (saved === undefined) delete process.env.PAYMENTS_PAUSED;
     else process.env.PAYMENTS_PAUSED = saved;
   }
+}
+
+afterEach(() => vi.restoreAllMocks());
+
+test("PAYMENTS_PAUSED is off unless set to true (case-insensitive, trimmed)", async () => {
+  assert.equal(await loadPaused(undefined), false);
+  for (const v of ["true", "TRUE", " True "]) assert.equal(await loadPaused(v), true, v);
+  for (const v of ["false", "False"]) assert.equal(await loadPaused(v), false, v);
+});
+
+test("any other PAYMENTS_PAUSED value fails env validation at boot", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(process, "exit").mockImplementation((code) => { throw new Error(`exit ${code}`); });
+  for (const v of ["1", "yes"]) await assert.rejects(loadPaused(v), /exit 1/, v);
 });

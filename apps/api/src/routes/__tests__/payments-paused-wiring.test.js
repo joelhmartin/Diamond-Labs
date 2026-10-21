@@ -50,3 +50,9 @@ test("hosted-complete is never paused: the card was already captured when it run
   assert.ok(src);
   assert.doesNotMatch(src, /paymentsPaused/);
 });
+
+test("the status endpoint exists and is never paused: the banner reads it while paused", () => {
+  const src = registration('fastify.get("/payments/status",');
+  assert.ok(src);
+  assert.doesNotMatch(src, /paymentsPaused/);
+});
