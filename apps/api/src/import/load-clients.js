@@ -66,7 +66,7 @@ export async function loadClients({ raw, db, live, noEmail = "placeholder", now 
     profilesToWrite = plan.profiles.filter((x) => !notLinked.has(x.userId));
     for (const p of profilesToWrite) {
       const res = await tx.insert(doctorProfiles).values(p).onConflictDoNothing().returning({ id: doctorProfiles.id });
-      if (!Array.isArray(res) || res.length) profilesInserted += 1; // fakeTx resolves undefined: counts as inserted
+      profilesInserted += res.length;
     }
   });
   // Counts reflect what happened, not what was planned.

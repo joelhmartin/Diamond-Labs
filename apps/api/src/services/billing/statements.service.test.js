@@ -42,3 +42,11 @@ test("loadClient carries the practice phone and delivery preferences (the Ship f
   }]] }));
   assert.deepEqual([c.phone, c.deliveryMethod, c.deliveryNotes], ["512-555-0100", "UPS Ground", "Back door"]);
 });
+
+test("an unowned legacy invoice (null client) is left out of AR and never reaches the client lookup", async () => {
+  const db = fakeTx({ selects: [[{ id: "i1", clientUserId: null, status: "issued", totalCents: 100, dueDate: null, paid: "0" }]] });
+  const ar = await svc.listReceivables({}, db);
+  assert.equal(ar.rows.length, 0);
+  // The ledger's query builds two selects (a paid-sum subquery and the rows); a third would be the users lookup.
+  assert.equal(db.log.filter((e) => e.op === "select").length, 2, "no users query for an empty id list");
+});

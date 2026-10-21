@@ -1,5 +1,5 @@
 
-import { LEGACY_LINE_DESCRIPTION } from "@my-app/shared";
+import { toCents, LEGACY_LINE_DESCRIPTION } from "@my-app/shared";
 import { createId } from "../lib/id.js";
 import { dayOf, labNoon } from "./dates.js";
 import { exportCents } from "./export-table.js";
@@ -17,16 +17,23 @@ const ADJUSTMENT_DESCRIPTION = "Seazona adjustment (discounts, services, roundin
 const ITEM_LISTS = ["productServiceItems", "items", "lines", "products"];
 
 /**
- * Seazona money → integer cents; null when blank or not an amount. JSON
- * numbers are dollars (rounded to the cent); text goes through the export
- * parser's rules (exportCents), so an ambiguous comma is a problem, not a guess.
+ * Seazona money → integer cents; null when blank or not an amount. A JSON
+ * number is dollars, converted by the shared decimal-exact `toCents`
+ * (half-up past the cent; exponent forms like 1e21 are null). Text goes
+ * through the export parser's rules (exportCents): an ambiguous comma or more
+ * than two decimals is refused, never guessed.
  */
 export function centsOf(value) {
+  if (value == null || value === "") return null;
   if (typeof value === "number") {
-    const c = Math.round(value * 100);
-    return Number.isFinite(value) && Number.isSafeInteger(c) ? c + 0 : null;
+    try {
+      const c = toCents(String(value));
+      return Number.isSafeInteger(c) ? c + 0 : null;
+    } catch {
+      return null;
+    }
   }
-  return value == null ? null : exportCents(value);
+  return exportCents(value);
 }
 
 /**
@@ -130,17 +137,23 @@ export function planInvoices({ summaries, details, owners, existingSeazonaIds, e
   const flag = (kind, id) => (problems.has(kind) ? problems.get(kind).push(id) : problems.set(kind, [id]));
   const counts = { seazona: summaries.length, toInsert: 0, unowned: 0, droppedDetailItems: 0, alreadyLoaded: 0, detailed: 0, summaryOnly: 0, approximatedDates: 0, void: 0, totalCents: 0 };
   const numbers = new Set(existingNumbers);
+  // Owner problems name CLIENTS (count = clients), so the id cap can't hide one;
+  // the invoice totals are in counts.unowned / counts.skippedNoOwner.
+  const clientKinds = new Map();
+  const flagClient = (kind, clientId) => (clientKinds.has(kind) ? clientKinds.get(kind).add(clientId) : clientKinds.set(kind, new Set([clientId])));
+  counts.skippedNoOwner = 0;
   for (const { seazonaId, payload } of summaries) {
-    if (existingSeazonaIds.has(seazonaId)) { counts.alreadyLoaded += 1; continue; }
     const clientId = String(payload.clientId);
-    // A client whose linked user is not an eligible owner (owners.js) gets its own problem kind.
-    if (unownedClients.has(clientId) && !owners.has(clientId)) { flag("client_owner_not_approved_doctor", seazonaId); continue; }
     const unowned = ambiguousClients.has(clientId) && !owners.has(clientId);
+    if (unowned) flagClient("client_has_multiple_owners", clientId);
+    if (existingSeazonaIds.has(seazonaId)) { counts.alreadyLoaded += 1; continue; }
+    // A client whose linked user is not an eligible owner (owners.js) gets its own problem kind.
+    if (unownedClients.has(clientId) && !owners.has(clientId)) { flagClient("client_owner_not_approved_doctor", clientId); counts.skippedNoOwner += 1; continue; }
     const mapped = mapLegacyInvoice({ summary: payload, detail: details.get(seazonaId) ?? null, ownerUserId: owners.get(clientId), unowned });
     if (mapped.problem) { flag(mapped.problem, seazonaId); continue; }
     if (numbers.has(mapped.invoice.invoiceNumber)) { flag("invoice_number_taken", seazonaId); continue; }
     numbers.add(mapped.invoice.invoiceNumber);
-    if (unowned) { flag("client_has_multiple_owners", seazonaId); counts.unowned += 1; }
+    if (unowned) counts.unowned += 1;
     counts.droppedDetailItems += mapped.droppedItems;
     rows.push({ invoice: mapped.invoice, lines: mapped.lines });
     counts.toInsert += 1;
@@ -149,5 +162,5 @@ export function planInvoices({ summaries, details, owners, existingSeazonaIds, e
     if (mapped.invoice.status === "void") counts.void += 1;
     else counts.totalCents += mapped.invoice.totalCents;
   }
-  return { rows, counts, problems: problemList([...problems]) };
+  return { rows, counts, problems: problemList([...problems, ...[...clientKinds].map(([kind, ids]) => [kind, [...ids]])]) };
 }

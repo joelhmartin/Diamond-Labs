@@ -98,7 +98,8 @@ test("plan: a client whose linked user is not an eligible owner is reported, its
   });
   assert.deepEqual(plan.rows.map((r) => r.invoice.legacySeazonaInvoiceId), ["inv-c", "inv-d"]);
   const kinds = Object.fromEntries(plan.problems.map((p) => [p.kind, p.seazonaIds]));
-  assert.deepEqual(kinds.client_owner_not_approved_doctor, ["inv-a", "inv-b"]);
+  assert.deepEqual(kinds.client_owner_not_approved_doctor, ["c-1324"], "client ids");
+  assert.equal(plan.counts.skippedNoOwner, 2);
   assert.ok(plan.problems.every((p) => p.count === p.seazonaIds.length));
 });
 
@@ -111,7 +112,7 @@ test("plan: a client shared by several eligible doctors loads unowned and is rep
   const a = plan.rows.find((r) => r.invoice.legacySeazonaInvoiceId === "inv-a");
   assert.equal(a.invoice.clientUserId, null);
   assert.equal(plan.counts.unowned, 2);
-  assert.deepEqual(plan.problems.find((p) => p.kind === "client_has_multiple_owners").seazonaIds, ["inv-a", "inv-b"]);
+  assert.deepEqual(plan.problems.find((p) => p.kind === "client_has_multiple_owners").seazonaIds, ["c-1324"], "one client, two invoices");
 });
 
 test("plan: a duplicate of an already-loaded legacy number is flagged with its id", () => {
@@ -135,6 +136,13 @@ test("detailed means an item actually mapped; dropped items are counted", () => 
 test("the summary's invoice number is the authority: a non-numeric one is a problem even if the detail has a number", () => {
   const r = mapLegacyInvoice({ summary: byId("inv-x"), detail: { id: "inv-x", invoiceNumber: "99999" }, ownerUserId: "u-2001" });
   assert.deepEqual(r, { problem: "invoice_number_not_numeric" });
+});
+
+test("numbers are decimal-exact via toCents (half-up); exponent forms and >2-decimal text are refused", () => {
+  assert.equal(centsOf(0.1 + 0.2), 30);
+  assert.equal(centsOf(1.005), 101);
+  assert.equal(centsOf(1e21), null);
+  assert.equal(centsOf("1.234"), null);
 });
 
 test("an ambiguous comma is not money", () => {

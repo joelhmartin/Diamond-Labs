@@ -29,7 +29,9 @@ export function fakeTx({ selects = [], updates = [] } = {}) {
     insert: () => {
       const entry = { op: "insert" };
       log.push(entry);
-      return chain(null, (m, a) => { if (m === "values") entry.values = a[0]; });
+      // Awaited after .returning(), an insert resolves to [{ id }] per inserted row (as postgres does); otherwise undefined.
+      const queue = { shift: () => (entry.returning ? [].concat(entry.values ?? []).map((v) => ({ id: v?.id })) : undefined) };
+      return chain(queue, (m, a) => { if (m === "values") entry.values = a[0]; if (m === "returning") entry.returning = true; });
     },
     delete: () => { log.push({ op: "delete" }); return chain(null); },
     transaction: (fn) => fn(tx),

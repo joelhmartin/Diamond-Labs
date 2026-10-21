@@ -80,7 +80,7 @@ export async function statementPdfFor(clientUserId, month, { clientUserIds } = {
  */
 export async function listReceivables({ pastDueOnly = false } = {}, database = db) {
   const open = await openReceivableInvoices(database);
-  const ids = [...new Set(open.map((i) => i.clientUserId))];
+  const ids = [...new Set(open.map((i) => i.clientUserId).filter(Boolean))]; // an unowned legacy invoice has no client yet
   const clients = ids.length
     ? await database
         .select({ id: users.id, name: users.name, accountNumber: users.seazonaAccountNumber, practice: doctorProfiles.companyName })
