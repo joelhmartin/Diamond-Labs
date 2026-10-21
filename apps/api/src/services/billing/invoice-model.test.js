@@ -56,3 +56,8 @@ test("the footer names the lab from one place (config/lab-identity.js)", () => {
   assert.match(custom, /Acme Lab/);
   assert.doesNotMatch(custom, /Diamond/);
 });
+
+test("a legacy invoice prints Seazona's patient when there is no lab order", () => {
+  const m = buildInvoiceModel({ ...invoice, kind: "legacy", legacyPatient: "Test Patient" }, lines, client, null, { generatedAt });
+  assert.deepEqual(m.header.find((h) => h[0] === "Patient"), ["Patient", "Test Patient"]);
+});

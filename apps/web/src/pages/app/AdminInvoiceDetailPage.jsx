@@ -5,6 +5,7 @@ import api from "../../config/api.js";
 import { ROUTES, labOrderPath } from "../../config/routes.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { ConfirmButton } from "../../components/ui/ConfirmButton.jsx";
+import { legacyOrderBlock } from "../../lib/invoices.js";
 import { InvoiceView } from "../../components/billing/InvoiceView.jsx";
 import { DraftLinesEditor } from "../../components/admin/DraftLinesEditor.jsx";
 import { RecordPaymentModal } from "../../components/admin/RecordPaymentModal.jsx";
@@ -118,6 +119,8 @@ export function AdminInvoiceDetailPage() {
   const { invoice, lines, payments, labOrder, client, activity } = data;
   const draft = invoice.status === "draft";
   const issued = invoice.status === "issued";
+  // An imported Seazona invoice with no matched client: Credit and Void wait until an admin links an owner (the server refuses too).
+  const unownedLegacy = invoice.kind === "legacy" && !invoice.clientUserId;
   const edit = (e) => act(() => api.patch(`/admin/invoices/${invoice.id}/lines`, { expectedVersion: invoice.version, edit: e }));
   const pdf = () => openPdf(api, `/admin/invoices/${invoice.id}/pdf`).catch(async (err) => addToast({ message: await blobErrorText(err), type: "error" }));
   const email = async () => {
@@ -130,14 +133,14 @@ export function AdminInvoiceDetailPage() {
     <div className="mx-auto max-w-5xl p-6 md:p-8">
       <Link to={ROUTES.ADMIN_INVOICES} className="mb-6 inline-flex items-center gap-1 text-xs text-navy/60 hover:text-navy"><ArrowLeft size={12} /> Invoices</Link>
       <p className="mb-2 text-sm text-navy/60">
-        {client ? (client.practice || client.name) : "Guest (shop)"}
+        {client ? (client.practice || client.name) : (invoice.kind === "legacy" ? "Unowned (Seazona history)" : "Guest (shop)")}
         {client?.accountNumber ? ` · Account ${client.accountNumber}` : ""}
         {labOrder ? <> · <Link className="text-brand-700 hover:underline" to={labOrderPath(labOrder.id)}>Lab order #{labOrder.orderNumber}</Link></> : null}
       </p>
 
       <InvoiceView
         invoice={invoice}
-        order={labOrder}
+        order={labOrder ?? legacyOrderBlock(invoice)}
         lines={lines}
         payments={payments}
         linesSlot={draft ? <DraftLinesEditor lines={lines} onEdit={edit} busy={busy} /> : null}
@@ -171,8 +174,13 @@ export function AdminInvoiceDetailPage() {
               onClick={async () => { if (await edit({ op: "notes", notes: notes || null })) notesDirty.current = false; }}>Save notes</button>
           </section>
         )}
-        {issued && <CreditPanel invoice={invoice} busy={busy} act={act} />}
-        {(draft || (issued && invoice.paidCents === 0)) && <VoidPanel invoice={invoice} busy={busy} act={act} />}
+        {unownedLegacy && (
+          <section className="rounded-2xl border border-surface-300/50 bg-white p-4 text-sm text-navy/70 md:col-span-2">
+            This carried-over Seazona invoice has no client yet, so it can't be credited or voided. Link its client first (the import's invoices step then attaches it).
+          </section>
+        )}
+        {issued && !unownedLegacy && <CreditPanel invoice={invoice} busy={busy} act={act} />}
+        {!unownedLegacy && (draft || (issued && invoice.paidCents === 0)) && <VoidPanel invoice={invoice} busy={busy} act={act} />}
       </div>
 
       {payments.some((p) => p.reference || p.note) && (

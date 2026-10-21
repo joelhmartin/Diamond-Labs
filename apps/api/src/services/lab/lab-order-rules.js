@@ -241,7 +241,7 @@ export function presentBoardCard(row, lines = [], todayIso) {
     orderNumber: o.orderNumber,
     source: o.source,
     sourceId: o.sourceId,
-    reference: o.source === "rx_case" ? (row.caseNumber ?? null) : (row.shopOrderNumber ?? null),
+    reference: o.source === "rx_case" ? (row.caseNumber ?? null) : o.source === "legacy" ? "Seazona" : (row.shopOrderNumber ?? null),
     status: o.status,
     heldFrom: o.heldFrom ?? null,
     version: o.version,
