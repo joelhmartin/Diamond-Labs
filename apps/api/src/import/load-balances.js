@@ -84,21 +84,38 @@ async function accountOwners(db) {
   const unowned = new Map();
   for (const a of o.rejectedAccounts) unowned.set(a, "account_owner_not_approved_doctor");
   for (const a of o.ambiguousAccounts) unowned.set(a, "account_has_multiple_owners");
-  const accountOfUser = new Map(o.rows.filter((u) => normAccount(u.seazonaAccountNumber)).map((u) => [u.id, normAccount(u.seazonaAccountNumber)]));
-  return { ownerByAccount: o.byAccount, unownedAccounts: unowned, accountOfUser };
+  return { ownerByAccount: o.byAccount, unownedAccounts: unowned };
+}
+
+/**
+ * Each loaded history invoice's account number from the raw store, the same
+ * source the clients step uses: invoice summary → clientId → client record →
+ * accountNumber. Independent of who owns the invoice, so an unowned invoice
+ * still has its account. Invoices it can't derive are absent from the map.
+ */
+async function accountsByInvoice(raw, legacy) {
+  const clientOf = new Map((await raw.records("invoice")).map((r) => [String(r.seazonaId), String(r.payload.clientId)]));
+  const accountOf = new Map((await raw.records("client")).map((r) => [String(r.seazonaId), normAccount(r.payload.accountNumber)]));
+  const out = new Map();
+  for (const inv of legacy) {
+    const account = accountOf.get(clientOf.get(inv.legacySeazonaInvoiceId));
+    if (account) out.set(inv.legacySeazonaInvoiceId, account);
+  }
+  return out;
 }
 
 async function perClient({ raw, db, live, target, legacy, parsed, existingTransactionIds, paidCents, starts, cutoverAt, report, guard }) {
-  const { ownerByAccount, unownedAccounts, accountOfUser } = await accountOwners(db);
+  const { ownerByAccount, unownedAccounts } = await accountOwners(db);
+  const accountOfInvoice = await accountsByInvoice(raw, legacy);
   const paidByInvoice = await paymentsOn(settlementCandidates(legacy, "per-client", existingTransactionIds), paidCents, db);
   const plan = planClientOpenings({
-    legacyInvoices: legacy, exportRows: parsed.rows, ownerByAccount, unownedAccounts, accountOfUser, existingTransactionIds, paidByInvoice,
+    legacyInvoices: legacy, exportRows: parsed.rows, ownerByAccount, unownedAccounts, accountOfInvoice, existingTransactionIds, paidByInvoice,
     leftOpenAccounts: new Set([...leftOpenKeys(parsed)].map(normAccount)),
     existingOpeningKeys: new Set(legacy.map((i) => i.legacySeazonaInvoiceId).filter((k) => k?.startsWith(OPENING_BALANCE_PREFIX))),
   });
   const seeds = await enforceSeeds({ raw, db, target, live, starts });
   report.seeds = seeds.summary;
-  report.reconciliation = plan.reconciliation;
+  report.reconciliation = { ...plan.reconciliation, unsettledHistoryCents: plan.unsettledHistory };
   report.counts = {
     exportRows: parsed.rows.length, historyLeftOpen: plan.historyLeftOpen, settlements: plan.settlements.length, alreadySettled: plan.alreadySettled, skippedHasPayments: plan.hasPayments.length,
     openings: plan.openings.length, openingCents: sum(plan.openings, (o) => o.cents), unownedOpenings: plan.unowned.size, alreadyOpened: plan.alreadyOpened,
@@ -109,6 +126,8 @@ async function perClient({ raw, db, live, target, legacy, parsed, existingTransa
     ["export_account_without_client", strings(plan.unmatched)],
     ["account_left_open_export_problem", strings(plan.leftOpen)],
     ["invoice_has_real_payments_not_settled", strings(plan.hasPayments)],
+    ["invoice_account_unknown_left_open", strings(plan.accountUnknown)],
+    ["invoice_negative_total", strings(plan.negativeTotal)],
     ["account_has_multiple_owners", unownedBy("account_has_multiple_owners")],
     ["account_owner_not_approved_doctor", unownedBy("account_owner_not_approved_doctor")],
     ["credit_balance_for_staff", strings(plan.credits.map((c) => c.accountNumber))],

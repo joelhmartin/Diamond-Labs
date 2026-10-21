@@ -130,20 +130,54 @@ test("accepted export problems never zero a balance: those invoices stay open an
   assert.equal(r.differences.leftOpenExportProblem, 400 - 1500);
 });
 
-test("per-client: a left-open account's history stays unsettled and no opening is written", async () => {
+const rawStore = (invoiceClients, clientAccounts) => ({
+  records: async (e) => ({
+    invoice: Object.entries(invoiceClients).map(([id, clientId]) => ({ seazonaId: id, payload: { id, clientId } })),
+    client: Object.entries(clientAccounts).map(([id, accountNumber]) => ({ seazonaId: id, payload: { id, accountNumber } })),
+  })[e] ?? [],
+});
+
+test("per-client: a left-open account's history stays unsettled whoever owns it (account from the raw store), and no opening is written", async () => {
+  // inv-1 is UNOWNED, inv-2 is owned by a user whose own account number does not match the raw store's: both still follow the raw store.
   const users = [
-    { ...doctor, id: "u", seazonaClientId: "c1", seazonaAccountNumber: "1324" },
-    { ...doctor, id: "u-9", seazonaClientId: "c9", seazonaAccountNumber: "2001" },
+    { ...doctor, id: "u-wrong", seazonaClientId: "c9", seazonaAccountNumber: "7777" },
+    { ...doctor, id: "u-9", seazonaClientId: "c8", seazonaAccountNumber: "2001" },
   ];
-  const other = { ...legacyRows[1], clientUserId: "u-9" };
+  const rows = [
+    { ...legacyRows[0], clientUserId: null },
+    { ...legacyRows[1], clientUserId: "u-wrong" },
+    { ...legacyRows[1], id: "id-3", invoiceNumber: 3, legacySeazonaInvoiceId: "inv-3", totalCents: 300, clientUserId: "u-9" },
+  ];
+  const raw3 = rawStore({ "inv-1": "c1", "inv-2": "c9", "inv-3": "c8" }, { c1: " 1324", c9: "1324", c8: "2001" });
   const bad = { rows: [{ key: "2001", cents: 700, line: 3 }], problems: [{ kind: "export-row-bad-balance", count: 1, seazonaIds: ["1324"], lines: [2] }] };
-  const tx = fakeTx({ selects: [[legacyRows[0], other], [], users, [{ n: 0 }], [{ n: 0 }]] });
-  const report = await loadBalances({ ...base, db: tx, live: true, mode: "per-client", parsed: bad, acceptExportProblems: true, starts: { invoice: 16211 } });
+  const tx = fakeTx({ selects: [rows, [], users, [{ n: 0 }], [{ n: 0 }]] });
+  const report = await loadBalances({ ...base, raw: raw3, db: tx, live: true, mode: "per-client", parsed: bad, acceptExportProblems: true, starts: { invoice: 16211 } });
   const inserts = tx.log.filter((e) => e.op === "insert").map((e) => e.values);
-  assert.deepEqual(inserts.find((v) => v[0]?.source === "legacy_settlement").map((r) => r.transactionId), ["legacy-full:inv-2"]);
+  assert.deepEqual(inserts.find((v) => v[0]?.source === "legacy_settlement").map((r) => r.transactionId), ["legacy-full:inv-3"]);
   assert.deepEqual(inserts.filter((v) => !Array.isArray(v) && v.kind === "legacy").map((o) => o.legacySeazonaInvoiceId), ["opening:2001"]);
   assert.deepEqual(idList(report, "account_left_open_export_problem"), ["1324"]);
-  assert.equal(report.counts.historyLeftOpen, 1);
+  assert.equal(report.counts.historyLeftOpen, 2);
+  assert.equal(report.reconciliation.unsettledHistoryCents.leftOpenExportProblem, 1500);
+});
+
+test("per-client: with a left-open account, an invoice whose account can't be derived stays unsettled and is reported", async () => {
+  const bad = { rows: [], problems: [{ kind: "export-row-bad-balance", count: 1, seazonaIds: ["1324"], lines: [2] }] };
+  const tx = fakeTx({ selects: [legacyRows, [], [], [{ n: 0 }], [{ n: 0 }]] });
+  const report = await loadBalances({ ...base, raw: rawStore({ "inv-1": "c1" }, {}), db: tx, live: true, mode: "per-client", parsed: bad, acceptExportProblems: true, starts: { invoice: 1 } });
+  assert.equal(tx.log.some((e) => e.op === "insert"), false, "no client record, no account: nothing settles");
+  assert.deepEqual(idList(report, "invoice_account_unknown_left_open"), ["1", "2"]);
+  assert.equal(report.reconciliation.unsettledHistoryCents.accountUnknown, 1500);
+});
+
+test("per-client: negative-total history and real-payment history are reported in cents, never silently skipped", async () => {
+  const rows = [legacyRows[0], { ...legacyRows[1], totalCents: -500 }, { ...legacyRows[1], id: "id-3", invoiceNumber: 3, legacySeazonaInvoiceId: "inv-3", totalCents: 300 }];
+  const paidCents = async () => new Map([["id-1", 50]]);
+  const tx = fakeTx({ selects: [rows, [], [], [{ n: 0 }], [{ n: 0 }]] });
+  const report = await loadBalances({ ...base, paidCents, db: tx, live: false, mode: "per-client", parsed: { rows: [], problems: [] } });
+  assert.deepEqual(idList(report, "invoice_negative_total"), ["2"]);
+  assert.deepEqual(idList(report, "invoice_has_real_payments_not_settled"), ["1"]);
+  assert.deepEqual(report.reconciliation.unsettledHistoryCents, { leftOpenExportProblem: 0, accountUnknown: 0, realPayments: 1000, negativeTotal: -500 });
+  assert.equal(report.counts.settlements, 1);
 });
 
 test("the report reconciles to the cent: export = loaded open + every difference", async () => {

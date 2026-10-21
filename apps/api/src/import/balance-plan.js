@@ -116,26 +116,33 @@ export function planInvoiceSettlements({ legacyInvoices, exportRows, existingTra
  * invoices step's reattach picks it up once the link is fixed. An account no
  * user carries at all is `unmatched` and writes nothing.
  * `leftOpenAccounts`: accounts whose export row did not parse. Their history
- * (found through `accountOfUser`: user id → account) stays unsettled and no
- * opening is written. History of invoices with no owner cannot be tied to an
- * account and is settled as usual.
- * Reconciliation here is over the ACCOUNT rows; a history invoice left open
- * for real payments is outside it (`hasPayments` lists them).
+ * stays unsettled and no opening is written. `accountOfInvoice` maps a history
+ * invoice's legacySeazonaInvoiceId to its account number, from the RAW STORE
+ * (invoice summary → client record), never from the owner: an unowned invoice
+ * still has an account. Fail closed: with any left-open account, an invoice
+ * whose account can't be derived stays unsettled (`accountUnknown`).
+ * Reconciliation here is over the ACCOUNT rows. History left unsettled
+ * (left-open account, unknown account, real payments, negative total) is outside
+ * it and reported in `unsettledHistory` in cents.
  */
 export function planClientOpenings({
   legacyInvoices, exportRows, ownerByAccount, unownedAccounts = new Map(), existingTransactionIds, existingOpeningKeys,
-  paidByInvoice = new Map(), leftOpenAccounts = new Set(), accountOfUser = new Map(),
+  paidByInvoice = new Map(), leftOpenAccounts = new Set(), accountOfInvoice = new Map(),
 }) {
   const out = {
     settlements: [], openings: [], credits: [], unmatched: [], hasPayments: [], leftOpen: [], unowned: new Map(),
-    historyLeftOpen: 0, alreadySettled: 0, alreadyOpened: 0,
+    negativeTotal: [], accountUnknown: [], historyLeftOpen: 0, alreadySettled: 0, alreadyOpened: 0,
   };
+  const unsettledHistory = { leftOpenExportProblem: 0, accountUnknown: 0, realPayments: 0, negativeTotal: 0 };
   const diffs = emptyDiffs();
   let loadedOpen = 0;
-  for (const inv of history(legacyInvoices).filter((i) => i.status === "issued" && i.totalCents > 0)) {
-    if (leftOpenAccounts.has(accountOfUser.get(inv.clientUserId))) { out.historyLeftOpen += 1; continue; }
+  for (const inv of history(legacyInvoices).filter((i) => i.status === "issued" && i.totalCents !== 0)) {
+    if (inv.totalCents < 0) { out.negativeTotal.push(inv.invoiceNumber); unsettledHistory.negativeTotal += inv.totalCents; continue; }
     if (existingTransactionIds.has(settlementTransactionId(inv, "per-client"))) { out.alreadySettled += 1; continue; }
-    if ((paidByInvoice.get(inv.id) ?? 0) !== 0) { out.hasPayments.push(inv.invoiceNumber); continue; }
+    const account = accountOfInvoice.get(inv.legacySeazonaInvoiceId) ?? null;
+    if (leftOpenAccounts.size && !account) { out.accountUnknown.push(inv.invoiceNumber); unsettledHistory.accountUnknown += inv.totalCents; continue; }
+    if (leftOpenAccounts.has(account)) { out.historyLeftOpen += 1; unsettledHistory.leftOpenExportProblem += inv.totalCents; continue; }
+    if ((paidByInvoice.get(inv.id) ?? 0) !== 0) { out.hasPayments.push(inv.invoiceNumber); unsettledHistory.realPayments += inv.totalCents; continue; }
     out.settlements.push(settlementRow(inv, inv.totalCents, "per-client"));
   }
   const seenLeftOpen = new Set();
@@ -153,7 +160,7 @@ export function planClientOpenings({
     if (!owner) out.unowned.set(account, unownedKind);
   }
   for (const a of leftOpenAccounts) if (!seenLeftOpen.has(a)) out.leftOpen.push(a); // bad-balance rows have no parsed row
-  return { ...out, reconciliation: reconcile(exportRows, loadedOpen, diffs) };
+  return { ...out, unsettledHistory, reconciliation: reconcile(exportRows, loadedOpen, diffs) };
 }
 
 export function mapOpeningInvoice({ opening, invoiceNumber, cutoverAt }) {
