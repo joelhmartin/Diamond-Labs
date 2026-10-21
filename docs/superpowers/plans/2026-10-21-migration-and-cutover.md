@@ -745,7 +745,7 @@ Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>"
 
 **Why a separate PR:** the cutover's step 1 sets `PAYMENTS_PAUSED=true` on the **current** production revision (built from `main`), which has no such flag. It must be on `main`, deployed and verified before the window.
 
-**Files on `main` (5 changed, 3 new):**
+**Files on `main` (5 changed, 3 new; verified against `origin/main` 6d6c87c on 2026-10-21):**
 - New: `apps/api/src/middleware/payments-paused.js`, `apps/api/src/middleware/payments-paused.test.js`, `apps/api/src/routes/__tests__/payments-paused-wiring.test.js`: **byte-identical** to Task 3's files (copy them from `feat/own-the-lab-5-cutover`).
 - Modified: `apps/api/src/config/env.js`, `.env.example`, `apps/api/src/routes/payment.routes.js`, `apps/api/src/routes/admin-payment.routes.js`, `apps/api/src/routes/invoice.routes.js`.
 
@@ -762,73 +762,135 @@ pnpm install && pnpm test
 git diff --name-only origin/main...HEAD | wc -l   # expect 8
 ```
 
-**The exact diff for the five modified files:**
+**The exact diff for the five modified files** (generated against `origin/main` 6d6c87c; `git apply --check` clean; save it as a file or paste it to `git apply`). It differs from the first draft of this task in three ways, all verified against `origin/main`: (1) `PAYMENTS_PAUSED` uses the Q10b parse (unset/true/false, case-insensitive, trimmed; anything else fails boot), matching the branch; (2) it adds `GET /payments/status` to `payment.routes.js`, because the byte-identical `payments-paused-wiring.test.js` asserts that route exists and `main` has none; (3) `.env.example` gets its own "Maintenance" block, as on the branch.
 
 ```diff
+diff --git a/.env.example b/.env.example
+--- a/.env.example
++++ b/.env.example
+@@ -61,6 +61,11 @@ AUTHORIZE_NET_ENV=sandbox
+ VITE_AUTHORIZE_NET_API_LOGIN=
+ VITE_AUTHORIZE_NET_CLIENT_KEY=
+ 
++# ── Maintenance ──
++# Cutover freeze: "true" pauses doctor and staff payments (see the cutover runbook).
++# Only true/false are accepted; anything else fails boot.
++PAYMENTS_PAUSED=false
++
+ # ── AutoPay ──
+ # false = compute and record, charge nothing. Flip only after reviewing a dry run.
+ AUTOPAY_LIVE_RUN=false
+diff --git a/apps/api/src/config/env.js b/apps/api/src/config/env.js
 --- a/apps/api/src/config/env.js
 +++ b/apps/api/src/config/env.js
-@@
+@@ -54,6 +54,17 @@ const envSchema = z.object({
+   // card. Same gated-dark pattern as RX_LIVE_PUSH. Flip only after reading a
+   // dry run's `would_charge` attempts.
    AUTOPAY_LIVE_RUN: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
 +  // Cutover freeze (own-the-lab piece 5): "true" refuses every route that
 +  // starts a card payment or writes the invoice ledger by hand
-+  // (middleware/payments-paused.js). Never set outside a maintenance window.
-+  PAYMENTS_PAUSED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
++  // (middleware/payments-paused.js). Unset or "false" is off; any other value fails boot
++  // (a typo must not leave payments unpaused). Never set
++  // outside a maintenance window.
++  PAYMENTS_PAUSED: z
++    .string()
++    .transform((v) => v.trim().toLowerCase())
++    .pipe(z.enum(["true", "false"]))
++    .optional()
++    .transform((v) => v === "true"),
    // Enrollment floor in dollars. An admin may override it per doctor.
---- a/.env.example
-+++ b/.env.example
-@@
- AUTOPAY_LIVE_RUN=false
-+# Cutover freeze: "true" pauses doctor and staff payments (docs/cutover-runbook.md on feat/own-the-lab).
-+PAYMENTS_PAUSED=false
- AUTOPAY_MIN_AMOUNT=200
---- a/apps/api/src/routes/payment.routes.js
-+++ b/apps/api/src/routes/payment.routes.js
-@@
- import { authenticate } from "../middleware/authenticate.js";
- import { requireApprovedDoctor, requireAdmin } from "../middleware/require-role.js";
- import { validate } from "../middleware/validate.js";
-+import { paymentsPaused } from "../middleware/payments-paused.js";
-@@
-   fastify.post("/payments/charge-saved", {
-     ...CHARGE_RATE_LIMIT,
--    preHandler: [authenticate, requireApprovedDoctor, validate(chargeSavedSchema)],
-+    preHandler: [authenticate, requireApprovedDoctor, paymentsPaused, validate(chargeSavedSchema)],
-   }, async (request, reply) => {
-@@
-   fastify.post("/payments/hosted-token", {
-     ...CHARGE_RATE_LIMIT,
--    preHandler: [authenticate, requireApprovedDoctor, validate(hostedTokenSchema)],
-+    preHandler: [authenticate, requireApprovedDoctor, paymentsPaused, validate(hostedTokenSchema)],
-   }, async (request, reply) => {
-@@
-   fastify.post("/admin/payments/refund", {
--    preHandler: [authenticate, requireAdmin, validate(refundSchema)],
-+    preHandler: [authenticate, requireAdmin, paymentsPaused, validate(refundSchema)],
-   }, async (request, reply) => {
+   AUTOPAY_MIN_AMOUNT: z.coerce.number().positive().default(200),
+   // What "the 15th" means. The lab is in San Antonio.
+diff --git a/apps/api/src/routes/admin-payment.routes.js b/apps/api/src/routes/admin-payment.routes.js
 --- a/apps/api/src/routes/admin-payment.routes.js
 +++ b/apps/api/src/routes/admin-payment.routes.js
-@@
+@@ -1,6 +1,7 @@
+ import { authenticate } from "../middleware/authenticate.js";
+ import { requireAdmin } from "../middleware/require-role.js";
  import { validate } from "../middleware/validate.js";
 +import { paymentsPaused } from "../middleware/payments-paused.js";
-@@
+ import { autopayAdminEnrollSchema, chargeSavedSchema, ERROR_CODES } from "@my-app/shared";
+ import * as autopayService from "../services/autopay.service.js";
+ import * as authorizenetService from "../services/authorizenet.service.js";
+@@ -390,7 +391,7 @@ export default async function adminPaymentRoutes(fastify) {
+   // "payment.charge" entry recordPaymentAndAllocations already writes.
    fastify.post("/admin/users/:userId/payments/charge-saved", {
      ...ADMIN_CHARGE_RATE_LIMIT,
 -    preHandler: [...guard, validate(chargeSavedSchema)],
 +    preHandler: [...guard, paymentsPaused, validate(chargeSavedSchema)],
    }, async (request, reply) => {
+     try {
+       const doctor = await loadDoctor(request.params.userId);
+diff --git a/apps/api/src/routes/invoice.routes.js b/apps/api/src/routes/invoice.routes.js
 --- a/apps/api/src/routes/invoice.routes.js
 +++ b/apps/api/src/routes/invoice.routes.js
-@@
+@@ -1,5 +1,6 @@
+ import { authenticate } from "../middleware/authenticate.js";
  import { requireApprovedDoctor, requireAdmin } from "../middleware/require-role.js";
 +import { paymentsPaused } from "../middleware/payments-paused.js";
-@@
+ import * as seazonaService from "../services/seazona.service.js";
+ import { ERROR_CODES } from "@my-app/shared";
+ import { db } from "../config/database.js";
+@@ -222,7 +223,7 @@ export default async function invoiceRoutes(fastify) {
+   // invoice's remaining balance (C1 helper).
+   // ───────────────────────────────────────────────────────────────
    fastify.post("/admin/invoices/:invoiceId/offline-payment", {
 -    preHandler: [authenticate, requireAdmin],
 +    preHandler: [authenticate, requireAdmin, paymentsPaused],
    }, async (request, reply) => {
+     const invoiceId = String(request.params.invoiceId);
+     const { amount, invoiceNumber, seazonaClientId, userId: bodyUserId, recordInSeazona } = request.body || {};
+diff --git a/apps/api/src/routes/payment.routes.js b/apps/api/src/routes/payment.routes.js
+--- a/apps/api/src/routes/payment.routes.js
++++ b/apps/api/src/routes/payment.routes.js
+@@ -1,6 +1,7 @@
+ import { authenticate } from "../middleware/authenticate.js";
+ import { requireApprovedDoctor, requireAdmin } from "../middleware/require-role.js";
+ import { validate } from "../middleware/validate.js";
++import { paymentsPaused } from "../middleware/payments-paused.js";
+ import * as authorizenetService from "../services/authorizenet.service.js";
+ import * as seazonaService from "../services/seazona.service.js";
+ import { ensureCustomerProfile } from "../services/card.service.js";
+@@ -729,7 +730,7 @@ export default async function paymentRoutes(fastify) {
+   // header (H1/L5) — the frontend mints a crypto.randomUUID() per submit.
+   fastify.post("/payments/charge-saved", {
+     ...CHARGE_RATE_LIMIT,
+-    preHandler: [authenticate, requireApprovedDoctor, validate(chargeSavedSchema)],
++    preHandler: [authenticate, requireApprovedDoctor, paymentsPaused, validate(chargeSavedSchema)],
+   }, async (request, reply) => {
+     const { paymentProfileId, amount, allocations } = request.body;
+     const customerProfileId = request.user.authorizeNetCustomerProfileId;
+@@ -819,7 +820,7 @@ export default async function paymentRoutes(fastify) {
+   // ───────────────────────────────────────────────────────────────
+   fastify.post("/payments/hosted-token", {
+     ...CHARGE_RATE_LIMIT,
+-    preHandler: [authenticate, requireApprovedDoctor, validate(hostedTokenSchema)],
++    preHandler: [authenticate, requireApprovedDoctor, paymentsPaused, validate(hostedTokenSchema)],
+   }, async (request, reply) => {
+     const { allocations, iframeCommunicatorUrl, saveCard } = request.body || {};
+ 
+@@ -1037,7 +1038,7 @@ export default async function paymentRoutes(fastify) {
+   // never followed by a lock release that could permit a re-refund.
+   // ───────────────────────────────────────────────────────────────
+   fastify.post("/admin/payments/refund", {
+-    preHandler: [authenticate, requireAdmin, validate(refundSchema)],
++    preHandler: [authenticate, requireAdmin, paymentsPaused, validate(refundSchema)],
+   }, async (request, reply) => {
+     const { transactionId, allocations } = request.body;
+     const txid = String(transactionId);
+@@ -1359,6 +1360,9 @@ export default async function paymentRoutes(fastify) {
+     return { data: outcome.result };
+   });
+ 
++  // Lets the doctor pages show a pause notice instead of a Pay button.
++  fastify.get("/payments/status", { preHandler: [authenticate] }, async () => ({ data: { paused: env.PAYMENTS_PAUSED === true } }));
++
+   // ───────────────────────────────────────────────────────────────
+   // PAYMENT HISTORY (read-only)
+   // ───────────────────────────────────────────────────────────────
 ```
 
-`/payments/hosted-complete` and `/payments/checkout` are deliberately untouched (Spec correction 15; shop checkout writes no invoice ledger on `main`). Main's web needs no change: `PaymentModal` and the hosted form already toast `err.response.data.error.message`, so a doctor who presses Pay sees "Payments are paused for an upgrade. Please try again later."
+`/payments/hosted-complete`, `/payments/checkout` and the admin-only `/payments/test/*` routes (token fetch and transaction read, no charge) are deliberately untouched (Spec correction 15; shop checkout writes no invoice ledger on `main`). Main's web needs no change: `PaymentModal` and the hosted form already toast `err.response.data.error.message`, so a doctor who presses Pay sees "Payments are paused for an upgrade. Please try again later."
 
 **PR body (paste-ready for the user):**
 
