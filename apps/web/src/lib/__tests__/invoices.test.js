@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { typedCents, recentMonths, isPayable, statusOf, dayText, refundSelection, activityLabel, ENTRY_LABELS, legacyOrderBlock } from "../invoices.js";
+import { typedCents, recentMonths, isPayable, statusOf, dayText, refundSelection, activityLabel } from "../invoices.js";
 
 test("typed amounts become cents; blank, junk and negatives are nothing", () => {
   assert.equal(typedCents("12.50"), 1250);
@@ -49,10 +49,4 @@ test("activity words: known actions are phrased, unknown ones still render", () 
   assert.equal(activityLabel("invoice.issued"), "Issued");
   assert.equal(activityLabel("invoice.some_new_thing"), "Some new thing");
   assert.equal(activityLabel(undefined), "Activity");
-});
-
-test("a Seazona settlement has a label; a legacy invoice's order block carries its patient", () => {
-  assert.equal(ENTRY_LABELS.settlement, "Settled in Seazona");
-  assert.deepEqual(legacyOrderBlock({ kind: "legacy", legacyPatient: "Test Patient" }), { patientName: "Test Patient" });
-  assert.equal(legacyOrderBlock({ kind: "order" }), null);
 });

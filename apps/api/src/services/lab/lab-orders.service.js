@@ -223,7 +223,6 @@ export async function getLabOrderDetail(id, now = new Date()) {
   let rxCase = null;
   let files = [];
   let shopOrder = null;
-  let legacy = null;
   if (order.source === "rx_case") {
     const [raw] = await db.select().from(rxCases).where(eq(rxCases.id, order.sourceId));
     if (raw) {
@@ -245,30 +244,19 @@ export async function getLabOrderDetail(id, now = new Date()) {
         .from(rxCaseFiles)
         .where(eq(rxCaseFiles.caseId, c.id));
     }
-  } else if (order.source === "shop_order") {
+  } else {
     const [s] = await db
       .select({ id: orders.id, orderNumber: orders.orderNumber, email: orders.email, phone: orders.phone, shipping: orders.shipping, createdAt: orders.createdAt })
       .from(orders)
       .where(eq(orders.id, order.sourceId));
     shopOrder = s ?? null;
-  } else if (order.source === "legacy") {
-    // A Seazona order imported at cutover (piece 5). If a portal Rx case was
-    // pushed to it, link the case: its files and form live there.
-    const [c] = await db
-      .select({ id: rxCases.id, caseNumber: rxCases.caseNumber })
-      .from(rxCases)
-      .where(eq(rxCases.seazonaOrderId, order.sourceId))
-      .orderBy(asc(rxCases.createdAt), asc(rxCases.id)) // deterministic if two cases ever share a Seazona order
-      .limit(1);
-    legacy = { seazonaOrderId: order.sourceId, patientName: order.legacyPatient ?? null, caseId: c?.id ?? null, caseNumber: c?.caseNumber ?? null };
   }
 
   const shipment = order.shipmentId ? ((await shipmentSummaries([order.shipmentId])).get(order.shipmentId) ?? null) : null;
 
-  const { legacyPatient: _openedPatient, ...orderFields } = order; // surfaced once, under `legacy`
   return {
     order: {
-      ...orderFields,
+      ...order,
       departmentName: row.departmentName ?? null,
       assigneeName: row.assigneeName ?? null,
       clientName: row.clientName ?? null,
@@ -280,7 +268,6 @@ export async function getLabOrderDetail(id, now = new Date()) {
     rxCase,
     files,
     shopOrder,
-    legacy,
     shipment,
   };
 }

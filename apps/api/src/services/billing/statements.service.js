@@ -34,7 +34,6 @@ export async function loadStatementActivity(clientUserIds, database = db) {
   const invs = await database
     .select({
       id: invoices.id, invoiceNumber: invoices.invoiceNumber, status: invoices.status, totalCents: invoices.totalCents,
-      kind: invoices.kind, legacySeazonaInvoiceId: invoices.legacySeazonaInvoiceId,
       issuedAt: invoices.issuedAt, voidedAt: invoices.voidedAt, dueDate: invoices.dueDate, labOrderNumber: labOrders.orderNumber,
     })
     .from(invoices)

@@ -1,7 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import Fastify from "fastify";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 
 process.env.DATABASE_URL ||= "postgres://u:p@localhost:5432/test";
 process.env.JWT_SECRET ||= "test-jwt-secret-that-is-at-least-32-chars";
@@ -131,9 +129,4 @@ describe("POST /admin/payments/refund money handling", () => {
     expect(ops).toEqual(["insert"]);
     expect(inserted[0].map((r) => r.appliedCents)).toEqual([-30000, -12550]);
   });
-});
-
-it("never offers a Seazona settlement row as a refundable payment", () => {
-  const src = readFileSync(fileURLToPath(new URL("../refund.routes.js", import.meta.url)), "utf8");
-  expect(src).toMatch(/notInArray\(invoicePayments\.source, \[\.\.\.HISTORY_EXCLUDED_SOURCES, CREDIT_SOURCE\]\)/);
 });

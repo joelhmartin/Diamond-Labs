@@ -20,7 +20,7 @@ const labDateTime = (instant) => new Date(instant).toLocaleString("en-US", {
 });
 
 export function buildTicketModel(detail, { answerGroups = [], generatedAt }) {
-  const { order, lines, rxCase, files = [], shopOrder, legacy = null } = detail;
+  const { order, lines, rxCase, files = [], shopOrder } = detail;
   const banners = [];
   if (order.rush) banners.push(order.rushTier ? `RUSH — ${order.rushTier}` : "RUSH");
   if (order.isRemake) banners.push(order.remakeOfOrderNumber ? `REMAKE of #${order.remakeOfOrderNumber}` : "REMAKE");
@@ -35,11 +35,11 @@ export function buildTicketModel(detail, { answerGroups = [], generatedAt }) {
     banners,
     header: [
       ["Order", `#${order.orderNumber}`],
-      rxCase ? ["Case", rxCase.caseNumber ?? "—"] : legacy ? ["Seazona order", legacy.seazonaOrderId] : ["Shop order", shopOrder?.orderNumber ?? "—"],
+      rxCase ? ["Case", rxCase.caseNumber ?? "—"] : ["Shop order", shopOrder?.orderNumber ?? "—"],
       ["Practice", practice],
       // A solo practice is named after its doctor; don't print the name twice.
       ...((order.clientName || "—") === practice ? [] : [["Doctor", order.clientName || "—"]]),
-      ["Patient", rxCase?.patientName || legacy?.patientName || "—"],
+      ["Patient", rxCase?.patientName || "—"],
       ["Received", labDate(order.receivedAt)],
       ["Due", usDate(order.dueDate)],
       ["Status", LAB_STATUS_LABELS[order.status] ?? order.status],

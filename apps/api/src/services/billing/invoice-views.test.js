@@ -59,12 +59,3 @@ test("ledger entry kinds", () => {
   assert.equal(ledgerEntryKind({ source: "refund", appliedCents: -100 }), "refund");
   assert.equal(ledgerEntryKind({ source: "admin_check", appliedCents: 100 }), "payment");
 });
-
-test("a settlement row reads as a settlement; a legacy invoice shows its Seazona patient", () => {
-  assert.equal(ledgerEntryKind({ source: "legacy_settlement", appliedCents: 500 }), "settlement");
-  const legacy = { ...detail, invoice: { ...detail.invoice, kind: "legacy", labOrderId: null, legacyPatient: "Test Patient" }, labOrder: null };
-  const v = doctorInvoiceView(legacy);
-  assert.equal(v.kind, "legacy");
-  assert.equal(v.patientName, "Test Patient");
-  assert.equal(doctorInvoiceView(detail).patientName, detail.labOrder?.patientName ?? null, "a normal invoice is unchanged");
-});

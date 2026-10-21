@@ -241,24 +241,11 @@ export function planIssue(invoice, lines, { now, termsDays, issueDateIso }) {
 }
 
 /**
- * An imported Seazona invoice whose client could not be matched to exactly one
- * doctor (Rulings R11b/R11c) has no owner and is hidden from AR. Staff link the
- * owner first (re-run the invoices step); acting on it before then would
- * change a balance nobody can see.
- */
-function assertLegacyOwned(invoice, verb) {
-  if (invoice.kind === "legacy" && !invoice.clientUserId) {
-    throw new InvoiceError("INVALID_TRANSITION", `Invoice #${invoice.invoiceNumber} has no client yet, so it cannot be ${verb}. Link its owner first (an admin links the Seazona client, then the import's invoices step is re-run).`);
-  }
-}
-
-/**
  * Void with a reason. A draft can always be voided (its lab order was
  * cancelled). An issued invoice only while its net paid is zero: once money
  * has been applied, the correction is a refund or a credit. A void keeps its number.
  */
 export function planVoid(invoice, { paidCents, reason, now }) {
-  assertLegacyOwned(invoice, "voided");
   if (invoice.status === "void") throw new InvoiceError("INVALID_TRANSITION", `Invoice #${invoice.invoiceNumber} is already void.`);
   const why = trimmed(reason);
   if (!why) throw new InvoiceError("REASON_REQUIRED", "Say why this invoice is being voided.");
@@ -304,7 +291,6 @@ export function canActOnInvoice(user, invoice, ownerSeazonaClientId) {
 
 /** A credit (write-off) on an issued invoice: a reason, and no more than is owed. */
 export function planCredit(invoice, { amountCents, reason, balanceCents }) {
-  assertLegacyOwned(invoice, "credited");
   if (invoice.status !== "issued") {
     throw new InvoiceError("INVALID_TRANSITION", `Invoice #${invoice.invoiceNumber} is ${invoice.status} — only an issued invoice can be credited.`);
   }
@@ -361,10 +347,6 @@ export function planManualPayment({ openInvoices, amountCents, allocations, paid
   }
   for (const a of planned) {
     const inv = byId.get(a.invoiceId);
-    // Defence in depth: the open list is built from the client's own invoices, so an ownerless (unlinked legacy) invoice never appears; if one ever did, it is refused like credit/void.
-    if (inv.clientUserId === null) {
-      throw new InvoiceError("INVALID_TRANSITION", `Invoice #${inv.invoiceNumber} has no client yet, so a payment cannot be applied to it. Link its owner first.`);
-    }
     if (inv.issuedOn && paidOn < inv.issuedOn) {
       throw new InvoiceError("INVALID", `The payment date is before invoice #${inv.invoiceNumber} was issued (${inv.issuedOn}).`);
     }

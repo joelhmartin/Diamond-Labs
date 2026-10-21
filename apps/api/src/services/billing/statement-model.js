@@ -1,4 +1,4 @@
-import { LAB_TIMEZONE, AGING_BUCKETS, MANUAL_PAYMENT_LABELS, formatUsDate, isoDateIn, isOpeningBalanceInvoice } from "@my-app/shared";
+import { LAB_TIMEZONE, AGING_BUCKETS, MANUAL_PAYMENT_LABELS, formatUsDate, isoDateIn } from "@my-app/shared";
 import { labIdentity } from "../../config/lab-identity.js";
 import { formatCents } from "../../lib/money.js";
 import { deepPrintable } from "../pdf/pdf-text.js";
@@ -23,7 +23,7 @@ export function monthBounds(month) {
 }
 
 const labDay = (instant) => isoDateIn(LAB_TIMEZONE, new Date(instant));
-const KIND_ORDER = { invoice: 0, payment: 1, settlement: 1, credit: 2, refund: 3, void: 4 };
+const KIND_ORDER = { invoice: 0, payment: 1, credit: 2, refund: 3, void: 4 };
 
 function paymentLabel(source) {
   const manual = /^admin_(check|cash|ach|other)$/.exec(source ?? "");
@@ -45,8 +45,7 @@ export function statementEvents({ invoices, payments }) {
   for (const inv of invoices) {
     if (!inv.issuedAt) continue;
     const order = inv.labOrderNumber ? ` · Order #${inv.labOrderNumber}` : "";
-    const description = isOpeningBalanceInvoice(inv) ? `Opening balance carried from Seazona — invoice #${inv.invoiceNumber}` : `Invoice #${inv.invoiceNumber}${order}`;
-    events.push({ date: labDay(inv.issuedAt), kind: "invoice", invoiceId: inv.id, description, amountCents: inv.totalCents });
+    events.push({ date: labDay(inv.issuedAt), kind: "invoice", invoiceId: inv.id, description: `Invoice #${inv.invoiceNumber}${order}`, amountCents: inv.totalCents });
     if (inv.status === "void" && inv.voidedAt) {
       events.push({ date: labDay(inv.voidedAt), kind: "void", invoiceId: inv.id, description: `Void — invoice #${inv.invoiceNumber}`, amountCents: -inv.totalCents });
     }
@@ -55,7 +54,7 @@ export function statementEvents({ invoices, payments }) {
     if (!p.appliedCents) continue;
     const kind = ledgerEntryKind(p);
     const number = byId.get(p.invoiceId)?.invoiceNumber ?? p.invoiceNumber;
-    const label = kind === "credit" ? "Credit" : kind === "refund" ? "Refund" : kind === "settlement" ? "Settled in Seazona" : paymentLabel(p.source);
+    const label = kind === "credit" ? "Credit" : kind === "refund" ? "Refund" : paymentLabel(p.source);
     events.push({ date: p.paidOn ?? labDay(p.createdAt), kind, invoiceId: p.invoiceId, description: `${label} — invoice #${number}`, amountCents: -p.appliedCents });
   }
   return events.sort((a, b) => a.date.localeCompare(b.date) || KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || a.description.localeCompare(b.description));

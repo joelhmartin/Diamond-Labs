@@ -80,13 +80,3 @@ test("a doctor whose name is the practice's isn't printed twice", () => {
   assert.equal(labels.includes("Doctor"), false);
   assert.equal(Object.fromEntries(m.header).Practice, "Dr Amy Lee");
 });
-
-test("a legacy order's ticket names the Seazona order and its patient", () => {
-  const m = buildTicketModel({
-    order: { orderNumber: 98000, status: "in_production", receivedAt: new Date("2026-10-20T17:00:00Z"), clientName: "Dr. Example" },
-    lines: [], rxCase: null, shopOrder: null, files: [],
-    legacy: { seazonaOrderId: "ord-1", patientName: "Test Patient", caseId: null, caseNumber: null },
-  }, { generatedAt: new Date("2026-11-01T15:00:00Z") });
-  assert.deepEqual(m.header.find((h) => h[0] === "Seazona order"), ["Seazona order", "ord-1"]);
-  assert.deepEqual(m.header.find((h) => h[0] === "Patient"), ["Patient", "Test Patient"]);
-});

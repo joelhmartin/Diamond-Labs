@@ -320,10 +320,3 @@ test("a board card says when its order has a label", () => {
 test("a labelled order already shipped gets the normal refusal, not 'void the label'", () => {
   assert.throws(() => planStatusChange({ ...labelled, status: "shipped" }, "on_hold", { reason: "x", now }), (e) => isCode("INVALID_TRANSITION")(e) && !/void the label/.test(e.message));
 });
-
-test("a legacy order's board card says where it came from and never shows a patient", () => {
-  const card = presentBoardCard({ order: { id: "lo", orderNumber: 98000, source: "legacy", sourceId: "ord-1", status: "in_production", version: 1, legacyPatient: "Test Patient" }, clientName: "Dr. Example" }, [], "2026-11-01");
-  assert.equal(card.reference, "Seazona");
-  assert.equal(card.practice, "Dr. Example");
-  assert.ok(!JSON.stringify(card).includes("Test Patient"));
-});

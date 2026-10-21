@@ -42,9 +42,6 @@ export function InvoiceView({ invoice, order, lines, payments, actions = null, l
             <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_TONES[status] ?? "bg-gray-100 text-gray-700"}`}>{status}</span>
             <span>Issued {invoice.issuedAt ? instantText(invoice.issuedAt) : "—"}</span>
             <span>· Due {dateText(invoice.dueDate)}</span>
-            {invoice.kind === "legacy" && (
-              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-800">Carried over from Seazona</span>
-            )}
           </div>
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}

@@ -2,7 +2,6 @@ import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { caseSummary } from "@my-app/shared";
 import { db } from "../../config/database.js";
-import { decryptField } from "../../lib/crypto.js";
 import { invoices, invoiceLines, labOrders, rxCases, orders, users, doctorProfiles, auditLog } from "../../db/schema/index.js";
 import { decryptRxPhi } from "../rx/phi-crypto.js";
 import { initialsFor } from "../lab/lab-order-rules.js";
@@ -29,19 +28,6 @@ function patientInitials(row) {
     return null; // an undecryptable name shows as "—", it never fails the list
   }
 }
-
-/** A legacy invoice's patient initials (its sealed legacy_patient); null when none or unreadable. */
-function legacyInitials(sealed) {
-  if (!sealed) return null;
-  try {
-    return initialsFor(decryptField(sealed));
-  } catch {
-    return null;
-  }
-}
-
-/** A legacy line shows its Seazona text (opened) as its description; every other line is unchanged. */
-const presentLine = ({ legacyDescription, ...line }) => (legacyDescription ? { ...line, description: legacyDescription } : line);
 
 /** Admin › Invoices: newest first, filtered on the server (the list is capped). */
 export async function listInvoices(filters = {}, database = db) {
@@ -107,7 +93,7 @@ export async function listClientInvoices(clientUserIds, { includeDrafts = false 
   const out = balanced.map((inv, i) => ({
     id: inv.id, invoiceNumber: inv.invoiceNumber, kind: inv.kind, status: inv.status,
     labOrderNumber: rows[i].labOrderNumber ?? null, caseNumber: rows[i].caseNumber ?? null,
-    patientInitials: patientInitials(rows[i]) ?? legacyInitials(rows[i].invoice.legacyPatient),
+    patientInitials: patientInitials(rows[i]),
     issuedAt: inv.issuedAt, dueDate: inv.dueDate,
     totalCents: inv.totalCents, paidCents: inv.paidCents, balanceCents: inv.balanceCents,
   }));
@@ -161,7 +147,7 @@ export async function getInvoiceDetail(id, { withActivity = false } = {}, databa
     .where(eq(invoices.id, id));
   if (!row) return null;
   const [invoice] = await withBalances([openInvoice(row.invoice)], database);
-  const lines = (await database.select().from(invoiceLines).where(eq(invoiceLines.invoiceId, id)).orderBy(asc(invoiceLines.position))).map(openLine).map(presentLine);
+  const lines = (await database.select().from(invoiceLines).where(eq(invoiceLines.invoiceId, id)).orderBy(asc(invoiceLines.position))).map(openLine);
   const payments = await ledgerRowsForInvoice(id, database);
   const labOrder = invoice.labOrderId ? await labOrderBlock(invoice.labOrderId, database) : null;
   const p = row.profile;

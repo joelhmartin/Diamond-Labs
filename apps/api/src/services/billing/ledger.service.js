@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
-import { isoDateIn, LAB_TIMEZONE, HISTORY_EXCLUDED_SOURCES, sortOldestFirst } from "@my-app/shared";
+import { isoDateIn, LAB_TIMEZONE, SHOP_PAYMENT_SOURCE, sortOldestFirst } from "@my-app/shared";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../../config/database.js";
 import { invoices, invoicePayments, users } from "../../db/schema/index.js";
@@ -111,19 +111,18 @@ export async function ledgerRowsForInvoice(invoiceId, database = db) {
   return rows.map(openLedgerRow);
 }
 
-// A shop checkout pays an order, not a bill someone chose to pay, and a
-// Seazona settlement (piece 5) is bookkeeping: both stay out of payment
-// history (and so out of the refund screen).
-const IN_HISTORY = or(isNull(invoicePayments.source), notInArray(invoicePayments.source, HISTORY_EXCLUDED_SOURCES));
+// A shop checkout pays an order, not a bill someone chose to pay: it stays out
+// of payment history (and so out of the refund screen).
+const NOT_SHOP = or(isNull(invoicePayments.source), notInArray(invoicePayments.source, [SHOP_PAYMENT_SOURCE]));
 
 /** A doctor's own transaction-level payment history. */
 export async function listPaymentsForUser(userId, database = db) {
-  const rows = await database.select().from(invoicePayments).where(and(eq(invoicePayments.userId, userId), IN_HISTORY));
+  const rows = await database.select().from(invoicePayments).where(and(eq(invoicePayments.userId, userId), NOT_SHOP));
   return summarizePayments(rows);
 }
 
 /** Every doctor's payment history (admin), optionally for one user. */
 export async function listAllPayments({ userId } = {}, database = db) {
-  const where = userId ? and(eq(invoicePayments.userId, userId), IN_HISTORY) : IN_HISTORY;
+  const where = userId ? and(eq(invoicePayments.userId, userId), NOT_SHOP) : NOT_SHOP;
   return summarizePayments(await database.select().from(invoicePayments).where(where));
 }

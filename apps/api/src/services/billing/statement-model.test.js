@@ -72,18 +72,3 @@ test("drafts and the refund guard row never appear", () => {
   assert.ok(!kinds.some((k) => k.endsWith(":d")));
   assert.equal(statementEvents(activity).filter((e) => e.amountCents === 0).length, 0);
 });
-
-test("statements: an opening balance and a Seazona settlement read plainly", () => {
-  const events = statementEvents({
-    invoices: [
-      { id: "o", invoiceNumber: 16211, kind: "legacy", legacySeazonaInvoiceId: "opening:1324", status: "issued", totalCents: 9000, issuedAt: new Date("2026-11-07T02:00:00Z"), voidedAt: null },
-      { id: "h", invoiceNumber: 11115, kind: "legacy", legacySeazonaInvoiceId: "inv-11115", status: "issued", totalCents: 30000, issuedAt: new Date("2026-01-30T17:00:00Z"), voidedAt: null },
-    ],
-    payments: [{ invoiceId: "h", invoiceNumber: "11115", appliedCents: 17950, source: "legacy_settlement", paidOn: "2026-01-30", createdAt: new Date() }],
-  });
-  assert.deepEqual(events.map((e) => [e.kind, e.description, e.amountCents]), [
-    ["invoice", "Invoice #11115", 30000],
-    ["settlement", "Settled in Seazona — invoice #11115", -17950],
-    ["invoice", "Opening balance carried from Seazona — invoice #16211", 9000],
-  ]);
-});
