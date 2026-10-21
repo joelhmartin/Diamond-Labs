@@ -1,7 +1,8 @@
 
-import { toCents, LEGACY_LINE_DESCRIPTION } from "@my-app/shared";
+import { LEGACY_LINE_DESCRIPTION } from "@my-app/shared";
 import { createId } from "../lib/id.js";
 import { dayOf, labNoon } from "./dates.js";
+import { exportCents } from "./export-table.js";
 import { problemList } from "./problems.js";
 import { invoiceStatusFor, recordDate, recordNumber, firstString, INVOICE_NUMBER_FIELDS } from "./seazona-records.js";
 
@@ -15,14 +16,17 @@ export const SUMMARY_LINE_DESCRIPTION = "Seazona invoice — see archive";
 const ADJUSTMENT_DESCRIPTION = "Seazona adjustment (discounts, services, rounding)";
 const ITEM_LISTS = ["productServiceItems", "items", "lines", "products"];
 
+/**
+ * Seazona money → integer cents; null when blank or not an amount. JSON
+ * numbers are dollars (rounded to the cent); text goes through the export
+ * parser's rules (exportCents), so an ambiguous comma is a problem, not a guess.
+ */
 export function centsOf(value) {
-  if (value == null || value === "") return null;
-  try {
-    const c = toCents(String(value).replace(/[$,\s]/g, ""));
-    return Number.isSafeInteger(c) ? c : null;
-  } catch {
-    return null;
+  if (typeof value === "number") {
+    const c = Math.round(value * 100);
+    return Number.isFinite(value) && Number.isSafeInteger(c) ? c + 0 : null;
   }
+  return value == null ? null : exportCents(value);
 }
 
 /**
@@ -63,8 +67,7 @@ const line = (invoiceId, position, l) => ({
   priceNote: null, labOrderLineId: null, shipmentId: null, legacyDescription: null, ...l,
 });
 
-function buildLines(invoiceId, detail, subtotalCents) {
-  const items = (detailItems(detail) ?? []).map(mapItem).filter(Boolean);
+function buildLines(invoiceId, items, subtotalCents) {
   if (items.length === 0) {
     return [line(invoiceId, 0, {
       kind: subtotalCents < 0 ? "adjustment" : "item", code: null, description: SUMMARY_LINE_DESCRIPTION,
@@ -77,10 +80,15 @@ function buildLines(invoiceId, detail, subtotalCents) {
   return out;
 }
 
-export function mapLegacyInvoice({ summary, detail = null, ownerUserId }) {
-  const invoiceNumber = recordNumber(summary, INVOICE_NUMBER_FIELDS) ?? recordNumber(detail, INVOICE_NUMBER_FIELDS);
+/**
+ * `unowned: true` maps an invoice with no owner (a client shared by several
+ * eligible doctors: clientUserId stays null until an admin decides).
+ */
+export function mapLegacyInvoice({ summary, detail = null, ownerUserId, unowned = false }) {
+  // The summary's number is the authority; the detail's is never borrowed.
+  const invoiceNumber = recordNumber(summary, INVOICE_NUMBER_FIELDS);
   if (!invoiceNumber) return { problem: "invoice_number_not_numeric" };
-  if (!ownerUserId) return { problem: "client_not_loaded" };
+  if (!ownerUserId && !unowned) return { problem: "client_not_loaded" };
   const totalCents = centsOf(summary.total);
   if (totalCents == null) return { problem: "total_not_money" };
   if (totalCents < 0) return { problem: "negative_total" };
@@ -94,34 +102,46 @@ export function mapLegacyInvoice({ summary, detail = null, ownerUserId }) {
   const issuedAt = labNoon(issuedDay);
   const subtotalCents = totalCents - taxCents;
   const invoice = {
-    id, invoiceNumber, kind: "legacy", clientUserId: ownerUserId, labOrderId: null,
+    id, invoiceNumber, kind: "legacy", clientUserId: ownerUserId ?? null, labOrderId: null,
     legacySeazonaInvoiceId: String(summary.id), legacyPatient: firstString(summary, ["patient", "patientName"]),
     status, version: 1, issuedAt, dueDate, voidedAt: status === "void" ? issuedAt : null, voidReason: null,
     subtotalCents, taxCents, shippingCents: 0, totalCents, notes: null,
   };
-  return { invoice, lines: buildLines(id, detail, subtotalCents), approximatedDate: approximated, detailed: Boolean(detailItems(detail)) };
+  const listed = detailItems(detail) ?? [];
+  const items = listed.map(mapItem).filter(Boolean);
+  return {
+    invoice, lines: buildLines(id, items, subtotalCents), approximatedDate: approximated,
+    detailed: items.length > 0, droppedItems: listed.length - items.length,
+  };
 }
 
 /**
  * Every summary → rows to insert (unsealed), with counts and problems (Seazona
- * ids only). `owners` is client id → eligible owner and `unownedClients` the
- * linked clients with no eligible owner (both from owners.js resolveOwners).
+ * ids only). `owners` is client id → eligible owner, `unownedClients` the linked
+ * clients with no eligible owner (their invoices are skipped) and
+ * `ambiguousClients` those shared by several eligible users (their invoices load
+ * unowned) — all from owners.js resolveOwners. `existingNumbers` is EVERY number
+ * already in the table, loaded legacy rows included, so a duplicate Seazona
+ * number is flagged with its id.
  */
-export function planInvoices({ summaries, details, owners, existingSeazonaIds, existingNumbers, unownedClients = new Set() }) {
+export function planInvoices({ summaries, details, owners, existingSeazonaIds, existingNumbers, unownedClients = new Set(), ambiguousClients = new Set() }) {
   const rows = [];
   const problems = new Map();
-  const flag = (kind, id) => problems.set(kind, [...(problems.get(kind) ?? []), id]);
-  const counts = { seazona: summaries.length, toInsert: 0, alreadyLoaded: 0, detailed: 0, summaryOnly: 0, approximatedDates: 0, void: 0, totalCents: 0 };
+  const flag = (kind, id) => (problems.has(kind) ? problems.get(kind).push(id) : problems.set(kind, [id]));
+  const counts = { seazona: summaries.length, toInsert: 0, unowned: 0, droppedDetailItems: 0, alreadyLoaded: 0, detailed: 0, summaryOnly: 0, approximatedDates: 0, void: 0, totalCents: 0 };
   const numbers = new Set(existingNumbers);
   for (const { seazonaId, payload } of summaries) {
     if (existingSeazonaIds.has(seazonaId)) { counts.alreadyLoaded += 1; continue; }
     const clientId = String(payload.clientId);
     // A client whose linked user is not an eligible owner (owners.js) gets its own problem kind.
     if (unownedClients.has(clientId) && !owners.has(clientId)) { flag("client_owner_not_approved_doctor", seazonaId); continue; }
-    const mapped = mapLegacyInvoice({ summary: payload, detail: details.get(seazonaId) ?? null, ownerUserId: owners.get(clientId) });
+    const unowned = ambiguousClients.has(clientId) && !owners.has(clientId);
+    const mapped = mapLegacyInvoice({ summary: payload, detail: details.get(seazonaId) ?? null, ownerUserId: owners.get(clientId), unowned });
     if (mapped.problem) { flag(mapped.problem, seazonaId); continue; }
     if (numbers.has(mapped.invoice.invoiceNumber)) { flag("invoice_number_taken", seazonaId); continue; }
     numbers.add(mapped.invoice.invoiceNumber);
+    if (unowned) { flag("client_has_multiple_owners", seazonaId); counts.unowned += 1; }
+    counts.droppedDetailItems += mapped.droppedItems;
     rows.push({ invoice: mapped.invoice, lines: mapped.lines });
     counts.toInsert += 1;
     counts[mapped.detailed ? "detailed" : "summaryOnly"] += 1;

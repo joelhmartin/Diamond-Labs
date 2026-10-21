@@ -1,6 +1,7 @@
 import { slugify } from "@my-app/shared";
 import { createId } from "../lib/id.js";
 import { firstString } from "./seazona-records.js";
+import { oldestByKey } from "./owners.js";
 
 /**
  * Seazona clients → doctor users, practices and owner memberships (moved here
@@ -44,21 +45,12 @@ export function profileFromClient(client, userId, now) {
   };
 }
 
-const oldestFirst = (a, b) => new Date(a.createdAt) - new Date(b.createdAt) || String(a.id).localeCompare(String(b.id));
-
-function indexBy(userRows, key) {
-  const out = new Map();
-  for (const u of [...userRows].sort(oldestFirst)) {
-    const k = u[key] == null ? null : String(u[key]);
-    if (k && !out.has(k)) out.set(k, u.id);
-  }
-  return out;
-}
-
-/** The doctor who owns a Seazona client's invoices and orders: the oldest sharing its id. */
-export const ownerIndex = (userRows) => indexBy(userRows, "seazonaClientId");
-/** The same by Seazona account number (the per-client balance export's key). */
-export const accountOwnerIndex = (userRows) => indexBy(userRows, "seazonaAccountNumber");
+/**
+ * Seazona client id → the oldest user ALREADY LINKED to it (any role or
+ * approval). This is link bookkeeping for the clients step only, NOT an owner
+ * rule: who may own invoices is owners.js resolveOwners.
+ */
+export const linkedClientIndex = (userRows) => oldestByKey(userRows, "seazonaClientId");
 
 /**
  * Linking an existing login to a Seazona client follows the codebase's
@@ -80,7 +72,7 @@ export function existingFromRows(userRows, slugRows, profileRows) {
     byEmail.set(key, byEmail.has(key) ? { ...byEmail.get(key), ambiguous: true } : entry);
   }
   return {
-    owners: ownerIndex(userRows),
+    owners: linkedClientIndex(userRows),
     userEmails: new Map(userRows.map((u) => [u.id, String(u.email).toLowerCase()])),
     byEmail,
     slugs: new Set(slugRows.map((r) => r.slug)),

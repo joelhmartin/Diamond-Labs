@@ -101,3 +101,44 @@ test("plan: a client whose linked user is not an eligible owner is reported, its
   assert.deepEqual(kinds.client_owner_not_approved_doctor, ["inv-a", "inv-b"]);
   assert.ok(plan.problems.every((p) => p.count === p.seazonaIds.length));
 });
+
+test("plan: a client shared by several eligible doctors loads unowned and is reported", () => {
+  const records = summaries.map((p) => ({ seazonaId: p.id, payload: p }));
+  const plan = planInvoices({
+    summaries: records, details, owners: new Map([["c-2001", "u-2001"]]), ambiguousClients: new Set(["c-1324"]),
+    existingSeazonaIds: new Set(), existingNumbers: new Set(),
+  });
+  const a = plan.rows.find((r) => r.invoice.legacySeazonaInvoiceId === "inv-a");
+  assert.equal(a.invoice.clientUserId, null);
+  assert.equal(plan.counts.unowned, 2);
+  assert.deepEqual(plan.problems.find((p) => p.kind === "client_has_multiple_owners").seazonaIds, ["inv-a", "inv-b"]);
+});
+
+test("plan: a duplicate of an already-loaded legacy number is flagged with its id", () => {
+  const records = [{ seazonaId: "inv-dup", payload: { ...byId("inv-d"), id: "inv-dup" } }];
+  const plan = planInvoices({ summaries: records, details, owners, existingSeazonaIds: new Set(["inv-d"]), existingNumbers: new Set([11121]) });
+  assert.deepEqual(plan.problems.find((p) => p.kind === "invoice_number_taken").seazonaIds, ["inv-dup"]);
+  assert.equal(plan.rows.length, 0);
+});
+
+test("detailed means an item actually mapped; dropped items are counted", () => {
+  const bad = { id: "inv-a", productServiceItems: [{ type: "product", name: "no amount" }] };
+  const m = mapLegacyInvoice({ summary: byId("inv-a"), detail: bad, ownerUserId: "u" });
+  assert.equal(m.detailed, false);
+  assert.equal(m.droppedItems, 1);
+  assert.equal(m.lines[0].description, SUMMARY_LINE_DESCRIPTION);
+  const plan = planInvoices({ summaries: [{ seazonaId: "inv-a", payload: byId("inv-a") }], details: new Map([["inv-a", bad]]), owners, existingSeazonaIds: new Set(), existingNumbers: new Set() });
+  assert.equal(plan.counts.droppedDetailItems, 1);
+  assert.equal(plan.counts.summaryOnly, 1);
+});
+
+test("the summary's invoice number is the authority: a non-numeric one is a problem even if the detail has a number", () => {
+  const r = mapLegacyInvoice({ summary: byId("inv-x"), detail: { id: "inv-x", invoiceNumber: "99999" }, ownerUserId: "u-2001" });
+  assert.deepEqual(r, { problem: "invoice_number_not_numeric" });
+});
+
+test("an ambiguous comma is not money", () => {
+  assert.equal(centsOf("12,34"), null);
+  assert.equal(centsOf("1,234"), 123400);
+  assert.equal(mapLegacyInvoice({ summary: { ...byId("inv-d"), total: "12,34" }, ownerUserId: "u" }).problem, "total_not_money");
+});

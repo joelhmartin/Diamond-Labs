@@ -26,3 +26,17 @@ test("an eligible user wins over an older ineligible one sharing the client; uno
   assert.deepEqual([...r.rejectedClients], ["c2"]);
   assert.deepEqual([...r.rejectedAccounts], ["2"]);
 });
+
+test("two eligible users sharing a client id fail closed: no owner, reported as ambiguous", () => {
+  const r = resolveOwners([
+    { ...base, id: "a" },
+    { ...base, id: "b", createdAt: new Date(9) },
+    { ...base, id: "c", seazonaClientId: "c3", seazonaAccountNumber: "3" },
+  ]);
+  assert.equal(r.byClient.has("c1"), false);
+  assert.equal(r.byAccount.has("1"), false);
+  assert.deepEqual([...r.ambiguousClients], ["c1"]);
+  assert.deepEqual([...r.ambiguousAccounts], ["1"]);
+  assert.equal(r.byClient.get("c3"), "c");
+  assert.equal(r.rejectedClients.size, 0);
+});

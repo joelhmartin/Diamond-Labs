@@ -44,6 +44,7 @@ export async function loadClients({ raw, db, live, noEmail = "placeholder", now 
   const linkSkipped = [];
   const notLinked = new Set();
   let profilesToWrite = [];
+  let profilesInserted = 0;
   await db.transaction(async (tx) => {
     for (const c of plan.create) {
       await tx.insert(users).values(c.user);
@@ -63,10 +64,13 @@ export async function loadClients({ raw, db, live, noEmail = "placeholder", now 
       if (rows.length === 0) { linkSkipped.push(l.seazonaClientId); notLinked.add(l.userId); }
     }
     profilesToWrite = plan.profiles.filter((x) => !notLinked.has(x.userId));
-    for (const p of profilesToWrite) await tx.insert(doctorProfiles).values(p).onConflictDoNothing();
+    for (const p of profilesToWrite) {
+      const res = await tx.insert(doctorProfiles).values(p).onConflictDoNothing().returning({ id: doctorProfiles.id });
+      if (!Array.isArray(res) || res.length) profilesInserted += 1; // fakeTx resolves undefined: counts as inserted
+    }
   });
   // Counts reflect what happened, not what was planned.
   counts.link = plan.link.length - linkSkipped.length;
-  counts.profiles = profilesToWrite.length;
+  counts.profiles = profilesInserted;
   return { step: "clients", live, counts, problems: problemsFor(linkSkipped) };
 }

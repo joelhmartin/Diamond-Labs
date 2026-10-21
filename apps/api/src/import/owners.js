@@ -25,26 +25,52 @@ export const OWNER_COLUMNS = {
   emailVerifiedAt: users.emailVerifiedAt, hasPassword: sql`${users.passwordHash} is not null`, createdAt: users.createdAt,
 };
 
-const oldestFirst = (a, b) => new Date(a.createdAt) - new Date(b.createdAt) || String(a.id).localeCompare(String(b.id));
+export const oldestFirst = (a, b) => new Date(a.createdAt) - new Date(b.createdAt) || String(a.id).localeCompare(String(b.id));
 
-function index(rows, key) {
-  const owners = new Map();
-  const rejected = new Set();
+/**
+ * The oldest user per value of `key` (a Seazona client id or account number),
+ * among the users `include` accepts. Generic and rule-free: the owner rule is
+ * resolveOwners below.
+ */
+export function oldestByKey(rows, key, include = () => true) {
+  const out = new Map();
   for (const u of [...rows].sort(oldestFirst)) {
     const k = u[key] == null ? null : String(u[key]);
-    if (!k) continue;
-    if (isInvoiceOwner(u)) { if (!owners.has(k)) owners.set(k, u.id); } else rejected.add(k);
+    if (k && include(u) && !out.has(k)) out.set(k, u.id);
   }
-  for (const k of owners.keys()) rejected.delete(k);
-  return { owners, rejected };
+  return out;
+}
+
+function index(rows, key) {
+  const eligible = new Map();
+  const linked = new Set();
+  for (const u of rows) {
+    const k = u[key] == null ? null : String(u[key]);
+    if (!k) continue;
+    linked.add(k);
+    if (isInvoiceOwner(u)) eligible.set(k, [...(eligible.get(k) ?? []), u.id]);
+  }
+  const owners = new Map();
+  const ambiguous = new Set();
+  for (const [k, ids] of eligible) {
+    if (new Set(ids).size === 1) owners.set(k, ids[0]);
+    else ambiguous.add(k);
+  }
+  const rejected = new Set([...linked].filter((k) => !eligible.has(k)));
+  return { owners, rejected, ambiguous };
 }
 
 /**
  * Users carrying a Seazona link → { byClient, byAccount, rejectedClients,
- * rejectedAccounts }. `rejected*` are linked keys with no eligible owner.
+ * rejectedAccounts, ambiguousClients, ambiguousAccounts }. `rejected*` are
+ * linked keys with no eligible owner; `ambiguous*` are keys shared by MORE
+ * THAN ONE eligible user, which fail closed (no owner) until an admin decides.
  */
 export function resolveOwners(userRows) {
   const c = index(userRows, "seazonaClientId");
   const a = index(userRows, "seazonaAccountNumber");
-  return { byClient: c.owners, byAccount: a.owners, rejectedClients: c.rejected, rejectedAccounts: a.rejected };
+  return {
+    byClient: c.owners, byAccount: a.owners, rejectedClients: c.rejected, rejectedAccounts: a.rejected,
+    ambiguousClients: c.ambiguous, ambiguousAccounts: a.ambiguous,
+  };
 }

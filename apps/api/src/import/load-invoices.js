@@ -12,7 +12,7 @@ const BATCH = 500;
  * `import:load invoices`: one `kind: legacy` invoice per Seazona invoice, with
  * its lines. Owners come from the clients step (run it first) and only
  * approved doctors qualify (owners.js); a client without one is reported and
- * its invoices are skipped. Legacy invoices keep Seazona's numbers: they never
+ * its invoices are skipped; a client shared by several eligible doctors loads unowned (reported). Legacy invoices keep Seazona's numbers: they never
  * pass through the live number allocator. Each batch of 500 invoices and their
  * lines is one transaction; a re-run skips every invoice already loaded (by
  * legacy_seazona_invoice_id).
@@ -26,8 +26,8 @@ export async function loadInvoices({ raw, db, live, target, starts = {} }) {
   const existing = await db.select({ seazonaId: invoices.legacySeazonaInvoiceId, number: invoices.invoiceNumber }).from(invoices);
   const existingSeazonaIds = new Set(existing.map((r) => r.seazonaId).filter(Boolean));
   const plan = planInvoices({
-    summaries, details, owners: owners.byClient, unownedClients: owners.rejectedClients, existingSeazonaIds,
-    existingNumbers: new Set(existing.filter((r) => !existingSeazonaIds.has(r.seazonaId)).map((r) => r.number)),
+    summaries, details, owners: owners.byClient, unownedClients: owners.rejectedClients, ambiguousClients: owners.ambiguousClients,
+    existingSeazonaIds, existingNumbers: new Set(existing.map((r) => r.number)),
   });
   const report = { step: "invoices", live, counts: plan.counts, seeds: seeds.summary, problems: plan.problems };
   if (!live) return report;

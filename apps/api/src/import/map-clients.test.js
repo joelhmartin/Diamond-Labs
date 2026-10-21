@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { slugify } from "@my-app/shared";
 import {
-  clientEmail, placeholderEmail, isPlaceholderEmail, profileFromClient, existingFromRows, ownerIndex, accountOwnerIndex, planClients, PLACEHOLDER_EMAIL_DOMAIN,
+  clientEmail, placeholderEmail, isPlaceholderEmail, profileFromClient, existingFromRows, linkedClientIndex, planClients, PLACEHOLDER_EMAIL_DOMAIN,
 } from "./map-clients.js";
 
 const clients = JSON.parse(readFileSync(new URL("../../test-fixtures/seazona/clients.json", import.meta.url), "utf8"));
@@ -31,13 +31,12 @@ test("a profile only from a complete address, with a blank NPI for the lab to fi
   assert.equal(profileFromClient(clients[1], "u2", now), null, "no address");
 });
 
-test("owners: the oldest doctor sharing a Seazona client id or account number", () => {
+test("linkedClientIndex: the oldest user already linked to a Seazona client id", () => {
   const rows = [
     { id: "b", seazonaClientId: "c1", seazonaAccountNumber: "1", createdAt: new Date("2026-02-01") },
     { id: "a", seazonaClientId: "c1", seazonaAccountNumber: "1", createdAt: new Date("2026-01-01") },
   ];
-  assert.equal(ownerIndex(rows).get("c1"), "a");
-  assert.equal(accountOwnerIndex(rows).get("1"), "a");
+  assert.equal(linkedClientIndex(rows).get("c1"), "a");
 });
 
 test("plan: link by email, create with a real or placeholder email, skip linked, report a taken email", () => {
