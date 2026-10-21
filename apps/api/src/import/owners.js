@@ -87,3 +87,20 @@ export async function loadOwners(db) {
   const rows = await db.select(OWNER_COLUMNS).from(users).where(or(isNotNull(users.seazonaClientId), isNotNull(users.seazonaAccountNumber)));
   return { rows, ...resolveOwners(rows) };
 }
+
+/**
+ * Each loaded history invoice's account number from the raw store, the same
+ * source the clients step uses: invoice summary → clientId → client record →
+ * accountNumber. Independent of who owns the invoice, so an unowned invoice
+ * still has its account. Invoices it can't derive are absent from the map.
+ */
+export async function accountsByInvoice(raw, legacy) {
+  const clientOf = new Map((await raw.records("invoice")).map((r) => [String(r.seazonaId), String(r.payload.clientId)]));
+  const accountOf = new Map((await raw.records("client")).map((r) => [String(r.seazonaId), normAccount(r.payload.accountNumber)]));
+  const out = new Map();
+  for (const inv of legacy) {
+    const account = accountOf.get(clientOf.get(inv.legacySeazonaInvoiceId));
+    if (account) out.set(inv.legacySeazonaInvoiceId, account);
+  }
+  return out;
+}

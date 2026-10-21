@@ -44,6 +44,7 @@ test("the app side: balances by account (unowned history keeps its raw-store acc
   assert.equal(app.placeholders, 1);
   assert.deepEqual(app.invoices.map((i) => [i.number, i.year]), [[1, "2026"], [2, "2025"]], "history only, by lab-local year");
   assert.equal(app.orderCount, 2);
+  assert.deepEqual(app.orderIds, ["o1", "o2"]);
   assert.deepEqual(app.unownedOrders, [{ sourceId: "o1", open: true }]);
   assert.equal(db.log.some((e) => ["insert", "update", "delete"].includes(e.op)), false, "parity never writes the target");
 });

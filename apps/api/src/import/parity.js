@@ -15,13 +15,16 @@ const sumBy = (list, f) => list.reduce((s, x) => s + f(x), 0);
 const sameCounts = (a, b) => [...new Set([...a.keys(), ...b.keys()])].every((k) => (a.get(k) ?? 0) === (b.get(k) ?? 0));
 const range = (nums) => (nums.length ? [Math.min(...nums), Math.max(...nums)] : null);
 
+/** The calendar year of a "YYYY-MM-DD" day, or "unknown" (never a truncated word). */
+export const yearOf = (day) => (typeof day === "string" && /^\d{4}/.test(day) ? day.slice(0, 4) : "unknown");
+
 export function seazonaInvoiceFacts(summaries, details) {
   return summaries.map(({ seazonaId, payload }) => ({
     seazonaId,
     number: recordNumber(payload, INVOICE_NUMBER_FIELDS),
     status: invoiceStatusFor(payload.status),
     totalCents: centsOf(payload.total),
-    year: (legacyIssueDay(payload, details.get(seazonaId) ?? null).day ?? "unknown").slice(0, 4),
+    year: yearOf(legacyIssueDay(payload, details.get(seazonaId) ?? null).day),
   }));
 }
 
@@ -100,8 +103,10 @@ function orderSection(seazona, app, differences) {
   const sOpen = countBy(seazona.orders.filter((o) => o.open), (o) => o.status);
   const aOpen = countBy(app.openOrders, (o) => o.status);
   if (!sameCounts(sOpen, aOpen)) differences.push("open orders");
-  const orderCount = app.orderCount ?? app.openOrders.length;
-  if (orderCount < seazona.orders.length) differences.push("orders not loaded");
+  const loadedIds = new Set(app.orderIds ?? []);
+  const missingOrders = seazona.orders.filter((o) => !loadedIds.has(o.id)).map((o) => o.id);
+  if (missingOrders.length) differences.push("orders not loaded");
+  const orderCount = app.orderCount ?? loadedIds.size;
   const unownedOrders = app.unownedOrders ?? [];
   // Unowned legacy orders, by the Seazona CLIENT id (ids only; a fixed link + re-run of `orders` attaches them).
   const clientOf = new Map(seazona.orders.map((o) => [o.id, o.clientId ?? "none"]));
@@ -118,6 +123,7 @@ function orderSection(seazona, app, differences) {
   return {
     seazonaCount: seazona.orders.length, appCount: orderCount,
     seazonaOpen: Object.fromEntries(sOpen), appOpen: Object.fromEntries(aOpen),
+    missingCount: missingOrders.length, missingIds: missingOrders.slice(0, LIST_CAP),
     unownedCount: unownedOrders.length, unownedByClient: unownedByClient.slice(0, DIFF_CAP),
   };
 }
@@ -147,4 +153,25 @@ export function buildParity({ seazona, app, seeds }) {
     differences,
     clean: differences.length === 0,
   };
+}
+
+/** Every difference kind buildParity can raise: the names `--accept` takes. */
+export const DIFFERENCE_KINDS = [
+  "clients", "invoice counts", "invoice totals", "invoices not loaded", "unowned invoices with a balance",
+  "balances", "no balance export compared", "balance export problems",
+  "open orders", "orders not loaded", "unowned open orders", "seeds",
+];
+
+/**
+ * Moves the named differences from `differences` to `accepted` (the user's
+ * explicit sign-off, recorded in the report). `clean` then means no UNACCEPTED
+ * difference remains. Accepting nothing returns the report unchanged; an
+ * unknown kind throws (a typo must not silently accept nothing or everything).
+ */
+export function applyAccepted(report, kinds = []) {
+  const unknown = kinds.filter((k) => !DIFFERENCE_KINDS.includes(k));
+  if (unknown.length) throw new RangeError(`Unknown difference kind(s): ${unknown.join(", ")}. Known: ${DIFFERENCE_KINDS.join(", ")}.`);
+  if (!kinds.length) return report;
+  const differences = report.differences.filter((d) => !kinds.includes(d));
+  return { ...report, accepted: report.differences.filter((d) => kinds.includes(d)), differences, clean: differences.length === 0 };
 }

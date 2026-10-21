@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { seazonaInvoiceFacts, exportBalances, exportCreditCents, buildParity } from "./parity.js";
+import { seazonaInvoiceFacts, exportBalances, exportCreditCents, buildParity, applyAccepted, DIFFERENCE_KINDS, yearOf } from "./parity.js";
 
 const facts = seazonaInvoiceFacts(
   [
@@ -31,6 +31,7 @@ const app = {
   unowned: { count: 0, openCents: 0, invoiceNumbers: [] },
   historyWithoutSettlement: { count: 0, grossCents: 0, realPaidCents: 0, openCents: 0 },
   orderCount: 2,
+  orderIds: ["o1", "o2"],
   openOrders: [{ status: "in_production" }],
   unownedOrders: [],
   openingInvoices: 0,
@@ -61,7 +62,7 @@ test("one cent of AR, one unlinked client, one missing invoice, one open order o
     { app: { ...app, linkedClientIds: ["c1"] }, want: "clients" },
     { app: { ...app, invoices: app.invoices.slice(0, 1) }, want: "invoices not loaded" },
     { app: { ...app, openOrders: [] }, want: "open orders" },
-    { app: { ...app, orderCount: 1 }, want: "orders not loaded" },
+    { app: { ...app, orderCount: 2, orderIds: ["o1", "zz"] }, want: "orders not loaded" },
     { seeds: { ...seeds, errors: ["INVOICE_NUMBER_START too low"] }, want: "seeds" },
   ];
   for (const c of cases) {
@@ -104,7 +105,7 @@ test("unowned legacy orders are listed by Seazona client id; an unowned OPEN ord
   const unownedOrders = [{ sourceId: "o1", open: true }, { sourceId: "o2", open: false }, { sourceId: "o3", open: false }];
   const r = buildParity({
     seazona: { ...seazona, orders: [...seazona.orders, { id: "o3", clientId: "c2", status: "shipped", open: false }] },
-    app: { ...app, orderCount: 3, unownedOrders }, seeds,
+    app: { ...app, orderCount: 3, orderIds: ["o1", "o2", "o3"], unownedOrders }, seeds,
   });
   assert.deepEqual(r.orders.unownedByClient, [{ clientId: "c1", orders: 1, open: 1 }, { clientId: "c2", orders: 2, open: 0 }]);
   assert.equal(r.orders.unownedCount, 3);
@@ -127,4 +128,30 @@ test("export problems are part of the report and make it unclean; the history le
 test("the report carries ids, counts and cents only", () => {
   const text = JSON.stringify(buildParity({ seazona, app, seeds }));
   assert.doesNotMatch(text, /@|patient|name/i);
+});
+
+test("orders are compared by Seazona id, and the missing ids are listed (not just a count)", () => {
+  const r = buildParity({ seazona, app: { ...app, orderCount: 2, orderIds: ["o1", "other"] }, seeds });
+  assert.ok(r.differences.includes("orders not loaded"));
+  assert.deepEqual(r.orders.missingIds, ["o2"]);
+  assert.equal(r.orders.missingCount, 1);
+});
+
+test("an unknown issue year is \"unknown\", never a truncated word", () => {
+  assert.equal(yearOf(null), "unknown");
+  assert.equal(yearOf("2025-12-30"), "2025");
+  const f = seazonaInvoiceFacts([{ seazonaId: "x", payload: { invoiceNumber: "5", total: 1, status: "Shipped" } }], new Map());
+  assert.equal(f[0].year, "unknown");
+});
+
+test("accepted differences move out of `differences`; clean means none remain; nothing accepted changes nothing", () => {
+  const dirty = buildParity({ seazona: { ...seazona, balanceByAccount: null }, app: { ...app, openOrders: [] }, seeds });
+  assert.deepEqual(dirty.differences, ["no balance export compared", "open orders"]);
+  assert.equal(applyAccepted(dirty, []), dirty);
+  const some = applyAccepted(dirty, ["open orders"]);
+  assert.deepEqual([some.differences, some.accepted, some.clean], [["no balance export compared"], ["open orders"], false]);
+  const all = applyAccepted(dirty, ["open orders", "no balance export compared", "seeds"]);
+  assert.deepEqual([all.differences, all.accepted, all.clean], [[], ["no balance export compared", "open orders"], true]);
+  assert.throws(() => applyAccepted(dirty, ["opne orders"]), /Unknown difference kind/);
+  assert.ok(DIFFERENCE_KINDS.includes("seeds"));
 });

@@ -87,8 +87,12 @@ export function resolveTarget(name, env = process.env, { confirmProduction } = {
   return resolved;
 }
 
-/** Open a resolved database with a drizzle schema. Call close() when done. */
-export function connect(resolved, schema) {
-  const client = createPgClient(resolved.url, { max: 4, connect_timeout: 15 });
+/**
+ * Open a resolved database with a drizzle schema. Call close() when done.
+ * `readOnly` opens every session with default_transaction_read_only on, so the
+ * SERVER refuses writes on this connection (parity's second layer under its db wrapper).
+ */
+export function connect(resolved, schema, { readOnly = false } = {}) {
+  const client = createPgClient(resolved.url, { max: 4, connect_timeout: 15, ...(readOnly ? { connection: { default_transaction_read_only: "on" } } : {}) });
   return { name: resolved.name, database: resolved.database, client, db: drizzle(client, { schema }), close: () => client.end({ timeout: 5 }) };
 }

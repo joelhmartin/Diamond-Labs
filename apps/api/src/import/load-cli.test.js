@@ -139,3 +139,12 @@ test("the session is closed even when the step's report cannot be printed", asyn
   }), /print failed/);
   assert.equal(closed, 1);
 });
+
+test("a production live run of invoices, orders and balances takes BOTH starts (the seed check needs each kind's start)", async () => {
+  for (const step of ["invoices", "orders", "balances"]) {
+    const r = rig({ files: { "b.xls": fixture("statements-export.xls") } });
+    const extra = step === "balances" ? ["--balances", "per-client", "--file", "b.xls"] : [];
+    assert.equal(await r.run([step, "--target", "production", "--confirm-production", "diamond_labs", "--invoice-start", "11200", "--order-start", "5100", "--live", ...extra]), 0, step);
+    assert.deepEqual(last()[1].starts, { invoice: 11200, order: 5100 }, step);
+  }
+});

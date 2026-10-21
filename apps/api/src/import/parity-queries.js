@@ -5,9 +5,8 @@ import { paidCentsFor } from "../services/billing/paid-cents.js";
 import { deriveBalance } from "../services/billing/invoice-rules.js";
 import { orderStatusFor } from "./seazona-records.js";
 import { isPlaceholderEmail } from "./map-clients.js";
-import { normAccount } from "./owners.js";
-import { accountsByInvoice } from "./load-balances.js";
-import { seazonaInvoiceFacts } from "./parity.js";
+import { normAccount, accountsByInvoice } from "./owners.js";
+import { seazonaInvoiceFacts, yearOf } from "./parity.js";
 
 const CHUNK = 1000;
 const LIST_CAP = 50;
@@ -106,13 +105,14 @@ export async function readAppSide(db, raw) {
     placeholders: userRows.filter((u) => isPlaceholderEmail(u.email)).length,
     invoices: m.history.map((i) => ({
       seazonaId: i.legacySeazonaInvoiceId, number: i.invoiceNumber, status: i.status, totalCents: i.totalCents,
-      year: isoDateIn(LAB_TIMEZONE, new Date(i.issuedAt)).slice(0, 4),
+      year: Number.isNaN(new Date(i.issuedAt).getTime()) ? "unknown" : yearOf(isoDateIn(LAB_TIMEZONE, new Date(i.issuedAt))),
     })),
     accountByInvoiceNumber: new Map(m.history.map((i) => [i.invoiceNumber, m.accountKey(i)])),
     balanceByAccount: m.balanceByAccount,
     unowned: m.unowned,
     historyWithoutSettlement: m.historyWithoutSettlement,
     orderCount: orders.length,
+    orderIds: orders.map((o) => o.sourceId),
     openOrders: orders.filter((o) => isOpenStatus(o.status)),
     unownedOrders: orders.filter((o) => !o.clientUserId).map((o) => ({ sourceId: o.sourceId, open: isOpenStatus(o.status) })),
     openingInvoices: legacy.length - m.history.length,

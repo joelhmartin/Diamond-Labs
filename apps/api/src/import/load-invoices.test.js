@@ -158,3 +158,11 @@ test("a re-run still reports clients whose loaded invoices remain unowned", asyn
   assert.equal(report.counts.loadedStillUnowned, 1);
   assert.deepEqual(report.problems.find((p) => p.kind === "loaded_invoices_still_unowned_client").seazonaIds, [String(all[0].clientId)]);
 });
+
+test("coupling: a production load with only --invoice-start is refused for the missing --order-start (the seed check guards both sequences)", async () => {
+  const withOrders = { records: async (e) => (e === "order" ? asRecords(load("orders.json")) : raw.records(e)) };
+  await assert.rejects(
+    loadInvoices({ raw: withOrders, db: db(), live: true, lock: fakeLock(), target: "production", starts: { invoice: 99999 } }),
+    /--order-start is required for a production load/,
+  );
+});

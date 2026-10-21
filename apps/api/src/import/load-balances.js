@@ -3,7 +3,7 @@ import { LEGACY_SETTLEMENT_SOURCE, OPENING_BALANCE_PREFIX } from "@my-app/shared
 import { invoices, invoiceLines, invoicePayments } from "../db/schema/index.js";
 import { sealInvoice, sealLine } from "../services/billing/invoice-crypto.js";
 import { allocateSequenceNumber, INVOICE_NUMBER_LOCK } from "../services/sequence.service.js";
-import { loadOwners, normAccount } from "./owners.js";
+import { loadOwners, normAccount, accountsByInvoice } from "./owners.js";
 import {
   SETTLEMENT_PREFIX, planInvoiceSettlements, planClientOpenings, mapOpeningInvoice, settlementCandidates,
 } from "./balance-plan.js";
@@ -86,23 +86,6 @@ async function accountOwners(db) {
   for (const a of o.rejectedAccounts) unowned.set(a, "account_owner_not_approved_doctor");
   for (const a of o.ambiguousAccounts) unowned.set(a, "account_has_multiple_owners");
   return { ownerByAccount: o.byAccount, unownedAccounts: unowned };
-}
-
-/**
- * Each loaded history invoice's account number from the raw store, the same
- * source the clients step uses: invoice summary → clientId → client record →
- * accountNumber. Independent of who owns the invoice, so an unowned invoice
- * still has its account. Invoices it can't derive are absent from the map.
- */
-export async function accountsByInvoice(raw, legacy) {
-  const clientOf = new Map((await raw.records("invoice")).map((r) => [String(r.seazonaId), String(r.payload.clientId)]));
-  const accountOf = new Map((await raw.records("client")).map((r) => [String(r.seazonaId), normAccount(r.payload.accountNumber)]));
-  const out = new Map();
-  for (const inv of legacy) {
-    const account = accountOf.get(clientOf.get(inv.legacySeazonaInvoiceId));
-    if (account) out.set(inv.legacySeazonaInvoiceId, account);
-  }
-  return out;
 }
 
 async function perClient({ raw, db, live, target, legacy, parsed, existingTransactionIds, paidCents, starts, cutoverAt, report, guard }) {

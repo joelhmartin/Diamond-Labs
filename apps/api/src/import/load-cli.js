@@ -5,10 +5,10 @@
  *   pnpm --filter @my-app/api import:load <step> --target production --confirm-production diamond_labs \
  *        --invoice-start <n> --order-start <n> [--live]
  *   clients:  [--no-email placeholder|skip]
- *   invoices: [--invoice-start <n>]
+ *   invoices: [--invoice-start <n> --order-start <n>]   (production needs BOTH starts on invoices, balances and orders)
  *   balances: --balances per-invoice|per-client (--file <export.xls> | --file-id <id>) [--columns name="Header",…]
- *             [--cutover-at <ISO>] [--invoice-start <n>] [--accept-export-problems]
- *   orders:   [--order-start <n>]
+ *             [--cutover-at <ISO>] [--invoice-start <n> --order-start <n>] [--accept-export-problems]
+ *   orders:   [--invoice-start <n> --order-start <n>]
  *
  * Run the steps in order: clients, invoices, balances, orders. Every step is
  * re-runnable. Every LIVE step holds the target's load lock for its whole run
@@ -38,12 +38,14 @@ import { paidCentsFor } from "../services/billing/paid-cents.js";
 import { printLines, printReport, runIfMain } from "./report.js";
 
 const COMMON = ["target", "confirm-production", "live"];
+/** The seed check guards BOTH number sequences on every step that loads numbered records, so a production run needs both starts. */
+const STARTS = ["invoice-start", "order-start"];
 /** Per step: the flags it accepts beyond COMMON. Anything else is refused, never ignored. */
 const STEP_FLAGS = {
   clients: ["no-email"],
-  invoices: ["invoice-start"],
-  balances: ["invoice-start", "balances", "file", "file-id", "columns", "cutover-at", "accept-export-problems"],
-  orders: ["order-start"],
+  invoices: STARTS,
+  balances: [...STARTS, "balances", "file", "file-id", "columns", "cutover-at", "accept-export-problems"],
+  orders: STARTS,
 };
 const FLAGS = {
   allowed: [...new Set([...COMMON, ...Object.values(STEP_FLAGS).flat()])],
@@ -109,7 +111,7 @@ export async function main(argv, env = process.env, overrides = {}) {
   assertNotCloudRun(env);
   const { positional, flags } = parseArgs(argv, FLAGS);
   const step = positional[0];
-  if (!STEPS[step] || positional.length !== 1) throw new ImportRefusal(`Usage: import:load <${Object.keys(STEPS).join("|")}> --target <rehearsal|production> [--live]`);
+  if (!STEPS[step] || positional.length !== 1) throw new ImportRefusal(`Usage: import:load <${Object.keys(STEPS).join("|")}> --target <rehearsal|production> [--live] (production: --invoice-start and --order-start on invoices, balances and orders)`);
   const live = flags.live === true;
   const opts = stepOptions(step, flags);
   const session = await deps.openSession(env, flags, { writes: true });
