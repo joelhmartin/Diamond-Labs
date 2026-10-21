@@ -47,12 +47,23 @@ test("the orders walk pages past the 10k cap by `ordered`", async () => {
   assert.equal(query(f, 1, "ordered"), minuteStamp(9999));
 });
 
-test("a bulk-restamped capped page advances by one second", async () => {
+test("a full capped page sharing one lastModified fails the walk (truncated), never skips past it (F3)", async () => {
   const stamped = Array.from({ length: 10_000 }, (_, i) => ({ id: `i${i}`, lastModified: "2025-11-29T15:05:50" }));
   const f = stub(ok(stamped), ok([{ id: "late", lastModified: "2026-01-02T00:00:00" }]));
   const r = await seazona.getAllInvoicesResult();
+  assert.equal(r.truncated, true, "rows past the cap with the same stamp may exist");
+  assert.equal(r.budgetExhausted, false);
+  assert.equal(r.requests, 1, "no request past the shared stamp");
+  assert.equal(f.mock.calls.length, 1);
+});
+
+test("a full page whose newest stamp is shared by only some rows re-requests from that stamp", async () => {
+  const mixed = Array.from({ length: 10_000 }, (_, i) => ({ id: `m${i}`, lastModified: i < 5_000 ? "2025-11-29T15:05:50" : "2025-12-01T00:00:00" }));
+  const f = stub(ok(mixed), ok([{ id: "late", lastModified: "2026-01-02T00:00:00" }]));
+  const r = await seazona.getAllInvoicesResult();
+  assert.equal(r.truncated, false);
   assert.equal(r.invoices.length, 10_001);
-  assert.equal(query(f, 1, "lastModified"), "2025-11-29T15:05:51Z");
+  assert.equal(query(f, 1, "lastModified"), "2025-12-01T00:00:00");
 });
 
 test("a walk that hits a block stops and reports it", async () => {

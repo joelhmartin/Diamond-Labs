@@ -271,20 +271,15 @@ export async function getInvoicesResult(lastModified) {
 
 // Seazona truncates the invoice and order lists at LIST_PAGE_CAP rows (seazona-limits.js).
 
-/** ts + 1s as an ISO string; null when ts is not a parseable timestamp (never throws). */
-function bumpOneSecond(ts) {
-  const d = new Date(ts.endsWith("Z") ? ts : `${ts}Z`);
-  if (Number.isNaN(d.getTime())) return null;
-  d.setUTCSeconds(d.getUTCSeconds() + 1);
-  return d.toISOString().replace(/\.\d{3}Z$/, "Z");
-}
-
 /**
  * Walk a capped Seazona list (the invoice and order lists truncate at 10,000
- * rows sorted by id) forward by `field`. The invoice archive was bulk-restamped
- * to a single lastModified, so a capped page that shares one value advances by
- * one second. De-dupes by id. `truncated` means a capped page gave no cursor to
- * advance by (the set is incomplete; never treat it as whole).
+ * rows sorted by id) forward by `field`, re-requesting from the page's newest
+ * value. De-dupes by id. `truncated` means a capped page gave no cursor to
+ * advance by (the set is incomplete; never treat it as whole). A FULL page whose
+ * records all share one value is truncated too (ruling F3): more rows with that
+ * value may lie past the cap (the list is sorted by id), and skipping past the
+ * value would drop them silently. The invoice archive was bulk-restamped, so
+ * this is a real case: it fails the walk for operator attention, never guesses.
  *
  * Options (piece 5's fetcher): `maxPages` caps the requests (default 50); running
  * out of pages mid-walk is `truncated`. `beforePage` is awaited before every
@@ -317,10 +312,9 @@ async function walkCapped(fetchPage, field, { maxPages = 50, beforePage } = {}) 
     const values = page.records.map((rec) => rec[field]).filter((v) => typeof v === "string" && Number.isFinite(instant(v)));
     if (values.length === 0) { truncated = true; done = true; break; }
     const max = values.reduce((m, v) => (instant(v) > instant(m) ? v : m));
-    const next = page.records.every((rec) => rec[field] === max) ? bumpOneSecond(max) : max;
-    // The cursor must move strictly forward in time, or the walk is stalled.
-    if (next === null || !(instant(next) > instant(cursor))) { truncated = true; done = true; break; }
-    cursor = next;
+    // A full page sharing one value can't be paged past without dropping rows; the cursor must also move forward.
+    if (page.records.every((rec) => rec[field] === max) || !(instant(max) > instant(cursor))) { truncated = true; done = true; break; }
+    cursor = max;
   }
   const budgetExhausted = !done;
   if (budgetExhausted) truncated = true;

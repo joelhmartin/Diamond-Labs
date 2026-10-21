@@ -15,6 +15,27 @@ const sumBy = (list, f) => list.reduce((s, x) => s + f(x), 0);
 const sameCounts = (a, b) => [...new Set([...a.keys(), ...b.keys()])].every((k) => (a.get(k) ?? 0) === (b.get(k) ?? 0));
 const range = (nums) => (nums.length ? [Math.min(...nums), Math.max(...nums)] : null);
 
+/**
+ * Holes in Seazona's invoice numbering (numbers are sequential), as
+ * information, never a difference (ruling F3): a block dropped by a fetch
+ * shows up here, while the lab may confirm others as deleted numbers.
+ * `missingNumbers` = (max − min + 1) − distinct numbers; `ranges` lists the
+ * first LIST_CAP holes as [from, to].
+ */
+export function numberGaps(nums) {
+  const sorted = [...new Set(nums)].sort((a, b) => a - b);
+  const ranges = [];
+  let missingNumbers = 0;
+  let gapCount = 0;
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] - sorted[i - 1] <= 1) continue;
+    missingNumbers += sorted[i] - sorted[i - 1] - 1;
+    gapCount += 1;
+    if (ranges.length < LIST_CAP) ranges.push([sorted[i - 1] + 1, sorted[i] - 1]);
+  }
+  return { missingNumbers, gapCount, ranges };
+}
+
 /** The calendar year of a "YYYY-MM-DD" day, or "unknown" (never a truncated word). */
 export const yearOf = (day) => (typeof day === "string" && /^\d{4}/.test(day) ? day.slice(0, 4) : "unknown");
 
@@ -93,6 +114,7 @@ function invoiceSection(seazona, app, differences) {
   return {
     seazonaCount: sInv.length, appCount: app.invoices.length, byYear, seazonaTotalCents, appTotalCents,
     numberRange: { seazona: range(sInv.map((i) => i.number)), app: range(app.invoices.map((i) => i.number)) },
+    seazonaNumberGaps: numberGaps(sInv.map((i) => i.number)),
     missingCount: missing.length, missingIds: missing.slice(0, LIST_CAP), openingInvoices: app.openingInvoices,
     unowned: { count: unowned.count, openCents: unowned.openCents, invoiceNumbers: unowned.invoiceNumbers.slice(0, LIST_CAP) },
     historyWithoutSettlement: app.historyWithoutSettlement ?? null,

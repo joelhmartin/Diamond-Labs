@@ -54,6 +54,7 @@ test("everything matching is clean", () => {
   assert.equal(r.balances.appOwnedOpenCents, 4000);
   assert.equal(r.balances.appUnownedOpenCents, 0);
   assert.deepEqual(r.orders.seazonaOpen, { in_production: 1 });
+  assert.deepEqual(r.invoices.seazonaNumberGaps, { missingNumbers: 0, gapCount: 0, ranges: [] });
 });
 
 test("one cent of AR, one unlinked client, one missing invoice, one open order or a seed error each make it unclean", () => {
@@ -154,4 +155,15 @@ test("accepted differences move out of `differences`; clean means none remain; n
   assert.deepEqual([all.differences, all.accepted, all.clean], [[], ["no balance export compared", "open orders"], true]);
   assert.throws(() => applyAccepted(dirty, ["opne orders"]), /Unknown difference kind/);
   assert.ok(DIFFERENCE_KINDS.includes("seeds"));
+});
+
+test("Seazona invoice-number gaps are reported as information, never a difference (F3)", async () => {
+  const { numberGaps } = await import("./parity.js");
+  assert.deepEqual(numberGaps([5, 1, 2, 2, 9]), { missingNumbers: 5, gapCount: 2, ranges: [[3, 4], [6, 8]] });
+  assert.deepEqual(numberGaps([]), { missingNumbers: 0, gapCount: 0, ranges: [] });
+  assert.deepEqual(numberGaps([7]), { missingNumbers: 0, gapCount: 0, ranges: [] });
+  const gappy = { ...seazona, invoices: [...seazona.invoices, { seazonaId: "z", number: 9, status: "void", totalCents: 0, year: "2026" }] };
+  const r = buildParity({ seazona: gappy, app, seeds });
+  assert.equal(r.invoices.seazonaNumberGaps.missingNumbers, 6);
+  assert.ok(!r.differences.some((d) => /gap/.test(d)), "information only");
 });
