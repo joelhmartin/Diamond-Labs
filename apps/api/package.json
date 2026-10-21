@@ -9,6 +9,7 @@
     "db:generate": "drizzle-kit generate",
     "import:db:generate": "drizzle-kit generate --config=drizzle.import.config.js",
     "import:db:migrate": "node --env-file=.env src/import/db/migrate.js",
+    "import:fetch": "node --env-file=.env src/import/fetch-cli.js",
     "db:migrate": "drizzle-kit migrate",
     "db:migrate:run": "node --env-file=.env src/db/migrate.js",
     "db:scrub-staging": "node src/db/scrub-staging.js",

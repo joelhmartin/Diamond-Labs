@@ -113,3 +113,19 @@ test("a 2xx with a junk body is not an ok list read", async () => {
   stub(ok({ message: "nope" }));
   assert.deepEqual(await seazona.listProductsResult(), { ok: false, status: 200, products: [] });
 });
+
+test("a capped page of one unparseable timestamp is a truncated walk, not a RangeError", async () => {
+  const junk = page(10_000, (i) => ({ id: `j${i}`, lastModified: "not-a-date" }));
+  stub(ok(junk));
+  const r = await seazona.getAllInvoicesResult();
+  assert.equal(r.truncated, true);
+  assert.equal(r.requests, 1);
+});
+
+test("an unparseable value among parseable ones is ignored when choosing the cursor", async () => {
+  const mixed = page(10_000, (i) => ({ id: `m${i}`, lastModified: i === 0 ? "garbage" : minuteStamp(i) }));
+  const f = stub(ok(mixed), ok([]));
+  const r = await seazona.getAllInvoicesResult();
+  assert.equal(r.truncated, false);
+  assert.equal(query(f, 1, "lastModified"), minuteStamp(9999));
+});

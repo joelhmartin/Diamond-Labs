@@ -20,6 +20,7 @@ const ALLOWED = new Set([
   "apps/api/src/services/seazona-result-reads.test.js",
   "apps/api/src/import/seazona-fetch.js",
   "apps/api/src/import/seazona-fetch.test.js",
+  "apps/api/src/import/fetch-cli.test.js",
 ]);
 
 const FORBIDDEN = [

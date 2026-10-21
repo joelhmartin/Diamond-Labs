@@ -29,21 +29,39 @@ test("records open on read; the index opens nothing", async () => {
   assert.deepEqual([...idx], [["s1", "x"], ["s2", null]]);
 });
 
-test("an export file is stored sealed, once per content", async () => {
+test("an export file is stored sealed, once per content: insert-or-ignore, then re-select the surviving id", async () => {
   const bytes = Buffer.from("<table><tr><td>1324</td></tr></table>");
-  const fresh = fakeTx({ selects: [[]] });
-  const id = await store.saveFile(fresh, { kind: "balances_invoice", bytes });
+  const fresh = fakeTx({ selects: [[{ id: "f-new" }]] });
+  assert.equal(await store.saveFile(fresh, { kind: "balances_invoice", bytes }), "f-new");
   const insert = fresh.log.find((e) => e.op === "insert");
-  assert.equal(insert.values.id, id);
   assert.match(insert.values.content, /^enc:v1:/);
   assert.match(insert.values.sha256, /^[0-9a-f]{64}$/);
+  assert.ok(!JSON.stringify(insert.values).includes("1324"), "no plaintext reaches the insert");
+  assert.deepEqual(fresh.log.map((e) => e.op), ["insert", "select"], "no select-then-insert window");
 
+  // A second upload of the same bytes: the insert is ignored by the unique index; the first id comes back.
   const again = fakeTx({ selects: [[{ id: "f-existing" }]] });
   assert.equal(await store.saveFile(again, { kind: "balances_invoice", bytes }), "f-existing");
-  assert.equal(again.log.some((e) => e.op === "insert"), false);
 
   const read = await store.readFile(fakeTx({ selects: [[{ kind: "balances_invoice", content: encryptField(bytes.toString("base64")) }]] }), "f1");
   assert.equal(read.bytes.toString(), bytes.toString());
+});
+
+test("a repeated seazonaId in one upsert is collapsed (last wins) so ON CONFLICT never hits a row twice", async () => {
+  const tx = fakeTx();
+  const records = [
+    { seazonaId: "a", payload: { v: 1 } },
+    { seazonaId: "b", payload: { v: 1 } },
+    { seazonaId: "a", payload: { v: 2 } },
+    { seazonaId: 7, payload: { v: 1 } },
+    { seazonaId: "7", payload: { v: 3 } },
+  ];
+  assert.equal(await store.upsertRecords(tx, { entity: "invoice", records, runId: "r1" }), 3);
+  const rows = tx.log.filter((e) => e.op === "insert").flatMap((e) => e.values);
+  assert.deepEqual(rows.map((r) => r.seazonaId).sort(), ["7", "a", "b"]);
+  const { decryptJson } = await import("../lib/crypto.js");
+  assert.deepEqual(decryptJson(rows.find((r) => r.seazonaId === "a").payload), { v: 2 });
+  assert.deepEqual(decryptJson(rows.find((r) => r.seazonaId === "7").payload), { v: 3 });
 });
 
 test("a fetch run records counts and its resume cursor", async () => {

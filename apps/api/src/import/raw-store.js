@@ -10,9 +10,16 @@ import { seazonaRecords, fetchRuns, importFiles, parityReports } from "./db/sche
  */
 const BATCH = 500;
 
+/**
+ * Insert or update records by (entity, seazonaId). A repeated id in the input
+ * is collapsed first (the last one wins): ON CONFLICT DO UPDATE cannot touch
+ * the same row twice in one statement, and one repeat would abort the fetch.
+ * Returns the number of distinct rows written.
+ */
 export async function upsertRecords(importDb, { entity, records, runId, now = new Date() }) {
-  for (let i = 0; i < records.length; i += BATCH) {
-    const rows = records.slice(i, i + BATCH).map((r) => ({
+  const distinct = [...new Map(records.map((r) => [String(r.seazonaId), r])).values()];
+  for (let i = 0; i < distinct.length; i += BATCH) {
+    const rows = distinct.slice(i, i + BATCH).map((r) => ({
       id: createId(),
       entity,
       seazonaId: String(r.seazonaId),
@@ -31,7 +38,7 @@ export async function upsertRecords(importDb, { entity, records, runId, now = ne
       },
     });
   }
-  return records.length;
+  return distinct.length;
 }
 
 /** Every record of one entity, opened. PHI in memory only. */
@@ -71,14 +78,17 @@ export async function getRun(importDb, runId) {
 /** Seal an uploaded export into the import DB. The same bytes twice return the first id. */
 export async function saveFile(importDb, { kind, bytes, now = new Date() }) {
   const sha256 = createHash("sha256").update(bytes).digest("hex");
-  const [existing] = await importDb
+  // Insert-or-ignore then re-select, so two uploads of the same bytes at once
+  // cannot race into a unique-index error; both get the one surviving id.
+  await importDb
+    .insert(importFiles)
+    .values({ id: createId(), kind, sha256, content: encryptField(Buffer.from(bytes).toString("base64")), uploadedAt: now })
+    .onConflictDoNothing({ target: [importFiles.kind, importFiles.sha256] });
+  const [row] = await importDb
     .select({ id: importFiles.id })
     .from(importFiles)
     .where(and(eq(importFiles.kind, kind), eq(importFiles.sha256, sha256)));
-  if (existing) return existing.id;
-  const id = createId();
-  await importDb.insert(importFiles).values({ id, kind, sha256, content: encryptField(Buffer.from(bytes).toString("base64")), uploadedAt: now });
-  return id;
+  return row.id;
 }
 
 export async function readFile(importDb, id) {

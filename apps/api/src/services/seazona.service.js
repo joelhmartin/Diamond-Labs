@@ -1,4 +1,9 @@
 import { env } from "../config/env.js";
+import { RATE_LIMIT_WINDOW_MS, MAX_REQUESTS_PER_WINDOW, LIST_PAGE_CAP } from "./seazona-limits.js";
+
+// The limiter's numbers live in seazona-limits.js (no env needed) so piece 5's
+// operator CLIs can import them without loading config/env.js.
+export { RATE_LIMIT_WINDOW_MS, MAX_REQUESTS_PER_WINDOW, LIST_PAGE_CAP };
 
 /** True when SEAZONA_DISABLED="true" (staging): no Seazona call may leave the process. */
 export function isDisabled() {
@@ -25,11 +30,8 @@ function getAuthHeader() {
 // So the throttle lives HERE, not in callers. Every Seazona request in the
 // codebase funnels through requestRaw, which means no caller — present or
 // future — can bypass the limit or has to remember to.
-// Exported so the piece-5 fetcher imports the limiter's numbers instead of copying them.
-export const RATE_LIMIT_WINDOW_MS = 60_000;
-// Deliberately under the documented 60: leaves headroom for clock skew and for
-// any traffic from another process sharing this integration's quota.
-export const MAX_REQUESTS_PER_WINDOW = 50;
+// RATE_LIMIT_WINDOW_MS (60s) and MAX_REQUESTS_PER_WINDOW (50, deliberately under
+// the documented 60) come from seazona-limits.js.
 export const MAX_WRITES_PER_WINDOW = 15; // under the documented 20
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
@@ -267,11 +269,12 @@ export async function getInvoicesResult(lastModified) {
   return { reachable: r.data !== null, status: r.status, invoices: Array.isArray(r.data) ? r.data : [] };
 }
 
-// Seazona truncates the invoice and order lists at this many rows.
-export const LIST_PAGE_CAP = 10000;
+// Seazona truncates the invoice and order lists at LIST_PAGE_CAP rows (seazona-limits.js).
 
+/** ts + 1s as an ISO string; null when ts is not a parseable timestamp (never throws). */
 function bumpOneSecond(ts) {
   const d = new Date(ts.endsWith("Z") ? ts : `${ts}Z`);
+  if (Number.isNaN(d.getTime())) return null;
   d.setUTCSeconds(d.getUTCSeconds() + 1);
   return d.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
@@ -304,12 +307,12 @@ async function walkCapped(fetchPage, field) {
       else seen.set(rec.id, rec);
     }
     if (page.records.length < LIST_PAGE_CAP) { done = true; break; }
-    const values = page.records.map((rec) => rec[field]).filter((v) => typeof v === "string");
+    const values = page.records.map((rec) => rec[field]).filter((v) => typeof v === "string" && Number.isFinite(instant(v)));
     if (values.length === 0) { truncated = true; done = true; break; }
     const max = values.reduce((m, v) => (instant(v) > instant(m) ? v : m));
     const next = page.records.every((rec) => rec[field] === max) ? bumpOneSecond(max) : max;
     // The cursor must move strictly forward in time, or the walk is stalled.
-    if (!(instant(next) > instant(cursor))) { truncated = true; done = true; break; }
+    if (next === null || !(instant(next) > instant(cursor))) { truncated = true; done = true; break; }
     cursor = next;
   }
   if (!done) truncated = true;

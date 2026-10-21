@@ -12,6 +12,16 @@ const modules = [
   "./targets.js",
   "./cli-args.js",
   "./key-check.js",
+  "./raw-store.js",
+  "./export-table.js",
+  "./db/schema.js",
+  "../services/seazona-limits.js",
+  "./seazona-records.js",
+  "./fetch-plan.js",
+  "./seazona-fetch.js",
+  "./report.js",
+  // loads without env; the Seazona service is imported only when a live run starts
+  "./fetch-cli.js",
 ];
 
 for (const m of modules) {
