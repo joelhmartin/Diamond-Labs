@@ -36,6 +36,7 @@ test("a link whose guarded update touches 0 rows is reported, not counted", asyn
   const tx = db([[]]);
   const report = await loadClients({ raw, db: tx, live: true });
   assert.equal(report.counts.link, 0);
+  assert.equal(report.counts.profiles, 1, "live profiles count is what was written, not planned");
   assert.deepEqual(report.problems.find((p) => p.kind === "link_skipped_already_linked").seazonaIds, ["c-1324"]);
   assert.equal(tx.log.filter((e) => e.op === "insert" && "npiNumber" in (e.values ?? {})).length, 1, "no profile for the unlinked user");
 });

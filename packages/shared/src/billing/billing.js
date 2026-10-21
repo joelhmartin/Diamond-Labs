@@ -39,9 +39,10 @@ export const OPENING_BALANCE_PREFIX = "opening:";
 export const isOpeningBalanceInvoice = (inv) =>
   inv?.kind === "legacy" && String(inv?.legacySeazonaInvoiceId ?? "").startsWith(OPENING_BALANCE_PREFIX);
 /**
- * The default/summary-line description on an imported Seazona invoice. Other
- * imported lines may carry other fixed strings; the real text is sealed in
- * legacy_description.
+ * The plaintext description on an imported Seazona invoice's DETAIL lines; the
+ * real text is sealed in legacy_description. Two lines carry their own fixed
+ * strings (apps/api/src/import/map-invoices.js): the summary-only line
+ * ("Seazona invoice — see archive") and the balancing adjustment line.
  */
 export const LEGACY_LINE_DESCRIPTION = "Carried over from Seazona";
 

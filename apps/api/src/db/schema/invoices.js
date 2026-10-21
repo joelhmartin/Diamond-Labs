@@ -65,7 +65,8 @@ export const invoiceLines = pgTable("invoice_lines", {
   code: varchar("code", { length: 60 }),
   description: text("description").notNull(),
   // Piece 5: an imported line's Seazona text (can name a patient). Encrypted;
-  // `description` then holds LEGACY_LINE_DESCRIPTION. Null on every other line.
+  // `description` then holds LEGACY_LINE_DESCRIPTION (the summary-only and
+  // adjustment lines use their own fixed strings and leave this null). Null on every other line.
   legacyDescription: text("legacy_description"),
   qty: integer("qty").notNull().default(1),
   unitCents: integer("unit_cents").notNull(),

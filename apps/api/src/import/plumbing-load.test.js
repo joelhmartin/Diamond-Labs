@@ -24,6 +24,12 @@ const modules = [
   "./problems.js",
   "./map-clients.js",
   "./load-clients.js",
+  "./dates.js",
+  "./owners.js",
+  "./map-invoices.js",
+  "./load-writer.js",
+  "./seed-check.js",
+  "./load-invoices.js",
   // loads without env; the Seazona service is imported only when a live run starts
   "./fetch-cli.js",
 ];
