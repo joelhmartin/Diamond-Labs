@@ -50,7 +50,7 @@ export function profileFromClient(client, userId, now) {
  * approval). This is link bookkeeping for the clients step only, NOT an owner
  * rule: who may own invoices is owners.js resolveOwners.
  */
-export const linkedClientIndex = (userRows) => oldestByKey(userRows, "seazonaClientId");
+export const linkedClientIndex = (userRows) => oldestByKey(userRows, "seazonaClientId", (u) => u.status !== "deleted");
 
 /**
  * Linking an existing login to a Seazona client follows the codebase's
@@ -58,7 +58,7 @@ export const linkedClientIndex = (userRows) => oldestByKey(userRows, "seazonaCli
  * APPROVED, EMAIL-VERIFIED doctor. Anyone else with the same email (pending or
  * unverified doctor, shopper, admin, lab) is reported, never linked.
  */
-export const isLinkableUser = (u) => u.role === "doctor" && u.approvalStatus === "approved" && Boolean(u.emailVerifiedAt);
+export const isLinkableUser = (u) => u.status !== "deleted" && u.role === "doctor" && u.approvalStatus === "approved" && Boolean(u.emailVerifiedAt);
 
 export function existingFromRows(userRows, slugRows, profileRows) {
   const byEmail = new Map();

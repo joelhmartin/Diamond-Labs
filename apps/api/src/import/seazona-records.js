@@ -5,6 +5,8 @@
  * A rehearsal that finds a new status or field name changes THIS file, and
  * the fixture, in the same commit.
  */
+import { dayOf } from "./dates.js";
+
 const norm = (s) => String(s ?? "").trim().toLowerCase().replace(/[\s_-]+/g, " ");
 
 const VOID_INVOICE_STATES = new Set(["void", "voided", "cancelled", "canceled", "deleted"]);
@@ -42,8 +44,8 @@ const DATE_FIELDS = {
 /** The record's own date as "YYYY-MM-DD" (an invoice falls back to its due date); null when none. */
 export function recordDate(entity, payload) {
   for (const k of DATE_FIELDS[entity] ?? []) {
-    const v = payload?.[k];
-    if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
+    const day = dayOf(payload?.[k]);
+    if (day) return day;
   }
   return null;
 }

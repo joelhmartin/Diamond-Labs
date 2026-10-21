@@ -1,5 +1,5 @@
 import { authenticate } from "../middleware/authenticate.js";
-import { paymentsPaused } from "../middleware/payments-paused.js";
+import { paymentsPaused, paymentsPausedWhenLive } from "../middleware/payments-paused.js";
 import { requireAdmin } from "../middleware/require-role.js";
 import { validate } from "../middleware/validate.js";
 import { autopayAdminEnrollSchema, chargeSavedSchema, ERROR_CODES } from "@my-app/shared";
@@ -482,7 +482,7 @@ export default async function adminPaymentRoutes(fastify) {
     return { data: { runs: rows } };
   });
 
-  fastify.post("/admin/jobs/:name/run", { preHandler: guard }, async (request, reply) => {
+  fastify.post("/admin/jobs/:name/run", { preHandler: [...guard, paymentsPausedWhenLive()] }, async (request, reply) => {
     // Dry run unless the admin explicitly asks for a live run — and even then
     // AUTOPAY_LIVE_RUN must be true for the job itself to charge.
     const dryRun = request.body?.dryRun !== false;

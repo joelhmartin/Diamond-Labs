@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 process.env.DATABASE_URL ||= "postgres://u:p@localhost:5432/test";
 process.env.JWT_SECRET ||= "test-jwt-secret-that-is-at-least-32-chars";
 
-const { paymentsPausedGuard, PAYMENTS_PAUSED_MESSAGE } = await import("./payments-paused.js");
+const { paymentsPausedGuard, paymentsPausedWhenLive, PAYMENTS_PAUSED_MESSAGE } = await import("./payments-paused.js");
 
 const fakeReply = () => ({
   statusCode: 200,
@@ -25,6 +25,26 @@ test("not paused: the request passes untouched", async () => {
   assert.equal(await paymentsPausedGuard(() => false)({}, reply), undefined);
   assert.equal(reply.statusCode, 200);
   assert.equal(reply.body, undefined);
+});
+
+test("paused: only a live run (dryRun === false) is refused; a dry run passes", async () => {
+  const guard = paymentsPausedWhenLive(paymentsPausedGuard(() => true));
+  for (const body of [{ dryRun: false }]) {
+    const reply = fakeReply();
+    await guard({ body }, reply);
+    assert.equal(reply.statusCode, 503);
+  }
+  for (const body of [{}, undefined, { dryRun: true }]) {
+    const reply = fakeReply();
+    assert.equal(await guard({ body }, reply), undefined);
+    assert.equal(reply.statusCode, 200);
+  }
+});
+
+test("not paused: a live run passes", async () => {
+  const reply = fakeReply();
+  await paymentsPausedWhenLive(paymentsPausedGuard(() => false))({ body: { dryRun: false } }, reply);
+  assert.equal(reply.statusCode, 200);
 });
 
 async function loadPaused(value) {
