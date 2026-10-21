@@ -17,6 +17,9 @@ test("money cells: dollars, thousands, negatives in both spellings; blank and ju
   assert.equal(exportCents("n/a"), null);
   assert.equal(exportCents("1.234"), null, "more than two decimals is not money");
   assert.equal(exportCents("(-5.00)"), null);
+  for (const bad of ["12,34", "1,23.00", "1,2,3"]) assert.equal(exportCents(bad), null, bad);
+  assert.equal(exportCents("999999999999999999"), null, "not a safe integer of cents");
+  for (const dash of ["-", "$ -", "$-"]) assert.equal(exportCents(dash), 0, dash);
 });
 
 test("UTF-16 (with BOM) and UTF-8 (with BOM) both decode", () => {
@@ -68,4 +71,25 @@ test("renamed columns: a missing header is refused; --columns maps it", () => {
   const { rows } = readExport(Buffer.from(html), { kind: "invoice", columns: parseColumnsFlag("invoice=Inv No,balance=Still Owed") });
   assert.deepEqual(rows, [{ key: 7, cents: 100, line: 2 }]);
   assert.throws(() => parseColumnsFlag("nonsense"), /name="Header"/);
+});
+
+test("a row with content but a blank key and balance is a noKey problem, not a spacer", () => {
+  const html = "<table><tr><th>Invoice #</th><th>Account</th><th>Client</th><th>Total</th><th>Open Balance</th></tr>" +
+    "<tr><td></td><td>1324</td><td>Example</td><td>$5</td><td></td></tr><tr><td></td><td></td><td></td><td></td><td></td></tr></table>";
+  const { problems } = readExport(Buffer.from(html), { kind: "invoice" });
+  assert.deepEqual(problems, [{ kind: EXPORT_PROBLEM_KINDS.noKey, count: 1, seazonaIds: [], lines: [2] }]);
+});
+
+test("ambiguous or repeated headers are refused with header names only", () => {
+  const two = "<table><tr><th>Invoice #</th><th>Open Balance</th><th>Amount Due</th></tr><tr><td>1</td><td>5</td><td>6</td></tr></table>";
+  assert.throws(() => readExport(Buffer.from(two), { kind: "invoice" }), (e) => e instanceof ImportRefusal && /Open Balance.*Amount Due/.test(e.message) && /--columns/.test(e.message));
+  const repeat = "<table><tr><th>Invoice #</th><th>Invoice #</th><th>Open Balance</th></tr></table>";
+  assert.throws(() => readExport(Buffer.from(repeat), { kind: "invoice" }), ImportRefusal);
+});
+
+test("account keys are alphanumeric/dash up to 32 characters", () => {
+  const html = "<table><tr><th>Account #</th><th>Amount Due</th></tr><tr><td>AB-12</td><td>1</td></tr><tr><td>12 / x</td><td>1</td></tr><tr><td>" + "9".repeat(33) + "</td><td>1</td></tr></table>";
+  const { rows, problems } = readExport(Buffer.from(html), { kind: "client" });
+  assert.deepEqual(rows.map((r) => r.key), ["AB-12"]);
+  assert.equal(problems[0].count, 2);
 });

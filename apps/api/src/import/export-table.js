@@ -64,7 +64,11 @@ export function exportText(bytes) {
   return t.charCodeAt(0) === 0xfeff ? t.slice(1) : t;
 }
 
-/** Cell texts of every <tr> that has cells, <th> and <td> alike. Closing tags are optional. */
+/**
+ * Cell texts of every <tr> that has cells, <th> and <td> alike. Closing tags
+ * are optional. Assumes a flat table: no nested tables and no '>' inside
+ * attribute values.
+ */
 export function htmlTableRows(html) {
   const text = String(html).replace(/<!--[\s\S]*?-->/g, "");
   const rows = [];
@@ -75,18 +79,24 @@ export function htmlTableRows(html) {
   return rows;
 }
 
-/** A money cell → integer cents; null when blank or not an amount. */
+/**
+ * A money cell → integer cents; null when blank, not an amount, or too large
+ * to be a safe integer. Commas must be valid thousands grouping; a bare
+ * accounting dash ("-", "$ -") is zero.
+ */
 export function exportCents(text) {
-  let s = String(text ?? "").replace(/[$,\s]/g, "");
+  let s = String(text ?? "").replace(/[$\s]/g, "");
   if (!s) return null;
+  if (s === "-") return 0;
   let negative = false;
   const paren = /^\((.*)\)$/.exec(s);
   if (paren) {
     negative = true;
     s = paren[1];
   }
-  const cents = parseMoneyInput(s, { allowNegative: !negative });
-  if (cents == null) return null;
+  if (s.includes(",") && !/^-?\d{1,3}(,\d{3})*(\.\d+)?$/.test(s)) return null;
+  const cents = parseMoneyInput(s.replace(/,/g, ""), { allowNegative: !negative });
+  if (cents == null || !Number.isSafeInteger(cents)) return null;
   return (negative ? -cents : cents) + 0; // + 0 turns -0 into 0
 }
 
@@ -108,9 +118,14 @@ function findHeader(rows, aliases) {
     const cells = rows[i].map(fold);
     const at = {};
     for (const [name, names] of Object.entries(aliases)) {
-      const idx = names.map(fold).map((n) => cells.indexOf(n)).find((x) => x >= 0);
-      if (idx === undefined) break;
-      at[name] = idx;
+      const wanted = names.map(fold);
+      const hits = cells.flatMap((c, idx) => (wanted.includes(c) ? [idx] : []));
+      if (hits.length === 0) break;
+      if (hits.length > 1) {
+        const found = hits.map((idx) => `"${rows[i][idx]}"`).join(", ");
+        throw new ImportRefusal(`More than one column could be the ${name} column (${found}). Pass --columns ${name}="Header" to choose one.`);
+      }
+      at[name] = hits[0];
     }
     if (Object.keys(at).length === Object.keys(aliases).length) return { index: i, at };
   }
@@ -123,7 +138,7 @@ const invoiceKey = (t) => {
 };
 const accountKey = (t) => {
   const s = String(t ?? "").trim();
-  return s && /\d/.test(s) && s.length <= 100 ? s : null;
+  return /^[A-Za-z0-9-]{1,32}$/.test(s) && /\d/.test(s) ? s : null; // a digit is required so a "Total" row is not an account
 };
 
 /** Group per-row problems by kind into the shared { kind, count, seazonaIds, lines } shape. */
@@ -155,7 +170,7 @@ export function readExport(bytes, { kind, columns = {} }) {
     const line = i + 1;
     const keyText = rows[i][header.at[spec.key]] ?? "";
     const balanceText = rows[i][header.at.balance] ?? "";
-    if (!keyText && !balanceText) continue; // spacer row
+    if (rows[i].every((c) => !c)) continue; // spacer row: every cell empty
     const key = kind === "invoice" ? invoiceKey(keyText) : accountKey(keyText);
     if (key == null) {
       found.push({ kind: EXPORT_PROBLEM_KINDS.noKey, line }); // a total or note row?
