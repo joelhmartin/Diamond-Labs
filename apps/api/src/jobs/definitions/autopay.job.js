@@ -11,7 +11,8 @@ defineJob({
     // misconfigured scheduler alone cannot move money.
     const effectiveDryRun = dryRun || !env.AUTOPAY_LIVE_RUN || env.PAYMENTS_PAUSED === true;
     if (dryRun !== effectiveDryRun) {
-      log?.warn?.("AutoPay asked for a live run but AUTOPAY_LIVE_RUN is false — running dry");
+      const reason = env.PAYMENTS_PAUSED === true ? "payments are paused (PAYMENTS_PAUSED)" : "AUTOPAY_LIVE_RUN is false";
+      log?.warn?.(`AutoPay asked for a live run but ${reason} — running dry`);
     }
     const summary = await runAutopaySweep({ dryRun: effectiveDryRun, log, runId });
     // Thread the EFFECTIVE dry-run value back through the summary — never the
