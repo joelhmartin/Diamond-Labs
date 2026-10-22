@@ -608,10 +608,14 @@ describe("autopay job — two-switch dry-run gate", () => {
     try {
       await import("./autopay.job.js");
       const { getJob } = await import("../registry.js");
-      await getJob("autopay").handler({ dryRun: false, log: undefined, runId: "r1" });
+      const log = { warn: vi.fn() };
+      await getJob("autopay").handler({ dryRun: false, log, runId: "r1" });
 
       expect(spy).toHaveBeenCalledTimes(1);
       expect(spy.mock.calls[0][0]).toMatchObject({ dryRun: true });
+      expect(log.warn).toHaveBeenCalledTimes(1);
+      expect(log.warn.mock.calls[0][0]).toMatch(/AUTOPAY_LIVE_RUN is false/);
+      expect(log.warn.mock.calls[0][0]).not.toMatch(/paused/i);
     } finally {
       env.AUTOPAY_LIVE_RUN = original;
       spy.mockRestore();
@@ -628,9 +632,13 @@ describe("autopay job — two-switch dry-run gate", () => {
     try {
       await import("./autopay.job.js");
       const { getJob } = await import("../registry.js");
-      const out = await getJob("autopay").handler({ dryRun: false, log: undefined, runId: "r1" });
+      const log = { warn: vi.fn() };
+      const out = await getJob("autopay").handler({ dryRun: false, log, runId: "r1" });
       expect(spy.mock.calls[0][0]).toMatchObject({ dryRun: true });
       expect(out.dryRun).toBe(true);
+      expect(log.warn).toHaveBeenCalledTimes(1);
+      expect(log.warn.mock.calls[0][0]).toMatch(/PAYMENTS_PAUSED/);
+      expect(log.warn.mock.calls[0][0]).not.toMatch(/AUTOPAY_LIVE_RUN is false/);
     } finally {
       env.AUTOPAY_LIVE_RUN = origLive;
       env.PAYMENTS_PAUSED = origPaused;
