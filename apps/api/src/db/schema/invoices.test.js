@@ -68,3 +68,18 @@ test("0030: applied_cents is required and the dollar column is gone (after the 0
   const backfill = sql.indexOf('UPDATE "invoice_payments" SET "applied_cents" = round("applied_amount" * 100)::integer WHERE "applied_cents" IS NULL;');
   assert.ok(backfill >= 0 && backfill < sql.indexOf("SET NOT NULL"), "rows written between migrate and deploy are backfilled BEFORE NOT NULL");
 });
+
+test("legacy invoices and lines carry their Seazona text sealed, in their own nullable columns", () => {
+  assert.equal(invoices.legacyPatient.notNull, false);
+  assert.equal(invoices.legacyPatient.columnType, "PgText");
+  assert.equal(invoiceLines.legacyDescription.notNull, false);
+  assert.equal(invoiceLines.legacyDescription.columnType, "PgText");
+});
+
+test("0033 adds exactly the three legacy columns", () => {
+  const sql = migration("0033_");
+  assert.match(sql, /ALTER TABLE "invoices" ADD COLUMN "legacy_patient" text;/);
+  assert.match(sql, /ALTER TABLE "invoice_lines" ADD COLUMN "legacy_description" text;/);
+  assert.match(sql, /ALTER TABLE "lab_orders" ADD COLUMN "legacy_patient" text;/);
+  assert.equal((sql.match(/ALTER TABLE/g) ?? []).length, 3, sql);
+});

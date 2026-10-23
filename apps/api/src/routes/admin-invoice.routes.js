@@ -1,4 +1,5 @@
 import { authenticate } from "../middleware/authenticate.js";
+import { paymentsPaused } from "../middleware/payments-paused.js";
 import { requireAdmin } from "../middleware/require-role.js";
 import { validate, validateQuery } from "../middleware/validate.js";
 import {
@@ -62,11 +63,11 @@ export default async function adminInvoiceRoutes(fastify) {
       return { id: inv.id, status: inv.status, version: inv.version };
     }));
 
-  fastify.post("/admin/invoices/:id/credit", { preHandler: [...ADMIN, validate(invoiceCreditSchema)] }, (request, reply) =>
+  fastify.post("/admin/invoices/:id/credit", { preHandler: [...ADMIN, paymentsPaused, validate(invoiceCreditSchema)] }, (request, reply) =>
     run(reply, () => actions.recordCredit(request.params.id, { ...request.body, byUserId: request.user.id }), 201));
 
   // "Record payment" on a client: check, cash, ACH or other.
-  fastify.post("/admin/clients/:userId/payments", { preHandler: [...ADMIN, validate(manualPaymentSchema)] }, (request, reply) =>
+  fastify.post("/admin/clients/:userId/payments", { preHandler: [...ADMIN, paymentsPaused, validate(manualPaymentSchema)] }, (request, reply) =>
     run(reply, () => actions.recordManualPayment({ clientUserId: request.params.userId, ...request.body, byUserId: request.user.id }), 201));
 
   // Staff-triggered notice: number, amount, due date, portal link. No PDF, no clinical data.

@@ -20,6 +20,7 @@ const FILES = {
   ],
   "../invoice-payment.routes.js": [
     'fastify.post("/payments/charge-saved",', 'fastify.post("/payments/hosted-token",', 'fastify.post("/payments/hosted-complete",',
+    'fastify.get("/payments/status",',
   ],
   "../refund.routes.js": ['fastify.post("/admin/payments/refund",'],
   "../payment.routes.js": [

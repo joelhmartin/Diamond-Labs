@@ -126,7 +126,7 @@ export function AdminInvoicesPage() {
               return (
                 <tr key={r.id} className="border-t border-surface-300/30 hover:bg-surface-50/50">
                   <td className="px-4 py-3 font-medium"><Link to={adminInvoicePath(r.id)} className="text-brand-700 hover:underline">#{r.invoiceNumber}</Link></td>
-                  <td className="px-4 py-3 text-navy/80">{r.practice || r.clientName || (r.kind === "shop" ? "Guest (shop)" : "—")}</td>
+                  <td className="px-4 py-3 text-navy/80">{r.practice || r.clientName || (r.kind === "shop" ? "Guest (shop)" : r.kind === "legacy" ? "Unowned (Seazona history)" : "—")}</td>
                   <td className="px-4 py-3 text-navy/60">{r.labOrderNumber ? `#${r.labOrderNumber}` : "—"}</td>
                   <td className="px-4 py-3 text-navy/60">{r.issuedAt ? instantText(r.issuedAt) : "—"}</td>
                   <td className="px-4 py-3 text-navy/60">{dateText(r.dueDate)}</td>

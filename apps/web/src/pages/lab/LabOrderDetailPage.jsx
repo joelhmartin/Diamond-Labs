@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Loader2, AlertCircle, Printer, FileText, RotateCcw, Zap, PauseCircle, Clock } from "lucide-react";
-import { LAB_STATUS_LABELS, allowedNextStatuses, reasonRequiredFor, groupRxAnswers, getRxForm } from "@my-app/shared";
+import { LAB_STATUS_LABELS, LAB_ORDER_SOURCE_LABELS, allowedNextStatuses, canRemake, reasonRequiredFor, groupRxAnswers, getRxForm } from "@my-app/shared";
 import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { Modal } from "../../components/ui/Modal.jsx";
 import { ROUTES, labOrderPath } from "../../config/routes.js";
 import { describeEvent } from "../../lib/lab-board.js";
 import { INPUT } from "../../components/lab/form-styles.js";
+import { LegacyOrderPanel } from "../../components/lab/LegacyOrderPanel.jsx";
 import { ShippingPanel } from "../../components/lab/ShippingPanel.jsx";
 import { errorText, blobErrorText, isStale, openInNewTab, openPdf } from "../../lib/requests.js";
 
@@ -127,7 +128,7 @@ export function LabOrderDetailPage() {
     );
   }
 
-  const { order, lines, events, rxCase, files, shopOrder, shipment } = detail;
+  const { order, lines, events, rxCase, files, shopOrder, shipment, legacy } = detail;
   const moves = allowedNextStatuses(order.status, { heldFrom: order.heldFrom, labelled: Boolean(order.shipmentId) });
   const answerGroups = rxCase ? groupRxAnswers(getRxForm(rxCase.formType), rxCase.formData) : [];
   const devices = lines.filter((l) => !l.noteOnly);
@@ -181,13 +182,14 @@ export function LabOrderDetailPage() {
             {order.overdue && <span className="flex items-center gap-1 text-xs font-semibold text-red-600"><Clock size={11} /> Overdue</span>}
             {rxCase && <Link to={`/admin/rx-cases/${rxCase.id}`} className="font-mono text-xs text-brand-600 hover:underline">{rxCase.caseNumber}</Link>}
             {shopOrder && <span className="font-mono text-xs">{shopOrder.orderNumber}</span>}
+            {legacy && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">{LAB_ORDER_SOURCE_LABELS.legacy}</span>}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={printTicket} className="flex items-center gap-1.5 rounded-full bg-navy px-4 py-2 text-sm font-semibold text-white hover:bg-navy/90">
             <Printer size={14} /> Work ticket
           </button>
-          {order.status === "shipped" && (
+          {canRemake(order) && (
             <button type="button" disabled={busy} onClick={remake} className="flex items-center gap-1.5 rounded-full border border-navy/20 bg-white px-4 py-2 text-sm font-semibold text-navy hover:border-navy/40 disabled:opacity-40">
               <RotateCcw size={14} /> Remake
             </button>
@@ -232,6 +234,7 @@ export function LabOrderDetailPage() {
             )}
           </Panel>
 
+          {legacy && <LegacyOrderPanel legacy={legacy} order={order} />}
           {rxCase?.buildNotes && <Panel title="Build notes"><p className="whitespace-pre-wrap text-sm text-navy">{rxCase.buildNotes}</p></Panel>}
           {rxCase?.generalComments && <Panel title="Doctor's comments"><p className="whitespace-pre-wrap text-sm text-navy">{rxCase.generalComments}</p></Panel>}
 
@@ -329,7 +332,7 @@ export function LabOrderDetailPage() {
               </div>
               <div className="text-xs text-navy/50">
                 Practice: <span className="text-navy">{rxCase?.practiceName || order.clientName || shopOrder?.shipping?.name || "—"}</span><br />
-                {rxCase?.patientName && <>Patient: <span className="text-navy">{rxCase.patientName}</span></>}
+                {(rxCase?.patientName || legacy?.patientName) && <>Patient: <span className="text-navy">{rxCase?.patientName || legacy?.patientName}</span></>}
               </div>
             </div>
           </Panel>

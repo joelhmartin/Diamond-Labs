@@ -1,0 +1,8 @@
+[
+  { "id": "inv-a", "invoiceNumber": "11114", "patient": "Test Patient A", "clientId": "c-1324", "fullName": "Dr. Example One", "company": "Example Dental", "sales": 1250.0, "tax": 0, "discounts": 0, "total": 1250.0, "status": "Shipped", "due": "2026-02-15T00:00:00", "lastModified": "2025-11-29T15:05:50" },
+  { "id": "inv-b", "invoiceNumber": "11115", "patient": "Test Patient B", "clientId": "c-1324", "fullName": "Dr. Example One", "company": "Example Dental", "sales": 290.0, "tax": 10.0, "discounts": 0, "total": 300.0, "status": "In Production", "due": "2026-03-01T00:00:00", "lastModified": "2026-10-01T10:00:00" },
+  { "id": "inv-c", "invoiceNumber": "11120", "patient": "Test Patient C", "clientId": "c-2001", "sales": 80, "tax": 0, "discounts": 0, "total": 80, "status": "Void", "due": "2026-04-01", "lastModified": "2026-10-02T00:00:00" },
+  { "id": "inv-d", "invoiceNumber": "11121", "patient": "Test Patient D", "clientId": "c-2001", "sales": 95, "tax": 0, "discounts": 0, "total": 95, "status": "Shipped", "due": "2026-04-05", "lastModified": "2026-10-03T00:00:00" },
+  { "id": "inv-x", "invoiceNumber": "INV-9", "patient": "Test Patient X", "clientId": "c-2001", "total": 10, "tax": 0, "status": "Shipped", "due": "2026-04-05" },
+  { "id": "inv-y", "invoiceNumber": "11130", "patient": "Test Patient Y", "clientId": "c-unknown", "total": 10, "tax": 0, "status": "Shipped", "due": "2026-04-05" }
+]

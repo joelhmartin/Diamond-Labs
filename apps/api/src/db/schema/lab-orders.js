@@ -32,9 +32,12 @@ export const labOrders = pgTable("lab_orders", {
   // Continues the lab's paperwork numbering from LAB_ORDER_NUMBER_START
   // (lab-orders.service allocateOrderNumber, under an advisory lock).
   orderNumber: integer("order_number").notNull(),
-  // rx_case | shop_order
+  // rx_case | shop_order | legacy (packages/shared LAB_ORDER_SOURCES)
   source: varchar("source", { length: 20 }).notNull(),
   sourceId: varchar("source_id", { length: 128 }).notNull(),
+  // Piece 5: a legacy (Seazona) order has no Rx case to read the patient from,
+  // so its patient lives here. Encrypted (lab-orders.service sealOrder). Null otherwise.
+  legacyPatient: text("legacy_patient"),
   // The doctor (Rx) or the approved doctor the shop order was priced for;
   // null for a guest shop order.
   clientUserId: varchar("client_user_id", { length: 128 }),

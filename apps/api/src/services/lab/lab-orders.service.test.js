@@ -33,7 +33,9 @@ test("a release claims the case before inserting, so a double click can't make t
 });
 
 test("hold reasons, lab notes and event notes are sealed on write and opened on read", () => {
-  assert.match(source, /SECRET_ORDER_FIELDS = \["holdReason", "labNotes"\]/);
+  const crypto = readFileSync(new URL("./lab-order-crypto.js", import.meta.url), "utf8");
+  assert.match(crypto, /SECRET_ORDER_FIELDS = \["holdReason", "labNotes", "legacyPatient"\]/);
+  assert.match(source, /from "\.\/lab-order-crypto\.js"/);
   assert.match(source, /encryptField/);
   assert.match(source, /decryptField/);
 });

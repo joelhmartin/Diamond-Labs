@@ -1,4 +1,5 @@
 import { authenticate } from "../middleware/authenticate.js";
+import { paymentsPaused } from "../middleware/payments-paused.js";
 import { requireAdmin } from "../middleware/require-role.js";
 import { validate } from "../middleware/validate.js";
 import { sendRefundReceipt } from "../services/email.service.js";
@@ -12,7 +13,7 @@ import { createId } from "../lib/id.js";
 import { toDecimalString } from "../lib/money.js";
 import { OFFLINE_PREFIX, REFUND_PENDING_PREFIX } from "../lib/payment-summary.js";
 import { planRefund, invoiceKeysOf } from "../lib/refund-plan.js";
-import { ERROR_CODES, refundSchema, SHOP_PAYMENT_SOURCE, CREDIT_SOURCE, isManualPaymentSource } from "@my-app/shared";
+import { ERROR_CODES, refundSchema, HISTORY_EXCLUDED_SOURCES, CREDIT_SOURCE, isManualPaymentSource } from "@my-app/shared";
 import { withIdempotency, ChargeInProgressError, extractDeclineMessage } from "../lib/payment-helpers.js";
 
 const invoiceRef = (r) => r.invoiceNumber || r.invoiceId || r.seazonaInvoiceId;
@@ -33,20 +34,20 @@ export default async function refundRoutes(fastify) {
   // always cached rather than followed by a lock release that permits a re-refund.
   // ───────────────────────────────────────────────────────────────
   fastify.post("/admin/payments/refund", {
-    preHandler: [authenticate, requireAdmin, validate(refundSchema)],
+    preHandler: [authenticate, requireAdmin, paymentsPaused, validate(refundSchema)],
   }, async (request, reply) => {
     const { transactionId, allocations } = request.body;
     const txid = String(transactionId);
 
-    // 1. The ORIGINAL charge's rows (positive only). Shop checkouts and staff
-    //    credits are not portal card payments: never refunded here.
+    // 1. The ORIGINAL charge's rows (positive only). Shop checkouts, Seazona settlements and
+    //    staff credits are not portal card payments: never refunded here.
     const originalRows = await db
       .select()
       .from(invoicePayments)
       .where(and(
         eq(invoicePayments.transactionId, txid),
         gt(invoicePayments.appliedCents, 0),
-        or(isNull(invoicePayments.source), notInArray(invoicePayments.source, [SHOP_PAYMENT_SOURCE, CREDIT_SOURCE])),
+        or(isNull(invoicePayments.source), notInArray(invoicePayments.source, [...HISTORY_EXCLUDED_SOURCES, CREDIT_SOURCE])),
       ));
     if (!originalRows.length) {
       return reply.code(404).send({ error: { ...ERROR_CODES.NOT_FOUND, message: "No portal payment found for that transaction id." } });

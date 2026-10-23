@@ -10,6 +10,8 @@ import { ROUTES } from "../../config/routes.js";
 import { formatCents } from "../../lib/money.js";
 import { isPayable } from "../../lib/invoices.js";
 import { openPdf, blobErrorText } from "../../lib/requests.js";
+import { usePaymentsPaused } from "../../hooks/usePaymentsPaused.js";
+import { PaymentsPausedBanner } from "../../components/doctor/PaymentsPausedBanner.jsx";
 
 /** One of the doctor's invoices, read-only, with its PDF and a pay button while it owes. */
 export function InvoiceDetailPage() {
@@ -18,6 +20,7 @@ export function InvoiceDetailPage() {
   const [failed, setFailed] = useState(false);
   const [paying, setPaying] = useState(false);
   const { addToast } = useToast();
+  const paused = usePaymentsPaused();
 
   const load = useCallback(() => {
     api.get(`/invoices/${id}`)
@@ -41,7 +44,7 @@ export function InvoiceDetailPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
-      {back}
+      {back}{paused && <PaymentsPausedBanner />}
       <InvoiceView
         invoice={inv}
         order={{ orderNumber: inv.labOrderNumber, caseNumber: inv.caseNumber, patientName: inv.patientName }}
@@ -50,7 +53,7 @@ export function InvoiceDetailPage() {
         actions={
           <>
             <Button variant="secondary" size="sm" onClick={downloadPdf}><FileDown size={14} /> PDF</Button>
-            {isPayable(inv) && (
+            {isPayable(inv) && !paused && (
               <Button size="sm" onClick={() => setPaying(true)}><CreditCard size={14} /> Pay {formatCents(inv.balanceCents)}</Button>
             )}
           </>

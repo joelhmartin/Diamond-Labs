@@ -4,10 +4,12 @@ import { isoDateIn, isOverdue, LAB_TIMEZONE, STAFF_ROLES, caseSummary } from "@m
 import { db } from "../../config/database.js";
 import { env } from "../../config/env.js";
 import {
-  labOrders, labOrderLines, labOrderEvents, labDepartments, rxCases, rxCaseFiles, rxCaseLines, orders, users, productVariants, shipments,
+  labOrders, labOrderLines, labOrderEvents, labDepartments, rxCases, rxCaseFiles, rxCaseLines, orders, users, shipments,
 } from "../../db/schema/index.js";
 import { createId } from "../../lib/id.js";
-import { encryptField, decryptField, fieldSealer } from "../../lib/crypto.js";
+import { encryptField, decryptField } from "../../lib/crypto.js";
+import { sealOrder, openOrder } from "./lab-order-crypto.js";
+import { variantIdsForCodes } from "./lab-variants.js";
 import { decryptRxPhi } from "../rx/phi-crypto.js";
 import { shipmentSummaries } from "../shipping/shipments.service.js";
 import { allocateSequenceNumber } from "../sequence.service.js";
@@ -27,13 +29,6 @@ const client = alias(users, "client");
 const assignee = alias(users, "assignee");
 const actor = alias(users, "actor");
 
-// Free text staff type can name a patient, so it is encrypted at rest like
-// rx_cases' free-text fields (B4 / phi-crypto.js).
-const SECRET_ORDER_FIELDS = ["holdReason", "labNotes"];
-
-const orderSecrets = fieldSealer(SECRET_ORDER_FIELDS);
-const sealOrder = orderSecrets.seal;
-const openOrder = orderSecrets.open;
 function sealEvent(e) {
   return { ...e, id: createId(), note: e.note == null ? null : encryptField(e.note) };
 }
@@ -48,16 +43,6 @@ export function allocateOrderNumber(tx) {
   return allocateSequenceNumber(tx, {
     lockId: LAB_ORDER_NUMBER_LOCK, table: labOrders, column: labOrders.orderNumber, start: env.LAB_ORDER_NUMBER_START,
   });
-}
-
-async function variantIdsForCodes(tx, codes) {
-  const unique = [...new Set(codes.filter(Boolean).map(String))];
-  if (unique.length === 0) return new Map();
-  const rows = await tx
-    .select({ id: productVariants.id, code: productVariants.code })
-    .from(productVariants)
-    .where(inArray(productVariants.code, unique));
-  return new Map(rows.map((r) => [r.code, r.id]));
 }
 
 async function insertPlan(tx, { labOrder, lines, events }) {
@@ -238,6 +223,7 @@ export async function getLabOrderDetail(id, now = new Date()) {
   let rxCase = null;
   let files = [];
   let shopOrder = null;
+  let legacy = null;
   if (order.source === "rx_case") {
     const [raw] = await db.select().from(rxCases).where(eq(rxCases.id, order.sourceId));
     if (raw) {
@@ -259,19 +245,30 @@ export async function getLabOrderDetail(id, now = new Date()) {
         .from(rxCaseFiles)
         .where(eq(rxCaseFiles.caseId, c.id));
     }
-  } else {
+  } else if (order.source === "shop_order") {
     const [s] = await db
       .select({ id: orders.id, orderNumber: orders.orderNumber, email: orders.email, phone: orders.phone, shipping: orders.shipping, createdAt: orders.createdAt })
       .from(orders)
       .where(eq(orders.id, order.sourceId));
     shopOrder = s ?? null;
+  } else if (order.source === "legacy") {
+    // A Seazona order imported at cutover (piece 5). If a portal Rx case was
+    // pushed to it, link the case: its files and form live there.
+    const [c] = await db
+      .select({ id: rxCases.id, caseNumber: rxCases.caseNumber })
+      .from(rxCases)
+      .where(eq(rxCases.seazonaOrderId, order.sourceId))
+      .orderBy(asc(rxCases.createdAt), asc(rxCases.id)) // deterministic if two cases ever share a Seazona order
+      .limit(1);
+    legacy = { seazonaOrderId: order.sourceId, patientName: order.legacyPatient ?? null, caseId: c?.id ?? null, caseNumber: c?.caseNumber ?? null };
   }
 
   const shipment = order.shipmentId ? ((await shipmentSummaries([order.shipmentId])).get(order.shipmentId) ?? null) : null;
 
+  const { legacyPatient: _openedPatient, ...orderFields } = order; // surfaced once, under `legacy`
   return {
     order: {
-      ...order,
+      ...orderFields,
       departmentName: row.departmentName ?? null,
       assigneeName: row.assigneeName ?? null,
       clientName: row.clientName ?? null,
@@ -283,6 +280,7 @@ export async function getLabOrderDetail(id, now = new Date()) {
     rxCase,
     files,
     shopOrder,
+    legacy,
     shipment,
   };
 }

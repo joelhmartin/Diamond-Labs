@@ -1,8 +1,8 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
-  LAB_ORDER_STATUSES, LAB_BOARD_COLUMNS, LAB_STATUS_LABELS, allowedNextStatuses, canMoveLabOrder,
-  reasonRequiredFor, isOverdue, isoDateIn, doctorStatusFor, doctorCaseView, doctorTracking, formatUsDate, formatLabDate, caseSummary,
+  LAB_ORDER_SOURCES, LAB_ORDER_SOURCE_LABELS, LAB_ORDER_STATUSES, LAB_BOARD_COLUMNS, LAB_STATUS_LABELS, allowedNextStatuses, canMoveLabOrder,
+  reasonRequiredFor, canRemake, isOverdue, isoDateIn, doctorStatusFor, doctorCaseView, doctorTracking, formatUsDate, formatLabDate, caseSummary,
 } from "./lab-order-status.js";
 
 // The whole table, written out. Every pair not listed here must be refused.
@@ -180,4 +180,17 @@ test("no tracking before the order ships (a label can still be voided), for a vo
 test("a manual shipment shows what staff typed, with no link", () => {
   const t = doctorTracking({ ...shippedLo, shipment: { carrier: "manual", serviceName: "Lone Star Courier", trackingNumber: "LS-1234567", status: "in_transit", deliveredAt: null } });
   assert.deepEqual(t, { carrier: "Lone Star Courier", trackingNumber: "LS-1234567", url: null, deliveredAt: null });
+});
+
+test("lab orders come from an Rx case, a shop order, or Seazona history", () => {
+  assert.deepEqual(LAB_ORDER_SOURCES, ["rx_case", "shop_order", "legacy"]);
+  for (const s of LAB_ORDER_SOURCES) assert.ok(LAB_ORDER_SOURCE_LABELS[s], s);
+  assert.equal(LAB_ORDER_SOURCE_LABELS.legacy, "Seazona history");
+});
+
+test("canRemake: shipped orders only, never a legacy (Seazona) order", () => {
+  assert.equal(canRemake({ status: "shipped", source: "rx_case" }), true);
+  assert.equal(canRemake({ status: "shipped", source: "shop_order" }), true);
+  assert.equal(canRemake({ status: "shipped", source: "legacy" }), false);
+  assert.equal(canRemake({ status: "in_production", source: "rx_case" }), false);
 });

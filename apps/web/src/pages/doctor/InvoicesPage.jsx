@@ -11,6 +11,8 @@ import { usePagination } from "../../hooks/usePagination.js";
 import { formatCents } from "../../lib/money.js";
 import { STATUS_TONES, statusOf, isPayable, labToday, dateText, instantText } from "../../lib/invoices.js";
 import { doctorInvoicePath } from "../../config/routes.js";
+import { usePaymentsPaused } from "../../hooks/usePaymentsPaused.js";
+import { PaymentsPausedBanner } from "../../components/doctor/PaymentsPausedBanner.jsx";
 
 /** The doctor's invoices (issued and void; drafts are never shown), with pay-selected and statements. */
 export function InvoicesPage() {
@@ -20,6 +22,7 @@ export function InvoicesPage() {
   const [selected, setSelected] = useState(new Set());
   const [showPayment, setShowPayment] = useState(false);
   const { addToast } = useToast();
+  const paused = usePaymentsPaused();
 
   const fetchInvoices = useCallback(async () => {
     try {
@@ -70,7 +73,7 @@ export function InvoicesPage() {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <StatementDownload path="/invoices/statement.pdf" />
-          {selected.size > 0 && (
+          {selected.size > 0 && !paused && (
             <Button onClick={() => setShowPayment(true)}>
               <CreditCard className="mr-2 h-4 w-4" />
               Pay selected ({selected.size}) — {formatCents(selectedTotal)}
@@ -78,6 +81,7 @@ export function InvoicesPage() {
           )}
         </div>
       </div>
+      {paused && <PaymentsPausedBanner />}
 
       {invoices.length === 0 ? (
         <div className="rounded-xl border border-gray-200 bg-white p-12 text-center">

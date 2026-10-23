@@ -121,6 +121,13 @@ const shippedLines = [
   { id: "l1", labOrderId: "lo-1", position: 0, variantId: "var-2608", code: "2608", name: "DDSO Nylon", arch: "Upper", qty: 1, noteOnly: false, sourceLabel: null },
 ];
 
+test("a legacy (Seazona) order can't be remade here", () => {
+  assert.throws(
+    () => planRemake({ original: { ...shipped, source: "legacy" }, originalLines: shippedLines, reason: "Cracked", orderNumber: 100300, labOrderId: "lo-9", now }),
+    (e) => e instanceof LabOrderError && e.code === "INVALID" && /start a new Rx case/.test(e.message),
+  );
+});
+
 test("a remake is a new received order for the same case, pointing back at the original", () => {
   const plan = planRemake({ original: shipped, originalLines: shippedLines, reason: " Cracked on seating ", orderNumber: 100300, labOrderId: "lo-9", byUserId: "staff-1", now });
   assert.equal(plan.labOrder.isRemake, true);
@@ -312,4 +319,11 @@ test("a board card says when its order has a label", () => {
 
 test("a labelled order already shipped gets the normal refusal, not 'void the label'", () => {
   assert.throws(() => planStatusChange({ ...labelled, status: "shipped" }, "on_hold", { reason: "x", now }), (e) => isCode("INVALID_TRANSITION")(e) && !/void the label/.test(e.message));
+});
+
+test("a legacy order's board card says where it came from and never shows a patient", () => {
+  const card = presentBoardCard({ order: { id: "lo", orderNumber: 98000, source: "legacy", sourceId: "ord-1", status: "in_production", version: 1, legacyPatient: "Test Patient" }, clientName: "Dr. Example" }, [], "2026-11-01");
+  assert.equal(card.reference, "Seazona");
+  assert.equal(card.practice, "Dr. Example");
+  assert.ok(!JSON.stringify(card).includes("Test Patient"));
 });

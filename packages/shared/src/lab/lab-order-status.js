@@ -23,6 +23,17 @@ export const LAB_BOARD_COLUMNS = [
 export const TERMINAL_LAB_STATUSES = ["shipped", "cancelled"];
 export const REASON_REQUIRED_STATUSES = ["on_hold", "cancelled"];
 
+/**
+ * Where a lab order came from. `legacy` is an order imported from Seazona at
+ * cutover (own-the-lab piece 5): source_id is the Seazona order id, and it is
+ * never billed by this system (its bill is the imported legacy invoice).
+ */
+export const LAB_ORDER_SOURCES = ["rx_case", "shop_order", "legacy"];
+/** Only a shipped order of ours can be remade: a legacy (Seazona) order has no Rx case here to rebuild from. Used by the API and the web. */
+export const canRemake = (order) => order?.status === "shipped" && order?.source !== "legacy";
+
+export const LAB_ORDER_SOURCE_LABELS = { rx_case: "Rx case", shop_order: "Shop order", legacy: "Seazona history" };
+
 const FLOW = {
   received: ["in_production"],
   in_production: ["quality_check"],

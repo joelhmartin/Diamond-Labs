@@ -55,3 +55,8 @@ test("a remake may share its source; an original may not (partial unique index)"
   assert.match(sql, /CREATE UNIQUE INDEX "lab_orders_source_idx" ON "lab_orders" USING btree \("source","source_id"\) WHERE is_remake = false/);
   assert.match(sql, /CREATE UNIQUE INDEX "lab_orders_order_number_idx"/);
 });
+
+test("a legacy lab order keeps its patient sealed on the order (it has no Rx case)", () => {
+  assert.equal(labOrders.legacyPatient.notNull, false);
+  assert.equal(labOrders.legacyPatient.columnType, "PgText");
+});

@@ -1,4 +1,9 @@
 import { env } from "../config/env.js";
+import { RATE_LIMIT_WINDOW_MS, MAX_REQUESTS_PER_WINDOW, LIST_PAGE_CAP } from "./seazona-limits.js";
+
+// The limiter's numbers live in seazona-limits.js (no env needed) so piece 5's
+// operator CLIs can import them without loading config/env.js.
+export { RATE_LIMIT_WINDOW_MS, MAX_REQUESTS_PER_WINDOW, LIST_PAGE_CAP };
 
 /** True when SEAZONA_DISABLED="true" (staging): no Seazona call may leave the process. */
 export function isDisabled() {
@@ -25,11 +30,9 @@ function getAuthHeader() {
 // So the throttle lives HERE, not in callers. Every Seazona request in the
 // codebase funnels through requestRaw, which means no caller — present or
 // future — can bypass the limit or has to remember to.
-const RATE_LIMIT_WINDOW_MS = 60_000;
-// Deliberately under the documented 60: leaves headroom for clock skew and for
-// any traffic from another process sharing this integration's quota.
-const MAX_REQUESTS_PER_WINDOW = 50;
-const MAX_WRITES_PER_WINDOW = 15; // under the documented 20
+// RATE_LIMIT_WINDOW_MS (60s) and MAX_REQUESTS_PER_WINDOW (50, deliberately under
+// the documented 60) come from seazona-limits.js.
+export const MAX_WRITES_PER_WINDOW = 15; // under the documented 20
 const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 /** Timestamps of recent requests, and of recent writes, within the window. */
@@ -212,12 +215,18 @@ export async function checkLoginExists(email) {
 }
 
 /**
- * List all clients. The Seazona API requires the `lastModified` query param
- * to be present (empty string returns everything).
+ * Clients, with the call's HTTP status (piece 5's fetcher needs to see a 403).
+ * The Seazona API requires the `lastModified` query param to be present (empty
+ * string returns everything).
  */
+export async function listClientsResult(lastModified = "") {
+  const r = await requestRaw(`v1/clients/?lastModified=${encodeURIComponent(lastModified)}`);
+  return { ok: r.ok && Array.isArray(r.data), status: r.status, clients: Array.isArray(r.data) ? r.data : [] };
+}
+
+/** List all clients ([] on any failure). */
 export async function listClients(lastModified = "") {
-  const data = await request(`v1/clients/?lastModified=${encodeURIComponent(lastModified)}`);
-  return Array.isArray(data) ? data : [];
+  return (await listClientsResult(lastModified)).clients;
 }
 
 /**
@@ -250,63 +259,109 @@ export async function getInvoices(lastModified) {
 }
 
 /**
- * Like getInvoices but reports reachability: `reachable` is false when the
- * underlying call errored (non-2xx / network), letting callers tell "Seazona is
- * down" apart from "Seazona returned an empty list".
+ * Like getInvoices but reports reachability and status: `reachable` is false
+ * when the call errored (non-2xx / network), letting callers tell "Seazona is
+ * down" (or blocked: status 403) apart from "Seazona returned an empty list".
  */
 export async function getInvoicesResult(lastModified) {
   const since = lastModified || "1900-01-01T00:00:00Z";
-  const data = await request(`v1/invoices/?lastModified=${encodeURIComponent(since)}`);
-  return { reachable: data !== null, invoices: Array.isArray(data) ? data : [] };
+  const r = await requestRaw(`v1/invoices/?lastModified=${encodeURIComponent(since)}`);
+  // A 2xx whose body is not a list is a failed read, never an empty archive.
+  return { reachable: Array.isArray(r.data), status: r.status, invoices: Array.isArray(r.data) ? r.data : [] };
 }
 
-const INVOICE_PAGE_CAP = 10000;
+// Seazona truncates the invoice and order lists at LIST_PAGE_CAP rows (seazona-limits.js).
 
+/** ts + 1s as an ISO string; null when ts is not a parseable timestamp (never throws). */
 function bumpOneSecond(ts) {
   const d = new Date(ts.endsWith("Z") ? ts : `${ts}Z`);
+  if (Number.isNaN(d.getTime())) return null;
   d.setUTCSeconds(d.getUTCSeconds() + 1);
   return d.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
 /**
- * Fetch the FULL invoice archive, working around Seazona's hard 10,000-record
- * cap on `GET v1/invoices/`. The API sorts by id and truncates at the cap, and
- * the historical archive was bulk-restamped to a single `lastModified`, so we
- * walk forward by `lastModified` and bump one second whenever an entire capped
- * batch shares the same timestamp (otherwise the cursor can't escape the blob).
- * De-dupes by invoice id.
+ * Walk a capped Seazona list (the invoice and order lists truncate at 10,000
+ * rows sorted by id) forward by `field`, re-requesting from the page's newest
+ * value. De-dupes by id. `truncated` means a capped page gave no cursor to
+ * advance by (the set is incomplete; never treat it as whole). A FULL page whose
+ * records all share one value is truncated too (ruling F3): more rows with that
+ * value may lie past the cap (the list is sorted by id), and skipping past the
+ * value would drop them silently. The invoice archive was bulk-restamped, so
+ * this is a real case: it fails the walk for operator attention, never guesses.
+ * The one exception (ruling F3b) is `acceptCappedTimestamp`: the operator names
+ * the ONE known bulk stamp, and a full page sharing exactly that instant is
+ * paged past by one second. The walk then reports `possiblyIncomplete` with
+ * `cappedPages` [{ timestamp, pageSize }]; any other shared stamp still fails.
+ *
+ * Options (piece 5's fetcher): `maxPages` caps the requests (default 50); running
+ * out of pages mid-walk is `truncated`. `beforePage` is awaited before every
+ * page request, so the caller can pace the walk. `budgetExhausted` is true only
+ * when the walk ran out of pages while still advancing (a stall is truncated but
+ * not budgetExhausted).
  */
+async function walkCapped(fetchPage, field, { maxPages = 50, beforePage, acceptCappedTimestamp = null } = {}) {
+  const seen = new Map();
+  const noId = []; // records without an id can't be de-duped; keep them all
+  const instant = (ts) => Date.parse(ts.endsWith("Z") ? ts : `${ts}Z`);
+  let cursor = "1900-01-01T00:00:00Z";
+  let reachable = true;
+  let truncated = false;
+  let done = false; // false after the loop = the page budget ran out mid-walk
+  let status = 200;
+  let requests = 0;
+  const cappedPages = [];
+  for (let i = 0; i < maxPages && !done; i++) {
+    if (beforePage) await beforePage();
+    const page = await fetchPage(cursor);
+    requests += 1;
+    status = page.status;
+    if (!page.reachable) { reachable = false; done = true; break; }
+    if (!page.records.length) { done = true; break; }
+    for (const rec of page.records) {
+      if (rec.id === undefined || rec.id === null) noId.push(rec);
+      else seen.set(rec.id, rec);
+    }
+    if (page.records.length < LIST_PAGE_CAP) { done = true; break; }
+    const values = page.records.map((rec) => rec[field]).filter((v) => typeof v === "string" && Number.isFinite(instant(v)));
+    if (values.length === 0) { truncated = true; done = true; break; }
+    const max = values.reduce((m, v) => (instant(v) > instant(m) ? v : m));
+    const sameStamp = page.records.every((rec) => rec[field] === max);
+    if (sameStamp && acceptCappedTimestamp != null && instant(max) === instant(acceptCappedTimestamp)) {
+      const next = bumpOneSecond(max);
+      if (next === null) { truncated = true; done = true; break; }
+      cappedPages.push({ timestamp: max, pageSize: page.records.length });
+      cursor = next;
+      continue;
+    }
+    // A full page sharing one value can't be paged past without dropping rows; the cursor must also move forward.
+    if (sameStamp || !(instant(max) > instant(cursor))) { truncated = true; done = true; break; }
+    cursor = max;
+  }
+  const budgetExhausted = !done;
+  if (budgetExhausted) truncated = true;
+  return { reachable, status, records: [...seen.values(), ...noId], requests, truncated, budgetExhausted, possiblyIncomplete: cappedPages.length > 0, cappedPages };
+}
+
+/** The FULL invoice archive past the 10k cap (see walkCapped). */
 export async function getAllInvoices() {
   return (await getAllInvoicesResult()).invoices;
 }
 
 /**
- * getAllInvoices + reachability. `reachable` is false if ANY page failed (so the
- * caller knows the set may be incomplete / Seazona is degraded), distinguishing a
- * true empty archive from an outage.
+ * getAllInvoices + reachability. `reachable` is false if ANY page failed (the
+ * set may be incomplete; `status` is that page's), distinguishing a true empty
+ * archive from an outage or a block.
  */
-export async function getAllInvoicesResult() {
-  const seen = new Map();
-  let cursor = "1900-01-01T00:00:00Z";
-  let reachable = true;
-
-  for (let i = 0; i < 50; i++) {
-    const { reachable: ok, invoices: batch } = await getInvoicesResult(cursor);
-    if (!ok) { reachable = false; break; }
-    if (!batch.length) break;
-
-    for (const inv of batch) seen.set(inv.id, inv);
-    if (batch.length < INVOICE_PAGE_CAP) break;
-
-    const maxLM = batch.reduce(
-      (m, inv) => (inv.lastModified > m ? inv.lastModified : m),
-      batch[0].lastModified
-    );
-    const allSame = batch.every((inv) => inv.lastModified === maxLM);
-    cursor = allSame ? bumpOneSecond(maxLM) : maxLM;
-  }
-
-  return { reachable, invoices: [...seen.values()] };
+export async function getAllInvoicesResult(options) {
+  const w = await walkCapped(async (cursor) => {
+    const r = await getInvoicesResult(cursor);
+    return { reachable: r.reachable, status: r.status, records: r.invoices };
+  }, "lastModified", options);
+  return {
+    reachable: w.reachable, status: w.status, invoices: w.records, requests: w.requests, truncated: w.truncated, budgetExhausted: w.budgetExhausted,
+    possiblyIncomplete: w.possiblyIncomplete, cappedPages: w.cappedPages,
+  };
 }
 
 /**
@@ -316,20 +371,45 @@ export async function getInvoice(id) {
   return request(`v1/invoices/${encodeURIComponent(id)}`);
 }
 
+/** One invoice (with its lines) and the call's status. Piece 5's fetcher only. */
+export async function getInvoiceResult(id) {
+  const r = await requestRaw(`v1/invoices/${encodeURIComponent(id)}`);
+  return { ok: r.ok, status: r.status, invoice: r.data };
+}
+
 // Read-only; kept for own-the-lab piece 5's historical order import.
 /**
  * Get orders ordered since the given ISO timestamp. Same gotcha as invoices:
  * the `ordered` query param is required, empty = 400.
  */
-export async function getOrders(ordered) {
+export async function getOrdersResult(ordered) {
   const since = ordered || "1900-01-01T00:00:00Z";
-  const data = await request(`v1/orders/?ordered=${encodeURIComponent(since)}`);
-  return Array.isArray(data) ? data : [];
+  const r = await requestRaw(`v1/orders/?ordered=${encodeURIComponent(since)}`);
+  return { reachable: Array.isArray(r.data), status: r.status, orders: Array.isArray(r.data) ? r.data : [] };
+}
+
+export async function getOrders(ordered) {
+  return (await getOrdersResult(ordered)).orders;
+}
+
+/** Every order, walked past a possible 10k cap by `ordered` (see walkCapped). Piece 5's fetcher only. */
+export async function getAllOrdersResult(options) {
+  const w = await walkCapped(async (cursor) => {
+    const r = await getOrdersResult(cursor);
+    return { reachable: r.reachable, status: r.status, records: r.orders };
+  }, "ordered", options);
+  return { reachable: w.reachable, status: w.status, orders: w.records, requests: w.requests, truncated: w.truncated, budgetExhausted: w.budgetExhausted };
 }
 
 /** Get a single order with products, files, settings. */
 export async function getOrder(id) {
   return request(`v1/orders/${encodeURIComponent(id)}`);
+}
+
+/** One order (products, files, settings) and the call's status. Piece 5's fetcher only. */
+export async function getOrderResult(id) {
+  const r = await requestRaw(`v1/orders/${encodeURIComponent(id)}`);
+  return { ok: r.ok, status: r.status, order: r.data };
 }
 
 /**
@@ -347,13 +427,18 @@ export async function getPayment(id) {
   return request(`v1/payments/${encodeURIComponent(id)}`);
 }
 
+/** Products with the call's status (a 2xx with a non-array body is not ok). */
+export async function listProductsResult() {
+  const r = await requestRaw("v1/products/");
+  return { ok: r.ok && Array.isArray(r.data), status: r.status, products: Array.isArray(r.data) ? r.data : [] };
+}
+
 /**
  * List all Seazona products ({ id, code, name, taxable, price }).
  * Used to map our catalog SKUs / Rx devices to Seazona product ids.
  */
 export async function listProducts() {
-  const data = await request("v1/products/");
-  return Array.isArray(data) ? data : [];
+  return (await listProductsResult()).products;
 }
 
 /** Get a single product by id. */
@@ -361,11 +446,16 @@ export async function getProduct(id) {
   return request(`v1/products/${encodeURIComponent(id)}`);
 }
 
+/** Seazona users with the call's status (a 2xx with a non-array body is not ok). */
+export async function listUsersResult() {
+  const r = await requestRaw("v1/users/");
+  return { ok: r.ok && Array.isArray(r.data), status: r.status, users: Array.isArray(r.data) ? r.data : [] };
+}
+
 /**
  * List Seazona users (lab staff: { id, firstName, lastName, email }).
- * The `id` is what an order's `userId` field expects.
+ * Kept for piece 5's raw archive (the fetcher reads listUsersResult).
  */
 export async function listUsers() {
-  const data = await request("v1/users/");
-  return Array.isArray(data) ? data : [];
+  return (await listUsersResult()).users;
 }

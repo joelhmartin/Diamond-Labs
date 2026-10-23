@@ -1,0 +1,11 @@
+[
+  {
+    "id": "ord-1", "orderNumber": "98000",
+    "products": [
+      { "id": "p-1", "code": "2608", "name": "DDSO Nylon", "quantity": 1, "arch": 1 },
+      { "id": "p-2", "code": "2701", "name": "Night guard", "quantity": 2, "arch": 2 }
+    ],
+    "files": [{ "name": "scan-upper.stl" }],
+    "settings": [{ "name": "Contacts", "value": "normal" }]
+  }
+]

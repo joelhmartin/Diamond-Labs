@@ -1,0 +1,9 @@
+[
+  {
+    "id": "inv-b", "invoiceNumber": "11115", "date": "2026-01-30T09:12:00",
+    "productServiceItems": [
+      { "type": "product", "code": "2608", "name": "DDSO Nylon — Test Patient B", "quantity": 1, "price": 250.0, "total": 250.0 },
+      { "type": "service", "code": "SHIP", "name": "Shipping", "quantity": 1, "price": 15.0, "total": 15.0 }
+    ]
+  }
+]

@@ -39,13 +39,32 @@ async function deliver({ to, bcc, subject, html, text }) {
   // sanitised on its own (so the 320-char cap can't cut a list mid-address) and
   // the list is joined with commas, which is what Mailgun takes: ONE message to
   // everyone, never N separate sends.
-  const addresses = (v) => [].concat(v ?? []).map((a) => headerSafe(a, 320)).filter(Boolean).join(", ");
+  // `.invalid` is a reserved TLD (RFC 2606): piece 5's placeholder logins for
+  // Seazona clients with no email use it, and they must never be mailed.
+  const UNDELIVERABLE = /\.invalid>?$/i;
+  let droppedUndeliverable = false;
+  const addresses = (v) =>
+    [].concat(v ?? []).flatMap((a) => String(a ?? "").split(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/)).map((a) => headerSafe(a, 320)).filter((a) => {
+      if (a && UNDELIVERABLE.test(a)) { droppedUndeliverable = true; return false; }
+      return Boolean(a);
+    }).join(", ");
   // Header values: several subjects interpolate user input (doctor name, account
   // name, ...) and `to` can be a registrant-typed address. Strip control
   // characters (CR/LF header injection) and cap length centrally so no caller
   // has to remember. Done first so the dev log line below is sanitized too.
   to = addresses(to);
   bcc = addresses(bcc);
+  // Only when a .invalid address was the whole recipient list: other callers
+  // (e.g. an unset ADMIN_NOTIFICATION_EMAIL in tests) keep today's behaviour.
+  if (droppedUndeliverable && !to) {
+    if (!bcc) {
+      console.log("[EMAIL] skipped: no deliverable recipient");
+      return false;
+    }
+    // Keep the real copies (e.g. the admin bcc); Mailgun needs a `to`, so they become it.
+    to = bcc;
+    bcc = "";
+  }
   subject = headerSafe(subject, MAX_SUBJECT_LENGTH);
 
   // Staging: redirect to STAGING_EMAIL_TO (identity in production). Applied after

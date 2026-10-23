@@ -8,18 +8,26 @@ import { join, relative } from "node:path";
 // nothing may send an order to Seazona, and the UI may not offer to. This
 // scans source (code AND comments — a stale comment telling a reader to "use
 // clear-push-lock" is its own bug) so a revert or a copy-paste from main
-// can't quietly bring the path back. Seazona reads (getOrders/getOrder) stay
-// in seazona.service.js for piece 5's import.
+// can't quietly bring the path back. Seazona reads (getOrders/getOrder and the *Result forms) stay in seazona.service.js for piece 5; only the fetcher may call them.
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const repo = join(here, "../../../../../");
 const ROOTS = ["apps/api/src", "apps/api/scripts", "apps/web/src", "scripts"].map((p) => join(repo, p));
 const SELF = fileURLToPath(import.meta.url);
+// The service itself, piece 5's fetcher, and the two tests that exercise them.
+const ALLOWED = new Set([
+  "apps/api/src/services/seazona.service.js",
+  "apps/api/src/services/seazona-result-reads.test.js",
+  "apps/api/src/import/seazona-fetch.js",
+  "apps/api/src/import/seazona-fetch.test.js",
+  "apps/api/src/import/fetch-cli.test.js",
+]);
 
 const FORBIDDEN = [
   /createOrder\(/, /pushCaseToSeazona/, /payloadFromLines/, /buildSeazonaOrderPayload/, /pushOrderToSeazona/,
   /resolveOrderPushStatus/, /shouldReleasePushLock/, /shouldAutoPush/, /\/mark-manual/, /\/clear-push-lock/,
   /\/rx-mapping\/send-test/, /RX_LIVE_PUSH/, /SEAZONA_ORDER_USER_ID/, /seazonaService\.getOrders?\(/,
+  /\bgetOrdersResult\b/, /\bgetAllOrdersResult\b/, /\bgetOrderResult\b/,
   /Push to Seazona/, /MarkManualModal/, /build-order-payload/, /order-diff/, /manualResolution/,
 ];
 
@@ -36,8 +44,10 @@ test("no code path sends an order to Seazona or offers to", () => {
   const hits = [];
   for (const root of ROOTS) {
     for (const file of files(root)) {
+      const rel = relative(repo, file);
+      if (ALLOWED.has(rel)) continue;
       const text = readFileSync(file, "utf8");
-      for (const re of FORBIDDEN) if (re.test(text)) hits.push(`${relative(repo, file)}: ${re}`);
+      for (const re of FORBIDDEN) if (re.test(text)) hits.push(`${rel}: ${re}`);
     }
   }
   assert.deepEqual(hits, []);
