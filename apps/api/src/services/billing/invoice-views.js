@@ -1,3 +1,5 @@
+import { LEGACY_SETTLEMENT_SOURCE } from "@my-app/shared";
+
 /**
  * Response shapes for invoice reads. The doctor's are explicit allow-lists
  * (the doctorCaseView pattern), so a staff column added later never reaches a
@@ -8,6 +10,7 @@
 
 /** What a ledger row is, to a person reading the invoice. */
 export function ledgerEntryKind(row) {
+  if (row.source === LEGACY_SETTLEMENT_SOURCE) return "settlement";
   if (row.source === "credit") return "credit";
   return row.appliedCents < 0 ? "refund" : "payment";
 }
@@ -29,7 +32,7 @@ export function doctorInvoiceView({ invoice, lines, payments, labOrder }) {
     issuedAt: invoice.issuedAt ?? null, dueDate: invoice.dueDate ?? null,
     subtotalCents: invoice.subtotalCents, taxCents: invoice.taxCents, shippingCents: invoice.shippingCents,
     totalCents: invoice.totalCents, paidCents: invoice.paidCents, balanceCents: invoice.balanceCents,
-    labOrderNumber: labOrder?.orderNumber ?? null, caseNumber: labOrder?.caseNumber ?? null, patientName: labOrder?.patientName ?? null,
+    labOrderNumber: labOrder?.orderNumber ?? null, caseNumber: labOrder?.caseNumber ?? null, patientName: labOrder?.patientName ?? invoice.legacyPatient ?? null,
     lines: lines.map((l) => ({
       id: l.id, kind: l.kind, code: l.code ?? null, description: l.description, qty: l.qty, unitCents: l.unitCents, lineCents: l.lineCents,
     })),

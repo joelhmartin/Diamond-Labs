@@ -60,7 +60,8 @@ test("practiceUserIds: the requester alone when they have no practice key; never
   assert.deepEqual(await ledger.practiceUserIds({ id: "fd", seazonaClientId: "c1" }, fakeTx({ selects: [[{ id: "doc1" }]] })), ["doc1", "fd"]);
 });
 
-test("shop checkouts stay out of payment history (and so out of the refund screen)", () => {
-  assert.match(source, /notInArray\(invoicePayments\.source, \[SHOP_PAYMENT_SOURCE\]\)/);
+test("shop checkouts and Seazona settlements stay out of payment history (and so out of the refund screen)", () => {
+  assert.match(source, /notInArray\(invoicePayments\.source, HISTORY_EXCLUDED_SOURCES\)/);
+  assert.doesNotMatch(source, /\[SHOP_PAYMENT_SOURCE\]/);
   assert.doesNotMatch(source, /catch \(/, "ledger reads fail closed — no soft-fail fallbacks");
 });
