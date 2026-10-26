@@ -59,7 +59,7 @@ test("a full capped page sharing one lastModified fails the walk (truncated), ne
 
 test("a full page whose newest stamp is shared by only some rows re-requests from that stamp", async () => {
   const mixed = Array.from({ length: 10_000 }, (_, i) => ({ id: `m${i}`, lastModified: i < 5_000 ? "2025-11-29T15:05:50" : "2025-12-01T00:00:00" }));
-  const f = stub(ok(mixed), ok([{ id: "late", lastModified: "2026-01-02T00:00:00" }]));
+  const f = stub(ok(mixed), ok([{ id: "m9999", lastModified: "2025-12-01T00:00:00" }, { id: "late", lastModified: "2026-01-02T00:00:00" }]));
   const r = await seazona.getAllInvoicesResult();
   assert.equal(r.truncated, false);
   assert.equal(r.invoices.length, 10_001);
@@ -92,6 +92,18 @@ test("the limiter constants are exported for the fetcher to import, not copy", (
 });
 
 const page = (n, make) => Array.from({ length: n }, (_, i) => make(i));
+/** Endless full order pages, each re-including the previous page's newest row (Seazona's query is inclusive). */
+const overlappingPages = (tag) => {
+  let n = 0;
+  let last = null;
+  return vi.fn(async () => {
+    n += 1;
+    const rows = page(seazona.ORDER_LIST_PAGE_CAP - (last ? 1 : 0), (i) => ({ id: `${tag}${n}-${i}`, ordered: minuteStamp(n * 1_000 + i) }));
+    const out = last ? [last, ...rows] : rows;
+    last = out[out.length - 1];
+    return ok(out);
+  });
+};
 
 test("a capped page whose newest value does not advance the cursor stops the walk as truncated", async () => {
   // equal to the cursor instant (cursor carries Z, record value does not)
@@ -108,9 +120,7 @@ test("a capped page whose newest value does not advance the cursor stops the wal
 });
 
 test("exhausting the page budget is reported as truncated", async () => {
-  let n = 0;
-  const f = vi.fn(async () => { n += 1; return ok(page(10_000, (i) => ({ id: `p${n}-${i}`, ordered: minuteStamp(n * 20_000 + i) }))); });
-  vi.stubGlobal("fetch", f);
+  vi.stubGlobal("fetch", overlappingPages("p"));
   const r = await seazona.getAllOrdersResult();
   assert.equal(r.requests, 50);
   assert.equal(r.truncated, true);
@@ -145,15 +155,14 @@ test("a capped page of one unparseable timestamp is a truncated walk, not a Rang
 
 test("an unparseable value among parseable ones is ignored when choosing the cursor", async () => {
   const mixed = page(10_000, (i) => ({ id: `m${i}`, lastModified: i === 0 ? "garbage" : minuteStamp(i) }));
-  const f = stub(ok(mixed), ok([]));
+  const f = stub(ok(mixed), ok([mixed[9999]]));
   const r = await seazona.getAllInvoicesResult();
   assert.equal(r.truncated, false);
   assert.equal(query(f, 1, "lastModified"), minuteStamp(9999));
 });
 
 test("a walk honours maxPages and awaits beforePage before every page; no options keeps the default budget", async () => {
-  let n = 0;
-  const f = vi.fn(async () => { n += 1; return ok(page(10_000, (i) => ({ id: `q${n}-${i}`, ordered: minuteStamp(n * 20_000 + i) }))); });
+  const f = overlappingPages("q");
   vi.stubGlobal("fetch", f);
   let paced = 0;
   const r = await seazona.getAllOrdersResult({ maxPages: 3, beforePage: async () => { paced += 1; } });
@@ -200,4 +209,22 @@ test("a complete walk is never possiblyIncomplete", async () => {
   const r = await seazona.getAllInvoicesResult({ acceptCappedTimestamp: "2025-11-29T15:05:50Z" });
   assert.equal(r.possiblyIncomplete, false);
   assert.deepEqual(r.cappedPages, []);
+});
+
+test("the order list is capped at 100 rows: a 100-row page is full and the walk continues", async () => {
+  const p1 = page(100, (i) => ({ id: `o${i}`, ordered: minuteStamp(i) }));
+  const f = stub(ok(p1), ok([p1[99], { id: "o100", ordered: minuteStamp(100) }]));
+  const r = await seazona.getAllOrdersResult();
+  assert.equal(r.truncated, false);
+  assert.equal(r.orders.length, 101);
+  assert.equal(f.mock.calls.length, 2);
+  assert.equal(query(f, 1, "ordered"), minuteStamp(99));
+});
+
+test("a re-request that does not re-include the cursor's rows means the query excluded them: truncated, never guessed whole", async () => {
+  const p1 = page(100, (i) => ({ id: `e${i}`, ordered: minuteStamp(i) }));
+  stub(ok(p1), ok([{ id: "e100", ordered: minuteStamp(100) }]));
+  assert.equal((await seazona.getAllOrdersResult()).truncated, true);
+  stub(ok(p1), ok([]));
+  assert.equal((await seazona.getAllOrdersResult()).truncated, true, "an empty page after a full one is not a normal end");
 });

@@ -1,5 +1,5 @@
 import { isOpenOrderStatus, recordDate, recordNumber, INVOICE_NUMBER_FIELDS } from "./seazona-records.js";
-import { RATE_LIMIT_WINDOW_MS, MAX_REQUESTS_PER_WINDOW, LIST_PAGE_CAP } from "../services/seazona-limits.js";
+import { RATE_LIMIT_WINDOW_MS, MAX_REQUESTS_PER_WINDOW, LIST_PAGE_CAP, ORDER_LIST_PAGE_CAP } from "../services/seazona-limits.js";
 
 /**
  * Pure planning for the fetcher: how many requests, how long, which records.
@@ -42,7 +42,7 @@ export const minutesFor = (requests) => Math.ceil(requests / REQUESTS_PER_MINUTE
  */
 export function summaryRequests(entity, storedCount = 0) {
   if (entity !== "invoice" && entity !== "order") return 1;
-  return Math.max(2, Math.floor(storedCount / LIST_PAGE_CAP) + 1);
+  return Math.max(2, Math.floor(storedCount / (entity === "order" ? ORDER_LIST_PAGE_CAP : LIST_PAGE_CAP)) + 1);
 }
 
 export function approvalProblem({ count, live, approved }) {

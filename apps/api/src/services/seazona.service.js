@@ -1,9 +1,9 @@
 import { env } from "../config/env.js";
-import { RATE_LIMIT_WINDOW_MS, MAX_REQUESTS_PER_WINDOW, LIST_PAGE_CAP } from "./seazona-limits.js";
+import { RATE_LIMIT_WINDOW_MS, MAX_REQUESTS_PER_WINDOW, LIST_PAGE_CAP, ORDER_LIST_PAGE_CAP } from "./seazona-limits.js";
 
 // The limiter's numbers live in seazona-limits.js (no env needed) so piece 5's
 // operator CLIs can import them without loading config/env.js.
-export { RATE_LIMIT_WINDOW_MS, MAX_REQUESTS_PER_WINDOW, LIST_PAGE_CAP };
+export { RATE_LIMIT_WINDOW_MS, MAX_REQUESTS_PER_WINDOW, LIST_PAGE_CAP, ORDER_LIST_PAGE_CAP };
 
 /** True when SEAZONA_DISABLED="true" (staging): no Seazona call may leave the process. */
 export function isDisabled() {
@@ -281,9 +281,12 @@ function bumpOneSecond(ts) {
 }
 
 /**
- * Walk a capped Seazona list (the invoice and order lists truncate at 10,000
- * rows sorted by id) forward by `field`, re-requesting from the page's newest
- * value. De-dupes by id. `truncated` means a capped page gave no cursor to
+ * Walk a capped Seazona list (invoices truncate at 10,000 rows, orders at 100;
+ * `pageCap`) forward by `field`, re-requesting from the page's newest
+ * value. De-dupes by id. The re-request must come back overlapping: the rows
+ * at the cursor value reappear (the query is inclusive). A page after a normal
+ * advance with no already-seen row at the cursor value means the query
+ * excluded it, so rows sharing it could be skipped: that is `truncated` too. `truncated` means a capped page gave no cursor to
  * advance by (the set is incomplete; never treat it as whole). A FULL page whose
  * records all share one value is truncated too (ruling F3): more rows with that
  * value may lie past the cap (the list is sorted by id), and skipping past the
@@ -300,7 +303,7 @@ function bumpOneSecond(ts) {
  * when the walk ran out of pages while still advancing (a stall is truncated but
  * not budgetExhausted).
  */
-async function walkCapped(fetchPage, field, { maxPages = 50, beforePage, acceptCappedTimestamp = null } = {}) {
+async function walkCapped(fetchPage, field, { maxPages = 50, beforePage, acceptCappedTimestamp = null, pageCap = LIST_PAGE_CAP } = {}) {
   const seen = new Map();
   const noId = []; // records without an id can't be de-duped; keep them all
   const instant = (ts) => Date.parse(ts.endsWith("Z") ? ts : `${ts}Z`);
@@ -311,18 +314,20 @@ async function walkCapped(fetchPage, field, { maxPages = 50, beforePage, acceptC
   let status = 200;
   let requests = 0;
   const cappedPages = [];
+  let overlapAt = null; // the cursor value the next page must re-include (null after the first page or a bump)
   for (let i = 0; i < maxPages && !done; i++) {
     if (beforePage) await beforePage();
     const page = await fetchPage(cursor);
     requests += 1;
     status = page.status;
     if (!page.reachable) { reachable = false; done = true; break; }
+    if (overlapAt !== null && !page.records.some((rec) => rec[field] === overlapAt && seen.has(rec.id))) { truncated = true; done = true; break; }
     if (!page.records.length) { done = true; break; }
     for (const rec of page.records) {
       if (rec.id === undefined || rec.id === null) noId.push(rec);
       else seen.set(rec.id, rec);
     }
-    if (page.records.length < LIST_PAGE_CAP) { done = true; break; }
+    if (page.records.length < pageCap) { done = true; break; }
     const values = page.records.map((rec) => rec[field]).filter((v) => typeof v === "string" && Number.isFinite(instant(v)));
     if (values.length === 0) { truncated = true; done = true; break; }
     const max = values.reduce((m, v) => (instant(v) > instant(m) ? v : m));
@@ -332,11 +337,13 @@ async function walkCapped(fetchPage, field, { maxPages = 50, beforePage, acceptC
       if (next === null) { truncated = true; done = true; break; }
       cappedPages.push({ timestamp: max, pageSize: page.records.length });
       cursor = next;
+      overlapAt = null;
       continue;
     }
     // A full page sharing one value can't be paged past without dropping rows; the cursor must also move forward.
     if (sameStamp || !(instant(max) > instant(cursor))) { truncated = true; done = true; break; }
     cursor = max;
+    overlapAt = max;
   }
   const budgetExhausted = !done;
   if (budgetExhausted) truncated = true;
@@ -392,12 +399,12 @@ export async function getOrders(ordered) {
   return (await getOrdersResult(ordered)).orders;
 }
 
-/** Every order, walked past a possible 10k cap by `ordered` (see walkCapped). Piece 5's fetcher only. */
+/** Every order, walked past the 100-row cap by `ordered` (see walkCapped). Piece 5's fetcher only. */
 export async function getAllOrdersResult(options) {
   const w = await walkCapped(async (cursor) => {
     const r = await getOrdersResult(cursor);
     return { reachable: r.reachable, status: r.status, records: r.orders };
-  }, "ordered", options);
+  }, "ordered", { ...options, pageCap: ORDER_LIST_PAGE_CAP });
   return { reachable: w.reachable, status: w.status, orders: w.records, requests: w.requests, truncated: w.truncated, budgetExhausted: w.budgetExhausted };
 }
 
