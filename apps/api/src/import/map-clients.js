@@ -113,7 +113,12 @@ function newDoctor(client, id, email, placeholder, slugs, now) {
  * The plan is read before the transaction that writes it: run this step inside
  * the write freeze (docs/cutover-runbook.md) so no user changes in between.
  */
-export function planClients(clients, existing, { noEmail = "placeholder", now = new Date() } = {}) {
+/**
+ * `emailTaken`: "report" (default) skips a client whose email another client's
+ * login already holds; "placeholder" gives it a suspended placeholder login
+ * instead, so its invoices and orders still load (staff see them; nobody logs in).
+ */
+export function planClients(clients, existing, { noEmail = "placeholder", emailTaken = "report", now = new Date() } = {}) {
   const slugs = new Set(existing.slugs);
   const usedEmails = new Map(existing.byEmail);
   const withProfile = new Set(existing.profileUserIds);
@@ -132,7 +137,10 @@ export function planClients(clients, existing, { noEmail = "placeholder", now = 
     if (existing.owners.has(id)) {
       plan.skipped.alreadyLinked += 1;
       const ownerId = existing.owners.get(id);
-      if (isPlaceholderEmail(existing.userEmails?.get(ownerId)) && clientEmail(client.email)) plan.skipped.placeholderNowHasEmail.push(id);
+      const email_ = clientEmail(client.email);
+      // A placeholder made because the email belongs to another login is not "now has an email".
+      const holder = email_ ? usedEmails.get(email_) : null;
+      if (isPlaceholderEmail(existing.userEmails?.get(ownerId)) && email_ && !(holder && holder.id !== ownerId)) plan.skipped.placeholderNowHasEmail.push(id);
       addProfile(client, ownerId);
       continue;
     }
@@ -141,8 +149,14 @@ export function planClients(clients, existing, { noEmail = "placeholder", now = 
     const address = email ?? placeholderEmail(id);
     const taken = usedEmails.get(address);
     if (taken?.ambiguous) { plan.skipped.emailCaseAmbiguous.push(id); continue; }
+    const placeholderForTaken = () => {
+      const doctor = newDoctor(client, id, placeholderEmail(id), true, slugs, now);
+      plan.create.push(doctor);
+      addProfile(client, doctor.user.id);
+    };
     if (taken && !taken.linkable) {
       // Created this run or already linked → plain "taken"; anyone else is not a verified, approved doctor.
+      if (taken.seazonaClientId && emailTaken === "placeholder") { placeholderForTaken(); continue; }
       (taken.seazonaClientId ? plan.skipped.emailTaken : plan.skipped.emailNotLinkable).push(id);
       continue;
     }
@@ -153,7 +167,11 @@ export function planClients(clients, existing, { noEmail = "placeholder", now = 
       addProfile(client, taken.id);
       continue;
     }
-    if (taken) { plan.skipped.emailTaken.push(id); continue; }
+    if (taken) {
+      if (emailTaken === "placeholder") placeholderForTaken();
+      else plan.skipped.emailTaken.push(id);
+      continue;
+    }
     const doctor = newDoctor(client, id, address, !email, slugs, now);
     plan.create.push(doctor);
     addProfile(client, doctor.user.id);

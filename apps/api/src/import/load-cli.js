@@ -4,7 +4,7 @@
  *   pnpm --filter @my-app/api import:load <clients|invoices|balances|orders> --target rehearsal [--live]
  *   pnpm --filter @my-app/api import:load <step> --target production --confirm-production diamond_labs \
  *        --invoice-start <n> --order-start <n> [--live]
- *   clients:  [--no-email placeholder|skip]
+ *   clients:  [--no-email placeholder|skip] [--email-taken report|placeholder]
  *   invoices: [--invoice-start <n> --order-start <n>] [--allow-after-balances]
  *             (production needs BOTH starts on invoices, balances and orders)
  *   balances: --balances per-invoice|per-client (--file <export.xls> | --file-id <id>) [--columns name="Header",…]
@@ -45,7 +45,7 @@ const COMMON = ["target", "confirm-production", "live"];
 const STARTS = ["invoice-start", "order-start"];
 /** Per step: the flags it accepts beyond COMMON. Anything else is refused, never ignored. */
 const STEP_FLAGS = {
-  clients: ["no-email"],
+  clients: ["no-email", "email-taken"],
   invoices: [...STARTS, "allow-after-balances"],
   balances: [...STARTS, "balances", "file", "file-id", "columns", "cutover-at", "accept-export-problems"],
   orders: STARTS,
@@ -65,7 +65,9 @@ function stepOptions(step, flags) {
   if (step === "clients") {
     const noEmail = flags["no-email"] ?? "placeholder";
     if (noEmail !== "placeholder" && noEmail !== "skip") throw new ImportRefusal("--no-email must be placeholder or skip.");
-    return { starts, noEmail };
+    const emailTaken = flags["email-taken"] ?? "report";
+    if (emailTaken !== "report" && emailTaken !== "placeholder") throw new ImportRefusal("--email-taken must be report or placeholder.");
+    return { starts, noEmail, emailTaken };
   }
   if (step !== "balances") return { starts };
   if (flags.balances !== "per-invoice" && flags.balances !== "per-client") throw new ImportRefusal("--balances must be per-invoice or per-client.");
@@ -96,7 +98,7 @@ async function parsedExport({ raw, flags, opts, deps }) {
 }
 
 const STEPS = {
-  clients: (c) => loadClients({ raw: c.raw, db: c.db, live: c.live, noEmail: c.opts.noEmail, lock: c.lock }),
+  clients: (c) => loadClients({ raw: c.raw, db: c.db, live: c.live, noEmail: c.opts.noEmail, emailTaken: c.opts.emailTaken, lock: c.lock }),
   invoices: (c) => loadInvoices({
     raw: c.raw, db: c.db, live: c.live, target: c.target, starts: c.opts.starts, lock: c.lock,
     allowAfterBalances: c.flags["allow-after-balances"] === true,

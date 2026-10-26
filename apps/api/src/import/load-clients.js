@@ -13,18 +13,18 @@ import { withLoadLock } from "./load-lock.js";
  * a link only fills an empty seazonaClientId, profiles never overwrite. A live run holds the
  * target's load lock (`lock`, load-lock.js) like every other live load step.
  */
-export async function loadClients({ raw, db, live, noEmail = "placeholder", now = new Date(), lock = null }) {
-  return withLoadLock({ lock, live, step: "clients" }, (guard) => run({ raw, db, live, noEmail, now, guard }));
+export async function loadClients({ raw, db, live, noEmail = "placeholder", emailTaken = "report", now = new Date(), lock = null }) {
+  return withLoadLock({ lock, live, step: "clients" }, (guard) => run({ raw, db, live, noEmail, emailTaken, now, guard }));
 }
 
-async function run({ raw, db, live, noEmail, now, guard }) {
+async function run({ raw, db, live, noEmail, emailTaken, now, guard }) {
   const clients = (await raw.records("client")).map((r) => r.payload);
   const userRows = await db
     .select({ id: users.id, email: users.email, seazonaClientId: users.seazonaClientId, seazonaAccountNumber: users.seazonaAccountNumber, role: users.role, approvalStatus: users.approvalStatus, emailVerifiedAt: users.emailVerifiedAt, status: users.status, createdAt: users.createdAt })
     .from(users);
   const slugRows = await db.select({ slug: accounts.slug }).from(accounts);
   const profileRows = await db.select({ userId: doctorProfiles.userId }).from(doctorProfiles);
-  const plan = planClients(clients, existingFromRows(userRows, slugRows, profileRows), { noEmail, now });
+  const plan = planClients(clients, existingFromRows(userRows, slugRows, profileRows), { noEmail, emailTaken, now });
 
   const counts = {
     seazonaClients: clients.length,
