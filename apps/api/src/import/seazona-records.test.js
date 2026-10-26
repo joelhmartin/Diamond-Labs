@@ -10,6 +10,9 @@ test("a Seazona invoice is void only for a void or cancel state; every workflow 
 test("order workflow states map to board statuses; an unknown state is null, never guessed", () => {
   assert.deepEqual(orderStatusFor("In Production"), { status: "in_production", heldFrom: null });
   assert.deepEqual(orderStatusFor("Hold"), { status: "on_hold", heldFrom: "in_production" });
+  // Seen live 2026-10-26.
+  assert.deepEqual(orderStatusFor("In Prod"), { status: "in_production", heldFrom: null });
+  assert.deepEqual(orderStatusFor("Await Return"), { status: "on_hold", heldFrom: "in_production" });
   assert.deepEqual(orderStatusFor("shipped"), { status: "shipped", heldFrom: null });
   assert.deepEqual(orderStatusFor("Ready_To_Ship"), { status: "ready_to_ship", heldFrom: null });
   assert.equal(orderStatusFor("Invoiced"), null);

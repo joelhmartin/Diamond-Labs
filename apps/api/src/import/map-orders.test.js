@@ -76,3 +76,10 @@ test("plan: a client without one eligible owner loads its orders UNOWNED and is 
   assert.deepEqual(k.client_has_multiple_owners, ["c-1324"]);
   assert.deepEqual(k.client_not_loaded, ["c-2001"]);
 });
+
+test("a live-shaped order with no number of its own takes its invoice's number", () => {
+  const { orderNumber, number, ...rest } = byId("ord-2");
+  const { order } = mapLegacyOrder({ summary: { ...rest, invoiceNumber: "23019" }, ownerUserId: "u-2001" });
+  assert.equal(order.orderNumber, 23019);
+  assert.equal(mapLegacyOrder({ summary: { ...rest, invoiceNumber: "INV-1" } }).problem, "order_number_not_numeric");
+});
