@@ -117,7 +117,7 @@ export async function main(argv, env = process.env, overrides = {}) {
   assertNotCloudRun(env);
   const { positional, flags } = parseArgs(argv, FLAGS);
   const step = positional[0];
-  if (!STEPS[step] || positional.length !== 1) throw new ImportRefusal(`Usage: import:load <${Object.keys(STEPS).join("|")}> --target <rehearsal|production> [--live] (production: --invoice-start and --order-start on invoices, balances and orders)`);
+  if (!STEPS[step] || positional.length !== 1) throw new ImportRefusal(`Usage: import:load <${Object.keys(STEPS).join("|")}> --target <rehearsal|staging|production> [--live] (production: --invoice-start and --order-start on invoices, balances and orders)`);
   const live = flags.live === true;
   const opts = stepOptions(step, flags);
   const session = await deps.openSession(env, flags, { writes: true });

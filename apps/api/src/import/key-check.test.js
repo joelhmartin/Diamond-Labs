@@ -37,3 +37,8 @@ test("a target must hold a sealed value the current key opens", async () => {
   await assert.rejects(assertTargetKey({ execute: async () => [] }), /no sealed rx_cases row/);
   await assert.rejects(assertTargetKey({ execute: async () => [{ v: `enc:v1:${"A".repeat(60)}` }] }), /does not open/);
 });
+
+test("assertTargetKey: a scrubbed staging target with nothing sealed may load; a sealed value the key cannot open still refuses", async () => {
+  await assertTargetKey({ execute: async () => [] }, { allowUnsealed: true });
+  await assert.rejects(assertTargetKey({ execute: async () => [{ v: `enc:v1:${"A".repeat(60)}` }] }, { allowUnsealed: true }), /does not open/);
+});

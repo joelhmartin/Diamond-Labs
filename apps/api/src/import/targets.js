@@ -14,6 +14,9 @@ import { ImportRefusal } from "./import-errors.js";
 export const IMPORT_DB_NAME = "diamond_labs_import";
 export const TARGETS = {
   rehearsal: { envVar: "REHEARSAL_DATABASE_URL", database: "diamond_labs_rehearsal" },
+  // The staging app's database, for a full-data preview. Not STAGING_DATABASE_URL:
+  // that secret is the service's Cloud SQL socket URL. Run with the STAGING key.
+  staging: { envVar: "STAGING_TARGET_DATABASE_URL", database: "diamond_labs_staging" },
   production: { envVar: "PRODUCTION_DATABASE_URL", database: "diamond_labs" },
 };
 
@@ -79,7 +82,7 @@ export function resolveImportDb(env = process.env) {
 export function resolveTarget(name, env = process.env, { confirmProduction } = {}) {
   assertNotCloudRun(env);
   const t = TARGETS[name];
-  if (!t) throw new ImportRefusal("--target must be rehearsal or production.");
+  if (!t) throw new ImportRefusal("--target must be rehearsal, staging or production.");
   const resolved = { name, ...checked(t.envVar, t.database, env) };
   if (name === "production" && confirmProduction !== t.database) {
     throw new ImportRefusal(`A production load needs --confirm-production ${t.database}.`);

@@ -180,3 +180,14 @@ A legacy (Seazona) order cannot be remade in this system: the button is hidden a
 - Open legacy orders are worked on the board but never billed again (their Seazona invoice already carries the balance), and may be labelled and shipped alone only.
 - Seazona-era `invoice_payments` rows stay unlinked from legacy invoices (they are already inside Seazona's open balances).
 - No PHI in anything you paste: the CLIs print ids, numbers, counts and cents, and a database error prints its code only.
+
+## Staging full-data preview (2026-10-26, user decision)
+
+The user chose to load the full Seazona data into staging, so the app can be tried with real accounts while still in development. Payments on staging are Authorize.net sandbox, and `PAYMENTS_PAUSED=true` turns off every purchase. Mail is redirected to `STAGING_EMAIL_TO` and Seazona is disabled. Imported doctors have no password and cannot log in. Staging then holds real patient names, sealed with `STAGING_PHI_ENCRYPTION_KEY`.
+
+- **Use the staging key for everything:** export `PHI_ENCRYPTION_KEY` from secret `STAGING_PHI_ENCRYPTION_KEY` for the fetch AND the loads. The import DB's key check is then sealed with the staging key.
+  - A production load from this raw store refuses, because the key does not open production's data.
+  - **Before the real cutover, drop and recreate `diamond_labs_import` and fetch again with production's key** (this is also the fresh pull).
+- **The target is `--target staging`, through `STAGING_TARGET_DATABASE_URL`** (`staging_app` through the proxy, database `diamond_labs_staging`). `STAGING_DATABASE_URL` is the service's socket secret and is never used.
+  - The scrubbed copy holds nothing sealed until its first load, so the target key check lets an empty staging through. A sealed value the key cannot open still refuses.
+- **Re-seeding staging from production wipes the import:** re-run the loads afterwards.
