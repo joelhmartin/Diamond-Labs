@@ -36,13 +36,20 @@ export function normalizeCappedTimestamp(value) {
 export const minutesFor = (requests) => Math.ceil(requests / REQUESTS_PER_MINUTE);
 
 /**
- * One list call, or for the capped lists (invoices, orders) one per full page
- * plus the short last page. A first fetch assumes at least 2: the archive is
- * over one page. The runner caps the walk at this number (see fetchSummaries).
+ * One list call, or for the capped lists (invoices, orders) an estimate of the
+ * walk: every page after the first must re-include a row it has already seen
+ * (the walker's overlap check), so a page brings at most cap - 1 new rows; plus
+ * the short last page, plus 20% for rows that share a cursor timestamp (the live
+ * order walk of 2026-10-26 took 245 requests for 20,696 orders, about 85 new a
+ * page). A first fetch assumes at least 2: the archive is over one page. The
+ * runner caps the walk at this number (see fetchSummaries), so a high estimate
+ * only widens the budget; it never sends more requests than the walk needs.
  */
 export function summaryRequests(entity, storedCount = 0) {
   if (entity !== "invoice" && entity !== "order") return 1;
-  return Math.max(2, Math.floor(storedCount / (entity === "order" ? ORDER_LIST_PAGE_CAP : LIST_PAGE_CAP)) + 1);
+  const cap = entity === "order" ? ORDER_LIST_PAGE_CAP : LIST_PAGE_CAP;
+  const pages = Math.ceil(storedCount / (cap - 1)) + 1;
+  return Math.max(2, pages + Math.ceil(pages * 0.2));
 }
 
 export function approvalProblem({ count, live, approved }) {
