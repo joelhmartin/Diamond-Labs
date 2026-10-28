@@ -66,4 +66,17 @@ describe("summarizePayments", () => {
     ]);
     expect(out.map((p) => [p.transactionId, p.source])).toEqual([["NEW", "doctor_card"], ["OLD", "autopay"]]);
   });
+
+  it("orders ties on createdAt by transactionId, whatever the input order", () => {
+    const t = new Date("2026-10-02T00:00:00Z");
+    const a = row({ transactionId: "TXN-A", createdAt: t });
+    const b = row({ transactionId: "TXN-B", createdAt: t });
+    const c = row({ transactionId: "TXN-C", createdAt: new Date("2026-10-03T00:00:00Z") });
+    const ids = (rows) => summarizePayments(rows).map((p) => p.transactionId);
+    expect(ids([a, b, c])).toEqual(["TXN-C", "TXN-A", "TXN-B"]);
+    expect(ids([b, c, a])).toEqual(["TXN-C", "TXN-A", "TXN-B"]);
+    // offset pages over the stable order never repeat or skip
+    const all = ids([b, a, c]);
+    expect([...all.slice(0, 1), ...all.slice(1, 2), ...all.slice(2, 3)]).toEqual(["TXN-C", "TXN-A", "TXN-B"]);
+  });
 });

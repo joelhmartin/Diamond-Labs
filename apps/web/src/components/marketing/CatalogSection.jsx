@@ -4,7 +4,7 @@ import { Search, SlidersHorizontal, X } from "lucide-react";
 import { useCatalog } from "../../hooks/useCatalog.js";
 import { CatalogCard } from "./CatalogCard";
 import { CatalogDetail } from "./CatalogDetail";
-import { pageSlice, paginationProps } from "../../lib/data-table/table-state.js";
+import { usePagedList } from "../../hooks/usePagedList.js";
 import { Pagination } from "../ui/Pagination.jsx";
 import { matchesShopper } from "../../lib/catalog.js";
 import { playOnView } from "../../lib/playOnView";
@@ -61,10 +61,7 @@ export function CatalogSection() {
     });
   }, [query, active, products]);
 
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(12);
-  const pagination = paginationProps({ total: filtered.length, page, pageSize, setPage, setPageSize });
-  const paged = pageSlice(filtered, pagination.page, pageSize);
+  const { pagination, paged, pageSize } = usePagedList(filtered, { resetKeys: [query, active] });
 
   return (
     <section
