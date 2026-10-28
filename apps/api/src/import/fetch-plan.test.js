@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { MAX_REQUESTS_PER_WINDOW, LIST_PAGE_CAP } from "../services/seazona-limits.js";
+import { MAX_REQUESTS_PER_WINDOW, LIST_PAGE_CAP, ORDER_LIST_PAGE_CAP } from "../services/seazona-limits.js";
 import { REQUESTS_PER_MINUTE, PACE_INTERVAL_MS, minutesFor, summaryRequests, selectDetailIds, approvalProblem, detailFilterProblem } from "./fetch-plan.js";
 
 const inv = (id, extra = {}) => ({ seazonaId: id, lastModified: "2026-10-01T00:00:00", payload: { id, invoiceNumber: Number(id.slice(1)), ...extra } });
@@ -9,7 +9,7 @@ test("the fetcher paces itself at 30/min, below the service limiter it imports i
   assert.equal(REQUESTS_PER_MINUTE, 30);
   assert.ok(REQUESTS_PER_MINUTE < MAX_REQUESTS_PER_WINDOW);
   assert.equal(PACE_INTERVAL_MS, 2000);
-  assert.equal(summaryRequests("invoice", 2 * LIST_PAGE_CAP), 3);
+  assert.equal(summaryRequests("invoice", 2 * LIST_PAGE_CAP), 5);
 });
 
 test("request counts and minutes at 30/min", () => {
@@ -18,9 +18,15 @@ test("request counts and minutes at 30/min", () => {
   assert.equal(minutesFor(31), 2);
   assert.equal(minutesFor(61), 3);
   assert.equal(summaryRequests("client", 0), 1);
-  assert.equal(summaryRequests("invoice", 16_000), 2);
+  assert.equal(summaryRequests("invoice", 16_000), 4);
   assert.equal(summaryRequests("invoice", 0), 2, "a first fetch of a capped list is at least 2 requests");
   assert.equal(summaryRequests("order", 0), 2);
+});
+
+test("a re-walk of a stored order archive budgets for the overlap row on every page", () => {
+  const n = 20_696;
+  assert.ok(summaryRequests("order", n) > Math.ceil(n / (ORDER_LIST_PAGE_CAP - 1)), "more than the overlap-only minimum");
+  assert.ok(summaryRequests("order", n) >= 245, "at least what the live walk of this archive took");
 });
 
 test("a live run over 100 requests needs --approved of at least the count", () => {

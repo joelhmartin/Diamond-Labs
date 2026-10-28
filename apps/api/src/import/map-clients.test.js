@@ -135,3 +135,13 @@ test("a deleted user is never linked by email and never counts as a client's lin
   assert.deepEqual(plan.link, []);
   assert.deepEqual(plan.skipped.emailNotLinkable, ["c-y"]);
 });
+
+test("plan: --email-taken placeholder gives a client on a taken email a suspended placeholder login instead of skipping it", () => {
+  const existing = existingFromRows(userRows, [{ slug: slugify("Sample Ortho & Co") }], []);
+  const plan = planClients(clients, existing, { now, emailTaken: "placeholder" });
+  assert.deepEqual(plan.skipped.emailTaken, []);
+  const made = plan.create.find((c) => c.user.seazonaClientId === "c-4000");
+  assert.equal(made.user.email, placeholderEmail("c-4000"));
+  assert.equal(made.user.status, "suspended");
+  assert.equal(made.user.passwordHash, null);
+});

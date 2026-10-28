@@ -16,10 +16,12 @@ export const invoiceStatusFor = (status) => (VOID_INVOICE_STATES.has(norm(status
 
 const ORDER_STATES = {
   "new": "received", "received": "received", "entered": "received", "pending": "received", "open": "received",
-  "in production": "in_production", "production": "in_production", "in progress": "in_production",
+  "in production": "in_production", "production": "in_production", "in progress": "in_production", "in prod": "in_production",
   "quality check": "quality_check", "qc": "quality_check",
   "ready": "ready_to_ship", "ready to ship": "ready_to_ship",
   "hold": "on_hold", "on hold": "on_hold",
+  // A case out with the doctor (a try-in) that the lab is waiting to get back.
+  "await return": "on_hold", "awaiting return": "on_hold",
   "shipped": "shipped", "delivered": "shipped", "complete": "shipped", "completed": "shipped",
   "cancelled": "cancelled", "canceled": "cancelled", "void": "cancelled", "voided": "cancelled", "deleted": "cancelled",
 };
@@ -59,7 +61,10 @@ export function firstString(obj, keys) {
 }
 
 export const INVOICE_NUMBER_FIELDS = ["invoiceNumber", "number"];
-export const ORDER_NUMBER_FIELDS = ["orderNumber", "number"];
+// Seazona orders carry no number of their own: an order is known by its
+// invoice's number (seen live 2026-10-26: 20,696 orders, every invoiceNumber
+// numeric and distinct, 20,694 matching an invoice). Tried last.
+export const ORDER_NUMBER_FIELDS = ["orderNumber", "number", "invoiceNumber"];
 
 /** A record's business number as a positive safe integer; null when absent or not numeric. */
 export function recordNumber(payload, keys) {

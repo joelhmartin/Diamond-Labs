@@ -35,10 +35,20 @@ export async function assertImportKey(importDb, { keyCheck }) {
   return "verified";
 }
 
-/** The target must hold a sealed patient name the current key opens. Read-only. */
-export async function assertTargetKey(targetDb) {
-  const result = await targetDb.execute(sql`select patient_first as v from rx_cases where patient_first like 'enc:v1:%' limit 1`);
+/**
+ * The target must hold a sealed patient name the current key opens. Read-only.
+ * A scrubbed staging copy holds no sealed patient data until its first load
+ * (`allowUnsealed`); a sealed value the key cannot open still refuses there.
+ */
+export async function assertTargetKey(targetDb, { allowUnsealed = false } = {}) {
+  const result = await targetDb.execute(sql`
+    (select patient_first as v from rx_cases where patient_first like 'enc:v1:%' limit 1)
+    union all (select legacy_patient from invoices where legacy_patient like 'enc:v1:%' limit 1)
+    limit 1`);
   const sample = (result?.rows ?? result)?.[0]?.v;
-  if (!sample) throw new ImportRefusal("The target has no sealed rx_cases row to check PHI_ENCRYPTION_KEY against. Refusing to write.");
+  if (!sample) {
+    if (allowUnsealed) return;
+    throw new ImportRefusal("The target has no sealed rx_cases row to check PHI_ENCRYPTION_KEY against. Refusing to write.");
+  }
   if (!keyMatches(sample)) throw new ImportRefusal("PHI_ENCRYPTION_KEY does not open the target's sealed data. Refusing to write.");
 }

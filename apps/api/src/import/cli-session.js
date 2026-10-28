@@ -23,7 +23,7 @@ export async function openTargetSession(env, flags, { writes = false } = {}) {
   const close = () => Promise.all([importConn.close(), targetConn.close()]);
   try {
     await assertImportKey(importConn.db, { keyCheck: importSchema.keyCheck });
-    if (writes) await assertTargetKey(targetConn.db);
+    if (writes) await assertTargetKey(targetConn.db, { allowUnsealed: target.name === "staging" });
   } catch (err) {
     await close();
     throw err;

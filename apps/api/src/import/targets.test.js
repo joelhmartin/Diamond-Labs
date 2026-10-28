@@ -33,7 +33,7 @@ test("rehearsal must point at diamond_labs_rehearsal; production needs its exact
   assert.throws(() => resolveTarget("production", env), /--confirm-production diamond_labs/);
   assert.throws(() => resolveTarget("production", env, { confirmProduction: "yes" }), /--confirm-production diamond_labs/);
   assert.equal(resolveTarget("production", env, { confirmProduction: "diamond_labs" }).database, "diamond_labs");
-  assert.throws(() => resolveTarget("staging", env), /rehearsal or production/);
+  assert.throws(() => resolveTarget("nope", env), /rehearsal, staging or production/);
   assert.throws(() => resolveTarget("rehearsal", {}), /REHEARSAL_DATABASE_URL/);
 });
 
@@ -72,4 +72,11 @@ test("query keys are matched case-sensitively; a socket URL needs host= first; t
   assert.equal(r("postgresql://u:p@/diamond_labs_rehearsal?host=/cloudsql/x&sslmode=require").database, "diamond_labs_rehearsal");
   assert.throws(() => databaseName("postgresql://u:p@h/diamond%5Flabs"), ImportRefusal);
   assert.equal(databaseName("postgresql://u:p@h/diamond_labs"), "diamond_labs");
+});
+
+test("staging must point at diamond_labs_staging through its own variable, never the service's socket secret", () => {
+  const url = "postgresql://staging_app:x@127.0.0.1:6001/diamond_labs_staging";
+  assert.equal(resolveTarget("staging", { STAGING_TARGET_DATABASE_URL: url }).database, "diamond_labs_staging");
+  assert.throws(() => resolveTarget("staging", { STAGING_DATABASE_URL: url }), /STAGING_TARGET_DATABASE_URL is not set/);
+  assert.throws(() => resolveTarget("staging", { STAGING_TARGET_DATABASE_URL: env.REHEARSAL_DATABASE_URL }), /diamond_labs_staging/);
 });

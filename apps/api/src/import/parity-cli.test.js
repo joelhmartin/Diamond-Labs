@@ -69,7 +69,7 @@ test("refusals: Cloud Run, a bad --balances, a missing or wrong-kind file, stray
 
 test("with no configuration at all the real session refuses cleanly (Q1 smoke)", async () => {
   await assert.rejects(main(["--target", "rehearsal"], {}), /REHEARSAL_DATABASE_URL is not set/);
-  await assert.rejects(main(["--target", "staging"], {}), /--target must be rehearsal or production/);
+  await assert.rejects(main(["--target", "nope"], {}), /--target must be rehearsal, staging or production/);
 });
 
 test("--accept moves named differences to `accepted` in the printed and the saved report; exit 0 only when none remain", async () => {
