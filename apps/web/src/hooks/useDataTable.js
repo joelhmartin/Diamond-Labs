@@ -198,7 +198,9 @@ function useSelectionApi({ sel, setSel, visible, matching, allRows, knownRows, g
     if (sel.ids.size === 0) return EMPTY;
     if (matching) return allRows.filter((r) => sel.ids.has(getRowId(r)));
     return [...sel.ids].map((id) => knownRows.get(id)).filter(Boolean);
-  }, [sel, matching, allRows, knownRows, getRowId]);
+    // `visible` changes on every server fetch, which is when knownRows (a stable Map) gets fresh row objects.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- visible stands in for knownRows' contents
+  }, [sel, matching, allRows, knownRows, getRowId, visible]);
 
   return {
     ids: sel.ids,

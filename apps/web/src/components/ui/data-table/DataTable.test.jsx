@@ -278,3 +278,24 @@ test("rows carry select-none", () => {
   rowOf("Row 01").dispatchEvent(down);
   assert.equal(down.defaultPrevented, true);
 });
+
+test("server mode bulk actions get the rows from the latest fetch, not the ones selected earlier", async () => {
+  let version = 1;
+  const fetchPage = vi.fn(async () => ({ rows: ROWS.slice(0, 3).map((r) => ({ ...r, version })), total: 3 }));
+  const run = vi.fn(async () => {});
+  let api;
+  function Server() {
+    const table = useDataTable({ mode: "server", fetchPage });
+    api = table;
+    return <DataTable table={table} columns={COLUMNS} bulkActions={[{ id: "move", label: "Move", run }]} />;
+  }
+  mount(<Server />);
+  await screen.findByText("Row 01");
+  fireEvent.click(rowOf("Row 01"), { metaKey: true });
+  fireEvent.click(rowOf("Row 02"), { metaKey: true });
+  version = 2;
+  await act(async () => api.reload());
+  await waitFor(() => assert.equal(fetchPage.mock.calls.length, 2));
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Move" })));
+  assert.deepEqual(run.mock.calls[0][0].map((r) => [r.id, r.version]), [["r1", 2], ["r2", 2]]);
+});

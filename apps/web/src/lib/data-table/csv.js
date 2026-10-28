@@ -14,8 +14,21 @@ export function toCsv(rows, columns) {
 function cellValue(column, row) {
   const v = column.exportValue ? column.exportValue(row) : column.cell(row);
   if (v == null) return "";
-  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") return String(v);
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (typeof v === "string") return neutralize(v);
   return "";
+}
+
+const FORMULA_START = /^[=+\-@\t\r]/;
+const PLAIN_NUMBER = /^[-+]?\d[\d,]*(\.\d+)?$/;
+
+/**
+ * Spreadsheet formula injection: Excel/Sheets run a cell that starts with
+ * = + - @ (or a tab/CR before one). Prefix those with ' so they open as text.
+ * Plain numbers ("-12.50" from an exportValue) can't be formulas and stay as-is.
+ */
+function neutralize(s) {
+  return FORMULA_START.test(s) && !PLAIN_NUMBER.test(s) ? `'${s}` : s;
 }
 
 /** RFC 4180: wrap in quotes when the field holds a comma, quote or line break; double inner quotes. */
@@ -24,7 +37,8 @@ function quote(s) {
 }
 
 export function downloadCsv(filename, csv) {
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  // The BOM makes Excel read the file as UTF-8 (accented names).
+  const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
