@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { groupByStatus, quickMoves, commonMoves, moveOrders, boardParams, describeEvent } from "../lab-board.js";
+import { groupByStatus, quickMoves, commonMoves, moveOrders, moveBulkActions, boardParams, describeEvent } from "../lab-board.js";
 
 test("every board column exists, even empty; cancelled cards are not on the board", () => {
   const g = groupByStatus([
@@ -75,4 +75,56 @@ test("moveOrders sends each card's own expectedVersion", async () => {
   const calls = [];
   await moveOrders([{ id: "a", orderNumber: 1, version: 4 }, { id: "b", orderNumber: 2, version: 9 }], "in_production", async (id, body) => calls.push([id, body]));
   assert.deepEqual(calls, [["a", { to: "in_production", expectedVersion: 4 }], ["b", { to: "in_production", expectedVersion: 9 }]]);
+});
+
+const stale = () => Object.assign(new Error("x"), { response: { status: 409, data: { error: { code: "STALE", message: "This order changed — reload." } } } });
+const ready = (n, shipmentId = null) => ({ id: `o${n}`, orderNumber: 100 + n, version: n, status: "ready_to_ship", labelled: Boolean(shipmentId), shipmentId });
+
+test("moveOrders to shipped posts a shared box once and counts its box-mates as done", async () => {
+  const calls = [];
+  const post = async (id) => {
+    calls.push(id);
+    if (id !== "o1") throw stale(); // a second post for the same box would be STALE: the first one shipped it
+  };
+  const res = await moveOrders([ready(1, "sh1"), ready(2, "sh1")], "shipped", post);
+  assert.deepEqual(calls, ["o1"]);
+  assert.deepEqual(res, { ok: 2, failed: [] });
+});
+
+test("moveOrders to shipped reports a failure, and a failed box is still tried for its box-mate", async () => {
+  const calls = [];
+  const post = async (id) => {
+    calls.push(id);
+    if (id === "o1") throw stale();
+  };
+  const res = await moveOrders([ready(1, "sh1"), ready(2, "sh1"), ready(3)], "shipped", post);
+  assert.deepEqual(calls, ["o1", "o2", "o3"]);
+  assert.equal(res.ok, 2);
+  assert.deepEqual(res.failed, [{ id: "#101", message: "This order changed — reload." }]);
+});
+
+test("moveOrders only dedupes boxes for a shipped move", async () => {
+  const calls = [];
+  await moveOrders([{ ...ready(1, "sh1"), status: "quality_check" }, { ...ready(2, "sh1"), status: "quality_check" }], "in_production", async (id) => calls.push(id));
+  assert.deepEqual(calls, ["o1", "o2"]);
+});
+
+test("moveBulkActions: Move to Shipped needs a second click and reports failures", async () => {
+  const rows = [ready(1), ready(2)];
+  let reloaded = 0;
+  const actions = moveBulkActions(rows, { post: async (id) => { if (id === "o2") throw stale(); }, after: () => { reloaded += 1; } });
+  const ship = actions.find((a) => a.id === "move-shipped");
+  assert.equal(ship.label, "Move to Shipped");
+  assert.equal(ship.confirmLabel, "Click again to ship 2 orders");
+  assert.equal(ship.tone, "danger");
+  const res = await ship.run(rows);
+  assert.deepEqual(res, { ok: 1, failed: [{ id: "#102", message: "This order changed — reload." }] });
+  assert.equal(reloaded, 1);
+});
+
+test("moveBulkActions: other moves are one click", () => {
+  const actions = moveBulkActions([{ ...ready(1), status: "quality_check" }]);
+  assert.ok(actions.length > 0);
+  for (const a of actions) assert.equal(a.confirmLabel, undefined);
+  assert.equal(moveBulkActions([ready(1)]).find((a) => a.id === "move-shipped").confirmLabel, "Click again to ship 1 order");
 });

@@ -1,5 +1,5 @@
 import api from "../config/api.js";
-import { errorText } from "./requests.js";
+import { eachRow } from "./data-table/bulk.js";
 import { LAB_BOARD_COLUMNS, LAB_STATUS_LABELS, allowedNextStatuses, reasonRequiredFor, formatUsDate } from "@my-app/shared";
 
 const label = (s) => LAB_STATUS_LABELS[s] ?? s ?? "—";
@@ -33,19 +33,42 @@ const defaultPost = (id, body) => api.post(`/lab/orders/${id}/status`, body);
 /**
  * Move cards to `to` one at a time (each with its own expectedVersion),
  * carrying on past failures. → { ok, failed: [{ id, message }] }.
+ *
+ * "→ Shipped" on a labelled order ships its whole box (lab-shipping.service
+ * markOrderShipped), which moves the box-mates too and bumps their version, so
+ * a box-mate of an order that already shipped in this run is counted as done
+ * instead of posting (that post would fail STALE for an order that did ship).
  */
 export async function moveOrders(cards, to, post = defaultPost) {
-  let ok = 0;
-  const failed = [];
-  for (const card of cards) {
-    try {
-      await post(card.id, { to, expectedVersion: card.version });
-      ok += 1;
-    } catch (err) {
-      failed.push({ id: `#${card.orderNumber}`, message: errorText(err) });
-    }
-  }
-  return { ok, failed };
+  const shippedBoxes = new Set();
+  return eachRow(cards, async (card) => {
+    const box = to === "shipped" ? card.shipmentId ?? null : null;
+    if (box && shippedBoxes.has(box)) return;
+    await post(card.id, { to, expectedVersion: card.version });
+    if (box) shippedBoxes.add(box);
+  }, (card) => `#${card.orderNumber}`);
+}
+
+/**
+ * The bulk "Move to …" actions for the selected cards (every move they all
+ * allow), for a <DataTable>. "Shipped" is final — it issues the invoice and
+ * emails the doctor — so it asks for a second click. `after()` runs once the
+ * moves finish (reload the list).
+ */
+export function moveBulkActions(selectedRows, { post = defaultPost, after } = {}) {
+  const n = selectedRows.length;
+  return commonMoves(selectedRows).map((m) => ({
+    id: `move-${m.to}`,
+    label: `Move to ${label(m.to)}`,
+    ...(m.to === "shipped" ? { tone: "danger", confirmLabel: `Click again to ship ${n} order${n === 1 ? "" : "s"}` } : {}),
+    run: async (rows) => {
+      try {
+        return await moveOrders(rows, m.to, post);
+      } finally {
+        after?.();
+      }
+    },
+  }));
 }
 
 /** Board filter state → GET /lab/orders params. */

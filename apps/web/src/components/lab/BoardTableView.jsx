@@ -3,7 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { LAB_BOARD_COLUMNS, LAB_STATUS_LABELS } from "@my-app/shared";
 import { DataTable } from "../ui/data-table/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
-import { commonMoves, moveOrders } from "../../lib/lab-board.js";
+import { moveBulkActions } from "../../lib/lab-board.js";
 import { boardColumns } from "./board-columns.jsx";
 
 function StatusSection({ status, cards, columns, post, onChanged }) {
@@ -30,16 +30,7 @@ function StatusSection({ status, cards, columns, post, onChanged }) {
 // Mounted only while open, so a collapsed section costs nothing.
 function SectionTable({ status, cards, columns, post, onChanged }) {
   const table = useDataTable({ mode: "client", rows: cards, getRowId: (c) => c.id, initialPageSize: 20 });
-  const moves = commonMoves(table.selection.selectedRows);
-  const bulkActions = moves.map((m) => ({
-    id: `move-${m.to}`,
-    label: `Move to ${m.label.replace(/^→\s*/, "")}`,
-    run: async (rows) => {
-      const result = await moveOrders(rows, m.to, post);
-      onChanged();
-      return result;
-    },
-  }));
+  const bulkActions = moveBulkActions(table.selection.selectedRows, { post, after: onChanged });
   return (
     <div className="px-1 pb-2 pt-1">
       <DataTable

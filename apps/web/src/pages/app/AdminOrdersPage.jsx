@@ -5,7 +5,7 @@ import { LAB_ORDER_STATUSES, LAB_STATUS_LABELS, formatLabDate } from "@my-app/sh
 import api from "../../config/api.js";
 import { labOrderPath } from "../../config/routes.js";
 import { sourceLabel } from "../../lib/staff.js";
-import { commonMoves, moveOrders } from "../../lib/lab-board.js";
+import { moveBulkActions } from "../../lib/lab-board.js";
 import { pageParams } from "../../lib/data-table/server.js";
 import { DataTable } from "../../components/ui/data-table/index.js";
 import { FlagBadges, DueLabel } from "../../components/lab/board-columns.jsx";
@@ -72,15 +72,7 @@ export function AdminOrdersPage() {
   }, []);
 
   const table = useDataTable({ mode: "server", fetchPage, filters: orderFilters(departments, staff), urlKey: "ord", getRowId: (o) => o.id });
-  const bulkActions = commonMoves(table.selection.selectedRows).map((m) => ({
-    id: `move-${m.to}`,
-    label: `Move to ${m.label.replace(/^→\s*/, "")}`,
-    run: async (rows) => {
-      const result = await moveOrders(rows, m.to);
-      table.reload();
-      return result;
-    },
-  }));
+  const bulkActions = moveBulkActions(table.selection.selectedRows, { after: table.reload });
 
   return (
     <div className="mx-auto max-w-7xl space-y-4 p-6 md:p-8">

@@ -66,10 +66,11 @@ const searchFn = (c, q) =>
 const statusMatch = (c, picked) =>
   picked.some((v) => (v === RESOLVED_FILTER ? RESOLVED_STATUSES.includes(c.status) : c.status === v));
 
-function caseColumns() {
+export function caseColumns() {
   return [
     { id: "case", header: "Case #", exportValue: (c) => c.caseNumber ?? "", cell: (c) => <span className="font-mono text-xs text-brand-600">{c.caseNumber || "—"}</span> },
-    { id: "patient", header: "Patient", exportValue: (c) => c.patientName ?? "", cell: (c) => <div className="text-sm font-medium text-primary truncate max-w-[200px]">{c.patientName || "—"}</div> },
+    // Patient names stay on screen but never leave in an admin CSV export (PHI).
+    { id: "patient", header: "Patient", export: false, cell: (c) => <div className="text-sm font-medium text-primary truncate max-w-[200px]">{c.patientName || "—"}</div> },
     { id: "practice", header: "Practice", exportValue: (c) => c.practiceName ?? "", cell: (c) => <div className="text-sm text-secondary truncate max-w-[220px]">{c.practiceName || "—"}</div> },
     { id: "device", header: "Device", exportValue: (c) => c.deviceKey ?? "", cell: (c) => <span className="text-xs text-secondary">{c.deviceKey || "—"}</span> },
     {

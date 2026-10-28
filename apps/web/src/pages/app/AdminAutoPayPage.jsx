@@ -141,7 +141,6 @@ export function AdminAutoPayPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [data, setData] = useState({ enrollments: [], minAmount: 0, liveRun: false });
-  const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(null); // `${userId}:${action}` in flight
   const [drawerUserId, setDrawerUserId] = useState(null);
   const { addToast } = useToast();

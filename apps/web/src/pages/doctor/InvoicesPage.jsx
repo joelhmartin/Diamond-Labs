@@ -81,7 +81,9 @@ export function InvoicesPage() {
 
   // Same guards as before: only payable invoices can be selected, and no payment while PAYMENTS_PAUSED.
   const bulkActions = [{
-    id: "pay", label: "Pay selected", icon: <CreditCard size={12} />,
+    id: "pay",
+    label: (rows) => `Pay selected (${formatCents(rows.filter(isPayable).reduce((sum, i) => sum + Math.max(0, i.balanceCents), 0))})`,
+    icon: <CreditCard size={12} />,
     disabled: (rows) => paused || rows.length === 0 || !rows.every(isPayable),
     run: (rows) => { setPaying(rows.filter(isPayable)); },
   }];

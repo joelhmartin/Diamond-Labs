@@ -41,7 +41,7 @@ test('doctor InvoicesPage: only payable invoices are selectable and "Pay selecte
   assert.equal(screen.queryByText(/selected/), null);
   fireEvent.click(boxes[0]);
   fireEvent.click(boxes[2]);
-  fireEvent.click(await screen.findByRole("button", { name: /Pay selected/ }));
+  fireEvent.click(await screen.findByRole("button", { name: "Pay selected ($75.00)" }));
   await screen.findByText("PAYMENT MODAL");
   assert.deepEqual(modalProps.invoices.map((i) => i.id).sort(), ["i1", "i3"]);
   assert.deepEqual(modalProps.invoices.find((i) => i.id === "i3"), { id: "i3", invoiceNumber: 103, balanceCents: 2500, dueDate: "2099-01-01" });

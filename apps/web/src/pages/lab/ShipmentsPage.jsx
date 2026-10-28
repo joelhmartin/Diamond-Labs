@@ -101,9 +101,11 @@ export function ShipmentsPage() {
     }
   };
 
+  const shippable = table.selection.selectedRows.filter((s) => s.canMarkShipped).length;
   const bulkActions = [
     {
-      id: "mark-shipped", label: "Mark shipped",
+      // Shipping emails each box's recipient, so it takes a second click (like "Mark all").
+      id: "mark-shipped", label: "Mark shipped", confirmLabel: `Click again to ship ${shippable} box${shippable === 1 ? "" : "es"}`,
       disabled: (rows) => !rows.some((s) => s.canMarkShipped),
       run: async (rows) => {
         const result = await eachRow(rows.filter((s) => s.canMarkShipped), (s) => api.post(`/lab/shipments/${s.id}/mark-shipped`), shipmentLine);

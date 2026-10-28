@@ -53,3 +53,23 @@ export function pageSlice(rows, page, pageSize) {
   const start = (page - 1) * pageSize;
   return rows.slice(start, start + pageSize);
 }
+
+/**
+ * The <Pagination> props for `total` rows: the page clamped into range, the
+ * page count and the 1-based "showing X–Y" range. Changing the page size goes
+ * back to page 1. The one place this maths lives (useDataTable, the catalog).
+ */
+export function paginationProps({ total, page, pageSize, setPage, setPageSize }) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const shown = Math.min(Math.max(1, page), totalPages);
+  return {
+    page: shown,
+    setPage,
+    pageSize,
+    setPageSize: (n) => { setPageSize(n); setPage(1); },
+    total,
+    totalPages,
+    rangeStart: total === 0 ? 0 : (shown - 1) * pageSize + 1,
+    rangeEnd: Math.min(total, shown * pageSize),
+  };
+}

@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { applyClient, pageSlice, isEmptyFilterValue } from "../table-state.js";
+import { applyClient, pageSlice, isEmptyFilterValue, paginationProps } from "../table-state.js";
 
 const ROWS = [
   { id: "1", name: "Bravo", status: "open", total: 30, tags: ["rush"] },
@@ -47,4 +47,30 @@ test("pageSlice returns the right window and an empty array past the end", () =>
 test("isEmptyFilterValue treats blank, false and empty lists as unset", () => {
   for (const v of [undefined, null, "", "  ", false, []]) assert.equal(isEmptyFilterValue(v), true, JSON.stringify(v));
   for (const v of ["x", true, ["a"], 0]) assert.equal(isEmptyFilterValue(v), false, JSON.stringify(v));
+});
+
+const noop = () => {};
+const pp = (total, page, pageSize = 10) => {
+  const { setPage, setPageSize, ...rest } = paginationProps({ total, page, pageSize, setPage: noop, setPageSize: noop });
+  return rest;
+};
+
+test("paginationProps: no rows is one empty page", () => {
+  assert.deepEqual(pp(0, 1), { page: 1, pageSize: 10, total: 0, totalPages: 1, rangeStart: 0, rangeEnd: 0 });
+});
+
+test("paginationProps: an exact multiple fills the last page", () => {
+  assert.deepEqual(pp(30, 3), { page: 3, pageSize: 10, total: 30, totalPages: 3, rangeStart: 21, rangeEnd: 30 });
+  assert.deepEqual(pp(31, 4), { page: 4, pageSize: 10, total: 31, totalPages: 4, rangeStart: 31, rangeEnd: 31 });
+});
+
+test("paginationProps: a page past the end clamps to the last page", () => {
+  assert.deepEqual(pp(25, 9), { page: 3, pageSize: 10, total: 25, totalPages: 3, rangeStart: 21, rangeEnd: 25 });
+});
+
+test("paginationProps: changing the page size goes back to page 1", () => {
+  const calls = [];
+  const p = paginationProps({ total: 50, page: 4, pageSize: 10, setPage: (n) => calls.push(["page", n]), setPageSize: (n) => calls.push(["size", n]) });
+  p.setPageSize(50);
+  assert.deepEqual(calls, [["size", 50], ["page", 1]]);
 });

@@ -196,15 +196,17 @@ export function AdminUsersPage() {
   }
 
   // One POST for the whole selection; the server reports how many it sent.
+  const plural = (kind) => (kind === "invitation" ? "invitations" : "password resets");
   const bulkSend = (kind) => async (rows) => {
     const res = await api.post("/admin/users/bulk-email", { userIds: rows.map((u) => u.id), kind });
     const { sent, requested } = res.data.data;
-    addToast({ message: `Sent ${sent}/${requested} ${kind === "invitation" ? "invitations" : "password resets"}`, type: "success" });
+    addToast({ message: `Sent ${sent}/${requested} ${plural(kind)}`, type: sent < requested ? "warning" : "success" });
     table.selection.clear();
   };
+  const n = table.selection.count;
   const bulkActions = [
-    { id: "invite", label: "Send invitations", confirmLabel: "Click again to send", icon: <Send size={12} />, run: bulkSend("invitation") },
-    { id: "reset", label: "Send password resets", confirmLabel: "Click again to send", icon: <KeyRound size={12} />, run: bulkSend("password-reset") },
+    { id: "invite", label: "Send invitations", confirmLabel: `Click again to send ${n} ${plural("invitation")}`, icon: <Send size={12} />, run: bulkSend("invitation") },
+    { id: "reset", label: "Send password resets", confirmLabel: `Click again to send ${n} ${plural("password-reset")}`, icon: <KeyRound size={12} />, run: bulkSend("password-reset") },
   ];
 
   return (

@@ -161,6 +161,16 @@ test("a failing bulk result toasts the failures", async () => {
   assert.ok(await screen.findByText("1 done, 1 failed: #100231 changed since you loaded it"));
 });
 
+test("a bulk action label can be a function of the selected rows", async () => {
+  const run = vi.fn(async () => {});
+  mount(<Harness bulkActions={[{ id: "pay", label: (rows) => `Pay ${rows.length}`, run }]} />);
+  fireEvent.click(rowOf("Row 01"), { metaKey: true });
+  assert.ok(screen.getByRole("button", { name: "Pay 1" }));
+  fireEvent.click(rowOf("Row 02"), { metaKey: true });
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Pay 2" })));
+  assert.deepEqual(run.mock.calls[0][0].map((r) => r.id), ["r1", "r2"]);
+});
+
 test("a bulk action that throws toasts the error message", async () => {
   const run = vi.fn(async () => { throw new Error("Network down"); });
   mount(<Harness bulkActions={[{ id: "move", label: "Move", run }]} />);

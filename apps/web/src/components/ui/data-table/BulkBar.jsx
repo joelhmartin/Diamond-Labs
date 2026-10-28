@@ -19,7 +19,12 @@ export function summarizeResult({ ok = 0, failed = [] }) {
   return `${ok} done, ${failed.length} failed: ${named}${more}`;
 }
 
-/** Replaces the toolbar while rows are selected: count, actions, Export CSV, Clear. */
+/**
+ * Replaces the toolbar while rows are selected: count, actions, Export CSV, Clear.
+ * A bulk action is `{ id, label, run(rows), icon?, tone?, confirmLabel?, disabled?(rows) }`;
+ * `label` may be a string or `(selectedRows) => string` (e.g. a selected total).
+ * `run` may return `{ ok, failed }` (see eachRow) to have the outcome toasted.
+ */
 export function BulkBar({ table, columns, bulkActions = [], exportable, exportFileName }) {
   const { addToast } = useToast();
   const [busy, setBusy] = useState(null);
@@ -53,7 +58,7 @@ export function BulkBar({ table, columns, bulkActions = [], exportable, exportFi
         const body = (
           <>
             {action.icon}
-            {action.label}
+            {typeof action.label === "function" ? action.label(selectedRows) : action.label}
           </>
         );
         return action.confirmLabel ? (

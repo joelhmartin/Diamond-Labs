@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { applyClient, pageSlice, isEmptyFilterValue } from "../lib/data-table/table-state.js";
+import { applyClient, pageSlice, isEmptyFilterValue, paginationProps } from "../lib/data-table/table-state.js";
 import * as Sel from "../lib/data-table/selection.js";
 import { useDebouncedValue } from "./useDebouncedValue.js";
 import { useLatestRequest } from "./useLatestRequest.js";
@@ -85,14 +85,15 @@ export function useDataTable(options) {
   );
 
   const total = server ? remote.total : matching.length;
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const pagination = paginationProps({ total, page, pageSize, setPage, setPageSize: setPageSizeState });
+  const { totalPages } = pagination;
   useEffect(() => {
     if (total > 0 && page > totalPages) setPage(totalPages);
   }, [total, page, totalPages]);
 
   const visible = useMemo(
-    () => (server ? remote.rows : pageSlice(matching, Math.min(page, totalPages), pageSize)),
-    [server, remote.rows, matching, page, totalPages, pageSize],
+    () => (server ? remote.rows : pageSlice(matching, pagination.page, pageSize)),
+    [server, remote.rows, matching, pagination.page, pageSize],
   );
 
   useEffect(() => {
@@ -107,7 +108,6 @@ export function useDataTable(options) {
     knownRows: remote.knownRows, getRowId, isRowSelectable,
   });
 
-  const shown = Math.min(page, totalPages);
   return {
     rows: visible,
     matchingRows: matching, // client mode: every row passing search + filters (for totals); empty in server mode
@@ -116,16 +116,7 @@ export function useDataTable(options) {
     error: server ? remote.error : options.error ?? null,
     reload: server ? remote.reload : options.reload ?? noop,
     q, setQ, filters, setFilter, resetFilters, sort, setSort,
-    pagination: {
-      page: shown,
-      setPage,
-      pageSize,
-      setPageSize: (n) => { setPageSizeState(n); setPage(1); },
-      total,
-      totalPages,
-      rangeStart: total === 0 ? 0 : (shown - 1) * pageSize + 1,
-      rangeEnd: Math.min(total, shown * pageSize),
-    },
+    pagination,
     selection,
     filterDefs,
     getRowId,

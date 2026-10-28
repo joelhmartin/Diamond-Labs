@@ -36,12 +36,23 @@ test('AdminUsersPage bulk "Send invitations" posts the selected user ids to /adm
   fireEvent.click(boxes[0]);
   fireEvent.click(boxes[2]);
   fireEvent.click(await screen.findByRole("button", { name: "Send invitations" }));
-  fireEvent.click(await screen.findByRole("button", { name: /click again/i }));
+  fireEvent.click(await screen.findByRole("button", { name: "Click again to send 2 invitations" }));
   await waitFor(() => assert.equal(post.mock.calls.length, 1));
   const [path, body] = post.mock.calls[0];
   assert.equal(path, "/admin/users/bulk-email");
   assert.deepEqual([...body.userIds].sort(), ["u1", "u3"]);
   assert.equal(body.kind, "invitation");
+});
+
+test("AdminUsersPage bulk send names the count and warns when fewer were sent than requested", async () => {
+  post.mockResolvedValue({ data: { data: { sent: 1, requested: 3 } } });
+  mount();
+  await screen.findByText("Alice");
+  for (const box of screen.getAllByLabelText("Select row")) fireEvent.click(box);
+  fireEvent.click(await screen.findByRole("button", { name: "Send password resets" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Click again to send 3 password resets" }));
+  const toast = await screen.findByText("Sent 1/3 password resets");
+  assert.match(toast.closest("[class*='bg-amber-500']")?.className ?? "", /bg-amber-500/);
 });
 
 test("AdminUsersPage passwordless-only filter narrows the list", async () => {
