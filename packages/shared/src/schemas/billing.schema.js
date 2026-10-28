@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { id, isoDate } from "./common.schema.js";
+import { id, isoDate, pageQueryShape, searchText } from "./common.schema.js";
 import { INVOICE_STATUSES, INVOICE_LINE_KINDS, MANUAL_PAYMENT_METHODS } from "../billing/billing.js";
 
 const version = z.number().int().positive();
@@ -13,6 +13,8 @@ export const invoiceListQuerySchema = z.object({
   needsPrice: flag,
   clientUserId: id.optional(),
   number: z.coerce.number().int().positive().optional(),
+  q: searchText.optional(),
+  ...pageQueryShape,
 });
 
 // The rules (reason required for a price change, negatives only on an

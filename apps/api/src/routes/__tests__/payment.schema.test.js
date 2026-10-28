@@ -6,6 +6,7 @@ import {
   hostedCompleteSchema,
   checkoutSchema,
   refundSchema,
+  adminPaymentsQuerySchema,
 } from "@my-app/shared";
 
 describe("allocationSchema", () => {
@@ -110,5 +111,15 @@ describe("checkoutSchema amount typing", () => {
     for (const bad of [null, false, true, [], [5], "", "  "]) {
       expect(checkoutSchema.safeParse(body(bad)).success, JSON.stringify(bad)).toBe(false);
     }
+  });
+});
+
+describe("adminPaymentsQuerySchema", () => {
+  it("coerces limit/offset and keeps the no-limit legacy shape", () => {
+    expect(adminPaymentsQuerySchema.parse({ limit: "25", offset: "50", q: " abc " })).toEqual({ limit: 25, offset: 50, q: "abc" });
+    expect(adminPaymentsQuerySchema.parse({ userId: "u1" }).limit).toBeUndefined();
+  });
+  it("rejects a limit over 200 or below 1 and a negative offset", () => {
+    for (const bad of [{ limit: "201" }, { limit: "0" }, { offset: "-1" }]) expect(adminPaymentsQuerySchema.safeParse(bad).success).toBe(false);
   });
 });

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { id, isoDate } from "./common.schema.js";
+import { id, isoDate, pageQueryShape, searchText } from "./common.schema.js";
 import { CARRIERS, SHIPMENT_STATUSES, PARCEL_PRESET_KEYS } from "../shipping/shipping.js";
 
 /**
@@ -68,4 +68,6 @@ export const shipmentListQuerySchema = z.object({
   carrier: z.enum(CARRIERS).optional(),
   from: isoDate.optional(),
   to: isoDate.optional(),
+  q: searchText.optional(),
+  ...pageQueryShape,
 });

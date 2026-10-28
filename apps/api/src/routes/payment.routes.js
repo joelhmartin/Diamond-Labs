@@ -7,7 +7,9 @@ import { users, auditLog } from "../db/schema/index.js";
 import { eq, and, inArray, like, desc } from "drizzle-orm";
 import { env } from "../config/env.js";
 import { testModeError } from "../config/app-env.js";
-import { ERROR_CODES } from "@my-app/shared";
+import { ERROR_CODES, adminPaymentsQuerySchema } from "@my-app/shared";
+import { validateQuery } from "../middleware/validate.js";
+import { pageOf, sliceRows } from "../lib/list-query.js";
 
 // Checkout, saved cards, invoice payments and refunds live in their own route
 // modules (checkout.routes.js, saved-cards.routes.js, invoice-payment.routes.js,
@@ -31,12 +33,13 @@ export default async function paymentRoutes(fastify) {
   // Admin — payment history across all doctors, enriched with the doctor's
   // name/email + a `refundable` flag so the UI can launch the refund modal on a
   // specific transaction. Optional `userId` scope and `q` free-text filter;
-  // capped to `limit` (default 200, max 500) with a `truncated` flag so the UI
-  // never silently hides rows.
+  // without `limit`: capped at 200 with a `truncated` flag so the UI never
+  // silently hides rows; with `limit` (1-200) + `offset`: one page and `total`.
   fastify.get("/admin/payments", {
-    preHandler: [authenticate, requireAdmin],
+    preHandler: [authenticate, requireAdmin, validateQuery(adminPaymentsQuerySchema)],
   }, async (request) => {
-    const { userId, q, limit } = request.query || {};
+    const { userId, q } = request.query || {};
+    const page = pageOf(request.query);
     let payments = await listAllPayments({ userId: userId || undefined });
 
     const ids = [...new Set(payments.map((p) => p.userId).filter(Boolean))];
@@ -76,8 +79,9 @@ export default async function paymentRoutes(fastify) {
     }
 
     const total = payments.length;
-    const max = Math.min(Number(limit) > 0 ? Number(limit) : 200, 500);
-    const sliced = payments.slice(0, max);
+    // Paged (limit sent): offset applies before the slice, no `truncated` flag.
+    if (page) return { data: { payments: sliceRows(payments, page), total } };
+    const sliced = payments.slice(0, 200);
     return { data: { payments: sliced, total, truncated: total > sliced.length } };
   });
 
