@@ -50,3 +50,10 @@ test("the order list filters by every lab order source, legacy included", () => 
   assert.equal(labOrderListQuerySchema.parse({ source: "legacy" }).source, "legacy");
   assert.equal(labOrderListQuerySchema.safeParse({ source: "seazona" }).success, false);
 });
+
+test("lab order list: limit/offset coerce and limit over 200 is rejected", () => {
+  const q = labOrderListQuerySchema.parse({ limit: "50", offset: "100" });
+  assert.deepEqual([q.limit, q.offset], [50, 100]);
+  assert.equal(labOrderListQuerySchema.parse({}).limit, undefined, "the board sends no limit");
+  for (const bad of [{ limit: "201" }, { limit: "0" }, { offset: "-5" }]) assert.equal(labOrderListQuerySchema.safeParse(bad).success, false, JSON.stringify(bad));
+});

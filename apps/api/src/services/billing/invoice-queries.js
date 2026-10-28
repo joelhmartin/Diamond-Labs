@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { caseSummary } from "@my-app/shared";
 import { db } from "../../config/database.js";
@@ -8,6 +8,7 @@ import { decryptRxPhi } from "../rx/phi-crypto.js";
 import { initialsFor } from "../lab/lab-order-rules.js";
 import { withBalances, ledgerRowsForInvoice } from "./ledger.service.js";
 import { openInvoice, openLine } from "./invoice-crypto.js";
+import { pageOf, containsPattern, prefixPattern } from "../../lib/list-query.js";
 
 /**
  * Invoice reads for the doctor and admin screens. Balances always come from
@@ -43,8 +44,13 @@ function legacyInitials(sealed) {
 /** A legacy line shows its Seazona text (opened) as its description; every other line is unchanged. */
 const presentLine = ({ legacyDescription, ...line }) => (legacyDescription ? { ...line, description: legacyDescription } : line);
 
-/** Admin › Invoices: newest first, filtered on the server (the list is capped). */
-export async function listInvoices(filters = {}, database = db) {
+/**
+ * The one WHERE for Admin › Invoices, used by the page query and the total.
+ * `q`: digits match the invoice number prefix; text matches the client's
+ * practice (doctor profile company) and doctor name, both plaintext. Patient
+ * names are encrypted and never searched.
+ */
+export function invoiceListWhere(filters = {}) {
   const conds = [];
   if (filters.status) conds.push(eq(invoices.status, filters.status));
   if (filters.clientUserId) conds.push(eq(invoices.clientUserId, filters.clientUserId));
@@ -53,15 +59,33 @@ export async function listInvoices(filters = {}, database = db) {
     conds.push(eq(invoices.status, "draft"));
     conds.push(sql`exists (select 1 from ${invoiceLines} where ${invoiceLines.invoiceId} = ${invoices.id} and ${invoiceLines.priceSource} = 'unpriced')`);
   }
-  const rows = await database
+  if (filters.q) {
+    conds.push(/^\d+$/.test(filters.q)
+      ? sql`${invoices.invoiceNumber}::text like ${prefixPattern(filters.q)}`
+      : or(ilike(doctorProfiles.companyName, containsPattern(filters.q)), ilike(client.name, containsPattern(filters.q))));
+  }
+  return conds.length ? and(...conds) : undefined;
+}
+
+/**
+ * Admin › Invoices: newest first, filtered on the server. Without `limit` the
+ * list is capped (INVOICE_LIST_LIMIT, `truncated`); with `limit`/`offset` it is
+ * one page plus `total` (every match).
+ */
+export async function listInvoices(filters = {}, database = db) {
+  const page = pageOf(filters);
+  const where = invoiceListWhere(filters);
+  const rowsQuery = database
     .select({ invoice: invoices, clientName: client.name, practice: doctorProfiles.companyName, labOrderNumber: labOrders.orderNumber })
     .from(invoices)
     .leftJoin(client, eq(client.id, invoices.clientUserId))
     .leftJoin(doctorProfiles, eq(doctorProfiles.userId, invoices.clientUserId))
     .leftJoin(labOrders, eq(labOrders.id, invoices.labOrderId))
-    .where(conds.length ? and(...conds) : undefined)
-    .orderBy(desc(invoices.invoiceNumber))
-    .limit(INVOICE_LIST_LIMIT);
+    .where(where)
+    .orderBy(desc(invoices.invoiceNumber));
+  const [rows, total] = page
+    ? await Promise.all([rowsQuery.limit(page.limit).offset(page.offset), countInvoices(where, database)])
+    : [await rowsQuery.limit(INVOICE_LIST_LIMIT), null];
   const ids = rows.map((r) => r.invoice.id);
   const unpriced = new Set(
     ids.length
@@ -72,7 +96,7 @@ export async function listInvoices(filters = {}, database = db) {
       : []
   );
   const balanced = await withBalances(rows.map((r) => r.invoice), database);
-  return {
+  const out = {
     invoices: balanced.map((inv, i) => ({
       id: inv.id, invoiceNumber: inv.invoiceNumber, kind: inv.kind, status: inv.status,
       clientUserId: inv.clientUserId, clientName: rows[i].clientName ?? null, practice: rows[i].practice ?? null,
@@ -80,8 +104,19 @@ export async function listInvoices(filters = {}, database = db) {
       issuedAt: inv.issuedAt, dueDate: inv.dueDate, totalCents: inv.totalCents, paidCents: inv.paidCents, balanceCents: inv.balanceCents,
       needsPrice: unpriced.has(inv.id),
     })),
-    truncated: rows.length >= INVOICE_LIST_LIMIT,
   };
+  return page ? { ...out, total } : { ...out, truncated: rows.length >= INVOICE_LIST_LIMIT };
+}
+
+/** count(*) over the same joins and WHERE as the list (the search reads the client and profile). */
+async function countInvoices(where, database) {
+  const [{ n }] = await database
+    .select({ n: sql`count(*)`.mapWith(Number) })
+    .from(invoices)
+    .leftJoin(client, eq(client.id, invoices.clientUserId))
+    .leftJoin(doctorProfiles, eq(doctorProfiles.userId, invoices.clientUserId))
+    .where(where);
+  return n;
 }
 
 /**

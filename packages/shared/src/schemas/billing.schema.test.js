@@ -40,3 +40,9 @@ test("statements are asked for by month; list filters coerce", () => {
   assert.equal(q.needsPrice, true);
   assert.equal(q.number, 500123);
 });
+
+test("invoice list: limit/offset coerce, limit is 1-200, q is trimmed and non-empty", () => {
+  assert.deepEqual(invoiceListQuerySchema.parse({ limit: "25", offset: "50", q: "  smile " }), { needsPrice: false, limit: 25, offset: 50, q: "smile" });
+  assert.equal(invoiceListQuerySchema.parse({}).limit, undefined, "no limit means the legacy capped list");
+  for (const bad of [{ limit: "201" }, { limit: "0" }, { offset: "-1" }, { q: "   " }, { q: "x".repeat(101) }]) assert.ok(!ok(invoiceListQuerySchema, bad), JSON.stringify(bad));
+});

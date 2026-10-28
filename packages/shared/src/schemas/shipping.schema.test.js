@@ -67,3 +67,8 @@ test("the shipments list filters by status, carrier and date range", () => {
   assert.equal(shipmentListQuerySchema.safeParse({ status: "lost" }).success, false);
   assert.equal(shipmentListQuerySchema.safeParse({ from: "10/01/2026" }).success, false);
 });
+
+test("shipment list: limit/offset/q validate (limit 1-200, q 1-100 after trim)", () => {
+  assert.deepEqual(shipmentListQuerySchema.parse({ limit: "20", offset: "40", q: " 1Z99 " }), { limit: 20, offset: 40, q: "1Z99" });
+  for (const bad of [{ limit: "201" }, { offset: "-1" }, { q: "  " }]) assert.equal(shipmentListQuerySchema.safeParse(bad).success, false, JSON.stringify(bad));
+});

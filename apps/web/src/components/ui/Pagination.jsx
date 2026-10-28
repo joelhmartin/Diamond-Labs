@@ -1,10 +1,11 @@
+import { useId } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { PAGE_SIZE_OPTIONS } from "../../hooks/usePagination.js";
+import { PAGE_SIZE_OPTIONS } from "../../lib/data-table/table-state.js";
 
 /**
- * Shared pagination control. Pair with the `usePagination` hook.
+ * Shared pagination control. Fed by `useDataTable().pagination` (or any {page,setPage,pageSize,setPageSize,total,totalPages,rangeStart,rangeEnd}).
  *
- *   <Pagination {...pagination} itemLabel="invoices" />
+ *   <Pagination {...table.pagination} itemLabel="invoices" />
  *
  * Edits here propagate to every page that uses it.
  */
@@ -21,6 +22,7 @@ export function Pagination({
   pageSizeOptions = PAGE_SIZE_OPTIONS,
   className = "",
 }) {
+  const sizeId = useId();
   if (total === 0) return null;
 
   const pages = buildPageList(page, totalPages);
@@ -30,11 +32,11 @@ export function Pagination({
       className={`flex flex-wrap items-center justify-between gap-4 ${className}`}
     >
       <div className="flex items-center gap-2 text-xs text-navy/50">
-        <label htmlFor="page-size" className="font-mono uppercase tracking-widest text-[10px] text-navy/40">
+        <label htmlFor={sizeId} className="font-mono uppercase tracking-widest text-[10px] text-navy/40">
           Per page
         </label>
         <select
-          id="page-size"
+          id={sizeId}
           value={pageSize}
           onChange={(e) => setPageSize(Number(e.target.value))}
           className="px-2.5 py-1.5 rounded-lg bg-white border border-surface-300/60 text-navy text-xs focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all"

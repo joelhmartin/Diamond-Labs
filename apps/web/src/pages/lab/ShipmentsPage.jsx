@@ -1,61 +1,128 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Loader2, RefreshCw, Printer } from "lucide-react";
+import { Printer, RefreshCw } from "lucide-react";
 import { CARRIERS, CARRIER_LABELS, SHIPMENT_STATUSES, formatCents, formatLabDate } from "@my-app/shared";
 import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { ConfirmButton } from "../../components/ui/ConfirmButton.jsx";
+import { DataTable } from "../../components/ui/data-table/index.js";
 import { CarriersPanel } from "../../components/lab/CarriersPanel.jsx";
 import { labOrderPath, shipmentPrintPath } from "../../config/routes.js";
 import { errorText } from "../../lib/requests.js";
-import { INPUT_BASE } from "../../components/lab/form-styles.js";
+import { pageParams } from "../../lib/data-table/server.js";
+import { eachRow } from "../../lib/data-table/bulk.js";
+import { useDataTable } from "../../hooks/useDataTable.js";
 import { shipmentLine, shipmentStatusLabel, shipmentListParams, canRefreshTracking } from "../../lib/shipping.js";
 
 const ROW_BTN = "rounded-full bg-surface-100 px-2.5 py-1 text-[11px] font-semibold text-navy hover:bg-surface-200 disabled:opacity-40";
 
+const FILTERS = [
+  { id: "status", label: "Status", type: "select", placeholder: "Any status", options: SHIPMENT_STATUSES.map((s) => ({ value: s, label: shipmentStatusLabel(s) })) },
+  { id: "carrier", label: "Carrier", type: "select", placeholder: "Any carrier", options: CARRIERS.map((c) => ({ value: c, label: CARRIER_LABELS[c] })) },
+  { id: "from", label: "From", type: "date" },
+  { id: "to", label: "To", type: "date" },
+];
+
+async function fetchPage({ page, pageSize, q, filters }) {
+  const res = await api.get("/lab/shipments", { params: { ...shipmentListParams(filters), ...pageParams({ page, pageSize, q }) } });
+  return { rows: res.data.data.shipments, total: res.data.data.total };
+}
+
+function shipmentColumns({ busy, act }) {
+  return [
+    { id: "bought", header: "Bought", cell: (s) => <span className="text-xs text-navy/60">{formatLabDate(s.purchasedAt)}</span>, exportValue: (s) => s.purchasedAt ?? "" },
+    {
+      id: "shipment", header: "Shipment", exportValue: (s) => shipmentLine(s),
+      cell: (s) => (
+        <>
+          {s.trackingUrl ? <a href={s.trackingUrl} target="_blank" rel="noreferrer" className="text-brand-600 hover:underline">{shipmentLine(s)}</a> : shipmentLine(s)}
+          {s.trackingError && <div className="text-[11px] text-red-700">{s.trackingError}</div>}
+        </>
+      ),
+    },
+    { id: "status", header: "Status", cell: (s) => <span className="text-xs">{shipmentStatusLabel(s.status)}</span>, exportValue: (s) => shipmentStatusLabel(s.status) },
+    {
+      id: "orders", header: "Orders", exportValue: (s) => s.orders.map((o) => `#${o.orderNumber}`).join(" "),
+      cell: (s) => (
+        <span className="text-xs">
+          {s.orders.length ? s.orders.map((o) => <Link key={o.id} to={labOrderPath(o.id)} className="mr-1 font-mono text-brand-600 hover:underline">#{o.orderNumber}</Link>) : "—"}
+        </span>
+      ),
+    },
+    { id: "to", header: "To", cell: (s) => <span className="text-xs text-navy/70">{s.shipToName ?? "—"}</span>, exportValue: (s) => s.shipToName ?? "" },
+    { id: "charge", header: "Charge", cell: (s) => <span className="font-mono text-xs">{formatCents(s.chargeCents)}</span>, exportValue: (s) => (s.chargeCents / 100).toFixed(2) },
+    { id: "by", header: "By", cell: (s) => <span className="text-xs text-navy/60">{s.createdByName ?? "—"}</span>, exportValue: (s) => s.createdByName ?? "" },
+    {
+      id: "actions", header: "", export: false,
+      cell: (s) => (
+        <div className="flex flex-wrap justify-end gap-1">
+          {s.hasLabel && <a href={shipmentPrintPath(s.id)} target="_blank" rel="noreferrer" className={ROW_BTN}><Printer size={10} className="inline" /> Print</a>}
+          {s.canMarkShipped && <button type="button" disabled={busy} className={ROW_BTN} onClick={() => act(() => api.post(`/lab/shipments/${s.id}/mark-shipped`), "Marked shipped")}>Mark shipped</button>}
+          {canRefreshTracking(s) && (
+            <button type="button" disabled={busy} className={ROW_BTN} onClick={() => act(() => api.post(`/lab/shipments/${s.id}/refresh-tracking`), (d) => (d.updated ? "Tracking updated" : "No change"))}>
+              <RefreshCw size={10} className="inline" /> Tracking
+            </button>
+          )}
+          {s.canVoid && (
+            <ConfirmButton onConfirm={() => act(() => api.post(`/lab/shipments/${s.id}/void`), "Label voided")} disabled={busy} confirmLabel="Click again to void" className={`${ROW_BTN} bg-red-50 text-red-700`}>
+              Void
+            </ConfirmButton>
+          )}
+        </div>
+      ),
+    },
+  ];
+}
+
 /** Admin › Shipments (lab staff and admins): every shipment, its orders, and the actions that apply. */
 export function ShipmentsPage() {
   const { addToast } = useToast();
-  const [filters, setFilters] = useState({ status: "", carrier: "", from: "", to: "" });
-  const [data, setData] = useState(null);
   const [carriers, setCarriers] = useState([]);
   const [busy, setBusy] = useState(false);
-  const [loadError, setLoadError] = useState(null);
-  const loadSeq = useRef(0);
+  const table = useDataTable({ mode: "server", fetchPage, filters: FILTERS, urlKey: "shp", getRowId: (s) => s.id });
+  const { reload } = table;
 
-  const load = useCallback(async () => {
-    // Only the newest request may write state: a slow earlier filter's response is dropped.
-    const seq = ++loadSeq.current;
-    try {
-      const [list, c] = await Promise.all([
-        api.get("/lab/shipments", { params: shipmentListParams(filters) }),
-        api.get("/lab/carriers"),
-      ]);
-      if (seq !== loadSeq.current) return;
-      setData(list.data.data);
-      setCarriers(c.data.data.carriers);
-      setLoadError(null);
-    } catch (err) {
-      if (seq !== loadSeq.current) return;
-      setLoadError(errorText(err));
-      addToast({ message: errorText(err), type: "error" });
-    }
-  }, [filters, addToast]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    api.get("/lab/carriers")
+      .then((c) => setCarriers(c.data.data.carriers))
+      .catch((err) => addToast({ message: errorText(err), type: "error" }));
+  }, [addToast]);
 
   const act = async (fn, success) => {
     setBusy(true);
     try {
       const res = await fn();
       addToast({ message: typeof success === "function" ? success(res.data.data) : success, type: "success" });
-      await load();
+      reload();
     } catch (err) {
       addToast({ message: errorText(err), type: "error" });
     } finally {
       setBusy(false);
     }
   };
-  const setFilter = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }));
+
+  const shippable = table.selection.selectedRows.filter((s) => s.canMarkShipped).length;
+  const bulkActions = [
+    {
+      // Shipping emails each box's recipient, so it takes a second click (like "Mark all").
+      id: "mark-shipped", label: "Mark shipped", confirmLabel: `Click again to ship ${shippable} box${shippable === 1 ? "" : "es"}`,
+      disabled: (rows) => !rows.some((s) => s.canMarkShipped),
+      run: async (rows) => {
+        const result = await eachRow(rows.filter((s) => s.canMarkShipped), (s) => api.post(`/lab/shipments/${s.id}/mark-shipped`), shipmentLine);
+        reload();
+        return result;
+      },
+    },
+    {
+      id: "refresh-tracking", label: "Refresh tracking",
+      disabled: (rows) => !rows.some(canRefreshTracking),
+      run: async (rows) => {
+        const result = await eachRow(rows.filter(canRefreshTracking), (s) => api.post(`/lab/shipments/${s.id}/refresh-tracking`), shipmentLine);
+        reload();
+        return result;
+      },
+    },
+  ];
 
   return (
     <div className="mx-auto max-w-6xl space-y-5 p-6 md:p-8">
@@ -73,72 +140,15 @@ export function ShipmentsPage() {
 
       <CarriersPanel carriers={carriers} />
 
-      <div className="flex flex-wrap gap-2">
-        <select className={INPUT_BASE} value={filters.status} onChange={setFilter("status")}>
-          <option value="">Any status</option>
-          {SHIPMENT_STATUSES.map((s) => <option key={s} value={s}>{shipmentStatusLabel(s)}</option>)}
-        </select>
-        <select className={INPUT_BASE} value={filters.carrier} onChange={setFilter("carrier")}>
-          <option value="">Any carrier</option>
-          {CARRIERS.map((c) => <option key={c} value={c}>{CARRIER_LABELS[c]}</option>)}
-        </select>
-        <input type="date" className={INPUT_BASE} value={filters.from} onChange={setFilter("from")} aria-label="From" />
-        <input type="date" className={INPUT_BASE} value={filters.to} onChange={setFilter("to")} aria-label="To" />
-      </div>
-
-      {loadError && !data ? (
-        <div className="flex items-center gap-3 py-10 text-sm text-red-700">
-          {loadError}
-          <button type="button" className={ROW_BTN} onClick={load}>Retry</button>
-        </div>
-      ) : !data ? (
-        <div className="flex items-center gap-2 py-10 text-sm text-navy/50"><Loader2 size={14} className="animate-spin" /> Loading…</div>
-      ) : data.shipments.length === 0 ? (
-        <p className="py-10 text-center text-sm text-navy/50">No shipments match.</p>
-      ) : (
-        <div className="overflow-x-auto rounded-2xl border border-surface-300/50 bg-white">
-          <table className="w-full text-left text-sm">
-            <thead className="text-[10px] font-mono uppercase tracking-widest text-navy/40">
-              <tr><th className="px-3 py-2">Bought</th><th>Shipment</th><th>Status</th><th>Orders</th><th>To</th><th>Charge</th><th>By</th><th /></tr>
-            </thead>
-            <tbody>
-              {data.shipments.map((s) => (
-                <tr key={s.id} className="border-t border-surface-300/40 align-top">
-                  <td className="px-3 py-2 text-xs text-navy/60">{formatLabDate(s.purchasedAt)}</td>
-                  <td className="py-2">
-                    {s.trackingUrl ? <a href={s.trackingUrl} target="_blank" rel="noreferrer" className="text-brand-600 hover:underline">{shipmentLine(s)}</a> : shipmentLine(s)}
-                    {s.trackingError && <div className="text-[11px] text-red-700">{s.trackingError}</div>}
-                  </td>
-                  <td className="py-2 text-xs">{shipmentStatusLabel(s.status)}</td>
-                  <td className="py-2 text-xs">
-                    {s.orders.length ? s.orders.map((o) => <Link key={o.id} to={labOrderPath(o.id)} className="mr-1 font-mono text-brand-600 hover:underline">#{o.orderNumber}</Link>) : "—"}
-                  </td>
-                  <td className="py-2 text-xs text-navy/70">{s.shipToName ?? "—"}</td>
-                  <td className="py-2 font-mono text-xs">{formatCents(s.chargeCents)}</td>
-                  <td className="py-2 text-xs text-navy/60">{s.createdByName ?? "—"}</td>
-                  <td className="py-2 pr-3">
-                    <div className="flex flex-wrap justify-end gap-1">
-                      {s.hasLabel && <a href={shipmentPrintPath(s.id)} target="_blank" rel="noreferrer" className={ROW_BTN}><Printer size={10} className="inline" /> Print</a>}
-                      {s.canMarkShipped && <button type="button" disabled={busy} className={ROW_BTN} onClick={() => act(() => api.post(`/lab/shipments/${s.id}/mark-shipped`), "Marked shipped")}>Mark shipped</button>}
-                      {canRefreshTracking(s) && (
-                        <button type="button" disabled={busy} className={ROW_BTN} onClick={() => act(() => api.post(`/lab/shipments/${s.id}/refresh-tracking`), (d) => (d.updated ? "Tracking updated" : "No change"))}>
-                          <RefreshCw size={10} className="inline" /> Tracking
-                        </button>
-                      )}
-                      {s.canVoid && (
-                        <ConfirmButton onConfirm={() => act(() => api.post(`/lab/shipments/${s.id}/void`), "Label voided")} disabled={busy} confirmLabel="Click again to void" className={`${ROW_BTN} bg-red-50 text-red-700`}>
-                          Void
-                        </ConfirmButton>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {data.truncated && <p className="p-3 text-xs text-navy/50">Showing the newest 500. Narrow the dates to see older shipments.</p>}
-        </div>
-      )}
+      <DataTable
+        table={table}
+        columns={shipmentColumns({ busy, act })}
+        bulkActions={bulkActions}
+        searchPlaceholder="Tracking # or order #"
+        itemLabel="shipments"
+        exportFileName="shipments.csv"
+        emptyText="No shipments match."
+      />
     </div>
   );
 }

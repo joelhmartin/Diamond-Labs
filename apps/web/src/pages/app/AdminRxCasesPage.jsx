@@ -1,18 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Search,
-  RefreshCw,
-  Loader2,
-  AlertCircle,
-  ClipboardCheck,
-} from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import api from "../../config/api.js";
 import { ROUTES } from "../../config/routes.js";
+import { DataTable } from "../../components/ui/data-table/index.js";
+import { useDataTable } from "../../hooks/useDataTable.js";
 import { caseStatusLabel, resolutionLabel } from "../../lib/rx-case-labels.js";
-
-const INPUT =
-  "w-full px-3.5 py-2.5 rounded-lg bg-white border border-surface-300/60 text-primary text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-icon";
 
 // Statuses the queue offers as filter pills, in the order staff should work
 // them — the same set GET /admin/rx-cases returns by default (everything
@@ -66,12 +59,41 @@ function Stat({ label, value, tint = "text-primary" }) {
   );
 }
 
-function Th({ children, className = "" }) {
-  return (
-    <th className={`text-left px-4 py-3 text-[10px] font-mono uppercase tracking-widest text-muted font-normal ${className}`}>
-      {children}
-    </th>
-  );
+const searchFn = (c, q) =>
+  [c.caseNumber, c.patientName, c.practiceName, c.deviceKey].filter(Boolean).join(" ").toLowerCase().includes(q.toLowerCase());
+
+/** Status filter values: a queue status, or RESOLVED_FILTER for released + pushed. */
+const statusMatch = (c, picked) =>
+  picked.some((v) => (v === RESOLVED_FILTER ? RESOLVED_STATUSES.includes(c.status) : c.status === v));
+
+export function caseColumns() {
+  return [
+    { id: "case", header: "Case #", exportValue: (c) => c.caseNumber ?? "", cell: (c) => <span className="font-mono text-xs text-brand-600">{c.caseNumber || "—"}</span> },
+    // Patient names stay on screen but never leave in an admin CSV export (PHI).
+    { id: "patient", header: "Patient", export: false, cell: (c) => <div className="text-sm font-medium text-primary truncate max-w-[200px]">{c.patientName || "—"}</div> },
+    { id: "practice", header: "Practice", exportValue: (c) => c.practiceName ?? "", cell: (c) => <div className="text-sm text-secondary truncate max-w-[220px]">{c.practiceName || "—"}</div> },
+    { id: "device", header: "Device", exportValue: (c) => c.deviceKey ?? "", cell: (c) => <span className="text-xs text-secondary">{c.deviceKey || "—"}</span> },
+    {
+      id: "lines", header: "Lines", exportValue: (c) => queueBadge(c),
+      cell: (c) => (
+        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${c.unmappedCount > 0 ? "bg-red-500/10 text-red-600" : "bg-surface-100 text-secondary"}`}>
+          {queueBadge(c)}
+        </span>
+      ),
+    },
+    { id: "submitted", header: "Submitted", sortValue: (c) => (c.createdAt ? new Date(c.createdAt) : null), exportValue: (c) => c.createdAt ?? "", cell: (c) => <span className="text-xs text-secondary">{formatDate(c.createdAt)}</span> },
+    {
+      id: "status", header: "Status", exportValue: (c) => caseStatusLabel(c.status),
+      cell: (c) => (
+        <div className="flex flex-col items-start gap-1">
+          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${statusColor(c.status)}`}>{caseStatusLabel(c.status)}</span>
+          {resolutionLabel(c.seazonaPushStatus) && (
+            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-700">{resolutionLabel(c.seazonaPushStatus)}</span>
+          )}
+        </div>
+      ),
+    },
+  ];
 }
 
 export function AdminRxCasesPage() {
@@ -79,8 +101,6 @@ export function AdminRxCasesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [cases, setCases] = useState([]);
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [resolvedLoaded, setResolvedLoaded] = useState(false);
   const [resolvedLoading, setResolvedLoading] = useState(false);
 
@@ -106,7 +126,7 @@ export function AdminRxCasesPage() {
       mergeCases(res.data.data || []);
       setError(null);
     } catch (err) {
-      setError(err.response?.data?.error?.message || err.message || "Failed to load the case queue.");
+      setError(err);
     } finally {
       setLoading(false);
     }
@@ -126,7 +146,7 @@ export function AdminRxCasesPage() {
       mergeCases(res.data.data || []);
       setResolvedLoaded(true);
     } catch (err) {
-      setError(err.response?.data?.error?.message || err.message || "Failed to load resolved cases.");
+      setError(err);
     } finally {
       setResolvedLoading(false);
     }
@@ -134,10 +154,7 @@ export function AdminRxCasesPage() {
 
   const refresh = () => {
     load();
-    if (resolvedLoaded) {
-      setResolvedLoaded(false);
-      loadResolved();
-    }
+    setResolvedLoaded(false); // the effect below refetches resolved rows if that option is picked
   };
 
   useEffect(() => {
@@ -164,25 +181,26 @@ export function AdminRxCasesPage() {
     [cases],
   );
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return cases.filter((c) => {
-      // "All" means the open queue (matching the page's own description
-      // below) — not literally every fetched row, since resolved cases may
-      // also be sitting in `cases` once the Resolved pill has been used.
-      if (statusFilter === "all") {
-        if (!QUEUE_STATUSES.includes(c.status)) return false;
-      } else if (statusFilter === RESOLVED_FILTER ? !RESOLVED_STATUSES.includes(c.status) : c.status !== statusFilter) {
-        return false;
-      }
-      if (!q) return true;
-      const blob = [c.caseNumber, c.patientName, c.practiceName, c.deviceKey]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return blob.includes(q);
-    });
-  }, [cases, query, statusFilter]);
+  // Counts stay live in the option labels; the open queue is the default selection.
+  const filters = useMemo(() => [{
+    id: "status", label: "Status", type: "multiselect", match: statusMatch,
+    options: [
+      ...QUEUE_STATUSES.map((s) => ({ value: s, label: `${caseStatusLabel(s)} (${statusCounts[s] || 0})` })),
+      { value: RESOLVED_FILTER, label: `Resolved${resolvedLoaded ? ` (${RESOLVED_STATUSES.reduce((n, s) => n + (statusCounts[s] || 0), 0)})` : ""}` },
+    ],
+  }], [statusCounts, resolvedLoaded]);
+
+  const table = useDataTable({
+    mode: "client", rows: cases, searchFn, filters, initialFilters: { status: QUEUE_STATUSES },
+    loading: loading || resolvedLoading, error, reload: refresh,
+  });
+
+  // Resolved rows aren't in the default fetch; pull them the first time that option is picked.
+  const wantsResolved = table.filters.status?.includes(RESOLVED_FILTER);
+  useEffect(() => {
+    if (wantsResolved) loadResolved();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantsResolved, resolvedLoaded]);
 
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto">
@@ -212,141 +230,15 @@ export function AdminRxCasesPage() {
         </div>
       )}
 
-      <div className="flex flex-col md:flex-row gap-3 mb-5">
-        <div className="relative flex-1">
-          <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-icon" />
-          <input
-            type="text"
-            className={`${INPUT} pl-10`}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by case #, patient, practice, or device…"
-          />
-        </div>
-        <div className="flex gap-1.5 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setStatusFilter("all")}
-            className={`px-3.5 py-2 rounded-full text-xs font-semibold transition-all ${
-              statusFilter === "all" ? "bg-navy text-white" : "bg-surface-100 text-secondary hover:text-primary"
-            }`}
-          >
-            All ({queueCount})
-          </button>
-          {QUEUE_STATUSES.map((s) => {
-            const active = statusFilter === s;
-            const count = statusCounts[s] || 0;
-            return (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setStatusFilter(s)}
-                className={`px-3.5 py-2 rounded-full text-xs font-semibold transition-all ${
-                  active ? "bg-navy text-white" : `${statusColor(s)} hover:bg-navy/10`
-                }`}
-              >
-                {caseStatusLabel(s)} ({count})
-              </button>
-            );
-          })}
-          <button
-            type="button"
-            onClick={() => {
-              setStatusFilter(RESOLVED_FILTER);
-              loadResolved();
-            }}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold transition-all ${
-              statusFilter === RESOLVED_FILTER ? "bg-navy text-white" : `${statusColor("released")} hover:bg-navy/10`
-            }`}
-          >
-            {resolvedLoading && <Loader2 size={11} className="animate-spin" />}
-            Resolved{resolvedLoaded ? ` (${RESOLVED_STATUSES.reduce((n, s) => n + (statusCounts[s] || 0), 0)})` : ""}
-          </button>
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="py-20 flex items-center justify-center text-icon">
-          <Loader2 size={18} className="animate-spin mr-2" /> Loading the queue…
-        </div>
-      ) : error ? (
-        <div className="py-20 text-center">
-          <AlertCircle size={32} className="mx-auto mb-3 text-red-500/40" />
-          <p className="text-sm text-secondary max-w-md mx-auto">{error}</p>
-          <button type="button" onClick={load} className="mt-4 px-4 py-2 rounded-full text-sm font-semibold bg-brand-500 text-white">
-            Retry
-          </button>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="py-20 text-center">
-          <ClipboardCheck size={32} className="mx-auto mb-3 text-emerald-500/50" />
-          <p className="text-sm text-secondary max-w-md mx-auto">
-            {cases.length === 0
-              ? "Queue is clear — no prescriptions are waiting on the lab."
-              : "No cases match your filters."}
-          </p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-2xl border border-surface-300/50 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-surface-100 border-b border-surface-300/50">
-                  <Th>Case #</Th>
-                  <Th>Patient</Th>
-                  <Th>Practice</Th>
-                  <Th>Device</Th>
-                  <Th>Lines</Th>
-                  <Th>Submitted</Th>
-                  <Th>Status</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((c) => (
-                  <tr
-                    key={c.id}
-                    onClick={() => navigate(ROUTES.ADMIN_RX_CASE_DETAIL.replace(":id", c.id))}
-                    className="border-b border-surface-300/30 hover:bg-surface-50 cursor-pointer"
-                  >
-                    <td className="px-4 py-3 font-mono text-xs text-brand-600">{c.caseNumber || "—"}</td>
-                    <td className="px-4 py-3">
-                      <div className="text-sm font-medium text-primary truncate max-w-[200px]">
-                        {c.patientName || "—"}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-secondary truncate max-w-[220px]">
-                      {c.practiceName || "—"}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-secondary">{c.deviceKey || "—"}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          c.unmappedCount > 0 ? "bg-red-500/10 text-red-600" : "bg-surface-100 text-secondary"
-                        }`}
-                      >
-                        {queueBadge(c)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-secondary">{formatDate(c.createdAt)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col items-start gap-1">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${statusColor(c.status)}`}>
-                          {caseStatusLabel(c.status)}
-                        </span>
-                        {resolutionLabel(c.seazonaPushStatus) && (
-                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-700">
-                            {resolutionLabel(c.seazonaPushStatus)}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      <DataTable
+        table={table}
+        columns={caseColumns()}
+        onRowClick={(c) => navigate(ROUTES.ADMIN_RX_CASE_DETAIL.replace(":id", c.id))}
+        searchPlaceholder="Case #, patient, practice, or device"
+        itemLabel="cases"
+        exportFileName="rx-cases.csv"
+        emptyText={cases.length === 0 ? "Queue is clear — no prescriptions are waiting on the lab." : "No cases match your filters."}
+      />
     </div>
   );
 }

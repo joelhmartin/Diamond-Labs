@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { id, isoDate } from "./common.schema.js";
+import { id, isoDate, pageQueryShape } from "./common.schema.js";
 import { LAB_ORDER_STATUSES, LAB_ORDER_SOURCES } from "../lab/lab-order-status.js";
 import { ROLE_CHANGE_CHOICES } from "../constants/user-roles.js";
 
@@ -42,6 +42,7 @@ export const labOrderListQuerySchema = z.object({
   dueBefore: isoDate.optional(),
   q: z.string().trim().max(100).optional(),
   includeClosed: flag,
+  ...pageQueryShape,
 });
 
 export const rxReleaseSchema = z.object({ confirmNotInSeazona: z.boolean().optional() }).default({});

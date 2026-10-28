@@ -1,74 +1,52 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { Loader2, RefreshCw, Search, AlertTriangle, Zap, RotateCcw, AlertCircle, Tag, Truck } from "lucide-react";
-import { LAB_BOARD_COLUMNS, LAB_STATUS_LABELS, formatUsDate, isTerminalLabStatus } from "@my-app/shared";
+import { Loader2, RefreshCw, Search, AlertCircle, Truck, LayoutGrid, Rows3 } from "lucide-react";
+import { LAB_BOARD_COLUMNS, LAB_STATUS_LABELS, isTerminalLabStatus } from "@my-app/shared";
 import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
-import { labOrderPath } from "../../config/routes.js";
-import { groupByStatus, quickMoves, boardParams } from "../../lib/lab-board.js";
+import { groupByStatus, boardParams } from "../../lib/lab-board.js";
 import { labelBadge } from "../../lib/shipping.js";
 import { ConfirmButton } from "../../components/ui/ConfirmButton.jsx";
 import { errorText, isStale } from "../../lib/requests.js";
+import { BoardCard } from "../../components/lab/BoardCard.jsx";
+import { BoardTableView } from "../../components/lab/BoardTableView.jsx";
+import { SegmentedControl } from "../../components/ui/SegmentedControl.jsx";
 import { INPUT_BASE } from "../../components/lab/form-styles.js";
 
-const dueText = (due) => (due ? `Due ${formatUsDate(due)}` : "No due date");
+const PAGE_STEP = 25;
+const VIEW_KEY = "lab.board.view";
 
-function Card({ card, busy, onMove }) {
-  const moves = quickMoves(card);
+function readView() {
+  try {
+    const v = localStorage.getItem(VIEW_KEY);
+    return v === "board" || v === "table" ? v : "table";
+  } catch {
+    return "table";
+  }
+}
+
+function KanbanColumn({ status, cards, busyId, onMove }) {
+  const [shown, setShown] = useState(PAGE_STEP);
   return (
-    <div className={`rounded-2xl border bg-white p-3 shadow-sm ${card.overdue ? "border-red-300" : "border-surface-300/50"}`}>
-      <div className="flex items-start justify-between gap-2">
-        <Link to={labOrderPath(card.id)} className="font-mono text-sm font-bold text-navy hover:text-brand-600">
-          #{card.orderNumber}
-        </Link>
-        <div className="flex flex-wrap justify-end gap-1">
-          {card.rush && (
-            <span title={card.rushTier || "Rush"} className="flex items-center gap-0.5 rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-red-700">
-              <Zap size={10} /> Rush
-            </span>
-          )}
-          {card.isRemake && (
-            <span className="flex items-center gap-0.5 rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-violet-700">
-              <RotateCcw size={10} /> Remake
-            </span>
-          )}
-          {labelBadge(card) && (
-            <span className="flex items-center gap-0.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700">
-              <Tag size={10} /> {labelBadge(card)}
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="mt-1 truncate text-xs text-navy/60">{card.practice}</div>
-      <div className="mt-0.5 truncate text-xs text-navy" title={card.deviceSummary}>{card.deviceSummary}</div>
-      {card.reference && <div className="mt-0.5 font-mono text-[10px] text-navy/40">{card.reference}</div>}
-      <div className="mt-2 flex items-center justify-between text-[11px]">
-        <span className={card.overdue ? "flex items-center gap-1 font-semibold text-red-600" : "text-navy/50"}>
-          {card.overdue && <AlertTriangle size={11} />}
-          {dueText(card.dueDate)}
-        </span>
-        {card.assigneeInitials && (
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-navy/10 text-[10px] font-bold text-navy">
-            {card.assigneeInitials}
-          </span>
+    <section className="flex min-h-[200px] flex-col rounded-3xl bg-surface-50 p-3">
+      <h2 className="mb-3 flex items-center justify-between px-1 text-[11px] font-mono uppercase tracking-widest text-navy/50">
+        {LAB_STATUS_LABELS[status]}
+        <span className="rounded-full bg-white px-2 py-0.5 text-navy">{cards.length}</span>
+      </h2>
+      <div className="flex flex-col gap-2">
+        {cards.slice(0, shown).map((card) => (
+          <BoardCard key={card.id} card={card} busy={busyId === card.id} onMove={onMove} />
+        ))}
+        {cards.length > shown && (
+          <button
+            type="button"
+            onClick={() => setShown((n) => n + PAGE_STEP)}
+            className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-navy hover:bg-surface-100"
+          >
+            Show {Math.min(PAGE_STEP, cards.length - shown)} more
+          </button>
         )}
       </div>
-      {moves.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1">
-          {moves.map((m) => (
-            <button
-              key={m.to}
-              type="button"
-              disabled={busy}
-              onClick={() => onMove(card, m.to)}
-              className="rounded-full bg-surface-100 px-2.5 py-1 text-[11px] font-semibold text-navy hover:bg-surface-200 disabled:opacity-40"
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    </section>
   );
 }
 
@@ -80,6 +58,11 @@ export function LabBoardPage() {
   const [busyId, setBusyId] = useState(null);
   const [departments, setDepartments] = useState([]);
   const [staff, setStaff] = useState([]);
+  const [view, setViewState] = useState(readView);
+  const setView = (v) => {
+    setViewState(v);
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* storage unavailable: the choice just won't persist */ }
+  };
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState({ departmentId: "", assigneeUserId: "", rush: false, dueBefore: "", q: "" });
 
@@ -163,6 +146,14 @@ export function LabBoardPage() {
               <Truck size={12} /> Mark all labelled shipped
             </ConfirmButton>
           )}
+          <SegmentedControl
+            value={view}
+            onChange={setView}
+            options={[
+              { value: "table", label: "Table", icon: <Rows3 size={12} /> },
+              { value: "board", label: "Board", icon: <LayoutGrid size={12} /> },
+            ]}
+          />
           <button
             type="button"
             onClick={() => { setLoading(true); load(); }}
@@ -213,20 +204,12 @@ export function LabBoardPage() {
         <div className="flex items-center justify-center py-20 text-navy/40">
           <Loader2 size={18} className="mr-2 animate-spin" /> Loading the board…
         </div>
+      ) : view === "table" ? (
+        <BoardTableView columns={columns} busyId={busyId} onMove={move} onChanged={load} />
       ) : (
         <div className="grid auto-cols-[minmax(250px,1fr)] grid-flow-col gap-4 overflow-x-auto pb-4">
           {LAB_BOARD_COLUMNS.map((status) => (
-            <section key={status} className="flex min-h-[200px] flex-col rounded-3xl bg-surface-50 p-3">
-              <h2 className="mb-3 flex items-center justify-between px-1 text-[11px] font-mono uppercase tracking-widest text-navy/50">
-                {LAB_STATUS_LABELS[status]}
-                <span className="rounded-full bg-white px-2 py-0.5 text-navy">{columns[status].length}</span>
-              </h2>
-              <div className="flex flex-col gap-2">
-                {columns[status].map((card) => (
-                  <Card key={card.id} card={card} busy={busyId === card.id} onMove={move} />
-                ))}
-              </div>
-            </section>
+            <KanbanColumn key={status} status={status} cards={columns[status]} busyId={busyId} onMove={move} />
           ))}
         </div>
       )}

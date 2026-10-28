@@ -1,8 +1,9 @@
-import { and, desc, eq, gte, inArray, isNull, lt, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { CARRIER_LABELS } from "@my-app/shared";
 import { db } from "../../config/database.js";
-import { shipments, shipmentEvents } from "../../db/schema/index.js";
+import { shipments, shipmentEvents, labOrderEvents, labOrders } from "../../db/schema/index.js";
 import { createId } from "../../lib/id.js";
+import { pageOf, containsPattern, prefixPattern } from "../../lib/list-query.js";
 import { carrierRegistry } from "./carrier-registry.js";
 import { ShippingError, CarrierError, carrierProblem } from "./shipping-errors.js";
 import { planVoided } from "./shipment-rules.js";
@@ -179,19 +180,45 @@ export async function shipmentSummaries(ids, database = db) {
 
 export const SHIPMENT_LIST_LIMIT = 500;
 
-/** Admin › Shipments: newest first; filters by status, carrier and lab-local purchase date range. */
-export function listShipments({ status, carrier, from, to } = {}, database = db) {
+/**
+ * The one WHERE for Admin › Shipments (rows and total). `q` matches the
+ * tracking number (contains) or the number of an order the box carried
+ * (prefix; from the "shipment" link events, so a voided label still matches).
+ */
+export function shipmentListWhere({ status, carrier, from, to, q } = {}) {
   const conds = [];
   if (status) conds.push(eq(shipments.status, status));
   if (carrier) conds.push(eq(shipments.carrier, carrier));
   if (from) conds.push(gte(shipments.purchasedAt, sql`(${from}::date)::timestamp at time zone 'America/Chicago'`));
   if (to) conds.push(lt(shipments.purchasedAt, sql`((${to}::date + 1)::timestamp) at time zone 'America/Chicago'`));
-  return database
+  if (q) {
+    conds.push(or(
+      ilike(shipments.trackingNumber, containsPattern(q)),
+      sql`exists (select 1 from ${labOrderEvents} inner join ${labOrders} on ${labOrders.id} = ${labOrderEvents.labOrderId} where ${labOrderEvents.type} = 'shipment' and ${labOrderEvents.to} = ${shipments.id} and ${labOrders.orderNumber}::text like ${prefixPattern(q)})`,
+    ));
+  }
+  return conds.length ? and(...conds) : undefined;
+}
+
+/**
+ * Admin › Shipments: newest first; filters by status, carrier, lab-local
+ * purchase date range and `q`. Capped at SHIPMENT_LIST_LIMIT, or one page when
+ * `limit`/`offset` are given (id breaks purchase-time ties so pages don't overlap).
+ */
+export function listShipments(filters = {}, database = db) {
+  const page = pageOf(filters);
+  const query = database
     .select(SUMMARY)
     .from(shipments)
-    .where(conds.length ? and(...conds) : undefined)
-    .orderBy(desc(shipments.purchasedAt))
-    .limit(SHIPMENT_LIST_LIMIT);
+    .where(shipmentListWhere(filters))
+    .orderBy(...(page ? [desc(shipments.purchasedAt), desc(shipments.id)] : [desc(shipments.purchasedAt)]));
+  return page ? query.limit(page.limit).offset(page.offset) : query.limit(SHIPMENT_LIST_LIMIT);
+}
+
+/** How many shipments match the list's filters (ignores limit/offset). */
+export async function countShipments(filters = {}, database = db) {
+  const [{ n }] = await database.select({ n: sql`count(*)`.mapWith(Number) }).from(shipments).where(shipmentListWhere(filters));
+  return n;
 }
 
 /** Labelled boxes still waiting for the hand-off ("Mark all labelled shipped"). */

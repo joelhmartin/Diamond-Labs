@@ -77,6 +77,8 @@ export function summarizePayments(rows) {
     });
   }
 
-  summaries.sort((a, b) => (b.createdAt ? new Date(b.createdAt).getTime() : 0) - (a.createdAt ? new Date(a.createdAt).getTime() : 0));
+  // Deterministic: createdAt desc, then transactionId, so ties never reorder between paged requests.
+  const ts = (x) => (x.createdAt ? new Date(x.createdAt).getTime() : 0);
+  summaries.sort((a, b) => ts(b) - ts(a) || String(a.transactionId).localeCompare(String(b.transactionId)));
   return summaries;
 }

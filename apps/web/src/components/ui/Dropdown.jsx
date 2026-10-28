@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { clsx } from "clsx";
 
-export function Dropdown({ trigger, children, align = "left", className }) {
+/** `closeOnClick={false}` keeps the menu open for multi-pick lists (checkbox filters). */
+export function Dropdown({ trigger, children, align = "left", className, closeOnClick = true }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -25,7 +26,7 @@ export function Dropdown({ trigger, children, align = "left", className }) {
             align === "right" ? "right-0" : "left-0",
             className,
           )}
-          onClick={() => setOpen(false)}
+          onClick={closeOnClick ? () => setOpen(false) : undefined}
         >
           {children}
         </div>

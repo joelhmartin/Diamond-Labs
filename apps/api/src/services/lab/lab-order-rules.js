@@ -252,6 +252,8 @@ export function presentBoardCard(row, lines = [], todayIso) {
     rushTier: o.rushTier ?? null,
     isRemake: Boolean(o.isRemake),
     labelled: Boolean(o.shipmentId),
+    // The box it ships in: a bulk "→ Shipped" ships a whole box once, so its box-mates are skipped (web lib/lab-board.js).
+    shipmentId: o.shipmentId ?? null,
     departmentId: o.departmentId ?? null,
     assigneeUserId: o.assigneeUserId ?? null,
     assigneeInitials: initialsFor(row.assigneeName),

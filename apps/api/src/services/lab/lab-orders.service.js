@@ -7,6 +7,7 @@ import {
   labOrders, labOrderLines, labOrderEvents, labDepartments, rxCases, rxCaseFiles, rxCaseLines, orders, users, shipments,
 } from "../../db/schema/index.js";
 import { createId } from "../../lib/id.js";
+import { pageOf, containsPattern } from "../../lib/list-query.js";
 import { encryptField, decryptField } from "../../lib/crypto.js";
 import { sealOrder, openOrder } from "./lab-order-crypto.js";
 import { variantIdsForCodes } from "./lab-variants.js";
@@ -123,7 +124,7 @@ function boardWhere(f, now) {
   if (f.q) {
     // Order number, case number, practice, client and shop order number.
     // Patient names are encrypted and deliberately not searchable here.
-    const like = `%${f.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    const like = containsPattern(f.q);
     conds.push(or(
       sql`${labOrders.orderNumber}::text like ${like}`,
       ilike(rxCases.caseNumber, like),
@@ -147,9 +148,15 @@ export function listOrder(f) {
     : [desc(labOrders.rush), asc(labOrders.dueDate), asc(labOrders.orderNumber)];
 }
 
-/** Board / Admin › Orders list. Cards never include hold reasons or lab notes. */
-export async function listLabOrders(filters = {}, now = new Date()) {
-  const rows = await db
+/**
+ * Board / Admin › Orders list. Cards never include hold reasons or lab notes.
+ * Without `limit` it is the capped list the board relies on ({ orders, truncated });
+ * with `limit`/`offset` it is one page of the same order plus `total`.
+ */
+export async function listLabOrders(filters = {}, now = new Date(), database = db) {
+  const page = pageOf(filters);
+  const where = boardWhere(filters, now);
+  const rowsQuery = database
     .select({
       order: labOrders,
       caseNumber: rxCases.caseNumber,
@@ -164,13 +171,15 @@ export async function listLabOrders(filters = {}, now = new Date()) {
     .leftJoin(orders, and(eq(labOrders.source, "shop_order"), eq(orders.id, labOrders.sourceId)))
     .leftJoin(client, eq(client.id, labOrders.clientUserId))
     .leftJoin(assignee, eq(assignee.id, labOrders.assigneeUserId))
-    .where(boardWhere(filters, now))
-    .orderBy(...listOrder(filters))
-    .limit(LIST_LIMIT);
+    .where(where)
+    .orderBy(...listOrder(filters));
+  const [rows, total] = page
+    ? await Promise.all([rowsQuery.limit(page.limit).offset(page.offset), countLabOrders(where, database)])
+    : [await rowsQuery.limit(LIST_LIMIT), null];
 
   const ids = rows.map((r) => r.order.id);
   const lineRows = ids.length
-    ? await db
+    ? await database
         .select({ labOrderId: labOrderLines.labOrderId, name: labOrderLines.name, qty: labOrderLines.qty, noteOnly: labOrderLines.noteOnly })
         .from(labOrderLines)
         .where(inArray(labOrderLines.labOrderId, ids))
@@ -183,7 +192,19 @@ export async function listLabOrders(filters = {}, now = new Date()) {
   }
   const today = isoDateIn(LAB_TIMEZONE, now);
   const cards = rows.map((r) => presentBoardCard(r, byOrder.get(r.order.id) ?? [], today));
-  return { orders: cards, truncated: rows.length >= LIST_LIMIT };
+  return page ? { orders: cards, total } : { orders: cards, truncated: rows.length >= LIST_LIMIT };
+}
+
+/** count(*) over the same joins and WHERE as the list (the search reads the case, shop order and client). */
+async function countLabOrders(where, database) {
+  const [{ n }] = await database
+    .select({ n: sql`count(*)`.mapWith(Number) })
+    .from(labOrders)
+    .leftJoin(rxCases, and(eq(labOrders.source, "rx_case"), eq(rxCases.id, labOrders.sourceId)))
+    .leftJoin(orders, and(eq(labOrders.source, "shop_order"), eq(orders.id, labOrders.sourceId)))
+    .leftJoin(client, eq(client.id, labOrders.clientUserId))
+    .where(where);
+  return n;
 }
 
 /**

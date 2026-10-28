@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { cartLinesSchema, numericInput } from "./catalog.schema.js";
 import { sumCents } from "../money.js";
+import { id, pageQueryShape } from "./common.schema.js";
 
 /**
  * Shared payment validation schemas. Mirror the backend payment routes so the
@@ -94,3 +95,10 @@ export const checkoutSchema = z
     idempotencyKey: z.string().optional(),
   })
   .passthrough();
+
+/** Admin › Payments list query. `limit` pages the filtered list and returns `{ payments, total }`; without it the legacy 200-row cap applies. */
+export const adminPaymentsQuerySchema = z.object({
+  userId: id.optional(),
+  q: z.string().trim().max(100).optional(),
+  ...pageQueryShape,
+});

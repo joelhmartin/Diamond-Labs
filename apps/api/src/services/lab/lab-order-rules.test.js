@@ -315,6 +315,8 @@ test("a board card says when its order has a label", () => {
   const row = { order: { ...order, status: "ready_to_ship", shipmentId: "sh1", source: "rx_case", receivedAt: now }, caseNumber: "RX-1", practiceName: "Lee Dental", assigneeName: null };
   assert.equal(presentBoardCard(row, [], "2026-10-07").labelled, true);
   assert.equal(presentBoardCard({ ...row, order: { ...row.order, shipmentId: null } }, [], "2026-10-07").labelled, false);
+  assert.equal(presentBoardCard(row, [], "2026-10-07").shipmentId, "sh1");
+  assert.equal(presentBoardCard({ ...row, order: { ...row.order, shipmentId: null } }, [], "2026-10-07").shipmentId, null);
 });
 
 test("a labelled order already shipped gets the normal refusal, not 'void the label'", () => {

@@ -4,7 +4,8 @@ import { db } from "../../config/database.js";
 import { labOrders, labOrderEvents, orders, users } from "../../db/schema/index.js";
 import { loadClient } from "../billing/statements.service.js";
 import { carrierRegistry } from "../shipping/carrier-registry.js";
-import { listShipments, SHIPMENT_LIST_LIMIT } from "../shipping/shipments.service.js";
+import { listShipments, countShipments, SHIPMENT_LIST_LIMIT } from "../shipping/shipments.service.js";
+import { pageOf } from "../../lib/list-query.js";
 import { shipToFromClient, shipToFromShopOrder } from "./lab-shipping-rules.js";
 
 /** Lab-order reads for shipping. Allow-listed columns only: no notes, no patient data. */
@@ -83,7 +84,8 @@ export async function shipmentRecipient(boxed, database = db) {
  * is reduced to a name.
  */
 export async function listShipmentsForLab(filters = {}, database = db) {
-  const rows = await listShipments(filters, database);
+  const page = pageOf(filters);
+  const [rows, total] = await Promise.all([listShipments(filters, database), page ? countShipments(filters, database) : null]);
   const ids = rows.map((r) => r.id);
   const links = ids.length
     ? await database
@@ -112,6 +114,6 @@ export async function listShipmentsForLab(filters = {}, database = db) {
       canVoid: s.status === "label_created" && !s.shippedAt,
       canMarkShipped: !s.shippedAt && s.status !== "voided",
     })),
-    truncated: rows.length >= SHIPMENT_LIST_LIMIT,
+    ...(page ? { total } : { truncated: rows.length >= SHIPMENT_LIST_LIMIT }),
   };
 }
