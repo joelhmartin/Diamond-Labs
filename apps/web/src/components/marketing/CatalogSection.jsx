@@ -4,7 +4,7 @@ import { Search, SlidersHorizontal, X } from "lucide-react";
 import { useCatalog } from "../../hooks/useCatalog.js";
 import { CatalogCard } from "./CatalogCard";
 import { CatalogDetail } from "./CatalogDetail";
-import { usePagination } from "../../hooks/usePagination.js";
+import { pageSlice } from "../../lib/data-table/table-state.js";
 import { Pagination } from "../ui/Pagination.jsx";
 import { matchesShopper } from "../../lib/catalog.js";
 import { playOnView } from "../../lib/playOnView";
@@ -61,7 +61,16 @@ export function CatalogSection() {
     });
   }, [query, active, products]);
 
-  const pagination = usePagination(filtered, { initialPageSize: 12 });
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(12);
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const shown = Math.min(page, totalPages);
+  const paged = pageSlice(filtered, shown, pageSize);
+  const pagination = {
+    page: shown, setPage, pageSize, setPageSize: (n) => { setPageSize(n); setPage(1); },
+    total, totalPages, rangeStart: total === 0 ? 0 : (shown - 1) * pageSize + 1, rangeEnd: Math.min(total, shown * pageSize),
+  };
 
   return (
     <section
@@ -166,7 +175,7 @@ export function CatalogSection() {
         ) : (
           <>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-5">
-              {pagination.paged.map((p) => (
+              {paged.map((p) => (
                 <CatalogCard
                   key={p.id}
                   product={p}

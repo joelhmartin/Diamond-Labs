@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Loader2, AlertTriangle, Receipt } from "lucide-react";
 import api from "../../config/api.js";
+import { DataTable } from "../../components/ui/data-table/index.js";
+import { useDataTable } from "../../hooks/useDataTable.js";
 import { formatCents } from "../../lib/money.js";
 
 function formatDate(d) {
@@ -13,7 +14,7 @@ function formatDate(d) {
 const STATUS_PILL = {
   paid: "bg-brand-50 text-brand-700",
   partially_refunded: "bg-amber-50 text-amber-700",
-  refunded: "bg-gray-100 text-gray-600",
+  refunded: "bg-surface-100 text-navy/60",
   refund_pending: "bg-blue-50 text-blue-700",
 };
 const STATUS_LABEL = {
@@ -41,95 +42,80 @@ const SOURCE_LABEL = {
   refund: "Refund",
 };
 
+const dollars = (cents) => (cents / 100).toFixed(2);
+const invoiceList = (p) => p.invoices.map((inv) => inv.invoiceNumber || inv.invoiceId).join(", ");
+const getRowId = (p) => p.transactionId;
+
+// "Reference" is the invoice numbers the payment covered, plus the transaction id.
+const searchFn = (p, q) => `${invoiceList(p)} ${p.transactionId}`.toLowerCase().includes(q.replace(/^#/, "").toLowerCase());
+
+const COLUMNS = [
+  { id: "date", header: "Date", sortValue: (p) => p.createdAt, exportValue: (p) => p.createdAt ?? "", cell: (p) => <span className="whitespace-nowrap text-navy/70">{formatDate(p.createdAt)}</span> },
+  { id: "invoices", header: "Invoices", exportValue: invoiceList, cell: (p) => <span className="text-xs text-navy/60">{invoiceList(p) || "—"}</span> },
+  {
+    id: "method", header: "Method", exportValue: (p) => (p.source === "autopay" ? "AutoPay" : SOURCE_LABEL[p.source] || ""),
+    cell: (p) => (p.source === "autopay" ? (
+      <span className="inline-block rounded-full bg-brand-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-brand-700">AutoPay</span>
+    ) : (
+      <span className="text-xs text-navy/50">{SOURCE_LABEL[p.source] || "—"}</span>
+    )),
+  },
+  { id: "amount", header: "Amount", align: "right", sortValue: (p) => p.grossCents, exportValue: (p) => dollars(p.grossCents), cell: (p) => <span className="whitespace-nowrap">{formatCents(p.grossCents)}</span> },
+  {
+    id: "refunded", header: "Refunded", align: "right", sortValue: (p) => p.refundedCents, exportValue: (p) => dollars(p.refundedCents || 0),
+    cell: (p) => <span className="whitespace-nowrap text-navy/50">{p.refundedCents > 0 ? `-${formatCents(p.refundedCents)}` : "—"}</span>,
+  },
+  { id: "net", header: "Net", align: "right", sortValue: (p) => p.netCents, exportValue: (p) => dollars(p.netCents), cell: (p) => <span className="whitespace-nowrap font-medium">{formatCents(p.netCents)}</span> },
+  {
+    id: "status", header: "Status", exportValue: (p) => STATUS_LABEL[p.status] || p.status,
+    cell: (p) => (
+      <span className={`inline-block rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${STATUS_PILL[p.status] || "bg-surface-100 text-navy/60"}`}>
+        {STATUS_LABEL[p.status] || p.status}
+      </span>
+    ),
+  },
+];
+
+const FILTERS = [{
+  id: "status", label: "Status", type: "select", placeholder: "All statuses",
+  options: Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label })),
+  match: (p, v) => p.status === v,
+}];
+
 export function PaymentsPage() {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
+  const [error, setError] = useState(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data } = await api.get("/payments/history");
-        setPayments(data.data?.payments || []);
-        setFailed(false);
-      } catch {
-        setFailed(true);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  const load = async () => {
+    try {
+      const { data } = await api.get("/payments/history");
+      setPayments(data.data?.payments || []);
+      setError(null);
+    } catch (err) {
+      setError(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const table = useDataTable({ mode: "client", rows: payments, searchFn, filters: FILTERS, getRowId, loading, error, reload: load });
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
       <h1 className="text-2xl font-bold text-gray-900">Payment history</h1>
-      <p className="mt-1 text-sm text-gray-500">
+      <p className="mt-1 mb-6 text-sm text-gray-500">
         Every payment you've made through the portal, including any refunds.
       </p>
-
-      <div className="mt-6 overflow-hidden rounded-xl border border-gray-200 bg-white">
-        {loading ? (
-          <div className="flex items-center justify-center gap-2 py-16 text-gray-400">
-            <Loader2 size={16} className="animate-spin" /> Loading…
-          </div>
-        ) : failed ? (
-          <div className="flex items-center justify-center gap-2 py-16 text-red-600">
-            <AlertTriangle size={16} /> Couldn't load your payment history.
-          </div>
-        ) : payments.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-16 text-center text-gray-400">
-            <Receipt size={24} />
-            <span className="text-sm">No payments yet.</span>
-          </div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-gray-400">
-                <th className="px-4 py-3 font-medium">Date</th>
-                <th className="px-4 py-3 font-medium">Invoices</th>
-                <th className="px-4 py-3 font-medium">Method</th>
-                <th className="px-4 py-3 font-medium text-right">Amount</th>
-                <th className="px-4 py-3 font-medium text-right">Refunded</th>
-                <th className="px-4 py-3 font-medium text-right">Net</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {payments.map((p) => (
-                <tr key={p.transactionId} className="border-t border-gray-100">
-                  <td className="px-4 py-3 text-gray-700 whitespace-nowrap">{formatDate(p.createdAt)}</td>
-                  <td className="px-4 py-3 text-gray-600 text-xs">
-                    {p.invoices.map((inv) => inv.invoiceNumber || inv.invoiceId).join(", ") || "—"}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    {p.source === "autopay" ? (
-                      <span className="inline-block rounded-full bg-brand-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-brand-700">
-                        AutoPay
-                      </span>
-                    ) : (
-                      <span className="text-xs text-gray-500">{SOURCE_LABEL[p.source] || "—"}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right text-gray-800 whitespace-nowrap">{formatCents(p.grossCents)}</td>
-                  <td className="px-4 py-3 text-right text-gray-500 whitespace-nowrap">
-                    {p.refundedCents > 0 ? `-${formatCents(p.refundedCents)}` : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right font-medium text-gray-900 whitespace-nowrap">{formatCents(p.netCents)}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-block rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
-                        STATUS_PILL[p.status] || "bg-gray-100 text-gray-600"
-                      }`}
-                    >
-                      {STATUS_LABEL[p.status] || p.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      <DataTable
+        table={table}
+        columns={COLUMNS}
+        searchPlaceholder="Invoice # or reference"
+        itemLabel="payments"
+        exportFileName="payments.csv"
+        emptyText="No payments yet."
+      />
     </div>
   );
 }

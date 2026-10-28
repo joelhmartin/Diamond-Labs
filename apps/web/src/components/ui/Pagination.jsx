@@ -1,11 +1,11 @@
 import { useId } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { PAGE_SIZE_OPTIONS } from "../../hooks/usePagination.js";
+import { PAGE_SIZE_OPTIONS } from "../../lib/data-table/table-state.js";
 
 /**
- * Shared pagination control. Pair with the `usePagination` hook.
+ * Shared pagination control. Fed by `useDataTable().pagination` (or any {page,setPage,pageSize,setPageSize,total,totalPages,rangeStart,rangeEnd}).
  *
- *   <Pagination {...pagination} itemLabel="invoices" />
+ *   <Pagination {...table.pagination} itemLabel="invoices" />
  *
  * Edits here propagate to every page that uses it.
  */
