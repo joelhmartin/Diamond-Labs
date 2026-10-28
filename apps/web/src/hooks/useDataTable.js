@@ -55,12 +55,19 @@ export function useDataTable(options) {
   const [sel, setSel] = useState(Sel.emptySelection);
   const debouncedQ = useDebouncedValue(q, 300);
 
-  // Columns live on <DataTable>; it registers them so client sort can read sortValue.
+  // Columns live on <DataTable>; it registers them (in a layout effect, every time the array
+  // changes) so client sort can read sortValue. Pages often pass a fresh array each render, so
+  // state is set only when the shape actually changed: an unconditional same-value setState from
+  // a layout effect can't always bail out early and loops render → effect → render.
   const columnsRef = useRef(EMPTY);
+  const columnsKeyRef = useRef("");
   const [columnsKey, setColumnsKey] = useState("");
   const registerColumns = useCallback((columns) => {
     columnsRef.current = columns;
-    setColumnsKey(columns.map((c) => `${c.id}${c.sortValue ? "*" : ""}`).join("|"));
+    const key = columns.map((c) => `${c.id}${c.sortValue ? "*" : ""}`).join("|");
+    if (key === columnsKeyRef.current) return;
+    columnsKeyRef.current = key;
+    setColumnsKey(key);
   }, []);
 
   const resetView = () => { setPage(1); setSel(Sel.clear()); };

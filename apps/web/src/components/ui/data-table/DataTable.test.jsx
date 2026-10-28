@@ -171,6 +171,21 @@ test("a bulk action label can be a function of the selected rows", async () => {
   assert.deepEqual(run.mock.calls[0][0].map((r) => r.id), ["r1", "r2"]);
 });
 
+test("inline column definitions (a new array every render) don't make the table re-render itself", async () => {
+  let renders = 0;
+  function InlineColumns() {
+    renders += 1;
+    const table = useDataTable({ mode: "client", rows: ROWS });
+    return <DataTable table={table} columns={COLUMNS.map((c) => ({ ...c }))} itemLabel="rows" />;
+  }
+  mount(<InlineColumns />);
+  const settled = renders;
+  await act(async () => fireEvent.click(rowOf("Row 01"), { metaKey: true }));
+  assert.ok(isSelected("Row 01"));
+  // One render for the selection change; re-registering identical columns must not schedule another.
+  assert.equal(renders - settled, 1);
+});
+
 test("a bulk action that throws toasts the error message", async () => {
   const run = vi.fn(async () => { throw new Error("Network down"); });
   mount(<Harness bulkActions={[{ id: "move", label: "Move", run }]} />);
