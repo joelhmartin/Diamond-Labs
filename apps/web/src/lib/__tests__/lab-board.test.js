@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { groupByStatus, quickMoves, boardParams, describeEvent } from "../lab-board.js";
+import { groupByStatus, quickMoves, commonMoves, moveOrders, boardParams, describeEvent } from "../lab-board.js";
 
 test("every board column exists, even empty; cancelled cards are not on the board", () => {
   const g = groupByStatus([
@@ -48,4 +48,31 @@ test("a labelled card offers only → Shipped (anything else would strand its la
 test("shipment events read as sentences", () => {
   assert.equal(describeEvent({ type: "shipment", to: "sh1", byName: "Maria", note: "Label: UPS Ground 1Z9" }), "Maria: Label: UPS Ground 1Z9");
   assert.equal(describeEvent({ type: "shipment", from: "sh1", to: null, byName: "Maria", note: null }), "Maria: shipping label voided");
+});
+
+test("commonMoves returns only moves every card allows", () => {
+  const cards = [{ status: "quality_check" }, { status: "received" }];
+  assert.deepEqual(commonMoves([{ status: "quality_check" }, { status: "quality_check" }]).map((m) => m.to), ["ready_to_ship", "in_production"]);
+  assert.deepEqual(commonMoves([{ status: "quality_check" }, { status: "received" }]).map((m) => m.to), ["in_production"]);
+  assert.deepEqual(commonMoves(cards.concat([{ status: "shipped" }])), []);
+});
+
+test("commonMoves of an empty list is empty", () => {
+  assert.deepEqual(commonMoves([]), []);
+});
+
+test("moveOrders keeps going after a stale failure", async () => {
+  const cards = [1, 2, 3].map((n) => ({ id: `o${n}`, orderNumber: 100 + n, version: n }));
+  const post = async (id) => {
+    if (id === "o2") throw Object.assign(new Error("x"), { response: { status: 409, data: { error: { code: "STALE", message: "Changed since you loaded it." } } } });
+  };
+  const res = await moveOrders(cards, "in_production", post);
+  assert.equal(res.ok, 2);
+  assert.deepEqual(res.failed, [{ id: "#102", message: "Changed since you loaded it." }]);
+});
+
+test("moveOrders sends each card's own expectedVersion", async () => {
+  const calls = [];
+  await moveOrders([{ id: "a", orderNumber: 1, version: 4 }, { id: "b", orderNumber: 2, version: 9 }], "in_production", async (id, body) => calls.push([id, body]));
+  assert.deepEqual(calls, [["a", { to: "in_production", expectedVersion: 4 }], ["b", { to: "in_production", expectedVersion: 9 }]]);
 });

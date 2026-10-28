@@ -1,3 +1,5 @@
+import api from "../config/api.js";
+import { errorText } from "./requests.js";
 import { LAB_BOARD_COLUMNS, LAB_STATUS_LABELS, allowedNextStatuses, reasonRequiredFor, formatUsDate } from "@my-app/shared";
 
 const label = (s) => LAB_STATUS_LABELS[s] ?? s ?? "—";
@@ -17,6 +19,33 @@ export function quickMoves(card) {
   return allowedNextStatuses(card.status, { heldFrom: card.heldFrom ?? null, labelled: Boolean(card.labelled) })
     .filter((to) => !reasonRequiredFor(to))
     .map((to) => ({ to, label: `→ ${label(to)}` }));
+}
+
+/** The moves every card in the list allows, in the first card's order. */
+export function commonMoves(cards = []) {
+  if (cards.length === 0) return [];
+  const rest = cards.slice(1).map((c) => new Set(quickMoves(c).map((m) => m.to)));
+  return quickMoves(cards[0]).filter((m) => rest.every((set) => set.has(m.to)));
+}
+
+const defaultPost = (id, body) => api.post(`/lab/orders/${id}/status`, body);
+
+/**
+ * Move cards to `to` one at a time (each with its own expectedVersion),
+ * carrying on past failures. → { ok, failed: [{ id, message }] }.
+ */
+export async function moveOrders(cards, to, post = defaultPost) {
+  let ok = 0;
+  const failed = [];
+  for (const card of cards) {
+    try {
+      await post(card.id, { to, expectedVersion: card.version });
+      ok += 1;
+    } catch (err) {
+      failed.push({ id: `#${card.orderNumber}`, message: errorText(err) });
+    }
+  }
+  return { ok, failed };
 }
 
 /** Board filter state → GET /lab/orders params. */
