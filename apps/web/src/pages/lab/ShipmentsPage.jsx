@@ -10,6 +10,7 @@ import { CarriersPanel } from "../../components/lab/CarriersPanel.jsx";
 import { labOrderPath, shipmentPrintPath } from "../../config/routes.js";
 import { errorText } from "../../lib/requests.js";
 import { pageParams } from "../../lib/data-table/server.js";
+import { eachRow } from "../../lib/data-table/bulk.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
 import { shipmentLine, shipmentStatusLabel, shipmentListParams, canRefreshTracking } from "../../lib/shipping.js";
 
@@ -25,21 +26,6 @@ const FILTERS = [
 async function fetchPage({ page, pageSize, q, filters }) {
   const res = await api.get("/lab/shipments", { params: { ...shipmentListParams(filters), ...pageParams({ page, pageSize, q }) } });
   return { rows: res.data.data.shipments, total: res.data.data.total };
-}
-
-/** Run `fn(shipment)` for each row one at a time, carrying on past failures. → { ok, failed } */
-async function eachShipment(rows, fn) {
-  let ok = 0;
-  const failed = [];
-  for (const s of rows) {
-    try {
-      await fn(s);
-      ok += 1;
-    } catch (err) {
-      failed.push({ id: shipmentLine(s), message: errorText(err) });
-    }
-  }
-  return { ok, failed };
 }
 
 function shipmentColumns({ busy, act }) {
@@ -120,7 +106,7 @@ export function ShipmentsPage() {
       id: "mark-shipped", label: "Mark shipped",
       disabled: (rows) => !rows.some((s) => s.canMarkShipped),
       run: async (rows) => {
-        const result = await eachShipment(rows.filter((s) => s.canMarkShipped), (s) => api.post(`/lab/shipments/${s.id}/mark-shipped`));
+        const result = await eachRow(rows.filter((s) => s.canMarkShipped), (s) => api.post(`/lab/shipments/${s.id}/mark-shipped`), shipmentLine);
         reload();
         return result;
       },
@@ -129,7 +115,7 @@ export function ShipmentsPage() {
       id: "refresh-tracking", label: "Refresh tracking",
       disabled: (rows) => !rows.some(canRefreshTracking),
       run: async (rows) => {
-        const result = await eachShipment(rows.filter(canRefreshTracking), (s) => api.post(`/lab/shipments/${s.id}/refresh-tracking`));
+        const result = await eachRow(rows.filter(canRefreshTracking), (s) => api.post(`/lab/shipments/${s.id}/refresh-tracking`), shipmentLine);
         reload();
         return result;
       },

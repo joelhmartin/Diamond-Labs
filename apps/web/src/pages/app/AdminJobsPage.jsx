@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   RefreshCw,
   AlertTriangle,
@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
+import { DataTable } from "../../components/ui/data-table/index.js";
+import { useDataTable } from "../../hooks/useDataTable.js";
 
 function formatUSD(n) {
   return Number(n || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -104,6 +106,51 @@ function SummaryStats({ summary }) {
   );
 }
 
+const RUN_STATUSES = ["succeeded", "failed", "running"];
+const runSearchFn = (run, q) => [run.jobName, run.trigger, run.status, run.error].filter(Boolean).join(" ").toLowerCase().includes(q.toLowerCase());
+const summaryText = (run) => (run.status === "failed" && run.error ? run.error : run.summary ? JSON.stringify(run.summary) : "");
+
+function runColumns() {
+  return [
+    { id: "job", header: "Job", sortValue: (r) => r.jobName, exportValue: (r) => r.jobName, cell: (r) => <span className="font-mono text-xs text-navy">{r.jobName}</span> },
+    { id: "trigger", header: "Trigger", exportValue: (r) => r.trigger, cell: (r) => <span className="text-xs text-navy/60">{r.trigger}</span> },
+    {
+      id: "dry", header: "Dry run", exportValue: (r) => (r.dryRun ? "Dry" : "Live"),
+      cell: (r) => (
+        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${r.dryRun ? "bg-navy/10 text-navy/50" : "bg-red-500/10 text-red-700"}`}>
+          {r.dryRun ? "Dry" : "Live"}
+        </span>
+      ),
+    },
+    {
+      id: "status", header: "Status", exportValue: (r) => r.status ?? "",
+      cell: (run) => (
+        <>
+          <StatusBadge status={run.status} />
+          {/* "running" is only the last status we recorded: if the process died mid-run nothing flips it, so say so. */}
+          {run.status === "running" && (
+            <div className="mt-1 text-[10px] text-navy/40 max-w-[140px]">last recorded status — may be stale if the process died mid-run</div>
+          )}
+        </>
+      ),
+    },
+    {
+      id: "started", header: "Started", sortValue: (r) => (r.startedAt ? new Date(r.startedAt) : null), exportValue: (r) => r.startedAt ?? "",
+      cell: (r) => <span className="text-xs text-navy/60 whitespace-nowrap">{formatDateTime(r.startedAt)}</span>,
+    },
+    {
+      id: "duration", header: "Duration", exportValue: (r) => (r.status === "running" ? "" : formatDuration(r.startedAt, r.finishedAt)),
+      cell: (r) => <span className="text-xs text-navy/60 whitespace-nowrap">{r.status === "running" ? "—" : formatDuration(r.startedAt, r.finishedAt)}</span>,
+    },
+    {
+      id: "summary", header: "Summary", exportValue: summaryText, className: "min-w-[220px] align-top",
+      cell: (run) => (run.status === "failed" && run.error
+        ? <div className="text-xs text-red-600 max-w-[320px] truncate" title={run.error}>{run.error}</div>
+        : <SummaryStats summary={run.summary} />),
+    },
+  ];
+}
+
 export function AdminJobsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -134,11 +181,21 @@ export function AdminJobsPage() {
       setRuns(res.data.data.runs || []);
       setRunsError(null);
     } catch (err) {
-      setRunsError(err.response?.data?.error?.message || err.message || "Failed to load run history.");
+      setRunsError(err);
     } finally {
       setRunsLoading(false);
     }
   };
+
+  const jobNames = useMemo(() => [...new Set(runs.map((r) => r.jobName))].sort(), [runs]);
+  const runFilters = useMemo(() => [
+    { id: "job", label: "Job", type: "select", placeholder: "All jobs", options: jobNames.map((n) => ({ value: n, label: n })), match: (r, v) => r.jobName === v },
+    { id: "status", label: "Status", type: "select", placeholder: "Any status", options: RUN_STATUSES.map((s) => ({ value: s, label: s })), match: (r, v) => r.status === v },
+  ], [jobNames]);
+  const runsTable = useDataTable({
+    mode: "client", rows: runs, searchFn: runSearchFn, filters: runFilters,
+    loading: runsLoading, error: runsError, reload: loadRuns,
+  });
 
   useEffect(() => {
     loadJobs();
@@ -283,95 +340,14 @@ export function AdminJobsPage() {
         <h2 className="font-heading font-semibold text-lg text-navy">Recent runs</h2>
       </div>
 
-      {runsLoading ? (
-        <div className="py-12 flex items-center justify-center text-navy/40">
-          <Loader2 size={18} className="animate-spin mr-2" />
-          Loading run history…
-        </div>
-      ) : runsError ? (
-        <div className="py-12 text-center">
-          <AlertCircle size={32} className="mx-auto mb-3 text-red-500/40" />
-          <p className="text-sm text-navy/60 max-w-md mx-auto">{runsError}</p>
-          <button
-            type="button"
-            onClick={loadRuns}
-            className="mt-4 px-4 py-2 rounded-full text-sm font-semibold bg-brand-500 text-white hover:bg-brand-600"
-          >
-            Retry
-          </button>
-        </div>
-      ) : runs.length === 0 ? (
-        <div className="py-12 text-center">
-          <p className="text-sm text-navy/40">No runs recorded yet.</p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-2xl border border-surface-300/50 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-surface-100 border-b border-surface-300/50">
-                  <th className="text-left px-4 py-3 text-[10px] font-mono uppercase tracking-widest text-navy/40 font-normal">Job</th>
-                  <th className="text-left px-4 py-3 text-[10px] font-mono uppercase tracking-widest text-navy/40 font-normal">Trigger</th>
-                  <th className="text-left px-4 py-3 text-[10px] font-mono uppercase tracking-widest text-navy/40 font-normal">Dry run</th>
-                  <th className="text-left px-4 py-3 text-[10px] font-mono uppercase tracking-widest text-navy/40 font-normal">Status</th>
-                  <th className="text-left px-4 py-3 text-[10px] font-mono uppercase tracking-widest text-navy/40 font-normal">Started</th>
-                  <th className="text-left px-4 py-3 text-[10px] font-mono uppercase tracking-widest text-navy/40 font-normal">Duration</th>
-                  <th className="text-left px-4 py-3 text-[10px] font-mono uppercase tracking-widest text-navy/40 font-normal">Summary</th>
-                </tr>
-              </thead>
-              <tbody>
-                {runs.map((run) => {
-                  // A "running" status is only the last thing we recorded — if
-                  // the process died mid-run (Cloud Run timeout/OOM) nothing
-                  // ever flips it to succeeded/failed. Treat it as "last
-                  // known", not "live right now", and surface the start time
-                  // so a stale row is obvious rather than misread as an
-                  // in-progress run.
-                  const isRunning = run.status === "running";
-                  return (
-                    <tr key={run.id} className="border-b border-surface-300/30 hover:bg-surface-50 align-top">
-                      <td className="px-4 py-3 font-mono text-xs text-navy">{run.jobName}</td>
-                      <td className="px-4 py-3 text-xs text-navy/60">{run.trigger}</td>
-                      <td className="px-4 py-3 text-xs">
-                        {run.dryRun ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-navy/10 text-navy/50">
-                            Dry
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-red-500/10 text-red-700">
-                            Live
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={run.status} />
-                        {isRunning && (
-                          <div className="mt-1 text-[10px] text-navy/40 max-w-[140px]">
-                            last recorded status — may be stale if the process died mid-run
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-navy/60 whitespace-nowrap">{formatDateTime(run.startedAt)}</td>
-                      <td className="px-4 py-3 text-xs text-navy/60 whitespace-nowrap">
-                        {isRunning ? "—" : formatDuration(run.startedAt, run.finishedAt)}
-                      </td>
-                      <td className="px-4 py-3 min-w-[220px]">
-                        {run.status === "failed" && run.error ? (
-                          <div className="text-xs text-red-600 max-w-[320px] truncate" title={run.error}>
-                            {run.error}
-                          </div>
-                        ) : (
-                          <SummaryStats summary={run.summary} />
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      <DataTable
+        table={runsTable}
+        columns={runColumns()}
+        searchPlaceholder="Job, trigger, or error"
+        itemLabel="runs"
+        exportFileName="job-runs.csv"
+        emptyText="No runs recorded yet."
+      />
     </div>
   );
 }

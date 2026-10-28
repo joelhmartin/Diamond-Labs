@@ -110,6 +110,7 @@ export function useDataTable(options) {
   const shown = Math.min(page, totalPages);
   return {
     rows: visible,
+    matchingRows: matching, // client mode: every row passing search + filters (for totals); empty in server mode
     total,
     loading: server ? remote.loading : Boolean(options.loading),
     error: server ? remote.error : options.error ?? null,

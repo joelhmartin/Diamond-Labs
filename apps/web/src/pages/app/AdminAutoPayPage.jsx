@@ -1,20 +1,10 @@
 import { useEffect, useState } from "react";
-import {
-  RefreshCw,
-  AlertTriangle,
-  Loader2,
-  AlertCircle,
-  PauseCircle,
-  PlayCircle,
-  SlidersHorizontal,
-  Power,
-} from "lucide-react";
+import { RefreshCw, AlertTriangle, Loader2, PauseCircle, PlayCircle, SlidersHorizontal, Power } from "lucide-react";
 import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { DoctorPaymentDrawer } from "../../components/admin/DoctorPaymentDrawer.jsx";
-
-const INPUT =
-  "w-full px-3.5 py-2.5 rounded-lg bg-white border border-surface-300/60 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all placeholder:text-navy/25";
+import { DataTable } from "../../components/ui/data-table/index.js";
+import { useDataTable } from "../../hooks/useDataTable.js";
 
 function formatUSD(n) {
   return Number(n || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -27,22 +17,124 @@ function formatDate(d) {
   return dt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function Th({ children, className = "" }) {
-  return (
-    <th className={`text-left px-4 py-3 text-[10px] font-mono uppercase tracking-widest text-navy/40 font-normal ${className}`}>
-      {children}
-    </th>
-  );
-}
-
 // enabled + status together determine the badge — an enrollment can exist
 // (row present) without ever being live, and a live one can be enabled but
 // paused after repeated failures.
 function statusOf(row) {
-  if (!row.enabled) return { label: "Disabled", tone: "bg-navy/10 text-navy/50" };
-  if (row.status === "paused") return { label: "Paused", tone: "bg-amber-500/10 text-amber-700" };
-  if (row.status === "completed") return { label: "Completed", tone: "bg-blue-500/10 text-blue-700" };
-  return { label: "Active", tone: "bg-emerald-500/10 text-emerald-700" };
+  if (!row.enabled) return { key: "disabled", label: "Disabled", tone: "bg-navy/10 text-navy/50" };
+  if (row.status === "paused") return { key: "paused", label: "Paused", tone: "bg-amber-500/10 text-amber-700" };
+  if (row.status === "completed") return { key: "completed", label: "Completed", tone: "bg-blue-500/10 text-blue-700" };
+  return { key: "active", label: "Active", tone: "bg-emerald-500/10 text-emerald-700" };
+}
+
+const FILTERS = [
+  {
+    id: "status", label: "Status", type: "select", placeholder: "Any status",
+    options: [{ value: "active", label: "Active" }, { value: "paused", label: "Paused" }, { value: "disabled", label: "Disabled" }, { value: "completed", label: "Completed" }],
+    match: (row, v) => statusOf(row).key === v,
+  },
+];
+
+const searchFn = (row, q) =>
+  [row.doctorName, row.doctorEmail, row.accountNumber].filter(Boolean).join(" ").toLowerCase().includes(q.toLowerCase());
+const getRowId = (row) => row.userId;
+
+function autopayColumns({ busy, toggleEnabled, setPaused, setDrawerUserId }) {
+  return [
+    {
+      id: "doctor", header: "Doctor", sortValue: (r) => (r.doctorName || r.doctorEmail || "").toLowerCase(), exportValue: (r) => `${r.doctorName || ""} <${r.doctorEmail || ""}>`,
+      cell: (row) => (
+        <>
+          <div className="font-semibold text-navy">{row.doctorName || "—"}</div>
+          <div className="text-xs text-navy/40">{row.doctorEmail}</div>
+        </>
+      ),
+    },
+    {
+      id: "account", header: "Account #", exportValue: (r) => r.accountNumber ?? "",
+      cell: (row) => <span className="font-mono text-xs text-navy/60">{row.accountNumber ? `#${row.accountNumber}` : "—"}</span>,
+    },
+    {
+      id: "amount", header: "Amount", align: "right", sortValue: (r) => Number(r.amount), exportValue: (r) => r.amount,
+      cell: (row) => (
+        <span className="tabular-nums font-medium text-navy">
+          {formatUSD(row.amount)}
+          {row.minAmountOverride != null && <div className="text-[10px] font-mono text-navy/30">floor {formatUSD(row.minAmountOverride)}</div>}
+        </span>
+      ),
+    },
+    { id: "day", header: "Day", align: "right", sortValue: (r) => r.dayOfMonth, exportValue: (r) => r.dayOfMonth, cell: (row) => <span className="tabular-nums text-navy/70">{row.dayOfMonth}</span> },
+    {
+      id: "status", header: "Status", exportValue: (r) => statusOf(r).label,
+      cell: (row) => {
+        const s = statusOf(row);
+        return (
+          <>
+            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${s.tone}`}>{s.label}</span>
+            {row.status === "paused" && row.pausedReason && (
+              <div className="mt-0.5 max-w-[160px] truncate text-[10px] text-navy/40" title={row.pausedReason}>{row.pausedReason}</div>
+            )}
+          </>
+        );
+      },
+    },
+    {
+      id: "failures", header: "Failures", align: "right", sortValue: (r) => r.consecutiveFailures, exportValue: (r) => r.consecutiveFailures,
+      cell: (row) => <span className={`tabular-nums ${row.consecutiveFailures > 0 ? "font-semibold text-red-600" : "text-navy/50"}`}>{row.consecutiveFailures}</span>,
+    },
+    {
+      id: "lastCharged", header: "Last charged", sortValue: (r) => (r.lastChargedAt ? new Date(r.lastChargedAt) : null), exportValue: (r) => r.lastChargedAt ?? "",
+      cell: (row) => <span className="text-xs text-navy/60">{formatDate(row.lastChargedAt)}</span>,
+    },
+    {
+      id: "actions", header: "Actions", align: "right", exportValue: () => "",
+      cell: (row) => <AutopayActions row={row} busy={busy} toggleEnabled={toggleEnabled} setPaused={setPaused} setDrawerUserId={setDrawerUserId} />,
+    },
+  ];
+}
+
+function AutopayActions({ row, busy, toggleEnabled, setPaused, setDrawerUserId }) {
+  const toggleBusy = busy === `${row.userId}:toggle`;
+  const pauseBusy = busy === `${row.userId}:pause`;
+  const canPause = row.enabled && row.status === "active";
+  const canResume = row.enabled && row.status === "paused";
+  return (
+    <div className="flex items-center justify-end gap-1">
+      <button
+        type="button"
+        onClick={() => toggleEnabled(row)}
+        disabled={toggleBusy}
+        title={row.enabled ? "Disable AutoPay" : "Enable AutoPay"}
+        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-semibold transition-all disabled:opacity-50 ${
+          row.enabled ? "bg-brand-500/10 text-brand-700 hover:bg-brand-500/20" : "bg-surface-100 text-navy/60 hover:bg-surface-200"
+        }`}
+      >
+        {toggleBusy ? <Loader2 size={11} className="animate-spin" /> : <Power size={11} />}
+        {row.enabled ? "Disable" : "Enable"}
+      </button>
+      {(canPause || canResume) && (
+        <button
+          type="button"
+          onClick={() => setPaused(row, canPause)}
+          disabled={pauseBusy}
+          title={canPause ? "Pause AutoPay" : "Resume AutoPay"}
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all disabled:opacity-50"
+        >
+          {pauseBusy ? <Loader2 size={11} className="animate-spin" /> : canPause ? <PauseCircle size={11} /> : <PlayCircle size={11} />}
+          {canPause ? "Pause" : "Resume"}
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => setDrawerUserId(row.userId)}
+        title="Manage this doctor's payments"
+        className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all"
+      >
+        <SlidersHorizontal size={11} />
+        Manage
+      </button>
+    </div>
+  );
 }
 
 export function AdminAutoPayPage() {
@@ -60,7 +152,7 @@ export function AdminAutoPayPage() {
       setData(res.data.data);
       setError(null);
     } catch (err) {
-      setError(err.response?.data?.error?.message || err.message || "Failed to load AutoPay enrollments.");
+      setError(err);
     } finally {
       setLoading(false);
     }
@@ -117,15 +209,11 @@ export function AdminAutoPayPage() {
     }
   };
 
-  const filtered = data.enrollments.filter((row) => {
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return [row.doctorName, row.doctorEmail, row.accountNumber]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase()
-      .includes(q);
+  const table = useDataTable({
+    mode: "client", rows: data.enrollments, searchFn, filters: FILTERS, getRowId,
+    loading, error, reload: load,
   });
+  const columns = autopayColumns({ busy, toggleEnabled, setPaused, setDrawerUserId });
 
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto">
@@ -161,145 +249,14 @@ export function AdminAutoPayPage() {
         </div>
       )}
 
-      <div className="mb-5">
-        <input
-          type="text"
-          className={INPUT}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by doctor, email, or account #…"
-        />
-      </div>
-
-      {loading ? (
-        <div className="py-20 flex items-center justify-center text-navy/40">
-          <Loader2 size={18} className="animate-spin mr-2" />
-          Loading AutoPay enrollments…
-        </div>
-      ) : error ? (
-        <div className="py-20 text-center">
-          <AlertCircle size={32} className="mx-auto mb-3 text-red-500/40" />
-          <p className="text-sm text-navy/60 max-w-md mx-auto">{error}</p>
-          <button
-            type="button"
-            onClick={load}
-            className="mt-4 px-4 py-2 rounded-full text-sm font-semibold bg-brand-500 text-white hover:bg-brand-600"
-          >
-            Retry
-          </button>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="py-20 text-center">
-          <p className="text-sm text-navy/40">
-            {data.enrollments.length === 0 ? "No doctors are enrolled in AutoPay yet." : "No enrollments match your search."}
-          </p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-2xl border border-surface-300/50 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-surface-100 border-b border-surface-300/50">
-                  <Th>Doctor</Th>
-                  <Th>Account #</Th>
-                  <Th className="text-right">Amount</Th>
-                  <Th className="text-right">Day</Th>
-                  <Th>Status</Th>
-                  <Th className="text-right">Failures</Th>
-                  <Th>Last charged</Th>
-                  <Th className="text-right pr-4">Actions</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row) => {
-                  const s = statusOf(row);
-                  const toggleBusy = busy === `${row.userId}:toggle`;
-                  const pauseBusy = busy === `${row.userId}:pause`;
-                  const canPause = row.enabled && row.status === "active";
-                  const canResume = row.enabled && row.status === "paused";
-                  return (
-                    <tr key={row.userId} className="border-b border-surface-300/30 hover:bg-surface-50">
-                      <td className="px-4 py-3">
-                        <div className="font-semibold text-navy">{row.doctorName || "—"}</div>
-                        <div className="text-xs text-navy/40">{row.doctorEmail}</div>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-navy/60">
-                        {row.accountNumber ? `#${row.accountNumber}` : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums font-medium text-navy">
-                        {formatUSD(row.amount)}
-                        {row.minAmountOverride != null && (
-                          <div className="text-[10px] font-mono text-navy/30">
-                            floor {formatUSD(row.minAmountOverride)}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-navy/70">{row.dayOfMonth}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${s.tone}`}>
-                          {s.label}
-                        </span>
-                        {row.status === "paused" && row.pausedReason && (
-                          <div className="mt-0.5 max-w-[160px] truncate text-[10px] text-navy/40" title={row.pausedReason}>
-                            {row.pausedReason}
-                          </div>
-                        )}
-                      </td>
-                      <td className={`px-4 py-3 text-right tabular-nums ${row.consecutiveFailures > 0 ? "font-semibold text-red-600" : "text-navy/50"}`}>
-                        {row.consecutiveFailures}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-navy/60">{formatDate(row.lastChargedAt)}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            type="button"
-                            onClick={() => toggleEnabled(row)}
-                            disabled={toggleBusy}
-                            title={row.enabled ? "Disable AutoPay" : "Enable AutoPay"}
-                            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-semibold transition-all disabled:opacity-50 ${
-                              row.enabled ? "bg-brand-500/10 text-brand-700 hover:bg-brand-500/20" : "bg-surface-100 text-navy/60 hover:bg-surface-200"
-                            }`}
-                          >
-                            {toggleBusy ? <Loader2 size={11} className="animate-spin" /> : <Power size={11} />}
-                            {row.enabled ? "Disable" : "Enable"}
-                          </button>
-                          {(canPause || canResume) && (
-                            <button
-                              type="button"
-                              onClick={() => setPaused(row, canPause)}
-                              disabled={pauseBusy}
-                              title={canPause ? "Pause AutoPay" : "Resume AutoPay"}
-                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all disabled:opacity-50"
-                            >
-                              {pauseBusy ? (
-                                <Loader2 size={11} className="animate-spin" />
-                              ) : canPause ? (
-                                <PauseCircle size={11} />
-                              ) : (
-                                <PlayCircle size={11} />
-                              )}
-                              {canPause ? "Pause" : "Resume"}
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setDrawerUserId(row.userId)}
-                            title="Manage this doctor's payments"
-                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all"
-                          >
-                            <SlidersHorizontal size={11} />
-                            Manage
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      <DataTable
+        table={table}
+        columns={columns}
+        searchPlaceholder="Doctor, email, or account #"
+        itemLabel="enrollments"
+        exportFileName="autopay.csv"
+        emptyText={data.enrollments.length === 0 ? "No doctors are enrolled in AutoPay yet." : "No enrollments match your search."}
+      />
 
       {drawerUserId && (
         <DoctorPaymentDrawer
