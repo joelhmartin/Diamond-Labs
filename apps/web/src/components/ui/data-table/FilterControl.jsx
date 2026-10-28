@@ -1,4 +1,4 @@
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 import { Dropdown } from "../Dropdown.jsx";
 
 export const CONTROL =
@@ -16,6 +16,17 @@ export function FilterControl({ def, value, onChange }) {
         className={`${CONTROL} font-medium ${on ? "border-brand-500 bg-brand-500/10 text-brand-700" : "text-navy/60 hover:text-navy"}`}
       >
         {def.label}
+      </button>
+    );
+  }
+
+  // A fixed scope (e.g. "One client", set by a link): shown as a removable chip only while set.
+  if (def.type === "chip") {
+    if (!value) return null;
+    return (
+      <button type="button" onClick={() => onChange("")} aria-label={`Remove filter: ${def.label}`}
+        className={`${CONTROL} inline-flex items-center gap-1 border-brand-500 bg-brand-500/10 font-medium text-brand-700`}>
+        {def.label} <X size={12} />
       </button>
     );
   }

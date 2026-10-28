@@ -1,5 +1,6 @@
-import { Fragment } from "react";
-import { Loader2, Undo2, History, ChevronDown } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Loader2, Undo2 } from "lucide-react";
+import api from "../../config/api.js";
 import { formatCents } from "../../lib/money.js";
 import { formatUSD, formatDate, formatDateTime, auditLabel, SOURCE_LABEL, StatusPill } from "./payment-labels.jsx";
 
@@ -37,73 +38,64 @@ function AuditTrail({ audit }) {
   );
 }
 
-/** One payment-history row, plus its expandable audit trail. */
-export function PaymentRow({ payment: p, open, audit, onToggleHistory, onRefund }) {
-  return (
-    <Fragment key={p.transactionId}>
-      <tr className="border-t border-surface-300/30 hover:bg-surface-50/50">
-        <td className="px-4 py-3 text-navy/70 whitespace-nowrap">{formatDate(p.createdAt)}</td>
-        <td className="px-4 py-3 text-navy/80">
+/** A payment's recorded actions, fetched when its row is expanded. Remount (change `key`) to refetch. */
+export function PaymentHistory({ transactionId }) {
+  const [audit, setAudit] = useState(null);
+  useEffect(() => {
+    let live = true;
+    api.get("/admin/payments/audit", { params: { transactionId } })
+      .then(({ data }) => live && setAudit({ entries: data.data?.entries || [] }))
+      .catch(() => live && setAudit({ entries: [], failed: true }));
+    return () => { live = false; };
+  }, [transactionId]);
+  return <AuditTrail audit={audit} />;
+}
+
+const invoiceNumbers = (p) => p.invoices.map((inv) => inv.invoiceNumber || inv.invoiceId).join(", ");
+const dollars = (cents) => (cents / 100).toFixed(2);
+
+/** DataTable columns for the payments list. `onRefund(payment)` opens the refund modal. */
+export function paymentColumns({ onRefund }) {
+  return [
+    { id: "date", header: "Date", className: "whitespace-nowrap text-navy/70", cell: (p) => formatDate(p.createdAt), exportValue: (p) => p.createdAt },
+    {
+      id: "doctor", header: "Doctor", exportValue: (p) => p.doctorName ?? "",
+      cell: (p) => (
+        <div className="text-navy/80">
           <div className="font-medium">{p.doctorName || "—"}</div>
           {p.doctorEmail && <div className="text-xs text-navy/40">{p.doctorEmail}</div>}
-        </td>
-        <td className="px-4 py-3 font-mono text-xs text-navy/60">{p.transactionId}</td>
-        <td className="px-4 py-3 text-navy/70 text-xs">
-          {p.invoices.map((inv) => inv.invoiceNumber || inv.invoiceId).join(", ") || "—"}
-        </td>
-        <td className="px-4 py-3 whitespace-nowrap">
-          {p.source === "autopay" ? (
-            <span className="inline-block rounded-full bg-brand-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-brand-700">
-              AutoPay
-            </span>
-          ) : (
-            <span className="text-xs text-navy/50">{SOURCE_LABEL[p.source] || "—"}</span>
-          )}
-        </td>
-        <td className="px-4 py-3 text-right text-navy/80 whitespace-nowrap">{formatCents(p.grossCents)}</td>
-        <td className="px-4 py-3 text-right whitespace-nowrap text-navy/60">
-          {p.refundedCents > 0 ? `-${formatCents(p.refundedCents)}` : "—"}
-        </td>
-        <td className="px-4 py-3 text-right font-medium text-navy whitespace-nowrap">{formatCents(p.netCents)}</td>
-        <td className="px-4 py-3"><StatusPill status={p.status} /></td>
-        <td className="px-4 py-3 text-right">
-          <div className="flex items-center justify-end gap-1">
-            <button
-              type="button"
-              onClick={() => onToggleHistory(p.transactionId)}
-              aria-expanded={open}
-              title={open ? "Hide payment history" : "Payment history"}
-              aria-label={open ? "Hide payment action history" : "Show payment action history"}
-              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-semibold transition-all ${
-                open ? "bg-surface-100 text-navy" : "text-navy/50 hover:text-navy hover:bg-surface-100"
-              }`}
-            >
-              <History size={12} />
-              <ChevronDown size={12} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+        </div>
+      ),
+    },
+    { id: "transaction", header: "Transaction", className: "font-mono text-xs text-navy/60", cell: (p) => p.transactionId, exportValue: (p) => p.transactionId },
+    { id: "invoices", header: "Invoices", className: "text-xs text-navy/70", cell: (p) => invoiceNumbers(p) || "—", exportValue: invoiceNumbers },
+    {
+      id: "method", header: "Method", className: "whitespace-nowrap", exportValue: (p) => (p.source === "autopay" ? "AutoPay" : SOURCE_LABEL[p.source] || ""),
+      cell: (p) => (p.source === "autopay" ? (
+        <span className="inline-block rounded-full bg-brand-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-brand-700">AutoPay</span>
+      ) : (
+        <span className="text-xs text-navy/50">{SOURCE_LABEL[p.source] || "—"}</span>
+      )),
+    },
+    { id: "gross", header: "Gross", align: "right", className: "whitespace-nowrap text-navy/80", cell: (p) => formatCents(p.grossCents), exportValue: (p) => dollars(p.grossCents) },
+    {
+      id: "refunded", header: "Refunded", align: "right", className: "whitespace-nowrap text-navy/60", exportValue: (p) => dollars(p.refundedCents),
+      cell: (p) => (p.refundedCents > 0 ? `-${formatCents(p.refundedCents)}` : "—"),
+    },
+    { id: "net", header: "Net", align: "right", className: "whitespace-nowrap font-medium", cell: (p) => formatCents(p.netCents), exportValue: (p) => dollars(p.netCents) },
+    { id: "status", header: "Status", cell: (p) => <StatusPill status={p.status} />, exportValue: (p) => p.status },
+    {
+      id: "action", header: "Action", align: "right", export: false,
+      cell: (p) => {
+        if (p.refundable) {
+          return (
+            <button type="button" onClick={() => onRefund(p)} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold text-navy/60 transition-all hover:bg-surface-100 hover:text-navy">
+              <Undo2 size={12} /> Refund
             </button>
-            {p.refundable ? (
-              <button
-                type="button"
-                onClick={() => onRefund(p)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all"
-              >
-                <Undo2 size={12} /> Refund
-              </button>
-            ) : p.offline ? (
-              <span className="text-xs text-navy/40">Offline</span>
-            ) : (
-              <span className="text-xs text-navy/30">—</span>
-            )}
-          </div>
-        </td>
-      </tr>
-      {open && (
-        <tr className="bg-surface-50/40">
-          <td colSpan={10} className="px-4 py-3">
-            <AuditTrail audit={audit} />
-          </td>
-        </tr>
-      )}
-    </Fragment>
-  );
+          );
+        }
+        return p.offline ? <span className="text-xs text-navy/40">Offline</span> : <span className="text-xs text-navy/30">—</span>;
+      },
+    },
+  ];
 }

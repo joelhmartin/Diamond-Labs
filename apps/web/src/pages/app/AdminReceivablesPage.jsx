@@ -97,7 +97,7 @@ export function AdminReceivablesPage() {
                 <td className="px-4 py-3 text-navy/60">{dateText(r.oldestDueDate)}</td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap items-center justify-end gap-2">
-                    <Link to={`${ROUTES.ADMIN_INVOICES}?clientUserId=${r.clientUserId}`} className="text-xs font-semibold text-brand-700 hover:underline">Invoices</Link>
+                    <Link to={`${ROUTES.ADMIN_INVOICES}?inv.clientUserId=${r.clientUserId}`} className="text-xs font-semibold text-brand-700 hover:underline">Invoices</Link>
                     <StatementDownload path={`/admin/clients/${r.clientUserId}/statement.pdf`} compact />
                     <ConfirmButton className="rounded-full bg-surface-100 px-3 py-1.5 text-xs font-semibold text-navy" confirmLabel={`Email ${lastMonth.label}?`}
                       onConfirm={() => emailStatement(r)}>
