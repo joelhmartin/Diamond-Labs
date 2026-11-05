@@ -49,6 +49,16 @@ None. The module stores nothing.
 
 ## Wiring it into another app
 
-1. Create a registry and define resolvers for your record types.
-2. Register `barcodeLookupRoutes` with your auth guard.
-3. Render `<ScanBox lookupPath="/your/path" />` where staff need it.
+1. Schema: nothing to re-export or migrate (no tables).
+2. Create a registry, define one resolver per record type, and register `barcodeLookupRoutes` with the app's guard and a `path`. Keep the registry in its own file so other code can add resolvers.
+3. Render `<ScanBox lookupPath="<the same path>" />` where staff need it. It uses the app's shared `api` client, so the API base is whatever it already points at.
+4. Environment variables: none.
+5. Worked example, find invoices by number (about five lines of glue):
+
+```js
+const registry = createLookupRegistry();
+registry.defineResolver({ key: "invoice", match: (c) => (/^\d{1,9}$/.test(c) ? Number(c) : null),
+  resolve: async (n, db) => (await db.select().from(invoices).where(eq(invoices.number, n))).map((i) => ({ recordType: "invoice", recordId: i.id, title: `Invoice ${i.number}`, href: `/invoices/${i.id}` })) });
+await fastify.register(barcodeLookupRoutes, { registry, path: "/invoices/lookup", guard: STAFF });
+// UI: <ScanBox lookupPath="/invoices/lookup" autoFocus />
+```

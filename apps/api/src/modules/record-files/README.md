@@ -75,6 +75,16 @@ and drop, inline size/count messages) and `<FileList recordType recordId />`
 
 ## Wiring it into another app
 
-1. Re-export `schema.js` from the app's db schema index and generate a migration.
-2. Register `recordFileRoutes` with a `recordTypes` map, a guard and an `onRead` audit hook.
-3. Render `<FileList>` where the record is shown; use `attachFiles` directly when an upload arrives as part of a larger submission.
+1. Re-export `schema.js` from the app's Drizzle schema index and run `db:generate`.
+2. Register `recordFileRoutes` with a `recordTypes` map, a guard and an `onRead` audit hook (see Configuration). The routes are nested under the record: `/files/:recordType/:recordId[/:fileId[/url]]`.
+3. Render `<FileList recordType recordId />` and `<FileDrop />` where the record is shown. They use the app's shared `api` client, so the API base is whatever it already points at. Use `attachFiles` directly when an upload arrives as part of a larger submission.
+4. Environment variables: `RX_GCS_BUCKET`, the app's private bucket, read by `services/storage.service.js` (declared in `config/env.js`). Unset, files go to local disk with a warning, which is fine in dev only.
+5. Worked example, attach files to invoices (about five lines of glue):
+
+```js
+await fastify.register(recordFileRoutes, {
+  recordTypes: { invoice: { exists: async (ids) => new Set((await db.select({ id: invoices.id }).from(invoices).where(inArray(invoices.id, ids))).map((r) => r.id)) } },
+  staffGuard: STAFF, onRead: (request, file) => audit(request, "invoice.file.open", file.id),
+});
+// UI: <FileList recordType="invoice" recordId={invoice.id} /> on the invoice page
+```

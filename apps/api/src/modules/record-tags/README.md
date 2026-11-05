@@ -14,7 +14,7 @@ Everything is exported from `index.js`. Service functions take an optional
 
 - `listDefinitions(recordType, { includeInactive = false })` → `Tag[]`
   where `Tag = { id, recordType, label, color, position, active }`
-- `createDefinition({ recordType, label, color })`, `updateDefinition(id, patch)`
+- `createDefinition({ recordType, label, color })`, `updateDefinition(id, patch, recordType, database)`
   (rename, recolor, reorder, deactivate; rows are never deleted)
 - `tagsFor(recordType, ids)` → `Map<recordId, Tag[]>` (includes inactive tags already applied)
 - `starsFor(recordType, ids, userId)` → `Set<recordId>`
@@ -51,7 +51,7 @@ await fastify.register(recordTagRoutes, {
     // one entry per record type the host labels
     widget: {
       exists: async (ids) => new Set(/* ids found in the host's table */),
-      onChange: async (tx, changes) => { /* optional: record history in the same tx */ },
+      onChange: async (tx, changes, { byUserId }) => { /* optional: record history in the same tx */ },
     },
   },
   staffGuard: [authenticate, requireRole(...)],   // preHandler function or array
@@ -71,9 +71,21 @@ record's own row or version; the host records history through `onChange`.
 
 ## Wiring it into another app
 
-1. Re-export `schema.js` from the app's db schema index and generate a migration.
-2. Register `recordTagRoutes` with a `recordTypes` map and two guards.
-3. Join `tagsFor` / `starsFor` into list responses and AND `taggedWithAny` / `starredBy` into list filters.
+1. Re-export `schema.js` from the app's Drizzle schema index and run `db:generate` (three tables, see Data model).
+2. Register `recordTagRoutes` with the app's two guards and a `recordTypes` map (see Configuration).
+3. Mount the web components (`TagChips`, `TagPicker`, `StarToggle`, `TagDefinitionsAdmin`, `tagBulkActions`). They call the app's shared `api` client, so the API base is whatever that client already points at.
+4. Environment variables: none.
+5. Worked example, add labels to invoices (about five lines of glue):
+
+```js
+// 1. schema index:  export * from "../../modules/record-tags/schema.js";
+await fastify.register(recordTagRoutes, {
+  recordTypes: { invoice: { exists: async (ids) => new Set((await db.select({ id: invoices.id }).from(invoices).where(inArray(invoices.id, ids))).map((r) => r.id)) } },
+  staffGuard: STAFF, adminGuard: ADMIN,
+});
+// list route: tags = await tagsFor("invoice", ids); starred = await starsFor("invoice", ids, userId)
+// UI: <TagChips tags={row.tags} /> in the row, <TagDefinitionsAdmin recordType="invoice" /> on an admin page
+```
 
 ## Web
 

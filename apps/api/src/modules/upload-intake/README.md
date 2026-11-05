@@ -70,7 +70,7 @@ No database foreign keys (repo convention). Hints and reasons can name a person,
 
 ## Web
 
-`apps/web/src/modules/upload-intake/`: `<IntakeDropZone onDrop path />` (drop
+`apps/web/src/modules/upload-intake/`: `<IntakeDropZone basePath onDropped />` (drop
 zone with a one-intake / one-per-file choice; reports refused files) and
 `<IntakeQueue basePath createHref />` (a `DataTable` of intakes with a
 "Create order"-style link per row, per-row discard, and bulk discard behind a
@@ -78,7 +78,15 @@ confirm click).
 
 ## Wiring it into another app
 
-1. Re-export `schema.js` from the app's db schema index and generate a migration.
-2. Register `intakeRoutes` and a `record-files` entry for record type `"intake"` (`intakeIdsThatExist`).
-3. Where the record is created, call `promoteIntake(tx, intakeId, ...)` in the same transaction.
-4. Render `<IntakeDropZone>` and `<IntakeQueue>` on a page; point the queue's `createHref` at your record form.
+1. Re-export `schema.js` from the app's Drizzle schema index and run `db:generate`. Install `record-files` first: intake files are stored through it.
+2. Register `intakeRoutes` with a guard and `path`, and register `recordFileRoutes` with a record type `"intake"` whose `exists` is `intakeIdsThatExist`.
+3. Where the record is created, call `promoteIntake(tx, intakeId, { recordType, recordId, byUserId })` in the same transaction. Mount `<IntakeDropZone>` and `<IntakeQueue>` on a page and point the queue's `createHref` at the record form. They use the app's shared `api` client, so the API base is whatever it already points at.
+4. Environment variables: the same as `record-files` (`RX_GCS_BUCKET`, the private bucket), plus `PHI_ENCRYPTION_KEY`, the key behind `lib/crypto.js` (the module seals hints and discard reasons with it and cannot run without it).
+5. Worked example, a drop queue for invoices (about five lines of glue):
+
+```js
+await fastify.register(recordFileRoutes, { recordTypes: { intake: { exists: intakeIdsThatExist } }, staffGuard: STAFF });
+await fastify.register(intakeRoutes, { staffGuard: STAFF, path: "/invoice-intake" });
+// create-invoice route, inside its transaction: await promoteIntake(tx, body.intakeId, { recordType: "invoice", recordId: invoice.id, byUserId });
+// UI: <IntakeDropZone basePath="/invoice-intake" /> and <IntakeQueue basePath="/invoice-intake" createHref={(row) => `/invoices/new?intake=${row.id}`} />
+```
