@@ -34,6 +34,23 @@ export const clientPriceListsSchema = z.object({
   listIds: z.array(id).max(50).refine(distinct, { message: "Each list may appear once." }),
 });
 
+/** Copy prices from one client to others (replace or merge), previewed then applied. */
+export const PRICE_COPY_MODES = ["replace", "merge"];
+export const PRICE_COPY_MAX_TARGETS = 200;
+
+const copyBody = {
+  fromClientUserId: id,
+  toClientUserIds: z.array(id).min(1).max(PRICE_COPY_MAX_TARGETS).refine(distinct, { message: "Each client may appear once." }),
+  mode: z.enum(PRICE_COPY_MODES),
+};
+const notSelf = (b) => !b.toClientUserIds.includes(b.fromClientUserId);
+const SELF = { message: "A client cannot be copied onto itself." };
+
+export const priceCopyPreviewSchema = z.object(copyBody).refine(notSelf, SELF);
+
+/** The apply body is the preview body plus the hash the preview returned (a stale plan is refused, 409). */
+export const priceCopySchema = z.object({ ...copyBody, previewHash: z.string().regex(/^[0-9a-f]{64}$/) }).refine(notSelf, SELF);
+
 export const priceListAssignSchema = z.object({
   listId: id,
   clientUserIds: z.array(id).min(1).max(PRICE_LIST_BULK_MAX),

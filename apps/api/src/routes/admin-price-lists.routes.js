@@ -1,10 +1,11 @@
 import {
   priceListCreateSchema, priceListUpdateSchema, priceListItemSchema, priceListItemsBulkSchema,
-  clientPriceListsSchema, priceListAssignSchema,
+  clientPriceListsSchema, priceListAssignSchema, priceCopyPreviewSchema, priceCopySchema,
 } from "@my-app/shared";
 import { validate } from "../middleware/validate.js";
 import { ADMIN } from "./admin-invoice.routes.js";
 import * as priceLists from "../services/price-lists.service.js";
+import * as priceCopy from "../services/price-copy.service.js";
 
 /** Price lists (piece 10). Admin-only: the lab role sees no money. Writes are audited in the service. */
 export default async function adminPriceListsRoutes(fastify) {
@@ -14,7 +15,7 @@ export default async function adminPriceListsRoutes(fastify) {
     try {
       return reply.code(status).send({ data: await fn() });
     } catch (err) {
-      const r = priceLists.priceListErrorReply(err);
+      const r = priceLists.priceListErrorReply(err) ?? priceCopy.priceCopyErrorReply(err);
       if (r) return reply.code(r.status).send(r.body);
       throw err;
     }
@@ -59,4 +60,11 @@ export default async function adminPriceListsRoutes(fastify) {
   // The Users-table bulk action: { ok, failed } (non-clients land in failed).
   fastify.post("/admin/price-lists/assign", withBody(priceListAssignSchema), (req, reply) => run(reply, () =>
     priceLists.assignListToClients({ ...req.body, byUserId: req.user.id })));
+
+  // Copy prices client -> clients. Preview writes nothing; apply recomputes and 409s on a stale previewHash.
+  fastify.post("/admin/prices/copy/preview", withBody(priceCopyPreviewSchema), (req, reply) => run(reply, () =>
+    priceCopy.previewCopy(req.body)));
+
+  fastify.post("/admin/prices/copy", withBody(priceCopySchema), (req, reply) => run(reply, () =>
+    priceCopy.applyCopy({ ...req.body, byUserId: req.user.id })));
 }

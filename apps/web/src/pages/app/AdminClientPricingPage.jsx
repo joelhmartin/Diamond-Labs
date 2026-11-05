@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, CheckCircle, Trash2 } from "lucide-react";
+import { ArrowLeft, CheckCircle, Copy, Trash2 } from "lucide-react";
 import api from "../../config/api.js";
 import { ROUTES } from "../../config/routes.js";
-import { DataTable } from "../../components/ui/data-table/index.js";
+import { DataTable, summarizeResult } from "../../components/ui/data-table/index.js";
+import { CopyPricesModal } from "../../components/admin/CopyPricesModal.jsx";
 import { ConfirmButton } from "../../components/ui/ConfirmButton.jsx";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { useDataTable } from "../../hooks/useDataTable.js";
@@ -137,6 +138,7 @@ export function AdminClientPricingPage() {
   const { addToast } = useToast();
   const [client, setClient] = useState(null);
   const [pick, setPick] = useState({ variantId: "", price: "" });
+  const [copyOpen, setCopyOpen] = useState(false);
   const data = useClientPricing(userId);
 
   // The existing admin users list (AdminUsersPage) is the one admin read of a user.
@@ -190,6 +192,12 @@ export function AdminClientPricingPage() {
     },
   ];
 
+  const copyDone = async (result) => {
+    addToast({ message: summarizeResult(result), type: result.failed?.length ? "warning" : "success" });
+    setCopyOpen(false);
+    await data.load();
+  };
+
   async function save() {
     const priceCents = parseMoneyInput(pick.price);
     if (priceCents == null) { report("Enter a price in dollars, e.g. 405.00"); return; }
@@ -199,10 +207,17 @@ export function AdminClientPricingPage() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
       <Link to={ROUTES.ADMIN_USERS} className="inline-flex items-center gap-1 text-sm text-navy/50 hover:text-navy"><ArrowLeft size={14} /> Users</Link>
-      <div>
-        <h1 className="font-heading font-bold text-2xl text-navy">Client pricing{client ? ` — ${client.name}` : ""}</h1>
-        {client && <p className="text-sm text-navy/50">{[client.email, client.practice].filter(Boolean).join(" · ")}</p>}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="font-heading font-bold text-2xl text-navy">Client pricing{client ? ` — ${client.name}` : ""}</h1>
+          {client && <p className="text-sm text-navy/50">{[client.email, client.practice].filter(Boolean).join(" · ")}</p>}
+        </div>
+        <button type="button" onClick={() => setCopyOpen(true)}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-surface-300/60 bg-white px-3.5 py-2 text-sm text-navy hover:bg-surface-100">
+          <Copy size={14} /> Copy prices from…
+        </button>
       </div>
+      {copyOpen && <CopyPricesModal targetIds={[userId]} onDone={copyDone} onClose={() => setCopyOpen(false)} />}
 
       <AssignedListsStrip userId={userId} assigned={data.assigned} allLists={data.allLists} onChanged={data.load} />
 
