@@ -6,8 +6,8 @@ import { ConfirmButton } from "../../components/ui/ConfirmButton.jsx";
 import { DataTable } from "../../components/ui/data-table/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
 import { FileDrop } from "./FileDrop.jsx";
+import { recordFilesPath as base, uploadRecordFiles } from "./upload.js";
 
-const base = (recordType, recordId) => `/files/${encodeURIComponent(recordType)}/${encodeURIComponent(recordId)}`;
 const sizeLabel = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
 /**
@@ -39,11 +39,9 @@ export function FileList({ recordType, recordId, canEdit = false, uploadKind = "
       .catch((err) => fail(err));
 
   const upload = async (picked) => {
-    const form = new FormData();
-    picked.forEach((f) => form.append(uploadKind, f));
     setBusy(true);
     try {
-      await api.post(base(recordType, recordId), form, { headers: { "Content-Type": "multipart/form-data" } });
+      await uploadRecordFiles(recordType, recordId, picked, uploadKind);
       await load();
     } catch (err) {
       fail(err);

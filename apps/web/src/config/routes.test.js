@@ -17,3 +17,9 @@ test("the label print page and Admin › Shipments have one path each", () => {
   assert.equal(shipmentPrintPath("sh1"), "/lab/shipments/sh1/print");
   assert.equal(ROUTES.ADMIN_SHIPMENTS, "/admin/shipments");
 });
+
+test("the New order route is declared before the order detail route", () => {
+  const keys = Object.keys(ROUTES);
+  assert.ok(keys.indexOf("LAB_ORDER_NEW") >= 0 && keys.indexOf("LAB_ORDER_NEW") < keys.indexOf("LAB_ORDER_DETAIL"));
+  assert.equal(ROUTES.LAB_ORDER_NEW, "/lab/orders/new");
+});

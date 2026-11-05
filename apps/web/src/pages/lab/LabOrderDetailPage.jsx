@@ -13,6 +13,8 @@ import { ShippingPanel } from "../../components/lab/ShippingPanel.jsx";
 import { SchedulePanel } from "../../components/lab/SchedulePanel.jsx";
 import { Badge } from "../../components/ui/Badge.jsx";
 import { ProductionPanel } from "../../components/lab/ProductionPanel.jsx";
+import { LinesEditor } from "../../components/lab/LinesEditor.jsx";
+import { FileList } from "../../modules/record-files/index.js";
 import { errorText, blobErrorText, isStale, openInNewTab, openPdf } from "../../lib/requests.js";
 
 function moveLabel(from, to) {
@@ -131,7 +133,7 @@ export function LabOrderDetailPage() {
     );
   }
 
-  const { order, lines, events, rxCase, files, shopOrder, shipment, legacy, schedule, scheduleFlags } = detail;
+  const { order, lines, events, rxCase, files, shopOrder, shipment, legacy, schedule, scheduleFlags, staff: staffEntry } = detail;
   const moves = allowedNextStatuses(order.status, { heldFrom: order.heldFrom, labelled: Boolean(order.shipmentId) });
   const answerGroups = rxCase ? groupRxAnswers(getRxForm(rxCase.formType), rxCase.formData) : [];
   const devices = lines.filter((l) => !l.noteOnly);
@@ -187,6 +189,7 @@ export function LabOrderDetailPage() {
             {order.overdue && <span className="flex items-center gap-1 text-xs font-semibold text-red-600"><Clock size={11} /> Overdue</span>}
             {rxCase && <Link to={`/admin/rx-cases/${rxCase.id}`} className="font-mono text-xs text-brand-600 hover:underline">{rxCase.caseNumber}</Link>}
             {shopOrder && <span className="font-mono text-xs">{shopOrder.orderNumber}</span>}
+            {order.source === "staff" && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800">{LAB_ORDER_SOURCE_LABELS.staff}</span>}
             {legacy && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">{LAB_ORDER_SOURCE_LABELS.legacy}</span>}
           </div>
         </div>
@@ -217,21 +220,7 @@ export function LabOrderDetailPage() {
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
           <Panel title="Lines">
-            <table className="w-full text-left text-sm">
-              <thead className="text-[10px] font-mono uppercase tracking-widest text-navy/40">
-                <tr><th className="py-1">Qty</th><th>Code</th><th>Item</th><th>Arch</th></tr>
-              </thead>
-              <tbody>
-                {devices.map((l) => (
-                  <tr key={l.id} className="border-t border-surface-300/40">
-                    <td className="py-1.5">{l.qty}</td>
-                    <td className="font-mono text-xs">{l.code ?? "—"}</td>
-                    <td>{l.name}</td>
-                    <td className="text-navy/60">{l.arch ?? ""}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <LinesEditor order={order} lines={devices} onChanged={load} />
             {instructions.length > 0 && (
               <ul className="mt-3 list-disc pl-5 text-sm text-navy/80">
                 {instructions.map((l) => <li key={l.id}>{l.sourceLabel || l.name}</li>)}
@@ -337,7 +326,7 @@ export function LabOrderDetailPage() {
               </div>
               <div className="text-xs text-navy/50">
                 Practice: <span className="text-navy">{rxCase?.practiceName || order.clientName || shopOrder?.shipping?.name || "—"}</span><br />
-                {(rxCase?.patientName || legacy?.patientName) && <>Patient: <span className="text-navy">{rxCase?.patientName || legacy?.patientName}</span></>}
+                {(rxCase?.patientName || legacy?.patientName || staffEntry?.patientName) && <>Patient: <span className="text-navy">{rxCase?.patientName || legacy?.patientName || staffEntry?.patientName}</span></>}
               </div>
             </div>
           </Panel>
@@ -355,6 +344,10 @@ export function LabOrderDetailPage() {
             <button type="button" disabled={busy || notes === (order.labNotes ?? "")} onClick={() => setField("notes", notes)} className="mt-2 rounded-full bg-navy px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-40">
               Save notes
             </button>
+          </Panel>
+
+          <Panel title="Order files">
+            <FileList recordType="lab_order" recordId={order.id} canEdit={!closed} />
           </Panel>
 
           {files.length > 0 && (

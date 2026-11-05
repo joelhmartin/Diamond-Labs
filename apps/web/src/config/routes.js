@@ -36,6 +36,7 @@ export const ROUTES = {
   // Lab (admin + lab staff)
   LAB_BOARD: "/lab",
   LAB_CALENDAR: "/lab/calendar",
+  LAB_ORDER_NEW: "/lab/orders/new", // declared before LAB_ORDER_DETAIL so "new" is never read as an id
   LAB_ORDER_DETAIL: "/lab/orders/:id",
   LAB_SHIPMENT_PRINT: "/lab/shipments/:id/print",
 
