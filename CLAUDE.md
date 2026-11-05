@@ -216,3 +216,5 @@ VITE_AUTHORIZE_NET_CLIENT_KEY=          # public client key from the merchant po
 - Route config: `apps/web/src/config/routes.js`
 - 3D models: `apps/web/public/models/` (OBJ+MTL for 4 products)
 - Downloads: `apps/web/public/downloads/` (PDFs)
+- Exports module: `apps/api/src/modules/exports/` (generic; app sources in `apps/api/src/exports/`, screen in `apps/web/src/modules/exports/`; see its README)
+- Price lists: `apps/api/src/services/price-lists.service.js` (resolution stays in `lib/pricing.js` + `services/pricing.service.js`)

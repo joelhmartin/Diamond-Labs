@@ -86,4 +86,47 @@ it next to the CSV format when the app builds its registry, and it shows up in
 
 ## Wiring into another app
 
-(Filled in when the module is wired a second time.)
+The module has three parts: this server module, the pure CSV writer in
+`packages/shared/src/exports`, and the screen in `apps/web/src/modules/exports`.
+Everything app-specific lives in the app's own glue directory (here
+`apps/api/src/exports/`), never inside the module.
+
+1. **Copy the code.** Copy `apps/api/src/modules/exports` and
+   `packages/shared/src/exports` (plus `apps/web/src/modules/exports` for the
+   screen). Re-export `exports/csv.js` from the shared package's index: the
+   module and any client-side CSV import their helpers from there.
+2. **Create the registry in the app's glue.** One file builds it once and
+   registers the built-in format:
+
+   ```js
+   import { createExportRegistry, csvFormat } from "../modules/exports/index.js";
+   export const appExports = createExportRegistry();
+   appExports.defineFormat(csvFormat);
+   ```
+
+3. **Define one source per query.** Each `defineSource` call gives a `key`,
+   a `label`, the `params` the screen draws, a zod `paramsSchema`, the
+   `fields` that make up a row and a `fetchPage(db, params, { limit, offset })`
+   with a stable order (see the source contract above). Keep each source in
+   its own glue file and register it beside the format.
+4. **Mount the routes.** Register
+   `createExportsRoutes({ registry: appExports, db, preHandler, audit })` under
+   the app's API prefix. `preHandler` is the app's own guard (for example
+   authenticate plus an admin check); `audit` records who downloaded what, with
+   the source, format, params and row count and never row data.
+5. **Render the screen.** A page renders
+   `<ExportScreen basePath="/admin/exports" defaultSource="<key>" />`, where
+   `basePath` is the mounted route prefix. The screen reads everything else
+   from `GET <basePath>`.
+
+**Sources choose which fields leave the app.** A downloaded file is outside
+the app's encryption, access control and audit trail. A source lists only the
+columns its readers need, and sensitive columns (personal or health details,
+free-text notes, secrets, payment tokens) are left out by default. Adding
+one is a deliberate change to that source, reviewed as such, ideally behind an
+explicit option that the audit records. The CSV writer already neutralises
+text that starts with `=`, `+`, `-` or `@` so a spreadsheet does not run it as
+a formula; numbers are written as numbers.
+
+To add a format, follow "Adding a format" above: one file in the app's glue
+and one `defineFormat` call next to `csvFormat`.

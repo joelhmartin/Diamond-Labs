@@ -187,6 +187,16 @@ pnpm --filter @my-app/api import:parity $T $S --balances <path> --file-id <final
 - Run the tracking job dry (`docs/shipping-operations.md`).
 - Run the shop repair dry (`{"dryRun":true}`, step 7's call): its `missing` count must equal the number of shop orders paid between T1 and the new revision going live in step 4.5 (`select count(*) from orders where status = 'paid' and created_at >= '<T1>' and created_at < '<new revision live>'`; orders placed after that already got their lab order at checkout). A mismatch means T1 is wrong: stop and fix `LAB_SHOP_REPAIR_SINCE` before the live run.
 
+### Re-enter price lists (lab admin, before unfreeze)
+
+Seazona's API never exposed price lists or who is on them, so the load brought none. Keep Labzona's PriceList screen and its Same Pricing report open beside the new app.
+
+- (a) **Admin › Price lists › New list**: create the 3 lists, named as in Labzona.
+- (b) Fill each list's prices: in the list editor select all, run the bulk action **Set to base price**, then edit each price that differs, reading Labzona's PriceList screen.
+- (c) Assign clients from **Admin › Users**: filter or search by practice, select the clients, run **Assign price list…** and pick the list. Repeat per list.
+- (d) Open **Price lists › Same pricing** and compare the group sizes with Labzona's Same Pricing report. A group that does not match is re-checked (list items and assignments) before unfreeze.
+- (e) `statement_sends` starts empty, so the first **Receivables › Monthly statements** run after cutover sends to every client due one. That is correct only for the month after Labzona's last statement run: pick that month in the panel, not one Labzona already sent.
+
 ## 7. Unfreeze
 
 **Unset the flag; never set it to an empty value** (an empty string fails env validation and the revision never becomes ready):
