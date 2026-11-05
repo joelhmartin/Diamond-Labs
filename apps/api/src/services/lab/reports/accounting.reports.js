@@ -14,7 +14,7 @@ import { listReceivables, loadStatementActivity, loadClientNames } from "../../b
 import { statementEvents, monthBounds } from "../../billing/statement-model.js";
 import { deriveBalance } from "../../billing/invoice-rules.js";
 import {
-  CLIENT_LINK, INVOICE_LINK, REMAKE_DISCOUNT_NOTICE, clientLabel, clientName, isDiscountLine, labDay, labDayBetween, labDayText, num, orderAndPage,
+  CLIENT_LINK, INVOICE_LINK, clientLabel, discountNotices, clientName, isDiscountLine, labDayBetween, labDayText, labMonthText, num, orderAndPage,
   paymentDay, rowsOf, salesWhere,
 } from "./lab-metrics.js";
 
@@ -104,7 +104,7 @@ const discounts = {
       where ${isDiscountLine} and ${salesWhere(range)}
       order by 1, ${invoices.invoiceNumber}, ${invoiceLines.position}`);
     const rows = raw.map((r) => ({ ...r, invoiceNumber: invoiceNo(r.invoiceNumber), amount: num(r.amount) }));
-    return { rows, summary: { amount: sumOf(rows, "amount") }, notice: REMAKE_DISCOUNT_NOTICE };
+    return { rows, summary: { amount: sumOf(rows, "amount") }, notice: discountNotices(range) };
   },
 };
 
@@ -162,9 +162,9 @@ const invoicesSummary = {
   async run(tx, { range, by = "month" }) {
     const bucket = {
       day: sql`${labDayText(invoices.issuedAt)}`,
-      month: sql`to_char(${labDay(invoices.issuedAt)}, 'YYYY-MM')`,
+      month: labMonthText(invoices.issuedAt),
       client: sql`coalesce(${clientName}, 'No client')`,
-    }[by] ?? sql`to_char(${labDay(invoices.issuedAt)}, 'YYYY-MM')`;
+    }[by] ?? labMonthText(invoices.issuedAt);
     const clientId = by === "client" ? sql`${invoices.clientUserId}` : sql`null`;
     const raw = await rowsOf(tx, sql`
       select ${bucket} as "bucket", ${clientId} as "clientUserId", count(*) as "invoices", sum(${invoices.subtotalCents}) as "subtotal",
@@ -228,6 +228,16 @@ const SOURCE_FILTERS = { card: CARD, autopay: ["autopay"], manual: MANUAL };
 const SOURCE_OPTIONS = [
   { value: "all", label: "All" }, { value: "card", label: "Card" }, { value: "autopay", label: "AutoPay" }, { value: "manual", label: "Check, cash, ACH, other" },
 ];
+/**
+ * Sort key for an invoice number held as text (an imported ledger row keeps
+ * Seazona's): zero-padded, so numbers order numerically and anything else
+ * still orders deterministically.
+ */
+const numberSort = (textExpr) => sql`lpad(${textExpr}, 20, '0')`;
+/** The method label as shown (PAYMENT_SOURCE_LABELS), so sorting matches the screen. */
+const sourceLabelSql = sql`case ${invoicePayments.source} ${sql.join(
+  Object.entries(PAYMENT_SOURCE_LABELS).map(([k, v]) => sql`when ${k} then ${v}`), sql` `,
+)} else 'Unknown' end`;
 const inList = (values) => sql.join(values.map((v) => sql`${v}`), sql`, `);
 
 const paymentsReceived = {
@@ -250,7 +260,7 @@ const paymentsReceived = {
     const from = sql`from ${invoicePayments} left join ${invoices} on ${invoices.id} = ${invoicePayments.invoiceId} ${clientJoin(payer)}`;
     const number = sql`coalesce(${invoices.invoiceNumber}::text, ${invoicePayments.invoiceNumber})`;
     const sorts = {
-      day: paymentDay, client: clientName, invoiceNumber: number, sourceLabel: invoicePayments.source,
+      day: paymentDay, client: clientName, invoiceNumber: numberSort(number), sourceLabel: sourceLabelSql,
       reference: invoicePayments.reference, amount: invoicePayments.appliedCents,
     };
     const [count] = await rowsOf(tx, sql`select count(*) as "total", coalesce(sum(${invoicePayments.appliedCents}), 0) as "cents" ${from} where ${where}`);
@@ -305,7 +315,7 @@ const statementsSummary = {
   ],
   async run(tx, params) {
     const bounds = monthBounds((params?.month ?? lastMonthDay()).slice(0, 7));
-    const activity = await loadStatementActivity(null, tx);
+    const activity = await loadStatementActivity(null, tx, { through: bounds.endIso });
     const per = summarizeStatements(activity, bounds);
     const names = await loadClientNames([...per.keys()], tx);
     const rows = [...per.entries()]

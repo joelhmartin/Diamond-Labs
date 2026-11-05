@@ -99,6 +99,56 @@ test("discounts are negative adjustment lines and say the remake reduction is no
   assert.match(executedSql(tx)[0].text, /invoice_lines\.kind = 'adjustment' and invoice_lines\.line_cents < 0/);
 });
 
+test("an imported negative adjustment line is not a discount, and pre-cutover ranges say discounts are not itemised", async () => {
+  try {
+    const tx = fakeTx({ executes: [[]] });
+    const out = await report("accounting.discounts").run(tx, { range });
+    // map-invoices.js writes every imported line with price_source 'legacy' (its balancing "Seazona adjustment" line included).
+    assert.match(executedSql(tx)[0].text, /invoice_lines\.line_cents < 0 and invoice_lines\.price_source <> 'legacy'/);
+    assert.match(out.notice, /not itemised/); // REPORTS_COVERAGE_FROM unset: cutover not recorded yet
+    process.env.REPORTS_COVERAGE_FROM = "2026-10-15";
+    assert.match((await report("accounting.discounts").run(fakeTx({ executes: [[]] }), { range })).notice, /before 2026-10-15\) are not itemised/);
+    const after = await report("accounting.discounts").run(fakeTx({ executes: [[]] }), { range: { ...range, from: "2026-10-15" } });
+    assert.doesNotMatch(after.notice, /not itemised/);
+    assert.match(after.notice, /remake/i);
+  } finally {
+    delete process.env.REPORTS_COVERAGE_FROM;
+  }
+  // The Adjustments report keeps imported lines: its line filter is only the kind.
+  const adj = fakeTx({ executes: [[]] });
+  await report("accounting.adjustments").run(adj, { range });
+  assert.doesNotMatch(executedSql(adj)[0].text, /price_source/);
+});
+
+test("statements summary loads activity only through the month's last day", () => {
+  const src = readFileSync(fileURLToPath(new URL("./accounting.reports.js", import.meta.url)), "utf8");
+  assert.match(src, /loadStatementActivity\(null, tx, \{ through: bounds\.endIso \}\)/);
+});
+
+test("invoices summary by day or month carries no client id, so the client link is not drawn", async () => {
+  for (const by of ["day", "month"]) {
+    const tx = fakeTx({ executes: [[{ bucket: "2026-10", clientUserId: null, invoices: "2", subtotal: "100", tax: "0", shipping: "0", total: "100" }]] });
+    const out = await report("accounting.invoices-summary").run(tx, { range, by });
+    assert.equal(out.rows[0].clientUserId, null);
+    assert.match(executedSql(tx)[0].text, /null as clientUserId/);
+  }
+  const month = fakeTx({ executes: [[]] });
+  await report("accounting.invoices-summary").run(month, { range, by: "month" });
+  assert.match(executedSql(month)[0].text, /to_char\(\(invoices\.issued_at at time zone 'America\/Chicago'\)::date, 'YYYY-MM'\) as bucket/);
+});
+
+test("payments received sorts invoice numbers numerically and methods by the label shown", async () => {
+  const run = async (id) => {
+    const tx = fakeTx({ executes: [[{ total: "0" }], []] });
+    await report("accounting.payments-received").run(tx, { range, source: "all" }, null, page({ sort: { id, desc: false } }));
+    return executedSql(tx)[1];
+  };
+  assert.match((await run("invoiceNumber")).text, /order by lpad\(coalesce\(invoices\.invoice_number::text, invoice_payments\.invoice_number\), 20, '0'\) asc/);
+  const label = await run("sourceLabel");
+  assert.match(label.text, /order by case invoice_payments\.source when \$\d+ then \$\d+ .* else 'Unknown' end asc/);
+  assert.ok(label.params.includes("admin_check") && label.params.includes("Check"));
+});
+
 const GLUE = ["lab-metrics.js", "accounting.reports.js", "sales.reports.js", "lookups.js"];
 
 test("no accounting or sales report selects legacy_patient or decrypts", () => {

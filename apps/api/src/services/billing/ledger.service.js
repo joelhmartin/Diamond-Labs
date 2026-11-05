@@ -7,6 +7,14 @@ import { summarizePayments } from "../../lib/payment-summary.js";
 import { deriveBalance, canActOnInvoice } from "./invoice-rules.js";
 import { openLedgerRow } from "./invoice-crypto.js";
 import { paidCentsFor } from "./paid-cents.js";
+import { labDay } from "../../lib/lab-day-sql.js";
+
+/**
+ * A ledger row's day in SQL: when a manual payment was received (staff-entered
+ * paid_on), else the row's lab-local created day. The same rule as the
+ * statement (statement-model.js `p.paidOn ?? labDay(p.createdAt)`).
+ */
+export const ledgerRowDay = sql`coalesce(${invoicePayments.paidOn}, ${labDay(invoicePayments.createdAt)})`;
 
 /**
  * The invoice ledger's read side. Paid is the SUM of an invoice's

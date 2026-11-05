@@ -33,6 +33,10 @@ test("sales summary reports gross, discount, net, tax and shipping for the range
   assert.deepEqual(out.rows[0], { period: "This period", from: "2026-10-01", to: "2026-10-31", invoices: 3, gross: 10000, discount: -1500, net: 8500, tax: 700, shipping: 1200, total: 10400 });
   assert.equal(out.rows[1].period, "Previous period");
   assert.equal(out.rows[1].net, 1000);
+  // Imported lines are never discounts; gross = net − discounts still reconciles; the range is flagged as not itemised.
+  assert.match(executedSql(tx)[0].text, /invoice_lines\.price_source <> 'legacy'/);
+  assert.equal(out.rows[0].gross - out.rows[0].net, -out.rows[0].discount);
+  assert.match(out.notice, /not itemised/);
 });
 
 test("category sales carries the coverage notice when from < REPORTS_COVERAGE_FROM", async () => {

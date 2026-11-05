@@ -8,7 +8,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { INVOICE_KINDS, INVOICE_KIND_LABELS, LAB_TIMEZONE, isoDateIn } from "@my-app/shared";
 import { invoices, invoiceLines, productVariants, productFamilies, users, doctorProfiles } from "../../../db/schema/index.js";
 import {
-  CLIENT_LINK, clientName, coverageNotice, labDayText, num, orderAndPage, rowsOf, salesBreakdown, salesByDay, salesByMonth, salesWhere,
+  CLIENT_LINK, clientName, coverageNotice, discountNotices, labDayText, num, orderAndPage, rowsOf, salesBreakdown, salesByDay, salesByMonth, salesWhere,
 } from "./lab-metrics.js";
 
 const ADMIN = ["admin"];
@@ -59,7 +59,7 @@ const summary = {
     };
     const rows = [await row("This period", range)];
     if (range.previous) rows.push(await row("Previous period", range.previous));
-    return { rows };
+    return { rows, notice: discountNotices({ from: range.previous?.from ?? range.from }) };
   },
 };
 

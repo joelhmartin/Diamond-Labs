@@ -50,3 +50,17 @@ test("an unowned legacy invoice (null client) is left out of AR and never reache
   // The ledger's query builds two selects (a paid-sum subquery and the rows); a third would be the users lookup.
   assert.equal(db.log.filter((e) => e.op === "select").length, 2, "no users query for an empty id list");
 });
+
+test("statement activity can be bounded to a month end: invoices and ledger rows after it are not loaded", async () => {
+  const { renderSql } = await import("../../test/sql-text.js");
+  const { invoiceScope, paymentBound } = svc.statementActivityFilters(null, { through: "2026-10-31" });
+  const inv = renderSql(invoiceScope);
+  assert.match(inv.text, /invoices\.issued_at < \(\(\$\d+::date \+ 1\)::timestamp at time zone 'America\/Chicago'\)/);
+  assert.ok(inv.params.includes("2026-10-31"));
+  const pay = renderSql(paymentBound);
+  assert.match(pay.text, /coalesce\(invoice_payments\.paid_on, \(invoice_payments\.created_at at time zone 'America\/Chicago'\)::date\) <= \$\d+::date/);
+  // Unbounded (the existing callers): no date clause at all.
+  const open = svc.statementActivityFilters(["doc1"]);
+  assert.doesNotMatch(renderSql(open.invoiceScope).text, /issued_at/);
+  assert.equal(open.paymentBound, undefined);
+});

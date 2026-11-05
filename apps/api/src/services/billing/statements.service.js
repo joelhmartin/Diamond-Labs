@@ -1,8 +1,9 @@
-import { and, eq, inArray, isNotNull, ne } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lt, ne, sql } from "drizzle-orm";
 import { isoDateIn, LAB_TIMEZONE } from "@my-app/shared";
 import { db } from "../../config/database.js";
 import { invoices, invoicePayments, labOrders, users, doctorProfiles } from "../../db/schema/index.js";
-import { openReceivableInvoices } from "./ledger.service.js";
+import { openReceivableInvoices, ledgerRowDay } from "./ledger.service.js";
+import { afterLabDay } from "../../lib/lab-day-sql.js";
 import { buildReceivables } from "./aging.js";
 import { buildStatementModel } from "./statement-model.js";
 import { renderStatementPdf } from "./billing-pdf.js";
@@ -30,14 +31,32 @@ export async function loadClient(clientUserId, database = db) {
 }
 
 /**
+ * The WHERE clauses of loadStatementActivity. `through` ("YYYY-MM-DD") keeps
+ * only invoices issued, and ledger rows dated (ledgerRowDay), on or before
+ * that lab-local day; everything earlier still loads, so opening balances stay
+ * whole. A void after `through` is dated by voidedAt and falls outside the
+ * period on its own (statementEvents).
+ */
+export function statementActivityFilters(clientUserIds, { through } = {}) {
+  const invoiceScope = and(
+    clientUserIds === null ? isNotNull(invoices.clientUserId) : inArray(invoices.clientUserId, clientUserIds),
+    ne(invoices.status, "draft"),
+    through ? lt(invoices.issuedAt, afterLabDay(through)) : undefined,
+  );
+  const paymentBound = through ? sql`${ledgerRowDay} <= ${through}::date` : undefined;
+  return { invoiceScope, paymentBound };
+}
+
+/**
  * Every money event on these clients' invoices (statement-model's `activity`).
  * Drafts carry none. `clientUserIds = null` means every client's invoices (the
  * statements summary report); the payments are then joined, not listed by id,
- * so the query does not grow with the invoice count.
+ * so the query does not grow with the invoice count. `{ through }` bounds it
+ * (statementActivityFilters).
  */
-export async function loadStatementActivity(clientUserIds, database = db) {
+export async function loadStatementActivity(clientUserIds, database = db, { through } = {}) {
   const everyClient = clientUserIds === null;
-  const scope = and(everyClient ? isNotNull(invoices.clientUserId) : inArray(invoices.clientUserId, clientUserIds), ne(invoices.status, "draft"));
+  const { invoiceScope: scope, paymentBound } = statementActivityFilters(clientUserIds, { through });
   const invs = await database
     .select({
       id: invoices.id, clientUserId: invoices.clientUserId, invoiceNumber: invoices.invoiceNumber, status: invoices.status, totalCents: invoices.totalCents,
@@ -54,8 +73,8 @@ export async function loadStatementActivity(clientUserIds, database = db) {
     source: invoicePayments.source, paidOn: invoicePayments.paidOn, createdAt: invoicePayments.createdAt,
   };
   const payments = everyClient
-    ? await database.select(paymentCols).from(invoicePayments).innerJoin(invoices, eq(invoices.id, invoicePayments.invoiceId)).where(scope)
-    : await database.select(paymentCols).from(invoicePayments).where(inArray(invoicePayments.invoiceId, ids));
+    ? await database.select(paymentCols).from(invoicePayments).innerJoin(invoices, eq(invoices.id, invoicePayments.invoiceId)).where(and(scope, paymentBound))
+    : await database.select(paymentCols).from(invoicePayments).where(and(inArray(invoicePayments.invoiceId, ids), paymentBound));
   return { invoices: invs, payments };
 }
 

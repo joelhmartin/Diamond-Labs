@@ -10,16 +10,13 @@
  * carry a client's AR balance at cutover, not a sale made that day.
  */
 import { sql } from "drizzle-orm";
-import { LAB_TIMEZONE, OPENING_BALANCE_PREFIX, daysBetween, monthsBetween } from "@my-app/shared";
-import { invoices, invoiceLines, invoicePayments, users, doctorProfiles } from "../../../db/schema/index.js";
+import { OPENING_BALANCE_PREFIX, daysBetween, monthsBetween } from "@my-app/shared";
+import { invoices, invoiceLines, users, doctorProfiles } from "../../../db/schema/index.js";
+import { labDay, labDayBetween, labDayText, labMonthText } from "../../../lib/lab-day-sql.js";
+import { ledgerRowDay } from "../../billing/ledger.service.js";
 
-if (!/^[A-Za-z_]+(\/[A-Za-z_]+)*$/.test(LAB_TIMEZONE)) throw new Error("LAB_TIMEZONE is not a zone name");
-/**
- * The zone as a SQL literal, not a bound parameter: Postgres treats two
- * parameters as different expressions, so a select and its GROUP BY must
- * share one literal.
- */
-const LAB_TZ = sql.raw(`'${LAB_TIMEZONE}'`);
+// The lab-day SQL helpers live in lib/lab-day-sql.js (billing uses them too); re-exported for the report glue.
+export { labDay, labDayBetween, labDayText, labMonthText };
 
 // ── Links (the admin web routes, apps/web/src/config/routes.js) ──────────
 
@@ -29,19 +26,6 @@ export const CLIENT_LINK = "/admin/invoices?inv.clientUserId={clientUserId}";
 export const INVOICE_LINK = "/admin/invoices/{invoiceId}";
 
 // ── SQL building blocks ──────────────────────────────────────────────────
-
-/** A timestamptz column's lab-local calendar day (a SQL date). */
-export const labDay = (col) => sql`(${col} at time zone ${LAB_TZ})::date`;
-
-/** The same day as "YYYY-MM-DD" text (raw `execute` rows then need no date parsing). */
-export const labDayText = (col) => sql`to_char(${labDay(col)}, 'YYYY-MM-DD')`;
-
-/**
- * THE lab-day range filter for a timestamptz column: inclusive lab-local days
- * `from`..`to`, written as instant bounds so an index on the column applies.
- */
-export const labDayBetween = (col, { from, to }) =>
-  sql`${col} >= (${from}::date)::timestamp at time zone ${LAB_TZ} and ${col} < ((${to}::date + 1)::timestamp at time zone ${LAB_TZ})`;
 
 /** A client's display name: the practice, falling back to the doctor's name. Join users + doctor_profiles. */
 export const clientName = sql`coalesce(${doctorProfiles.companyName}, ${users.name})`;
@@ -56,15 +40,16 @@ export function salesWhere({ from, to, clientUserId }) {
   return sql.join(parts, sql` and `);
 }
 
-/** A discount line: a negative adjustment (spec: Discounts). */
-export const isDiscountLine = sql`${invoiceLines.kind} = 'adjustment' and ${invoiceLines.lineCents} < 0`;
-
 /**
- * A ledger row's day: when a manual payment was received (staff-entered
- * paid_on), else the row's lab-local created day. The same rule as the
- * statement (statement-model.js `p.paidOn ?? labDay(p.createdAt)`).
+ * A discount line: a negative adjustment the lab entered (spec: Discounts).
+ * Imported lines (price_source 'legacy', import/map-invoices.js) are not:
+ * the import types any negative Seazona line, and its balancing "Seazona
+ * adjustment (discounts, services, rounding)" line, as an adjustment.
  */
-export const paymentDay = sql`coalesce(${invoicePayments.paidOn}, ${labDay(invoicePayments.createdAt)})`;
+export const isDiscountLine = sql`${invoiceLines.kind} = 'adjustment' and ${invoiceLines.lineCents} < 0 and ${invoiceLines.priceSource} <> 'legacy'`;
+
+/** A ledger row's lab-local day (billing/ledger.service.js ledgerRowDay, the statement's rule). */
+export const paymentDay = ledgerRowDay;
 
 /** The JS side of `clientName` for rows from loadClientNames / listReceivables. */
 export const clientLabel = (c) => c?.practice ?? c?.name ?? null;
@@ -110,7 +95,7 @@ export async function salesByDay(db, { from, to }) {
 /** Sales per lab-local month ("YYYY-MM"), every month the range touches (zeros filled). */
 export async function salesByMonth(db, { from, to }) {
   const rows = await rowsOf(db, sql`
-    select to_char(${labDay(invoices.issuedAt)}, 'YYYY-MM') as "month", sum(${invoices.subtotalCents}) as "cents"
+    select ${labMonthText(invoices.issuedAt)} as "month", sum(${invoices.subtotalCents}) as "cents"
     from ${invoices} where ${salesWhere({ from, to })} group by 1 order by 1`);
   const byMonth = new Map(rows.map((r) => [String(r.month), num(r.cents)]));
   return monthsBetween(from, to).map((month) => ({ month, cents: byMonth.get(month) ?? 0 }));
@@ -145,6 +130,20 @@ export async function salesBreakdown(db, { from, to }) {
 /** The notice the remake reduction gap needs wherever discounts are shown. */
 export const REMAKE_DISCOUNT_NOTICE =
   "Discounts are negative adjustment lines. A remake is billed at $0 and the price it would have had is not stored, so remake reductions are not included.";
+
+/**
+ * Imported invoices carry no itemised discounts, so a range that starts before
+ * cutover (or any range while REPORTS_COVERAGE_FROM is unset, i.e. before
+ * cutover is recorded) undercounts them.
+ */
+export function discountCoverageNotice(range, coverageFrom = process.env.REPORTS_COVERAGE_FROM) {
+  if (coverageFrom && range?.from && range.from >= coverageFrom) return null;
+  const since = coverageFrom ? ` (before ${coverageFrom})` : "";
+  return `Discounts on invoices imported from Seazona${since} are not itemised, so they are not counted as discounts; those invoices' net sales are complete.`;
+}
+
+/** Every notice a discount figure needs, joined (always includes the remake gap). */
+export const discountNotices = (range) => [REMAKE_DISCOUNT_NOTICE, discountCoverageNotice(range)].filter(Boolean).join(" ");
 
 /**
  * Product-level coverage: before cutover most imported invoices carry one
