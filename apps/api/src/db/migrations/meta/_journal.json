@@ -239,6 +239,13 @@
       "when": 1792614128720,
       "tag": "0033_concerned_spyke",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793904201703,
+      "tag": "0034_orange_spirit",
+      "breakpoints": true
     }
   ]
 }
