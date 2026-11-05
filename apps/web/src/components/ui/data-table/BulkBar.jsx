@@ -23,17 +23,20 @@ export function summarizeResult({ ok = 0, failed = [] }) {
  * Replaces the toolbar while rows are selected: count, actions, Export CSV, Clear.
  * A bulk action is `{ id, label, run(rows), icon?, tone?, confirmLabel?, disabled?(rows) }`;
  * `label` may be a string or `(selectedRows) => string` (e.g. a selected total).
+ * An action with `choices: [{ value, label }]` (and optional `choicePlaceholder`) shows a select
+ * beside its button; the button stays disabled until one is picked and `run(rows, value)` gets it.
  * `run` may return `{ ok, failed }` (see eachRow) to have the outcome toasted.
  */
 export function BulkBar({ table, columns, bulkActions = [], exportable, exportFileName }) {
   const { addToast } = useToast();
   const [busy, setBusy] = useState(null);
+  const [picked, setPicked] = useState({});
   const { count, selectedRows, clear } = table.selection;
 
   const run = async (action) => {
     setBusy(action.id);
     try {
-      const result = await action.run(selectedRows);
+      const result = await action.run(selectedRows, picked[action.id]);
       if (result && typeof result === "object") {
         const failedCount = result.failed?.length ?? 0;
         addToast({
@@ -53,7 +56,7 @@ export function BulkBar({ table, columns, bulkActions = [], exportable, exportFi
     <div className="flex min-h-[44px] flex-wrap items-center gap-2 rounded-2xl bg-navy px-4 py-1.5 text-white">
       <span className="mr-2 font-mono text-xs tabular-nums">{count} selected</span>
       {bulkActions.map((action) => {
-        const disabled = Boolean(busy) || Boolean(action.disabled?.(selectedRows));
+        const disabled = Boolean(busy) || Boolean(action.disabled?.(selectedRows)) || (action.choices && !picked[action.id]);
         const cls = TONE[action.tone ?? "default"] ?? TONE.default;
         const body = (
           <>
@@ -61,7 +64,7 @@ export function BulkBar({ table, columns, bulkActions = [], exportable, exportFi
             {typeof action.label === "function" ? action.label(selectedRows) : action.label}
           </>
         );
-        return action.confirmLabel ? (
+        const button = action.confirmLabel ? (
           <ConfirmButton key={action.id} onConfirm={() => run(action)} confirmLabel={action.confirmLabel} disabled={disabled} className={cls}>
             {body}
           </ConfirmButton>
@@ -69,6 +72,21 @@ export function BulkBar({ table, columns, bulkActions = [], exportable, exportFi
           <button key={action.id} type="button" onClick={() => run(action)} disabled={disabled} className={cls}>
             {body}
           </button>
+        );
+        if (!action.choices) return button;
+        return (
+          <span key={action.id} className="inline-flex items-center gap-1.5">
+            <select
+              aria-label={`${typeof action.label === "function" ? action.label(selectedRows) : action.label} choice`}
+              value={picked[action.id] ?? ""}
+              onChange={(e) => setPicked((p) => ({ ...p, [action.id]: e.target.value }))}
+              className="h-8 rounded-lg bg-white/10 px-2 text-xs text-white"
+            >
+              <option value="" className="text-navy">{action.choicePlaceholder ?? "Choose…"}</option>
+              {action.choices.map((c) => <option key={c.value} value={c.value} className="text-navy">{c.label}</option>)}
+            </select>
+            {button}
+          </span>
         );
       })}
       {exportable && (
