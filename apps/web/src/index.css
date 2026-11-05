@@ -42,6 +42,37 @@
   --color-border: var(--surface-300);
   --text-on-dark: 255 255 255;      /* white — flips to navy via the editor */
   --accent-on-dark: var(--accent-500);
+
+  /* ── Chart tokens (reports Chart.jsx reads these at draw time) ──
+     Categorical slots in a fixed, CVD-validated order: assign by series
+     position, never cycle, never by rank. Text never wears a series colour. */
+  --chart-1: #2a78d6;   /* blue */
+  --chart-2: #eb6834;   /* orange */
+  --chart-3: #1baf7a;   /* aqua */
+  --chart-4: #eda100;   /* yellow */
+  --chart-5: #e87ba4;   /* magenta */
+  --chart-6: #008300;   /* green */
+  --chart-7: #6250d6;   /* violet */
+  --chart-8: #e34948;   /* red */
+  --chart-grid: #eeede9;    /* hairline grid, one step off the surface */
+  --chart-text: #52514e;    /* axis and legend text */
+  --chart-surface: #ffffff; /* the tile/card surface charts sit on (gaps and rings) */
+}
+
+/* The app has no dark theme yet; these dark steps (same hues, validated for a
+   dark surface) apply only if one is switched on with data-theme="dark". */
+:root[data-theme="dark"] {
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #008300;
+  --chart-7: #9085e9;
+  --chart-8: #e66767;
+  --chart-grid: #383835;
+  --chart-text: #c3c2b7;
+  --chart-surface: #1a1a19;
 }
 
 @tailwind base;

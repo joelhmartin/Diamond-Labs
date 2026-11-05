@@ -22,6 +22,11 @@ test("saveFile throws the server's message from a failed blob download", async (
   await assert.rejects(saveFile(api, "/x.csv", {}, "x.csv"), { message: "Reports are busy. Try again shortly." });
 });
 
+test("dispositionFilename keeps a malformed percent-encoded name raw instead of throwing", () => {
+  assert.equal(dispositionFilename('attachment; filename="bad%E0%A4%A.csv"'), "bad%E0%A4%A.csv");
+  assert.equal(dispositionFilename("attachment; filename*=UTF-8''r%20one.csv"), "r one.csv");
+});
+
 test("dispositionFilename reads quoted and bare names", () => {
   assert.equal(dispositionFilename('attachment; filename="r-2026-11-05.csv"'), "r-2026-11-05.csv");
   assert.equal(dispositionFilename("attachment; filename=a.csv"), "a.csv");

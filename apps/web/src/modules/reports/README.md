@@ -14,9 +14,21 @@ columns and paging are data, so a new report needs no web code.
 | `columns.jsx` | `toTableColumns(specs)`: each column formats with the shared `formatCell`, exports with `csvValue`, sorts on the raw value (link/badge objects by label) unless `sortable: false`, and renders a `<Link>` when the spec has a `link` template such as `/x/{id}` (filled from the row; no link when a field is missing). `sortParam(sort)` gives the server's `id` / `-id`. |
 | `ReportTable` | `<ReportTable report result params onExportAll? load runKey loading error reload />`: the shared `DataTable`, client or server mode from `report.paging`, `urlKey` `"r"`. Search covers text, link and badge columns (client mode). The toolbar's "Export CSV" saves the whole result from `/reports/:key/export.csv` with the current params; the bulk bar exports the selected rows. The result's `notice` and the `truncated` note sit above the rows; `summary` is a totals row keyed by column id. |
 | `ReportParamsForm` | Drawn from the param specs. Picks (selects, presets, toggles, lookups, dates) apply at once; typed values (numbers, a custom range) apply on Run. |
-| `LookupField` | `<LookupField source value onChange label? search? />`: a debounced typeahead over `/reports/lookups/:source`. Its only tie to reports is the default `search` prop, so it can move into `components/ui` as a general picker. A value that arrives by URL (not picked in this session) shows as its raw value. |
-| `ReportsIndexPage` | Search over title, description and group; sections Favorites (the person's stars), Featured, then the groups in the server's sequence; an optimistic star toggle that reverts with a toast; unavailable reports are greyed out, not links. |
-| `ReportPage` | `/reports/:key`: the form, the table, then "N rows · took 0.4 s". |
+| `LookupField` | `<LookupField source value onChange label? search? labelFor? />`: a debounced typeahead over `/reports/lookups/:source`. A value that arrives by URL (not picked in this session) shows its label from `/reports/lookups/:source/label`, or the raw value if unknown. Its only ties to reports are the `search` and `labelFor` defaults, so it can move into `components/ui` as a general picker. |
+| `ReportsIndexPage` | Search over title, description and group; sections Favorites (the person's stars), the featured section (titled by the server's `featuredTitle`), then the groups in the server's sequence; an optimistic star toggle that reverts with a toast; unavailable reports are greyed out, not links. |
+| `ReportPage` | `/reports/:key`: the form, the chart (client-paged reports with a `chart` spec), the table, then "N rows · took 0.4 s". |
+| `chart-spec.js` | `chartConfig(spec, rows, { colors?, grid?, text?, surface?, columns? })`: pure spec → Chart.js config. `line`, `bar`, `groupedBar` (one dataset per series, side by side) and `stackedBar` (stacked scales). Series take the `--chart-1..8` slots by position; bars ≤ 24px with a 4px rounded end; 2px lines; legend only for 2+ series; compact y ticks (money is cents shown as dollars); tooltips use `formatCell`. |
+| `Chart` | `<Chart spec rows columns? height? label? />`: dynamically imports `chart-runtime.js` (registers only Bar/Line controllers, Category/Linear scales, Bar/Line/Point elements, Tooltip, Legend), so Chart.js is its own chunk. Reads the colour tokens from `index.css` at draw time; honours reduced motion. |
+| `StatTile` | `<StatTile title value previous? format href? />`: the value through `formatCell` by `format` (a column type), and the change vs `previous` as ▲/▼ and a % (none when previous is missing or 0). `href` makes it a link. |
+| `FeedTile` | `<FeedTile rows columns reload? />`: the last 50 events; the first date/datetime column is the time. Calls `reload()` every 30 s only while the page is visible; hidden stops it, visible again refreshes at once, unmount stops it. |
+| `DashboardPage` | `/…/dashboard/:key?`: tabs from `GET /dashboards` (the first opens when there is no key), then the tile grid (`span` 1–4). Each tile shows its own data or its own error. Chart tiles have a "Show table" fallback; table tiles are a compact `DataTable`. The feed tile's `reload` refetches only that tile (`GET /dashboards/:key?tile=<id>`) and patches it in. |
+
+Params cleared to blank stay blank: a param with a default that is not
+`required` is kept as `p.<name>=` in the URL and sent blank, which the server
+reads as unset. Run with changed values writes them (the change runs the report
+once); Run with nothing changed reruns. A half-filled custom range disables Run.
+Server-paged tables go back to page 1 when params change (`useDataTable`'s
+`resetOn`), in the same fetch.
 
 Errors show the server's message (for example a timeout's "This report took
 too long. Try a shorter date range.") inside the table, with Retry.

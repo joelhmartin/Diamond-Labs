@@ -23,7 +23,8 @@ const always = () => true;
  * `urlKey` mirrors q, filters and page into search params prefixed
  * `<urlKey>.` (e.g. `inv.status`), so a reload or shared link keeps them.
  * Changing q, filters or sort resets to page 1 and clears the selection;
- * paging keeps it. Must render inside a Router.
+ * paging keeps it. So does a change of the optional `resetOn` value (the
+ * caller's own query, e.g. report params). Must render inside a Router.
  */
 export function useDataTable(options) {
   const {
@@ -39,6 +40,7 @@ export function useDataTable(options) {
     getRowId = defaultGetRowId,
     isRowSelectable = always,
     deps = EMPTY,
+    resetOn,
   } = options;
   const server = mode === "server";
 
@@ -54,6 +56,15 @@ export function useDataTable(options) {
   const [pageSize, setPageSizeState] = useState(initialPageSize);
   const [sel, setSel] = useState(Sel.emptySelection);
   const debouncedQ = useDebouncedValue(q, 300);
+
+  // `resetOn` (optional): when this value changes (e.g. the caller's own query params), go back to
+  // page 1 and clear the selection. Done during render, so a server fetch sees page 1 the first time.
+  const [seenReset, setSeenReset] = useState(resetOn);
+  if (!Object.is(seenReset, resetOn)) {
+    setSeenReset(resetOn);
+    setPage(1);
+    setSel(Sel.clear());
+  }
 
   // Columns live on <DataTable>; it registers them (in a layout effect, every time the array
   // changes) so client sort can read sortValue. Pages often pass a fresh array each render, so

@@ -3,21 +3,18 @@ import { formatCell } from "@my-app/shared";
 import { DataTable } from "../../components/ui/data-table/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
 import { downloadReportCsv } from "./api.js";
-import { toTableColumns, searchRows, sortParam } from "./columns.jsx";
+import { toTableColumns, searchRows, sortParam, keyed, getRowId } from "./columns.jsx";
 
-const ROW_KEY = Symbol("rowKey");
-const getRowId = (row) => row[ROW_KEY];
-/** Report rows need not carry an id: key each by position (a Symbol, so it never reaches a cell or CSV). */
-const keyed = (rows, offset = 0) => (rows || []).map((r, i) => ({ ...r, [ROW_KEY]: offset + i }));
 const EMPTY = [];
 
 /**
  * A report's DataTable. `paging: "client"` shows the whole `result`;
  * `"server"` fetches each page through `load({ limit, offset, sort })`
- * (useReport), refetching when `runKey` changes. The toolbar's "Export CSV"
+ * (useReport), refetching when `runKey` changes and going back to page 1 when
+ * `paramsKey` changes. The toolbar's "Export CSV"
  * saves the whole result from the server; the bulk bar exports selected rows.
  */
-export function ReportTable({ report, result, params, onExportAll, load, runKey, loading, error, reload }) {
+export function ReportTable({ report, result, params, onExportAll, load, runKey, paramsKey, loading, error, reload }) {
   const server = report.paging === "server";
   const columns = useMemo(() => toTableColumns(report.columns), [report.columns]);
   const rows = useMemo(() => (server ? EMPTY : keyed(result?.rows)), [server, result]);
@@ -36,6 +33,7 @@ export function ReportTable({ report, result, params, onExportAll, load, runKey,
       return { rows: keyed(value?.rows, offset), total: value?.total ?? 0 };
     },
     deps: [server ? runKey : ""],
+    resetOn: paramsKey, // new params start again at page 1 (in the same fetch, not a second one)
     urlKey: "r",
     getRowId,
     loading,

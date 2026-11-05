@@ -50,11 +50,16 @@ describe("paramsSchema", () => {
     expect(() => parse(params, {})).toThrow();
   });
 
-  test("blank values count as missing; required and defaults still apply", () => {
+  test("blank values: required still applies; an optional param cleared to blank stays unset", () => {
     expect(parse([{ name: "n", type: "number" }], { n: "" })).toEqual({});
     expect(() => parse([{ name: "n", type: "number", required: true }], { n: "" })).toThrow();
     expect(() => parse([{ name: "n", type: "number", required: true }], { n: null })).toThrow();
-    expect(parse([{ name: "n", type: "number", default: 5 }], { n: "" })).toEqual({ n: 5 });
+    // Absent -> default; explicitly blank -> the person cleared it, so no default.
+    expect(parse([{ name: "n", type: "number", default: 5 }], {})).toEqual({ n: 5 });
+    expect(parse([{ name: "n", type: "number", default: 5 }], { n: "" })).toEqual({});
+    expect(parse([{ name: "m", type: "multiselect", options: ["a", "b"], default: ["a"] }], { m: "" })).toEqual({});
+    // A required param with a default can never be blank: the default applies.
+    expect(parse([{ name: "n", type: "number", default: 5, required: true }], { n: "" })).toEqual({ n: 5 });
   });
 
   test("a missing required toggle is an error; an optional one stays absent", () => {

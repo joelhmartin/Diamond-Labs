@@ -2,18 +2,21 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { errorText } from "../../lib/requests.js";
-import { searchLookup } from "./api.js";
+import { searchLookup, lookupLabel } from "./api.js";
 
 /**
  * Debounced typeahead over `/reports/lookups/:source`. `value` is the picked
  * value (a string; "" for none) and `onChange(value, option)` fires on pick and
- * on clear. Self-contained: the one tie to reports is the `search(source, q,
- * { signal })` prop's default, so it can move into components/ui as a general
- * picker later.
+ * on clear. A value that arrives without a pick (a shared link) shows the label
+ * from `labelFor(source, value, { signal })`, or the raw value if unknown.
+ * Self-contained: the only ties to reports are the `search` and `labelFor`
+ * defaults, so it can move into components/ui as a general picker later.
  *
  *   <LookupField source="client" value={v} onChange={setV} label="Client" />
  */
-export function LookupField({ source, value, onChange, label, id, placeholder = "Type to search…", search = searchLookup }) {
+export function LookupField({
+  source, value, onChange, label, id, placeholder = "Type to search…", search = searchLookup, labelFor = lookupLabel,
+}) {
   const autoId = useId();
   const inputId = id ?? autoId;
   const listId = `${inputId}-options`;
@@ -56,8 +59,18 @@ export function LookupField({ source, value, onChange, label, id, placeholder = 
     else if (e.key === "Escape") setOpen(false);
   };
 
-  // Without a pick in this session (e.g. a shared link), show the raw value.
-  const shown = value ? (picked && String(picked.value) === String(value) ? picked.label : String(value)) : "";
+  // A value not picked in this session (e.g. a shared link): ask the server for its label once.
+  const isPicked = Boolean(value) && picked && String(picked.value) === String(value);
+  useEffect(() => {
+    if (!value || isPicked || !labelFor) return undefined;
+    const controller = new AbortController();
+    labelFor(source, String(value), { signal: controller.signal })
+      .then((found) => { if (found?.label) setPicked({ value: String(value), label: found.label }); })
+      .catch(() => {}); // unknown or failed: the raw value stays
+    return () => controller.abort();
+  }, [value, isPicked, source, labelFor]);
+
+  const shown = value ? (isPicked ? picked.label : String(value)) : "";
 
   return (
     <div ref={box} className="relative">

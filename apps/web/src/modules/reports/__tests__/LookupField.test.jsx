@@ -35,6 +35,21 @@ test("debounces the search, then a pick sets the value and shows its label", asy
   assert.equal(onChange.mock.calls[1][0], "");
 });
 
+test("a value that arrived by URL shows its label from the server", async () => {
+  const labelFor = vi.fn(async (source, value) => ({ value, label: "Acme" }));
+  render(<LookupField source="client" label="Client" value="c1" onChange={() => {}} search={async () => []} labelFor={labelFor} />);
+  const input = screen.getByRole("combobox", { name: "Client" });
+  await waitFor(() => assert.equal(input.value, "Acme"));
+  assert.deepEqual(labelFor.mock.calls[0].slice(0, 2), ["client", "c1"]);
+});
+
+test("an unknown URL value falls back to the raw value", async () => {
+  const labelFor = vi.fn(async () => { throw { response: { status: 404 } }; });
+  render(<LookupField source="client" label="Client" value="c9" onChange={() => {}} search={async () => []} labelFor={labelFor} />);
+  await waitFor(() => assert.equal(labelFor.mock.calls.length, 1));
+  assert.equal(screen.getByRole("combobox", { name: "Client" }).value, "c9");
+});
+
 test("a failed search shows the server message in the list", async () => {
   const search = vi.fn(async () => { throw { response: { data: { error: { message: "You cannot view this report." } } } }; });
   render(<Harness search={search} onChange={() => {}} />);

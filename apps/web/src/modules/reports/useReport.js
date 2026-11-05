@@ -48,9 +48,10 @@ export function useReport(key) {
   const paramsRef = useRef(params);
   paramsRef.current = params;
 
+  const specs = meta?.params;
   const setParams = useCallback(
-    (next) => setSearchParams((prev) => writeParams(prev, next), { replace: true }),
-    [setSearchParams],
+    (next) => setSearchParams((prev) => writeParams(prev, next, specs), { replace: true }),
+    [setSearchParams, specs],
   );
 
   const load = useCallback(async (paging) => {
@@ -79,5 +80,6 @@ export function useReport(key) {
 
   const run = useCallback(() => setRunId((n) => n + 1), []);
 
-  return { meta, metaError, params, setParams, result, loading, error, run, load, runKey: `${pKey}#${runId}` };
+  // paramsKey: changes only when params do (the table goes back to page 1); runKey also changes on Run.
+  return { meta, metaError, params, setParams, result, loading, error, run, load, paramsKey: pKey, runKey: `${pKey}#${runId}` };
 }

@@ -37,6 +37,13 @@ function mount() {
 const sections = () => screen.getAllByRole("region");
 const sectionTitles = () => sections().map((s) => within(s).getByRole("heading").textContent);
 
+test("the featured section uses the server's featuredTitle", async () => {
+  listReports.mockResolvedValue({ ...DATA, featuredTitle: "Team picks" });
+  render(<MemoryRouter><ToastProvider><ReportsIndexPage /></ToastProvider></MemoryRouter>);
+  await screen.findAllByText("Daily totals");
+  assert.deepEqual(sectionTitles(), ["Favorites", "Team picks", "Sales", "Accounts"]);
+});
+
 test("search filters by title and description", async () => {
   mount();
   await screen.findAllByText("Daily totals");

@@ -147,9 +147,9 @@ export function prepareRun({ registry, key, query = {}, actor, now = new Date(),
 }
 
 /** Execute one prepared run (one page, for server-paged reports) and shape the result. */
-export async function executePrepared({ def, params, page }, { db, actor, slots, now = new Date() }) {
+export async function executePrepared({ def, params, page }, { db, actor, slots, timeoutMs: override }) {
   const started = Date.now();
-  const timeoutMs = def.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = override ?? def.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const out = await inReadOnlyTx({ db, timeoutMs, slots }, (tx) => def.run(tx, params, actor, { page }));
   const rows = out?.rows || [];
   const result = { rows, total: out?.total ?? rows.length, truncated: false, generatedAt: new Date().toISOString() };
@@ -164,8 +164,11 @@ export async function executePrepared({ def, params, page }, { db, actor, slots,
   return result;
 }
 
-/** Validate and run a report: `{ rows, total, truncated, summary?, notice?, generatedAt, tookMs }`. */
-export async function runReport({ registry, db, key, query, actor, now = new Date(), tz = "UTC", slots = defaultRunSlots }) {
+/**
+ * Validate and run a report: `{ rows, total, truncated, summary?, notice?, generatedAt, tookMs }`.
+ * `timeoutMs` overrides the report's own limit (dashboards run tiles at 5000).
+ */
+export async function runReport({ registry, db, key, query, actor, now = new Date(), tz = "UTC", slots = defaultRunSlots, timeoutMs }) {
   const prepared = prepareRun({ registry, key, query, actor, now, tz });
-  return executePrepared(prepared, { db, actor, slots, now });
+  return executePrepared(prepared, { db, actor, slots, timeoutMs });
 }

@@ -52,6 +52,12 @@ export function toTableColumns(specs = []) {
   });
 }
 
+const ROW_KEY = Symbol("rowKey");
+/** DataTable getRowId for rows passed through `keyed`. */
+export const getRowId = (row) => row[ROW_KEY];
+/** Report rows need not carry an id: key each by position (a Symbol, so it never reaches a cell or CSV). */
+export const keyed = (rows, offset = 0) => (rows || []).map((r, i) => ({ ...r, [ROW_KEY]: offset + i }));
+
 /** Client-side search across the text-like columns. */
 export function searchRows(columns) {
   const searchable = columns.filter((c) => c.searchText);

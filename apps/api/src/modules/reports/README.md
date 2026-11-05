@@ -2,7 +2,7 @@
 
 A generic report module. A report is a definition (params, a query, columns,
 an optional chart). The module owns the registry, param validation, date
-ranges, the activity-health rule and, in later tasks, the runner, CSV export,
+ranges, the activity-health rule, the runner, CSV export,
 dashboards and routes. It knows nothing about the host app's domain or roles.
 
 Shared, browser-safe pieces live in `packages/shared/src/reports/`
@@ -56,11 +56,44 @@ reports read `limit` (default 50, max 500), `offset` and `sort` from the query;
 client-paged results are cut at 5000 rows with `truncated`. `streamCsv` pages a
 server report by 2000 up to 100000 rows, one short transaction per page.
 
-`createReportRoutes({ registry, db, preHandler, audit, favorites, tz?, slots? })`
-returns a Fastify plugin: `GET /reports`, `/reports/:key/run`,
-`/reports/:key/export.csv`, `PUT|DELETE /reports/:key/favorite` and
-`GET /reports/lookups/:source`. `audit(request, action, targetId, metadata)` is
+`createReportRoutes({ registry, db, preHandler, audit, favorites, tz?, slots?, dashboardCache? })`
+returns a Fastify plugin: `GET /reports` (with the registry's `featuredTitle`,
+set by `createRegistry({ featuredTitle })`, default "Featured"),
+`/reports/:key/run`, `/reports/:key/export.csv`, `PUT|DELETE /reports/:key/favorite`,
+`GET /reports/lookups/:source?q=`, `GET /reports/lookups/:source/label?value=`
+(`{ value, label }` from the lookup's `label(db, value)`; 404 when it returns
+null), `GET /dashboards` (`{ dashboards: [{ key, title, params }] }`) and
+`GET /dashboards/:key` (below). `audit(request, action, targetId, metadata)` is
 called on export with parameter names only.
+
+A param sent blank (`?n=`) counts as missing for `required` and defaults, except
+that an optional param with a default stays unset: the person cleared it. A
+param left out of the query takes its default.
+
+## Dashboards
+
+`resolveDashboard({ registry, db, key, query, actor, now?, tz?, cache?, slots?, tile?, onTileError? })`
+returns `{ key, title, tiles }`. Each tile is
+`{ id, kind, span, title, columns?, chart?, ok: true, data }` or
+`{ ..., ok: false, error: { code, message } }`.
+
+- A tile names a `report` (data = the run result) or a `metric` (data =
+  `{ value, previous?, format, href? }`), plus optional fixed `params`, `roles`,
+  `title`, `span` and `chart`. `query` supplies only the dashboard's declared
+  `params`, laid over each tile's own.
+- Tiles run in parallel through the same read-only, time-limited transaction
+  and run slots as a report, at 5000 ms each.
+- One tile failing never fails the dashboard. A `ReportError` keeps its code and
+  message (a timeout says "This report took too long. Try a shorter date
+  range."); anything else becomes `INTERNAL_ERROR` with a generic message, and
+  the real error goes to `onTileError(tileId, err)` (the routes log it).
+- Tiles outside the actor's roles (the tile's `roles`, or its report's or
+  metric's) are left out, not shown as errors.
+- `tile` resolves that one tile only (a feed tile's poll); unknown or hidden is
+  `NOT_FOUND`.
+- Successful tiles are cached in memory per process for 60 s, keyed by
+  `dashboard:tile | params | role` (`createDashboardCache({ ttlMs, clock, max })`).
+  So a tile must not depend on who the actor is beyond their role.
 
 ## Favorites (injected, not owned)
 

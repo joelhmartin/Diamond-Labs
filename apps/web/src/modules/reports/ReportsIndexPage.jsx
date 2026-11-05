@@ -13,11 +13,11 @@ export function matchesReport(report, groupTitle, q) {
   return [report.title, report.description, groupTitle].some((s) => String(s ?? "").toLowerCase().includes(needle));
 }
 
-/** Sections in display sequence: the person's stars, featured, then each group in the server's sequence. */
-export function buildSections(groups, reports) {
+/** Sections in display sequence: the person's stars, featured (titled by the host), then each group in the server's sequence. */
+export function buildSections(groups, reports, featuredTitle = "Featured") {
   const sections = [
     { key: "favorites", title: "Favorites", items: reports.filter((r) => r.favorite) },
-    { key: "featured", title: "Featured", items: reports.filter((r) => r.featured) },
+    { key: "featured", title: featuredTitle, items: reports.filter((r) => r.featured) },
     ...groups.map((g) => ({ key: g.key, title: g.title, items: reports.filter((r) => r.group === g.key) })),
   ];
   return sections.filter((s) => s.items.length > 0);
@@ -38,7 +38,7 @@ export function ReportsIndexPage() {
   const sections = useMemo(() => {
     if (!data) return [];
     const shown = data.reports.filter((r) => matchesReport(r, groupTitle.get(r.group), q));
-    return buildSections(data.groups, shown);
+    return buildSections(data.groups, shown, data.featuredTitle || undefined);
   }, [data, groupTitle, q]);
 
   const patch = (key, favorite) =>

@@ -60,9 +60,14 @@ export function paramsSchema(def) {
     shape,
     /** Validate raw query values; unknown keys are dropped. Throws ZodError. */
     parse(query = {}, { now = new Date(), tz = "UTC" } = {}) {
-      // Blank values (""/null) count as missing so defaults and `required` apply.
-      const cleaned = Object.fromEntries(Object.entries(query).filter(([, v]) => v !== "" && v !== null));
+      // Blank values (""/null) are parsed as missing so `required` and defaults apply, except that
+      // an optional param the person cleared (sent blank) stays unset instead of taking its default.
+      const isBlank = (v) => v === "" || v === null;
+      const cleaned = Object.fromEntries(Object.entries(query).filter(([, v]) => !isBlank(v)));
       const out = shape.parse(cleaned);
+      for (const p of specs) {
+        if (!p.required && Object.hasOwn(query, p.name) && isBlank(query[p.name])) delete out[p.name];
+      }
       for (const p of specs) {
         if (p.type === "dateRange" && out[p.name] !== undefined) {
           out[p.name] = resolveDateRange(out[p.name], now, tz, { maxDays: p.maxDays });

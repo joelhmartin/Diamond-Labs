@@ -9,7 +9,7 @@ import { createMemoryFavoritesStore } from "../modules/reports/favorites.service
 import { registerLabReports } from "../services/lab/reports/index.js";
 
 /** The app's report registry; later tasks and benches import it. */
-export const reportRegistry = createRegistry({ defaultRoles: STAFF_ROLES });
+export const reportRegistry = createRegistry({ defaultRoles: STAFF_ROLES, featuredTitle: "Lab favorites" });
 registerLabReports(reportRegistry);
 
 // In-memory for now; at rebase this is re-pointed at the record-tags module's starsFor/setStar (recordType "report").

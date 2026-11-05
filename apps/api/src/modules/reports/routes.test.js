@@ -4,9 +4,10 @@ import { createRegistry } from "./registry.js";
 import { createRunSlots } from "./runner.js";
 import { createMemoryFavoritesStore } from "./favorites.service.js";
 import { createReportRoutes } from "./routes.js";
+import { createDashboardCache } from "./dashboards.js";
 
-async function build({ role = "staff", reportOver = {} } = {}) {
-  const registry = createRegistry({ defaultRoles: ["admin", "staff"] });
+async function build({ role = "staff", reportOver = {}, registryOptions = {} } = {}) {
+  const registry = createRegistry({ defaultRoles: ["admin", "staff"], ...registryOptions });
   registry.defineGroup({ key: "g", title: "G", position: 1 });
   registry.defineReport({
     key: "r.one", group: "g", title: "One", featured: true,
@@ -16,14 +17,24 @@ async function build({ role = "staff", reportOver = {} } = {}) {
     ...reportOver,
   });
   registry.defineReport({ key: "r.money", group: "g", title: "Money", roles: ["admin"], columns: [{ id: "a", label: "A", type: "int" }], run: async () => ({ rows: [] }) });
-  registry.defineLookup({ key: "things", search: async (_db, q) => Array.from({ length: 30 }, (_, i) => ({ value: `${q}${i}`, label: `L${i}` })), label: async () => "x" });
+  registry.defineLookup({
+    key: "things",
+    search: async (_db, q) => Array.from({ length: 30 }, (_, i) => ({ value: `${q}${i}`, label: `L${i}` })),
+    label: async (_db, value) => (value === "known" ? "Known thing" : null),
+  });
+  registry.defineMetric({ key: "m.one", run: async () => ({ value: 3, format: "int" }) });
+  registry.defineDashboard({
+    key: "main", title: "Main",
+    tiles: [{ id: "n", kind: "stat", metric: "m.one" }, { id: "t", kind: "table", report: "r.one" }, { id: "cash", kind: "table", report: "r.money" }],
+  });
+  registry.defineDashboard({ key: "money", title: "Money", roles: ["admin"], tiles: [] });
   registry.defineLookup({ key: "secret", roles: ["admin"], search: async () => [], label: async () => "x" });
   const audit = vi.fn();
   const favorites = createMemoryFavoritesStore();
   const db = { transaction: async (fn) => fn({ execute: async () => {} }) };
   const app = Fastify();
   await app.register(createReportRoutes({
-    registry, db, favorites, audit, slots: createRunSlots(), tz: "UTC",
+    registry, db, favorites, audit, slots: createRunSlots(), tz: "UTC", dashboardCache: createDashboardCache(),
     preHandler: async (request) => { request.user = { id: "u1", role }; },
   }), { prefix: "/api/v1" });
   return { app, audit };
@@ -39,6 +50,12 @@ describe("report routes", () => {
     expect(body.reports.map((r) => r.key)).toEqual(["r.one"]);
     expect(body.reports[0]).toMatchObject({ favorite: true, available: true, featured: true });
     expect(body.reports[0].run).toBeUndefined();
+    expect(body.featuredTitle).toBe("Featured");
+  });
+
+  test("GET /reports carries the registry's featuredTitle", async () => {
+    const { app } = await build({ registryOptions: { featuredTitle: "Team picks" } });
+    expect((await app.inject({ method: "GET", url: "/api/v1/reports" })).json().featuredTitle).toBe("Team picks");
   });
 
   test("PUT then DELETE /reports/:key/favorite", async () => {
@@ -119,5 +136,34 @@ describe("report routes", () => {
     expect(ok.json()).toHaveLength(20);
     expect((await app.inject({ method: "GET", url: "/api/v1/reports/lookups/secret?q=x" })).statusCode).toBe(403);
     expect((await app.inject({ method: "GET", url: "/api/v1/reports/lookups/none?q=x" })).statusCode).toBe(404);
+  });
+
+  test("lookup label returns { value, label }, 404 when unknown, 403 outside roles", async () => {
+    const { app } = await build();
+    const ok = await app.inject({ method: "GET", url: "/api/v1/reports/lookups/things/label?value=known" });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toEqual({ value: "known", label: "Known thing" });
+    expect((await app.inject({ method: "GET", url: "/api/v1/reports/lookups/things/label?value=nope" })).statusCode).toBe(404);
+    expect((await app.inject({ method: "GET", url: "/api/v1/reports/lookups/secret/label?value=x" })).statusCode).toBe(403);
+    expect((await app.inject({ method: "GET", url: "/api/v1/reports/lookups/none/label?value=x" })).statusCode).toBe(404);
+  });
+
+  test("GET /dashboards lists only the actor's dashboards", async () => {
+    const { app } = await build();
+    const res = await app.inject({ method: "GET", url: "/api/v1/dashboards" });
+    expect(res.json()).toEqual({ dashboards: [{ key: "main", title: "Main", params: [] }] });
+  });
+
+  test("GET /dashboards/:key resolves tiles the actor may see", async () => {
+    const { app } = await build();
+    const res = await app.inject({ method: "GET", url: "/api/v1/dashboards/main" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.tiles.map((t) => [t.id, t.ok])).toEqual([["n", true], ["t", true]]);
+    expect(body.tiles[0].data).toMatchObject({ value: 3, format: "int" });
+    const one = (await app.inject({ method: "GET", url: "/api/v1/dashboards/main?tile=t" })).json();
+    expect(one.tiles.map((t) => t.id)).toEqual(["t"]);
+    expect((await app.inject({ method: "GET", url: "/api/v1/dashboards/money" })).statusCode).toBe(403);
+    expect((await app.inject({ method: "GET", url: "/api/v1/dashboards/nope" })).statusCode).toBe(404);
   });
 });

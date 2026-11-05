@@ -14,6 +14,11 @@ vi.mock("../api.js", () => ({
   downloadReportCsv: (...a) => downloadReportCsv(...a),
   setFavorite: vi.fn(async () => ({})),
   searchLookup: vi.fn(async () => []),
+  lookupLabel: vi.fn(async () => null),
+}));
+// The real Chart lazy-loads chart.js onto a canvas; jsdom has none. The config is tested in chart-spec.test.js.
+vi.mock("../Chart.jsx", () => ({
+  Chart: ({ spec, rows }) => <figure data-testid="chart">{`${spec.type}:${rows.length}`}</figure>,
 }));
 const { ReportPage } = await import("../ReportPage.jsx");
 
@@ -138,4 +143,94 @@ test("an unknown report key says so", async () => {
   mount({ url: "/reports/nope" });
   assert.ok(await screen.findByText(/Report not found/));
   assert.equal(runReport.mock.calls.length, 0);
+});
+
+// ---- Task 3 review follow-ups -------------------------------------------------
+
+const META_N = {
+  ...META,
+  params: [...META.params, { name: "n", label: "Min", type: "number", default: 10 }],
+};
+const settle = () => new Promise((r) => setTimeout(r, 60));
+const lastParams = () => runReport.mock.calls.at(-1)[1];
+
+test("a param cleared to blank stays blank and is sent blank", async () => {
+  runReport.mockResolvedValue(RESULT);
+  mount({ meta: META_N });
+  await screen.findByText("$12.50");
+  assert.deepEqual(lastParams(), { range: "last30", n: "10" });
+  fireEvent.change(screen.getByLabelText("Min"), { target: { value: "" } });
+  fireEvent.click(screen.getByRole("button", { name: "Run" }));
+  await waitFor(() => assert.equal(runReport.mock.calls.length, 2));
+  assert.deepEqual(lastParams(), { range: "last30", n: "" });
+  const search = new URLSearchParams(location.search);
+  assert.equal(search.has("p.n"), true);
+  assert.equal(search.get("p.n"), "");
+  await settle();
+  assert.equal(screen.getByLabelText("Min").value, "");
+});
+
+test("a picker change keeps unapplied typed edits", async () => {
+  runReport.mockResolvedValue(RESULT);
+  mount({ meta: META_N });
+  await screen.findByText("$12.50");
+  fireEvent.change(screen.getByLabelText("Min"), { target: { value: "7" } });
+  fireEvent.change(screen.getByLabelText("Range"), { target: { value: "last7" } });
+  await waitFor(() => assert.equal(runReport.mock.calls.length, 2));
+  assert.deepEqual(lastParams(), { range: "last7", n: "7" });
+  assert.equal(screen.getByLabelText("Min").value, "7");
+});
+
+test("a half-filled custom range cannot run", async () => {
+  runReport.mockResolvedValue(RESULT);
+  mount();
+  await screen.findByText("$12.50");
+  fireEvent.change(screen.getByLabelText("Range"), { target: { value: "custom" } });
+  const run = screen.getByRole("button", { name: "Run" });
+  assert.equal(run.disabled, true);
+  fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-10-01" } });
+  assert.equal(run.disabled, true);
+  fireEvent.click(run);
+  fireEvent.change(screen.getByLabelText("To"), { target: { value: "2026-10-31" } });
+  assert.equal(run.disabled, false);
+  assert.equal(runReport.mock.calls.length, 1);
+  fireEvent.click(run);
+  await waitFor(() => assert.equal(runReport.mock.calls.length, 2));
+  assert.deepEqual(lastParams(), { range: "2026-10-01..2026-10-31" });
+});
+
+test("Run with changed params fires exactly one fetch", async () => {
+  runReport.mockResolvedValue(RESULT);
+  mount({ meta: META_N });
+  await screen.findByText("$12.50");
+  fireEvent.change(screen.getByLabelText("Min"), { target: { value: "7" } });
+  fireEvent.click(screen.getByRole("button", { name: "Run" }));
+  await waitFor(() => assert.equal(runReport.mock.calls.length, 2));
+  await settle();
+  assert.equal(runReport.mock.calls.length, 2);
+  assert.deepEqual(lastParams(), { range: "last30", n: "7" });
+});
+
+test("server-paged: changing params goes back to page 1 with one fetch", async () => {
+  runReport.mockResolvedValue({ ...RESULT, total: 100 });
+  mount({ meta: { ...META, paging: "server" } });
+  await screen.findByText("$12.50");
+  fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+  await waitFor(() => assert.equal(runReport.mock.calls.length, 2));
+  assert.equal(runReport.mock.calls[1][2].offset, 20);
+  fireEvent.change(screen.getByLabelText("Range"), { target: { value: "last7" } });
+  await waitFor(() => assert.equal(runReport.mock.calls.length, 3));
+  await settle();
+  assert.equal(runReport.mock.calls.length, 3);
+  assert.deepEqual(runReport.mock.calls[2][1], { range: "last7" });
+  assert.equal(runReport.mock.calls[2][2].offset, 0);
+});
+
+test("a report with a chart spec draws it above the table", async () => {
+  runReport.mockResolvedValue(RESULT);
+  mount({ meta: { ...META, chart: { type: "bar", x: "day", series: [{ field: "total", label: "Total" }] } } });
+  await screen.findByText("$12.50");
+  const chart = screen.getByTestId("chart");
+  assert.equal(chart.textContent, "bar:2");
+  assert.ok(chart.compareDocumentPosition(screen.getByRole("table")) & Node.DOCUMENT_POSITION_FOLLOWING);
 });

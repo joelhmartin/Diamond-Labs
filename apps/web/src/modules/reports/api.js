@@ -32,3 +32,21 @@ export async function setFavorite(key, on) {
 export async function searchLookup(source, q, { signal } = {}) {
   return (await api.get(`/reports/lookups/${encodeURIComponent(source)}`, { params: { q }, signal })).data;
 }
+
+/** `{ value, label }` for one value (404 when the lookup does not know it). */
+export async function lookupLabel(source, value, { signal } = {}) {
+  return (await api.get(`/reports/lookups/${encodeURIComponent(source)}/label`, { params: { value }, signal })).data;
+}
+
+/** `{ dashboards: [{ key, title, params }] }` the signed-in person may see. */
+export async function listDashboards() {
+  return (await api.get("/dashboards")).data;
+}
+
+/**
+ * `{ key, title, tiles }`: each tile `{ id, kind, span, title, columns?, chart?, ok, data | error }`.
+ * `{ tile }` resolves that one tile only (the feed's poll); other keys are the dashboard's params.
+ */
+export async function getDashboard(key, query = {}) {
+  return (await api.get(`/dashboards/${encodeURIComponent(key)}`, { params: query })).data;
+}

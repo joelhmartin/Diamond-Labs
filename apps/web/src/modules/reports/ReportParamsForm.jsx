@@ -2,7 +2,7 @@ import { useEffect, useId, useState } from "react";
 import { Loader2, Play } from "lucide-react";
 import { DATE_PRESETS } from "@my-app/shared";
 import { LookupField } from "./LookupField.jsx";
-import { optionsOf, splitRange } from "./params.js";
+import { optionsOf, splitRange, isPartialRange, normalizeParams, paramsKey } from "./params.js";
 
 const PRESET_LABELS = {
   today: "Today", yesterday: "Yesterday", last7: "Last 7 days", last30: "Last 30 days",
@@ -15,21 +15,31 @@ const LABEL = "mb-1 block text-xs font-medium text-navy/60";
 
 /**
  * The params form, drawn from the report's param specs. Picks (selects,
- * presets, toggles, lookups) apply at once; typed values (numbers, custom
- * dates) apply on Run. `params` are raw query values (see params.js).
+ * presets, toggles, lookups) apply at once, carrying any typed edits with
+ * them; typed values (numbers, custom dates) apply on Run. A half-filled
+ * custom range holds everything until both ends are set. `params` are raw
+ * query values (see params.js).
+ *
+ * Run with changed values only writes them (the change runs the report); Run
+ * with nothing changed reruns. Either way, one fetch.
  */
 export function ReportParamsForm({ specs = [], params, onChange, onRun, running }) {
   const [draft, setDraft] = useState(params);
   useEffect(() => setDraft(params), [params]);
+  const incomplete = specs.some((s) => s.type === "dateRange" && isPartialRange(draft[s.name]));
 
   const set = (name, raw, { apply = false } = {}) => {
-    setDraft((d) => ({ ...d, [name]: raw }));
-    if (apply) onChange({ ...params, [name]: raw });
+    const next = { ...draft, [name]: raw };
+    setDraft(next);
+    const held = specs.some((s) => s.type === "dateRange" && isPartialRange(next[s.name]));
+    if (apply && !held) onChange(next);
   };
   const submit = (e) => {
     e.preventDefault();
-    onChange(draft);
-    onRun();
+    if (incomplete) return;
+    const changed = paramsKey(normalizeParams(specs, draft)) !== paramsKey(normalizeParams(specs, params));
+    if (changed) onChange(draft);
+    else onRun();
   };
 
   return (
@@ -39,7 +49,8 @@ export function ReportParamsForm({ specs = [], params, onChange, onRun, running 
       ))}
       <button
         type="submit"
-        disabled={running}
+        disabled={running || incomplete}
+        title={incomplete ? "Set both ends of the date range" : undefined}
         className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-full bg-navy px-4 text-sm font-semibold text-white transition-transform hover:scale-[1.03] disabled:opacity-60"
       >
         {running ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
@@ -105,9 +116,11 @@ function DateRangeControl({ id, label, raw, onPick }) {
   useEffect(() => setMode(splitRange(raw) ? CUSTOM : raw), [raw]);
   const range = custom ?? { from: "", to: "" };
 
+  // Choosing "Custom range…" starts an empty "from..to" draft, which holds Run until both ends are set.
   const pickPreset = (v) => {
     setMode(v);
     if (v !== CUSTOM) onPick(v, true);
+    else if (!custom) onPick("..", false);
   };
   return (
     <div className="flex flex-wrap items-end gap-2">

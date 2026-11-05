@@ -79,7 +79,12 @@ export function downloadBlob(filename, blob) {
 /** The filename in a Content-Disposition header, or null. */
 export function dispositionFilename(header) {
   const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(header || "");
-  return m ? decodeURIComponent(m[1]) : null;
+  if (!m) return null;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1]; // malformed percent-encoding: keep the name as sent
+  }
 }
 
 /**

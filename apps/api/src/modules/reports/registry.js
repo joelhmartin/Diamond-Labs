@@ -67,7 +67,11 @@ function metaOf(def) {
   return meta;
 }
 
-export function createRegistry({ defaultRoles = [] } = {}) {
+/**
+ * `defaultRoles`: who may view a definition that names no roles.
+ * `featuredTitle`: the heading the index shows over `featured` reports.
+ */
+export function createRegistry({ defaultRoles = [], featuredTitle = "Featured" } = {}) {
   const groups = new Map();
   const reports = new Map();
   const dashboards = new Map();
@@ -139,5 +143,6 @@ export function createRegistry({ defaultRoles = [] } = {}) {
     getMetric: (key) => metrics.get(key),
     getLookup: (key) => lookups.get(key),
     canView,
+    featuredTitle,
   };
 }
