@@ -142,11 +142,33 @@ test("onMessage runs after the post and a throwing onMessage does not fail the p
   assert.equal(e.thread.partyKey, "org:1");
   assert.ok(!JSON.stringify(e).includes("secret"), "the hook never sees free text");
 
-  const failing = setup({ onMessage: async () => { throw new Error("boom"); } });
+  const logs = [];
+  const failing = setup({
+    onMessage: async () => { throw new Error("boom for p1@party.test"); },
+    log: { error: (m) => logs.push(m), warn: (m) => logs.push(m) },
+  });
   const t2 = await failing.messaging.createThread(partyA, { body: "hi" });
   const m = await failing.messaging.post(partyA, t2.id, { body: "again" });
   assert.equal(m.body, "again");
   assert.equal(failing.store.state.messages.length, 2);
+  assert.equal(logs.length, 2);
+  for (const l of logs) assert.match(l, /onMessage failed for thread \S+: Error$/, "the error name only, never its message");
+});
+
+test("a failing label collaborator is logged by error name only and the read still succeeds", async () => {
+  const logs = [];
+  const { messaging } = setup({
+    describeParty: async () => { throw new RangeError("lookup failed for p1@party.test"); },
+    log: { error: (m) => logs.push(m), warn: (m) => logs.push(m) },
+  });
+  const t = await messaging.createThread(partyA, { body: "hi" });
+  assert.equal((await messaging.listThreads(host)).total, 1);
+  assert.ok(logs.length >= 1);
+  for (const l of logs) {
+    assert.match(l, /describeParty failed: RangeError$/);
+    assert.ok(!l.includes("party.test"));
+  }
+  assert.equal(t.partyLabel ?? null, null);
 });
 
 test("onOpen runs after a successful getThread with ids only; a throwing onOpen does not fail the read", async () => {

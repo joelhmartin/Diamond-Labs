@@ -252,7 +252,7 @@ async function fireOnMessage({ onMessage, log, views }, thread, message, recordL
       recordLabel: recordLabel ?? null,
     });
   } catch (err) {
-    log.error?.(`[messaging] onMessage failed for thread ${thread.id}: ${err?.message ?? err}`);
+    log.error?.(`[messaging] onMessage failed for thread ${thread.id}: ${err?.name ?? "Error"}`);
   }
 }
 

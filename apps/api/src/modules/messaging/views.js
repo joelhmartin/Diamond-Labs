@@ -8,7 +8,7 @@ export function createViews({ records, sealer, describeParty, describeUsers, att
     try {
       return (await fn()) ?? fallback;
     } catch (err) {
-      log.warn?.(`[messaging] ${what} failed: ${err?.message ?? err}`);
+      log.warn?.(`[messaging] ${what} failed: ${err?.name ?? "Error"}`); // the name only: a message can echo an address
       return fallback;
     }
   }
