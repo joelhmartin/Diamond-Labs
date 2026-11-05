@@ -1,7 +1,9 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "../config/database.js";
-import { productVariants, productFamilies, clientPrices } from "../db/schema/index.js";
-import { priceLines, priceLabLines } from "../lib/pricing.js";
+import {
+  productVariants, productFamilies, clientPrices, priceLists, priceListItems, clientPriceLists,
+} from "../db/schema/index.js";
+import { priceLines, priceLabLines, resolveClientPrices } from "../lib/pricing.js";
 import { PRICING } from "../config/pricing.js";
 
 /** Whose negotiated prices apply to a request — null means guest pricing. */
@@ -28,13 +30,46 @@ export async function loadVariantsById(variantIds, database = db) {
   return new Map(rows.map((v) => [v.id, v]));
 }
 
-export async function loadClientPrices(clientUserId, variantIds, database = db) {
-  if (!clientUserId || variantIds.length === 0) return new Map();
-  const rows = await database
+/**
+ * Every non-base price a client gets, resolved through the one rule
+ * (lib/pricing.js resolveClientPrices): the client's overrides, then their
+ * assigned, non-archived lists in position order. `variantIds` null = every
+ * variant (pricing page, same-pricing). Three selects; two when no list is assigned.
+ * -> Map<variantId, { cents, source: "client"|"list", listId, listName }>
+ */
+export async function loadEffectiveClientPrices(clientUserId, variantIds, database = db) {
+  if (!clientUserId || (variantIds && variantIds.length === 0)) return new Map();
+  const forVariants = (col) => (variantIds ? inArray(col, variantIds) : undefined);
+
+  const overrideRows = await database
     .select({ variantId: clientPrices.variantId, priceCents: clientPrices.priceCents })
     .from(clientPrices)
-    .where(and(eq(clientPrices.clientUserId, clientUserId), inArray(clientPrices.variantId, variantIds)));
-  return new Map(rows.map((r) => [r.variantId, r.priceCents]));
+    .where(and(eq(clientPrices.clientUserId, clientUserId), forVariants(clientPrices.variantId)));
+
+  const assigned = await database
+    .select({ listId: priceLists.id, name: priceLists.name, position: clientPriceLists.position })
+    .from(clientPriceLists)
+    .innerJoin(priceLists, eq(priceLists.id, clientPriceLists.priceListId))
+    .where(and(eq(clientPriceLists.clientUserId, clientUserId), isNull(priceLists.archivedAt)))
+    .orderBy(asc(clientPriceLists.position), asc(clientPriceLists.id));
+
+  const itemRows = assigned.length === 0 ? [] : await database
+    .select({ listId: priceListItems.priceListId, variantId: priceListItems.variantId, priceCents: priceListItems.priceCents })
+    .from(priceListItems)
+    .where(and(inArray(priceListItems.priceListId, assigned.map((a) => a.listId)), forVariants(priceListItems.variantId)));
+
+  const itemsByList = new Map(assigned.map((a) => [a.listId, new Map()]));
+  for (const r of itemRows) itemsByList.get(r.listId)?.set(r.variantId, r.priceCents);
+  return resolveClientPrices({
+    overrides: new Map(overrideRows.map((r) => [r.variantId, r.priceCents])),
+    lists: assigned.map((a) => ({ listId: a.listId, name: a.name, items: itemsByList.get(a.listId) })),
+  });
+}
+
+/** The pricing callers' view (shop, catalog, lab invoices): Map<variantId, { cents, source }> for unitPriceFor. */
+export async function loadClientPrices(clientUserId, variantIds, database = db) {
+  const effective = await loadEffectiveClientPrices(clientUserId, variantIds, database);
+  return new Map([...effective].map(([variantId, { cents, source }]) => [variantId, { cents, source }]));
 }
 
 /** A lab order's lines priced for its client (inside the caller's transaction when one is passed). */

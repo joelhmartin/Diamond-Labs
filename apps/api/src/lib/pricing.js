@@ -11,11 +11,37 @@ export class PricingError extends Error {
   }
 }
 
-/** A client's negotiated price wins over base. null = nothing to charge from. */
-export function unitPriceFor(variant, clientPriceCents) {
-  if (clientPriceCents != null) return { cents: clientPriceCents, source: "client" };
+/**
+ * A client's resolved price wins over base. `effective` is what
+ * resolveClientPrices produced for the variant ({ cents, source }), or a bare
+ * number (a client price, from older callers and tests). null = nothing to
+ * charge from.
+ */
+export function unitPriceFor(variant, effective) {
+  if (effective != null && typeof effective === "object") return { cents: effective.cents, source: effective.source };
+  if (effective != null) return { cents: effective, source: "client" };
   if (variant.basePriceCents == null) return null;
   return { cents: variant.basePriceCents, source: "base" };
+}
+
+/**
+ * The precedence rule (spec R1): the client's own override beats every list;
+ * lists apply in the order given (the caller passes them in assignment order
+ * with archived lists already removed), and the first list with an item for a
+ * variant wins. Variants in neither fall through to base in unitPriceFor.
+ * -> Map<variantId, { cents, source: "client"|"list", listId, listName }>
+ */
+export function resolveClientPrices({ overrides = new Map(), lists = [] }) {
+  const out = new Map();
+  for (const [variantId, cents] of overrides) {
+    out.set(variantId, { cents, source: "client", listId: null, listName: null });
+  }
+  for (const { listId, name, items } of lists) {
+    for (const [variantId, cents] of items) {
+      if (!out.has(variantId)) out.set(variantId, { cents, source: "list", listId, listName: name ?? null });
+    }
+  }
+  return out;
 }
 
 export function priceLines({ lines, variants, clientPrices = new Map(), config }) {
