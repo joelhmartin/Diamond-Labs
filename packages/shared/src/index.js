@@ -47,3 +47,6 @@ export * from "./schemas/shipping.schema.js";
 // Notifications (generic module)
 export * from "./notifications/channels.js";
 export * from "./notifications/schemas.js";
+
+// Messaging (generic module)
+export * from "./messaging/schemas.js";

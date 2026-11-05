@@ -400,6 +400,25 @@ export const SCRUB_PLAN = {
       record_type: K, record_id: K, created_at: K,
     },
   },
+  // Messaging module (piece 8). Subjects and bodies are sealed free text that
+  // can name a patient: replaced, never decrypted. Participants are read state.
+  message_threads: {
+    mode: "update",
+    columns: {
+      id: K, record_type: K, record_id: K, party_key: K,
+      subject: phi("NULL"),
+      created_by_user_id: K, last_message_at: K, last_message_side: K, message_count: K,
+      completed_at: K, completed_by_user_id: K, created_at: K, updated_at: K,
+    },
+  },
+  message_participants: {
+    mode: "update",
+    columns: { thread_id: K, user_id: K, side: K, last_read_at: K, archived_at: K, joined_at: K },
+  },
+  messages: {
+    mode: "update",
+    columns: { id: K, thread_id: K, author_user_id: K, author_side: K, body: phi("'[scrubbed]'"), created_at: K },
+  },
   app_theme: { mode: "update", columns: { id: K, tokens: K, updated_by: K, updated_at: K } },
   products: {
     mode: "update",

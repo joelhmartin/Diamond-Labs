@@ -27,3 +27,4 @@ export { shipments, shipmentEvents } from "./shipments.js";
 export {
   notifications, notificationPreferences, notificationRecipients, notificationDeliveries,
 } from "../../modules/notifications/schema.js";
+export { messageThreads, messageParticipants, messages } from "../../modules/messaging/schema.js";
