@@ -42,6 +42,18 @@ describe("streamCsv", () => {
     expect(text.startsWith("N\r\n0\r\n")).toBe(true);
   });
 
+  test("a client-paged report exports past the on-screen cap (6000 rows, not 5000)", async () => {
+    const reg = setup({
+      columns: [{ id: "n", label: "N", type: "int" }],
+      run: async () => ({ rows: Array.from({ length: 6000 }, (_, i) => ({ n: i })) }),
+    });
+    const reply = fakeReply();
+    await call(reg, reply);
+    const lines = (await drain(reply.body)).split("\r\n").filter(Boolean);
+    expect(lines).toHaveLength(6001);
+    expect(lines.at(-1)).toBe("5999");
+  });
+
   test("headers: content type and dated filename in the app timezone", async () => {
     const reg = setup({ columns: [{ id: "n", label: "N", type: "int" }], run: async () => ({ rows: [] }) });
     const reply = fakeReply();

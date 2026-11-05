@@ -25,7 +25,8 @@ const rowsToCsv = (columns, rows) => rows.map((row) => csvLine(columns.map((c) =
 export async function streamCsv({ registry, db, key, query, actor, reply, now = new Date(), tz = "UTC", slots = defaultRunSlots, onExport }) {
   const prepared = prepareRun({ registry, key, query, actor, now, tz });
   const { def, params } = prepared;
-  const exec = (page) => executePrepared({ ...prepared, page }, { db, actor, slots });
+  // A client-paged report comes back whole in one run: cut it at the export cap, not the on-screen one.
+  const exec = (page) => executePrepared({ ...prepared, page }, { db, actor, slots, rowCap: CSV_ROW_CAP });
   const server = def.paging === "server";
   const sort = prepared.page?.sort ?? null;
 

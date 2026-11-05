@@ -153,16 +153,18 @@ export const runClock = (now = new Date(), tz = "UTC") => ({ now, today: localDa
 
 /**
  * Execute one prepared run (one page, for server-paged reports) and shape the
- * result. The definition's run gets ctx = { page, now, today, tz }.
+ * result. The definition's run gets ctx = { page, now, today, tz }. A
+ * client-paged result is cut at `rowCap` rows (ROW_CAP on screen; the CSV
+ * export passes its own, larger cap).
  */
-export async function executePrepared({ def, params, page, clock = runClock() }, { db, actor, slots, timeoutMs: override }) {
+export async function executePrepared({ def, params, page, clock = runClock() }, { db, actor, slots, timeoutMs: override, rowCap = ROW_CAP }) {
   const started = Date.now();
   const timeoutMs = override ?? def.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const out = await inReadOnlyTx({ db, timeoutMs, slots }, (tx) => def.run(tx, params, actor, { page, ...clock }));
   const rows = out?.rows || [];
   const result = { rows, total: out?.total ?? rows.length, truncated: false, generatedAt: new Date().toISOString() };
-  if (!page && rows.length > ROW_CAP) {
-    result.rows = rows.slice(0, ROW_CAP);
+  if (!page && rows.length > rowCap) {
+    result.rows = rows.slice(0, rowCap);
     result.truncated = true;
     result.total = out?.total ?? rows.length;
   }
