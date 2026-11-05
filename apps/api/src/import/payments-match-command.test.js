@@ -59,7 +59,7 @@ test("dry run: counts only, a review CSV, nothing sealed, no names or notes prin
   await seedArchive(r.store);
   assert.equal(await r.run(["payments-match", "--file", "jan.xls", "--file", "feb.xls", "--review-out", "/review.csv"]), 0);
   const t = r.text();
-  assert.match(t, /Payments read: 5 from 2 file\(s\) \(1 repeated across files dropped; 0 reversed\/void row\(s\) dropped; 0 problem row\(s\)\)/);
+  assert.match(t, /Payments read: 5 from 2 file\(s\) \(1 repeated across files dropped; 0 reversal\/void row\(s\) subtracted; 0 problem row\(s\)\)/);
   assert.match(t, /client resolved: 5 \(100\.0%/);
   assert.match(t, /attributed 3, client unknown \(invoices unclear\) 0, cross-client \(not applied\) 1 \(2000 cents\), unattributed \(no known invoice named\) 1 \(1500 cents\)/);
   assert.match(t, /unattributed refunds: 0 \(0 cents\)/);
@@ -141,6 +141,29 @@ test("live gates: unresolved clients, an unmapped status-like column, unattribut
   assert.equal(await r.run(["payments-match", "--file", "refund.xls", "--live", "--accept-unattributed-refunds"]), 0);
 });
 
+test("a payment row plus a separate reversal row for the same invoice nets to 0: the invoice stays open", async () => {
+  const head = [...HEAD, "Status"];
+  const r = rig({
+    "rev.xls": table([
+      head,
+      ["01/05/2026", "ACC-100", "100.00", "Invoices 50001", "", "Posted"],
+      ["01/09/2026", "ACC-100", "100.00", "Invoices 50001", "", "Reversed"],
+    ]),
+  });
+  await seedArchive(r.store);
+  assert.equal(await r.run(["payments-match", "--file", "rev.xls", "--live"]), 0);
+  assert.match(r.text(), /; 1 reversal\/void row\(s\) subtracted;/);
+  const rows = readExport([...r.store.files.values()].pop().bytes, { kind: "invoice" }).rows;
+  assert.deepEqual(rows.find((x) => x.key === 50001).cents, 10000, "fully open: the reversal cancelled the payment");
+});
+
+test("a reversal that names no invoice is an unattributed refund and hits the same gate", async () => {
+  const r = rig({ "rev.xls": table([[...HEAD, "Status"], ["01/09/2026", "ACC-100", "40.00", "chk 9911", "", "Returned"]]) });
+  await seedArchive(r.store);
+  await assert.rejects(r.run(["payments-match", "--file", "rev.xls", "--live"]), /refunds name no known invoice.*--accept-unattributed-refunds/);
+  assert.match(r.text(), /unattributed refunds: 1 \(-4000 cents\)/);
+});
+
 test("a live run refuses on export problems unless accepted; stray flags and a missing file are refused", async () => {
   const bad = table([HEAD, ["01/05/2026", "ACC-100", "oops", "50001", ""], ["01/06/2026", "ACC-100", "1.00", "50001", ""]]);
   const r = rig({ "bad.xls": bad });
@@ -157,14 +180,27 @@ test("a live run refuses on export problems unless accepted; stray flags and a m
   await assert.rejects(r.run(["export", "--balances", "per-invoice", "--file", "a", "--file", "b"]), /one file/);
 });
 
-test("invoices from records: seazonaId order decides a duplicate number (as the invoices step); void, unnumbered, bad totals left out", () => {
+test("invoices from records: a duplicated number is credited for NEITHER record and listed; void, unnumbered, bad totals left out", () => {
   const rec = (seazonaId, payload) => ({ seazonaId, payload });
-  const { invoices, skipped } = invoicesFromRecords([
+  const { invoices, skipped, duplicateNumbers } = invoicesFromRecords([
     rec("s9", { invoiceNumber: 1, total: 3, clientId: 9 }), rec("s1", { invoiceNumber: 1, total: 10, clientId: 7 }),
     rec("s2", { invoiceNumber: 2, total: 5, status: "Void" }), rec("s3", { invoiceNumber: "x", total: 5 }), rec("s4", { invoiceNumber: 3, total: -1 }),
+    rec("s5", { invoiceNumber: 4, total: 8, clientId: 7 }),
   ]);
-  assert.deepEqual(invoices, [{ number: 1, totalCents: 1000, clientKey: "7" }]);
-  assert.deepEqual(skipped, { void: 1, noNumber: 1, badTotal: 1, duplicateNumber: 1 });
+  assert.deepEqual(invoices, [{ number: 4, totalCents: 800, clientKey: "7" }]);
+  assert.deepEqual(skipped, { void: 1, noNumber: 1, badTotal: 1, duplicateNumber: 2 });
+  assert.deepEqual(duplicateNumbers, [1]);
+});
+
+test("a payment naming a duplicated number credits nothing; the number is printed", async () => {
+  const r = rig({ "dup.xls": table([HEAD, ["01/05/2026", "ACC-100", "100.00", "Invoices 50001", ""]]) });
+  await seedArchive(r.store);
+  await r.store.upsert("invoice", [{ seazonaId: "s1b", payload: { id: "s1b", invoiceNumber: 50001, total: 100, clientId: "c1", status: "Shipped" } }]);
+  assert.equal(await r.run(["payments-match", "--file", "dup.xls", "--live"]), 0);
+  const rows = readExport([...r.store.files.values()].pop().bytes, { kind: "invoice" }).rows;
+  assert.equal(rows.some((x) => x.key === 50001), false, "not in the derived file: the loader keeps it open (absent or duplicated)");
+  assert.match(r.text(), /invoice number\(s\) on more than one record \(never credited\): 1: 50001/);
+  assert.match(r.text(), /unattributed \(no known invoice named\) 1/);
 });
 
 test("client resolver: account number or exact practice name; a shared account or name resolves to nothing", () => {

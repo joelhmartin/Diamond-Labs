@@ -48,7 +48,7 @@ test("bad amounts, missing dates and a footer that does not add up are problems 
   assert.equal(parsed.payments.length, 1);
 });
 
-test("a status column: allow-listed values apply, reverse (dropped) or refund (negative); any other value is refused", () => {
+test("a status column: allow-listed values apply, reverse or refund (both SUBTRACT, however printed); any other value is refused", () => {
   const head = ["Date", "Amount", "Notes", "Status"];
   const parsed = readPaymentsExport(table([
     head,
@@ -56,11 +56,12 @@ test("a status column: allow-listed values apply, reverse (dropped) or refund (n
     ["1/2/26", "20.00", "Inv 2", "Reversed"],
     ["1/3/26", "5.00", "Inv 3", "Refund"],
     ["1/4/26", "7.00", "Inv 4", ""],
-    ["Total", "42.00", "", ""],
+    ["1/5/26", "-3.00", "Inv 5", "NSF"],
+    ["Total", "39.00", "", ""],
   ]));
   assert.deepEqual(parsed.problems, [], "the footer cross-checks the amounts as printed");
-  assert.deepEqual(parsed.payments.map((p) => [p.line, p.amountCents]), [[2, 1000], [4, -500], [5, 700]]);
-  assert.deepEqual(parsed.reversedLines, [3]);
+  assert.deepEqual(parsed.payments.map((p) => [p.line, p.amountCents]), [[2, 1000], [3, -2000], [4, -500], [5, 700], [6, -300]]);
+  assert.deepEqual(parsed.reversedLines, [3, 6]);
   assert.throws(
     () => readPaymentsExport(table([head, ["1/1/26", "10.00", "Inv 1", "Pending review"]])),
     (e) => e instanceof ImportRefusal && /Unknown status value\(s\).*"pending review"/.test(e.message),

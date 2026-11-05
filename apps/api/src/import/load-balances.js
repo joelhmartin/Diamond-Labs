@@ -79,6 +79,7 @@ async function perInvoice({ raw, db, live, target, legacy, parsed, derived, exis
     ["invoice_has_real_payments_not_settled", strings(plan.hasPayments)],
     ["credit_balance_for_staff", strings(plan.credits.map((c) => c.invoiceNumber))],
     ["invoice_absent_from_derived_file", strings(plan.absentFromDerived)],
+    ["invoice_number_duplicated", strings(plan.duplicateNumber)],
   ]);
   // Settlements take no numbers, but the seed check runs on every balances run (as the CLI and runbook say), so a bad start is caught here too.
   report.seeds = (await enforceSeeds({ raw, db, target, live, starts })).summary;

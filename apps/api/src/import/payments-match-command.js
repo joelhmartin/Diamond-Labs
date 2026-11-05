@@ -33,22 +33,33 @@ export const PAYMENTS_FILE_KIND = "payments_export";
 export const MIN_CLIENT_RESOLUTION = 0.99;
 const USAGE = "Usage: import:fetch payments-match --file <payments.xls> [--file <more.xls> …] [--columns name=Header,…] [--unclear credit-definite|open] [--review-out <path>] [--live [--accept-…]]";
 
-/** Raw invoice summaries (in seazonaId order, the invoices step's order) → the matcher's invoices, plus why the rest were left out. */
+/**
+ * Raw invoice summaries (in seazonaId order) → the matcher's invoices, plus why
+ * the rest were left out. A number carried by more than one record (any status)
+ * is credited for NEITHER: every such record is left out and the number listed
+ * in `duplicateNumbers`, so it is absent from the derived file and the loader
+ * keeps it open.
+ */
 export function invoicesFromRecords(records) {
+  const sorted = [...records].sort(bySeazonaId);
+  const perNumber = new Map();
+  for (const { payload } of sorted) {
+    const n = recordNumber(payload, INVOICE_NUMBER_FIELDS);
+    if (n) perNumber.set(n, (perNumber.get(n) ?? 0) + 1);
+  }
   const invoices = [];
-  const seen = new Set();
   const skipped = { void: 0, noNumber: 0, badTotal: 0, duplicateNumber: 0 };
-  for (const { payload } of [...records].sort(bySeazonaId)) {
+  for (const { payload } of sorted) {
     const number = recordNumber(payload, INVOICE_NUMBER_FIELDS);
     const totalCents = centsOf(payload?.total);
     if (!number) { skipped.noNumber += 1; continue; }
+    if (perNumber.get(number) > 1) { skipped.duplicateNumber += 1; continue; }
     if (invoiceStatusFor(payload.status) === "void") { skipped.void += 1; continue; }
     if (totalCents == null || totalCents < 0) { skipped.badTotal += 1; continue; }
-    if (seen.has(number)) { skipped.duplicateNumber += 1; continue; }
-    seen.add(number);
     invoices.push({ number, totalCents, clientKey: payload.clientId == null ? null : String(payload.clientId) });
   }
-  return { invoices, skipped };
+  const duplicateNumbers = [...perNumber].filter(([, c]) => c > 1).map(([n]) => n).sort((a, b) => a - b);
+  return { invoices, skipped, duplicateNumbers };
 }
 
 /** key → id, where a key two different ids share maps to null (never guessed). */
@@ -110,17 +121,18 @@ function summarize({ parsedList, merged, payments, result }) {
   };
 }
 
-function countLines({ parsedList, merged, result, derived, skipped, s }) {
+function countLines({ parsedList, merged, result, derived, skipped, duplicateNumbers, s }) {
   const r = result;
   const lines = [
-    `Payments read: ${merged.payments.length} from ${parsedList.length} file(s) (${merged.duplicatesDropped} repeated across files dropped; ${s.reversed} reversed/void row(s) dropped; ${s.fileProblems} problem row(s)).`,
+    `Payments read: ${merged.payments.length} from ${parsedList.length} file(s) (${merged.duplicatesDropped} repeated across files dropped; ${s.reversed} reversal/void row(s) subtracted; ${s.fileProblems} problem row(s)).`,
     `  client resolved: ${s.resolved} (${(s.resolution * 100).toFixed(1)}%; a live run needs ${MIN_CLIENT_RESOLUTION * 100}%).`,
     `  attributed ${r.attributedPayments}, client unknown (invoices unclear) ${r.clientUnknownPayments}, cross-client (not applied) ${r.crossClient.length} (${s.crossClientCents} cents), unattributed (no known invoice named) ${r.unattributedPayments.length} (${s.unattributedCents} cents).`,
     `  unattributed refunds: ${r.unattributedRefunds.length} (${s.unattributedRefundCents} cents).`,
     `  matched by a prefixed reference (inv / invoice / #): ${r.prefixedPayments}; by a bare number: ${r.barePayments}.`,
     `  multi-invoice payments that do not add up: ${r.unclearPayments.filter((u) => u.reason === "sum-mismatch").length}; overpaid invoices (unclear, kept open): ${r.overpaid.length}; refunds above payments: ${r.netRefund.length}.`,
-    `Invoices matched: ${r.invoices.length} (left out: ${skipped.void} void, ${skipped.noNumber} no number, ${skipped.badTotal} bad or negative total, ${skipped.duplicateNumber} duplicate number).`,
+    `Invoices matched: ${r.invoices.length} (left out: ${skipped.void} void, ${skipped.noNumber} no number, ${skipped.badTotal} bad or negative total, ${skipped.duplicateNumber} record(s) sharing a number).`,
   ];
+  if (duplicateNumbers.length) lines.push(`  invoice number(s) on more than one record (never credited): ${duplicateNumbers.length}: ${duplicateNumbers.slice(0, 20).join(", ")}${duplicateNumbers.length > 20 ? ", …" : ""}.`);
   if (s.unmappedStatus.length) lines.push(`  UNMAPPED status-like column(s): ${s.unmappedStatus.map((h) => `"${h}"`).join(", ")}. Map with --columns status="Header" (or waive on --live with --accept-unmapped-status).`);
   const open = new Map(derived.rows.map((x) => [x.key, x.cents]));
   for (const status of Object.values(MATCH_STATUS)) {
@@ -171,7 +183,7 @@ export async function runPaymentsMatch(flags, store, deps) {
   const parsedList = rawFiles.map((bytes, i) => readPaymentsExport(bytes, { columns: opts.columns, file: i + 1 }));
   const merged = mergePaymentFiles(parsedList);
   const invoiceRecords = await store.records("invoice");
-  const { invoices, skipped } = invoicesFromRecords(invoiceRecords);
+  const { invoices, skipped, duplicateNumbers } = invoicesFromRecords(invoiceRecords);
   const resolve = clientResolver(await store.records("client"));
   const payments = merged.payments.map((p) => ({ id: p.id, date: p.date, amountCents: p.amountCents, clientKey: resolve(p.client), text: `${p.reference} ${p.notes}` }));
   const result = matchPayments({ invoices, payments });
@@ -180,7 +192,7 @@ export async function runPaymentsMatch(flags, store, deps) {
   const now = deps.now();
   const reviewPath = flags["review-out"] ?? join(tmpdir(), `payments-match-review-${now.toISOString().replace(/[:.]/g, "-")}.csv`);
   await writeReview(deps, reviewPath, reviewCsv(result, derived, new Map(payments.map((p) => [p.id, p]))));
-  deps.print(countLines({ parsedList, merged, result, derived, skipped, s }));
+  deps.print(countLines({ parsedList, merged, result, derived, skipped, duplicateNumbers, s }));
   deps.print([`Review CSV (unclear, partial and net-refund invoices; numbers and cents only, mode 600): ${reviewPath}`]);
   parsedList.forEach((p, i) => {
     if (p.problems.length) deps.print([`File ${i + 1} problems (row numbers only):`, ...p.problems.map((x) => `  ${x.kind} x${x.count}: rows ${x.lines.slice(0, 20).join(", ")}`)]);

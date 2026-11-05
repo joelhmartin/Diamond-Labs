@@ -29,7 +29,8 @@ const REQUIRED = ["date", "amount"];
  * Status (or a mapped type) cell → what the row means, folded. Any other value
  * is refused: add it here only with the user's ruling on what it means.
  * apply: a payment that stands (payment methods count, for a mapped "type");
- * reverse: it did not stand (dropped, reported by row); refund: money back (negative).
+ * reverse: a payment taken back (void, returned, nsf…); refund: money back. Both SUBTRACT
+ * (amount −|printed|), so a payment row plus its reversal row nets to zero.
  */
 export const STATUS_VALUES = {
   apply: ["", "payment", "posted", "applied", "received", "paid", "completed", "complete", "active", "cleared", "deposited",
@@ -119,10 +120,12 @@ export function readPaymentsExport(bytes, { columns = {}, file = 1 } = {}) {
     printedSum += amountCents;
     const date = cell(row, "date");
     if (!date) { found.push({ kind: PAYMENT_PROBLEM_KINDS.noDate, line }); continue; }
+    // A reversal (void, returned, nsf, …) and a refund both take money back: they SUBTRACT, however the export
+    // prints the sign, through the same attribution as a refund (one naming no invoice is an unattributed refund).
     const effect = effectOf(row);
-    if (effect === "reverse") { reversedLines.push(line); continue; }
+    if (effect === "reverse") reversedLines.push(line);
     payments.push({
-      id: `f${file}:L${line}`, file, line, date, amountCents: effect === "refund" ? -Math.abs(amountCents) : amountCents,
+      id: `f${file}:L${line}`, file, line, date, amountCents: effect === "apply" ? amountCents : -Math.abs(amountCents),
       reference: cell(row, "reference") ?? "", notes: cell(row, "notes") ?? "", client: cell(row, "client"),
     });
   }
