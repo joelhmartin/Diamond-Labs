@@ -368,6 +368,26 @@ export const SCRUB_PLAN = {
     },
   },
   app_theme: { mode: "update", columns: { id: K, tokens: K, updated_by: K, updated_at: K } },
+  // Business calendar: weekday/holiday/capacity settings, nothing personal.
+  calendars: {
+    mode: "update",
+    columns: { key: K, timezone: K, lead_days: K, closed_weekdays: K, capacity_basis: K, capacity_by_weekday: K, updated_by: K, updated_at: K },
+  },
+  calendar_holidays: { mode: "update", columns: { id: K, calendar_key: K, date: K, label: K } },
+  // Workflows: template definitions, assignments (subject ids) and plan snapshots (dates, stage targets); nothing personal.
+  workflows: {
+    mode: "update",
+    columns: { id: K, key: K, name: K, total_days: K, rush_workflow_key: K, is_default: K, active: K, position: K, created_at: K, updated_at: K },
+  },
+  workflow_stages: { mode: "update", columns: { id: K, workflow_id: K, position: K, key: K, label: K, day_offset: K, milestone: K } },
+  workflow_assignments: { mode: "update", columns: { subject_type: K, subject_id: K, workflow_key: K, updated_at: K } },
+  workflow_plans: {
+    mode: "update",
+    columns: {
+      record_type: K, record_id: K, workflow_key: K, workflow_name: K, start_date: K, due_date: K, direction: K, stages: K,
+      created_at: K, updated_at: K,
+    },
+  },
   products: {
     mode: "update",
     columns: {

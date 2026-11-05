@@ -43,3 +43,9 @@ export * from "./schemas/billing.schema.js";
 // Shipping
 export * from "./shipping/shipping.js";
 export * from "./schemas/shipping.schema.js";
+
+// Business calendar (generic module; rules live in apps/api/src/modules/business-calendar)
+export * from "./business-calendar/index.js";
+
+// Workflows (generic module; rules live in apps/api/src/modules/workflows)
+export * from "./workflows/index.js";

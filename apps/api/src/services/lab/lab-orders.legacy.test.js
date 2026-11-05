@@ -35,6 +35,8 @@ test("getLabOrderDetail's legacy block returns the sealed patient opened, and th
   assert.deepEqual([detail.legacy.seazonaOrderId, detail.legacy.caseId, detail.legacy.caseNumber], ["ord-9", "case1", "RX-1"]);
   assert.equal("legacyPatient" in detail.order, false);
   assert.ok(!JSON.stringify(detail).includes("enc:v1:"));
-  assert.equal(chains.length, 4);
+  assert.equal(chains.length, 7, "order, lines, events, case; then the saved plan, calendar and holidays");
+  assert.equal(detail.schedule, null, "a legacy order has no plan");
+  assert.deepEqual(detail.scheduleFlags, { behind: false, lateStage: null, atRisk: false }, "flags exist without a plan; no due date, so not at risk");
   assert.ok(chains[3].includes("orderBy") && chains[3].indexOf("orderBy") < chains[3].indexOf("limit"), "the case lookup is ordered before it is limited");
 });

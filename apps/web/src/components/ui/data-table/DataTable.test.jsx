@@ -324,3 +324,16 @@ test("server mode bulk actions get the rows from the latest fetch, not the ones 
   await act(async () => fireEvent.click(screen.getByRole("button", { name: "Move" })));
   assert.deepEqual(run.mock.calls[0][0].map((r) => [r.id, r.version]), [["r1", 2], ["r2", 2]]);
 });
+
+test("a bulk action with choices shows a select and passes the picked value to run", async () => {
+  const run = vi.fn(async () => {});
+  mount(<Harness bulkActions={[{ id: "set", label: "Set status", choices: [{ value: "a", label: "Alpha" }, { value: "b", label: "Beta" }], run }]} />);
+  fireEvent.click(rowOf("Row 01"), { metaKey: true });
+  const go = screen.getByRole("button", { name: "Set status" });
+  assert.equal(go.disabled, true);
+  fireEvent.change(screen.getByLabelText("Set status choice"), { target: { value: "b" } });
+  assert.equal(go.disabled, false);
+  await act(async () => fireEvent.click(go));
+  assert.deepEqual(run.mock.calls[0][0].map((r) => r.id), ["r1"]);
+  assert.equal(run.mock.calls[0][1], "b");
+});

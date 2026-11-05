@@ -93,7 +93,7 @@ export const labOrderLines = pgTable("lab_order_lines", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("lab_order_lines_order_idx").on(t.labOrderId)]);
 
-/** Append-only history; drives the timeline. type: status | assign | department | due | note | hold | release | shipment */
+/** Append-only history; drives the timeline. type: status | assign | department | due | note | hold | release | shipment | workflow */
 export const labOrderEvents = pgTable("lab_order_events", {
   id: varchar("id", { length: 128 }).primaryKey(),
   labOrderId: varchar("lab_order_id", { length: 128 }).notNull(),
