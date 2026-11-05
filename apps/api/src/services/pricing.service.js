@@ -38,7 +38,16 @@ export async function loadVariantsById(variantIds, database = db) {
  * -> Map<variantId, { cents, source: "client"|"list", listId, listName }>
  */
 export async function loadEffectiveClientPrices(clientUserId, variantIds, database = db) {
-  if (!clientUserId || (variantIds && variantIds.length === 0)) return new Map();
+  return (await loadClientPriceResolution(clientUserId, variantIds, database)).effective;
+}
+
+/**
+ * The same resolution plus `listOnly`: what the client's non-archived lists alone would charge
+ * (empty overrides), from the lists already loaded. The pricing page uses it to flag an override
+ * that equals its list price. -> { effective, listOnly } (both Map<variantId, { cents, source, listId, listName }>)
+ */
+export async function loadClientPriceResolution(clientUserId, variantIds, database = db) {
+  if (!clientUserId || (variantIds && variantIds.length === 0)) return { effective: new Map(), listOnly: new Map() };
   const forVariants = (col) => (variantIds ? inArray(col, variantIds) : undefined);
 
   const overrideRows = await database
@@ -60,10 +69,11 @@ export async function loadEffectiveClientPrices(clientUserId, variantIds, databa
 
   const itemsByList = new Map(assigned.map((a) => [a.listId, new Map()]));
   for (const r of itemRows) itemsByList.get(r.listId)?.set(r.variantId, r.priceCents);
-  return resolveClientPrices({
-    overrides: new Map(overrideRows.map((r) => [r.variantId, r.priceCents])),
-    lists: assigned.map((a) => ({ listId: a.listId, name: a.name, items: itemsByList.get(a.listId) })),
-  });
+  const lists = assigned.map((a) => ({ listId: a.listId, name: a.name, items: itemsByList.get(a.listId) }));
+  return {
+    effective: resolveClientPrices({ overrides: new Map(overrideRows.map((r) => [r.variantId, r.priceCents])), lists }),
+    listOnly: resolveClientPrices({ lists }),
+  };
 }
 
 /** The pricing callers' view (shop, catalog, lab invoices): Map<variantId, { cents, source }> for unitPriceFor. */

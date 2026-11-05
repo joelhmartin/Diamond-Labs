@@ -33,6 +33,19 @@ test("effective lists every non-base price with its source and list name, sorted
   ]);
 });
 
+test("the resolution also gives what the lists alone would charge, ignoring overrides", async () => {
+  const { loadClientPriceResolution } = await import("./pricing.service.js");
+  const { effective, listOnly } = await loadClientPriceResolution("c1", null, queuedDb([
+    [{ variantId: "v1", priceCents: 700 }],
+    [{ listId: "L1", name: "Standard", position: 0 }],
+    [{ listId: "L1", variantId: "v1", priceCents: 900 }],
+  ]));
+  assert.equal(effective.get("v1").cents, 700);
+  assert.equal(effective.get("v1").source, "client");
+  assert.equal(listOnly.get("v1").cents, 900);
+  assert.equal(listOnly.get("v1").source, "list");
+});
+
 test("a client with no overrides or lists has no effective prices", async () => {
   assert.deepEqual(await effectiveForClient("c1", queuedDb([[], []])), []);
 });

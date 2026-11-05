@@ -2,9 +2,9 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../config/database.js";
 import { clientPrices, productVariants, productFamilies } from "../db/schema/index.js";
 import { createId } from "../lib/id.js";
-import { loadEffectiveClientPrices } from "./pricing.service.js";
+import { loadClientPriceResolution, loadEffectiveClientPrices } from "./pricing.service.js";
 
-export async function listForClient(clientUserId) {
+export async function listForClient(clientUserId, listPrices = new Map()) {
   const rows = await db
     .select({ p: clientPrices, v: productVariants, f: productFamilies })
     .from(clientPrices)
@@ -14,6 +14,8 @@ export async function listForClient(clientUserId) {
   return rows
     .map(({ p, v, f }) => ({
       ...p, variantName: v.name, variantCode: v.code, basePriceCents: v.basePriceCents, familyName: f.name,
+      // What the client's assigned lists alone would charge, so the page can flag an override equal to it.
+      listPriceCents: listPrices.get(p.variantId)?.cents ?? null,
     }))
     .sort((a, b) => a.familyName.localeCompare(b.familyName) || a.variantName.localeCompare(b.variantName));
 }
@@ -24,7 +26,17 @@ export async function listForClient(clientUserId) {
  * "effective" view, with `source` and `listName`.
  */
 export async function effectiveForClient(clientUserId, database = db) {
-  const effective = await loadEffectiveClientPrices(clientUserId, null, database);
+  return effectiveRows(await loadEffectiveClientPrices(clientUserId, null, database), database);
+}
+
+/** The pricing page's one read: overrides (with `listPriceCents`) and the effective view, from one resolution. */
+export async function priceViewForClient(clientUserId, database = db) {
+  const { effective, listOnly } = await loadClientPriceResolution(clientUserId, null, database);
+  const [prices, effectiveList] = await Promise.all([listForClient(clientUserId, listOnly), effectiveRows(effective, database)]);
+  return { prices, effective: effectiveList };
+}
+
+async function effectiveRows(effective, database) {
   if (effective.size === 0) return [];
   const variants = await database
     .select({

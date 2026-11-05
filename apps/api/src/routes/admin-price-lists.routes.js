@@ -32,6 +32,9 @@ export default async function adminPriceListsRoutes(fastify) {
   fastify.get("/admin/price-lists/:id/items", { preHandler: ADMIN }, (req, reply) => run(reply, () =>
     priceLists.listItems(req.params.id)));
 
+  fastify.get("/admin/price-lists/:id/clients", { preHandler: ADMIN }, (req, reply) => run(reply, () =>
+    priceLists.listClients(req.params.id)));
+
   fastify.put("/admin/price-lists/:id/items/:variantId", withBody(priceListItemSchema), (req, reply) => run(reply, async () => {
     await priceLists.setItem(req.params.id, req.params.variantId, req.body.priceCents, req.user.id);
     return { variantId: req.params.variantId, priceCents: req.body.priceCents };

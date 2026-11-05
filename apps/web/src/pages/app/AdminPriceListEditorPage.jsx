@@ -11,6 +11,7 @@ import { eachRow } from "../../lib/data-table/bulk.js";
 import { formatCents, parseMoneyInput } from "../../lib/money.js";
 import { adjustByPercent, priceDelta } from "../../lib/price-lists.js";
 import { errorText } from "../../lib/requests.js";
+import { PriceListClientsTab } from "./PriceListClientsTab.jsx";
 
 const INPUT = "h-9 rounded-xl border border-surface-300/60 bg-white px-3 text-sm text-navy focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10";
 const getRowId = (r) => r.variantId;
@@ -60,7 +61,10 @@ function columnsFor(onSave) {
 function Header({ list, onPatch }) {
   const [name, setName] = useState(list.name);
   const [description, setDescription] = useState(list.description ?? "");
-  const save = (field, value, current) => { if (value !== current) onPatch({ [field]: value || (field === "description" ? null : value) }); };
+  const save = (field, value, current) => {
+    if (field === "name" && !value) { setName(current); return; } // a list always has a name: revert
+    if (value !== current) onPatch({ [field]: value || null });
+  };
   return (
     <div className="space-y-2">
       <input aria-label="List name" value={name} onChange={(e) => setName(e.target.value)} onBlur={() => save("name", name.trim(), list.name)}
@@ -78,6 +82,7 @@ export function AdminPriceListEditorPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [tab, setTab] = useState("prices");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -182,7 +187,7 @@ export function AdminPriceListEditorPage() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-[280px] flex-1"><Header key={list.updatedAt} list={list} onPatch={patchList} /></div>
           <div className="flex items-center gap-3 text-xs text-navy/50">
-            <span>{list.itemCount} items · {list.clientCount} {list.clientCount === 1 ? "client" : "clients"}</span>
+            <span>{rows.filter((r) => r.listPriceCents != null).length} items · {list.clientCount} {list.clientCount === 1 ? "client" : "clients"}</span>
             <ConfirmButton onConfirm={() => patchList({ archived: !list.archivedAt })} confirmLabel={list.archivedAt ? "Click again to restore" : "Click again to archive"}
               className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-surface-100 px-3 text-xs font-semibold text-navy/70 hover:bg-surface-200">
               {list.archivedAt ? <><ArchiveRestore size={12} /> Restore</> : <><Archive size={12} /> Archive</>}
@@ -191,7 +196,15 @@ export function AdminPriceListEditorPage() {
         </div>
       )}
       {list?.archivedAt && <p className="rounded-xl bg-amber-50 px-4 py-2 text-sm text-amber-800">This list is archived. Its prices no longer apply to the clients still assigned to it.</p>}
-      <DataTable
+      <div role="tablist" className="flex gap-1 border-b border-surface-300/50">
+        {[{ id: "prices", label: "Prices" }, { id: "clients", label: "Clients on this list" }].map((t) => (
+          <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === t.id ? "border-brand-500 text-navy" : "border-transparent text-navy/50 hover:text-navy"}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === "clients" ? <PriceListClientsTab listId={id} /> : <DataTable
         table={table}
         columns={columns}
         bulkActions={bulkActions}
@@ -199,7 +212,7 @@ export function AdminPriceListEditorPage() {
         itemLabel="variants"
         exportFileName={`${list?.name ?? "price-list"}.csv`}
         emptyText="No variants match."
-      />
+      />}
     </div>
   );
 }

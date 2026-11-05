@@ -15,6 +15,10 @@ vi.mock("../../services/price-lists.service.js", async (importOriginal) => {
   return {
     ...real,
     createPriceList: vi.fn(async () => { throw new real.PriceListError("NAME_TAKEN", "A price list with that name already exists."); }),
+    listClients: vi.fn(async (id) => {
+      if (id === "nope") throw new real.PriceListError("NOT_FOUND", "Price list not found.");
+      return [{ id: "c1", name: "Ana", email: "a@x.test", accountNumber: "10", practice: "Ruiz Dental", position: 0, assignedAt: "2026-01-01" }];
+    }),
     assignListToClients: vi.fn(async ({ clientUserIds }) => ({ ok: clientUserIds.length, failed: [] })),
   };
 });
@@ -34,6 +38,7 @@ const ROUTES = [
   ["POST", "/api/v1/admin/price-lists"],
   ["PATCH", "/api/v1/admin/price-lists/L1"],
   ["GET", "/api/v1/admin/price-lists/L1/items"],
+  ["GET", "/api/v1/admin/price-lists/L1/clients"],
   ["PUT", "/api/v1/admin/price-lists/L1/items/v1"],
   ["DELETE", "/api/v1/admin/price-lists/L1/items/v1"],
   ["POST", "/api/v1/admin/price-lists/L1/items/bulk"],
@@ -52,6 +57,15 @@ describe("price list routes", () => {
       });
     }
   }
+
+  it("lists the clients on a list, and 404s an unknown list", async () => {
+    const app = await appAs("admin");
+    const ok = await app.inject({ method: "GET", url: "/api/v1/admin/price-lists/L1/clients" });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().data[0]).toMatchObject({ id: "c1", name: "Ana", practice: "Ruiz Dental", position: 0 });
+    expect((await app.inject({ method: "GET", url: "/api/v1/admin/price-lists/nope/clients" })).statusCode).toBe(404);
+    await app.close();
+  });
 
   it("duplicate name is 409 NAME_TAKEN", async () => {
     const app = await appAs("admin");

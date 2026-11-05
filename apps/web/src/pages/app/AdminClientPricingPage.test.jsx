@@ -31,14 +31,13 @@ test("the page names whose prices these are", () => {
 
 const ENTRY = { variantName: "Crown", variantCode: "C1", familyName: "Crowns", basePriceCents: 10000 };
 
-function mount({ prices, effective, assigned = [{ listId: "L1", name: "Gold", archivedAt: null, position: 0 }], listItems = [] }) {
+function mount({ prices, effective, assigned = [{ listId: "L1", name: "Gold", archivedAt: null, position: 0 }] }) {
   get.mockImplementation(async (path) => {
     const ok = (data) => ({ data: { data } });
     if (path === "/admin/clients/u1/prices") return ok({ prices, effective });
     if (path === "/admin/catalog/families") return ok({ families: [] });
     if (path === "/admin/clients/u1/price-lists") return ok(assigned);
     if (path === "/admin/price-lists") return ok([{ id: "L1", name: "Gold" }]);
-    if (path === "/admin/price-lists/L1/items") return ok(listItems);
     if (path === "/admin/users") return ok({ users: [] });
     throw new Error(`unexpected GET ${path}`);
   });
@@ -59,13 +58,18 @@ test("client pricing shows the List chip with the list name for a list-priced va
 
 test('an inferred override equal to the list price shows "Same as list"', async () => {
   mount({
-    prices: [{ variantId: "v1", variantName: "Crown", variantCode: "C1", basePriceCents: 10000, priceCents: 9000, source: "inferred", reviewedAt: "2026-01-01" }],
+    prices: [{ variantId: "v1", variantName: "Crown", variantCode: "C1", basePriceCents: 10000, priceCents: 9000, listPriceCents: 9000, source: "inferred", reviewedAt: "2026-01-01" }],
     effective: [{ variantId: "v1", ...ENTRY, cents: 9000, source: "client", listId: null, listName: null }],
-    listItems: [{ variantId: "v1", listPriceCents: 9000 }],
   });
   const row = (await screen.findByText("Crown")).closest("tr");
   assert.ok(within(row).getByText("Same as list"));
   assert.ok(within(row).getByText("Client"));
+});
+
+test("loading the page makes no per-list item requests", async () => {
+  mount({ prices: [], effective: [] });
+  await screen.findByLabelText("Assigned lists");
+  assert.ok(!get.mock.calls.some(([path]) => String(path).includes("/items")));
 });
 
 test("an archived assigned list is struck through in the strip", async () => {

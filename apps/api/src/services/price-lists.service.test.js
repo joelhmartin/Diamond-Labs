@@ -134,3 +134,33 @@ test("setClientLists keeps an archived list already assigned but refuses adding 
   const add = fakeTx({ selects: [[{ id: "c1", role: "doctor" }], [{ id: "L1", archivedAt: new Date() }], []] });
   assert.equal(await errCode(svc.setClientLists("c1", ["L1"], "a", fakeDb(add))), "INVALID");
 });
+
+/** A db whose awaited select chains pop queued results. */
+function queuedDb(selects) {
+  const chain = () => new Proxy(function () {}, {
+    get(_t, prop) {
+      if (prop === "then") return (res, rej) => Promise.resolve(selects.shift() ?? []).then(res, rej);
+      return () => chain();
+    },
+  });
+  return { select: () => chain() };
+}
+
+test("clients on a list carry name, account number and first active practice", async () => {
+  const out = await svc.listClients("L1", queuedDb([
+    [LIST],
+    [
+      { id: "c1", name: "Ana", email: "a@x.test", accountNumber: "10", position: 0, assignedAt: "t" },
+      { id: "c2", name: null, email: "b@x.test", accountNumber: null, position: 1, assignedAt: "t" },
+    ],
+    [{ userId: "c1", practice: "Ruiz Dental" }, { userId: "c1", practice: "Second" }],
+  ]));
+  assert.deepEqual(out.map((r) => [r.id, r.name, r.practice, r.accountNumber]), [
+    ["c1", "Ana", "Ruiz Dental", "10"],
+    ["c2", "b@x.test", null, null],
+  ]);
+});
+
+test("clients of an unknown list is NOT_FOUND", async () => {
+  assert.equal(await errCode(svc.listClients("zz", queuedDb([[]]))), "NOT_FOUND");
+});

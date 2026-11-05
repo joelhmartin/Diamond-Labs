@@ -21,6 +21,9 @@ function mount() {
   get.mockImplementation(async (path) => {
     if (path === "/admin/price-lists") return { data: { data: [{ id: "L1", name: "Gold", description: null, archivedAt: null, itemCount: 1, clientCount: 2, updatedAt: "2026-01-01" }] } };
     if (path === "/admin/price-lists/L1/items") return { data: { data: ITEMS } };
+    if (path === "/admin/price-lists/L1/clients") {
+      return { data: { data: [{ id: "c1", name: "Ana Ruiz", email: "ana@x.test", practice: "Ruiz Dental", accountNumber: "10", position: 0, assignedAt: "t" }] } };
+    }
     throw new Error(`unexpected GET ${path}`);
   });
   post.mockResolvedValue({ data: { data: { count: 2 } } });
@@ -58,4 +61,12 @@ test("adjust by percent shows a preview and sends rounded prices", async () => {
   fireEvent.click(await screen.findByRole("button", { name: "Click again to adjust 1 by -10%" }));
   await waitFor(() => assert.equal(post.mock.calls.length, 1));
   assert.deepEqual(post.mock.calls[0][1].items, [{ variantId: "v1", priceCents: 8100 }]);
+});
+
+test("the Clients on this list tab shows the assigned clients", async () => {
+  mount();
+  await screen.findByText("Crown");
+  fireEvent.click(screen.getByRole("tab", { name: "Clients on this list" }));
+  assert.ok(await screen.findByText("Ana Ruiz"));
+  assert.ok(screen.getByText("Ruiz Dental"));
 });

@@ -34,10 +34,11 @@ export function clientLabel(users, userId) {
 
 /**
  * One row per variant that has a client price or a list price. `overrides` are the client's own
- * rows, `effective` what the shop charges (client beats list), `listPrices` Map<variantId, cents>
- * from the first applying list, used to flag an override that matches the list ("Same as list").
+ * rows (each carries `listPriceCents`, what the client's lists alone would charge, from the server),
+ * `effective` what the shop charges (client beats list). An override equal to its list price is
+ * flagged "Same as list".
  */
-export function buildPriceRows({ prices, effective, listPrices }) {
+export function buildPriceRows({ prices, effective }) {
   const overrides = new Map(prices.map((p) => [p.variantId, p]));
   const eff = new Map(effective.map((e) => [e.variantId, e]));
   const ids = new Set([...overrides.keys(), ...eff.keys()]);
@@ -56,7 +57,7 @@ export function buildPriceRows({ prices, effective, listPrices }) {
       listName: e?.listName ?? null,
       override: o ?? null,
       unreviewed: Boolean(o) && !o.reviewedAt,
-      sameAsList: Boolean(o) && listPrices.get(variantId) === o.priceCents,
+      sameAsList: Boolean(o) && o.listPriceCents != null && o.listPriceCents === o.priceCents,
     };
   }).sort((a, b) => (a.familyName ?? "").localeCompare(b.familyName ?? "") || a.variantName.localeCompare(b.variantName));
 }
@@ -99,7 +100,7 @@ function columnsFor(removeOne) {
 
 /** Everything the page shows, fetched together and refreshed after any change. */
 function useClientPricing(userId) {
-  const [state, setState] = useState({ prices: [], effective: [], assigned: [], allLists: [], listPrices: new Map(), variants: [] });
+  const [state, setState] = useState({ prices: [], effective: [], assigned: [], allLists: [], variants: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -113,18 +114,11 @@ function useClientPricing(userId) {
         api.get("/admin/price-lists"),
       ]);
       const assigned = a.data.data;
-      // The first applying list that prices a variant is what an override is compared against.
-      const listPrices = new Map();
-      for (const l of assigned.filter((x) => !x.archivedAt)) {
-        const items = (await api.get(`/admin/price-lists/${l.listId}/items`)).data.data;
-        for (const it of items) if (it.listPriceCents != null && !listPrices.has(it.variantId)) listPrices.set(it.variantId, it.listPriceCents);
-      }
       setState({
         prices: p.data.data.prices,
         effective: p.data.data.effective ?? [],
         assigned,
         allLists: all.data.data,
-        listPrices,
         variants: c.data.data.families.flatMap((f) => f.variants.map((v) => ({ ...v, familyName: f.name }))),
       });
       setError(null);
@@ -153,7 +147,7 @@ export function AdminClientPricingPage() {
       .catch(() => setClient(null));
   }, [userId]);
 
-  const rows = useMemo(() => buildPriceRows(data), [data.prices, data.effective, data.listPrices]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rows = useMemo(() => buildPriceRows(data), [data.prices, data.effective]); // eslint-disable-line react-hooks/exhaustive-deps
   const unreviewed = useMemo(() => rows.filter((r) => r.unreviewed), [rows]);
   const filters = useMemo(() => [
     { id: "source", label: "Source", type: "select", placeholder: "All sources", options: [{ value: "client", label: "Client" }, { value: "list", label: "List" }], match: (r, v) => r.source === v },
