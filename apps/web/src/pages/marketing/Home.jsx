@@ -71,7 +71,7 @@ function Hero() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-500 opacity-75" />
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-brand-500" />
             </span>
-            OLMOS-METHOD CERTIFIED LAB
+            TMD & SLEEP ORTHOTIC LAB
           </span>
         </div>
 
@@ -88,8 +88,8 @@ function Hero() {
           data-hero-anim
           className="mt-6 text-on-dark/60 text-base md:text-lg max-w-lg leading-relaxed font-medium"
         >
-          The only orthotic lab built around the Olmos Series system. Digital
-          workflow. Clinical accuracy. Every appliance, every time.
+          The orthotic lab for TMD and sleep dentistry. Digital workflow.
+          Clinical accuracy. Every appliance, every time.
         </p>
 
         <div data-hero-anim className="mt-8 flex flex-wrap items-center gap-4">
@@ -159,7 +159,7 @@ function DiagnosticShuffler() {
 
   const cards = [
     {
-      label: "Olmos Protocol Assessment",
+      label: "Protocol Assessment",
       status: "Complete",
       color: "bg-brand-500",
     },
@@ -180,12 +180,11 @@ function DiagnosticShuffler() {
       <div className="flex items-center gap-2 mb-2">
         <Shield size={16} className="text-brand-500" />
         <h3 className="font-heading font-bold text-base tracking-tight">
-          Olmos-Method Expertise
+          Clinical Protocol Expertise
         </h3>
       </div>
       <p className="text-navy/50 text-sm mb-6">
-        The only lab built around the Olmos Series system. We understand the
-        clinical protocol, not just the fabrication.
+        We understand the clinical protocol, not just the fabrication.
       </p>
       <div className="relative flex-1" style={{ minHeight: "140px" }}>
         {order.map((idx, pos) => (
@@ -230,7 +229,7 @@ function TelemetryTypewriter() {
   const feedMessages = [
     "▸ Intraoral scan received — case #4012",
     "▸ CAD articulation parameters loaded",
-    "▸ Olmos-Method bite registration verified",
+    "▸ Bite registration verified",
     "▸ Material: Nylon PA12 — biocompatible",
     "▸ 3D print queue: position 2 of 8",
     "▸ Quality control: dimensional check passed",
@@ -628,7 +627,7 @@ function Philosophy() {
     { value: "100%", label: "Digital Workflow" },
     { value: "<2wk", label: "Turnaround" },
     { value: "FDA", label: "510(k) Cleared" },
-    { value: "50+", label: "Certified Labs" },
+    { value: "7", label: "Certified Labs" },
   ];
 
   return (
@@ -679,7 +678,7 @@ function Philosophy() {
           {/* Supporting text */}
           <div data-phil className="mt-10 md:mt-14 max-w-xl">
             <p className="text-on-dark/40 text-sm md:text-base font-medium leading-relaxed">
-              Every orthotic we fabricate follows the Olmos-Method protocol
+              Every orthotic we fabricate follows a documented clinical protocol
               — digitally designed, SLS-printed to sub-millimeter tolerance,
               and quality-checked before it leaves our lab.
             </p>
@@ -770,7 +769,7 @@ function Protocol() {
     {
       step: "02",
       title: "Design",
-      desc: "CAD articulation with Olmos-Method parameters. Every micron calculated, every occlusal surface mapped.",
+      desc: "CAD articulation to the parameters on your Rx. Every occlusal surface mapped.",
       Icon: PenTool,
       animation: <ScanningGrid />,
     },
