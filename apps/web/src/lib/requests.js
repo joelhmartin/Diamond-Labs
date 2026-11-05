@@ -63,3 +63,36 @@ export function openPdf(api, path, params) {
     return url;
   });
 }
+
+/** Save a Blob to the person's disk as `filename` (a temporary <a download>). */
+export function downloadBlob(filename, blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+/** The filename in a Content-Disposition header, or null. */
+export function dispositionFilename(header) {
+  const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(header || "");
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+/**
+ * Fetch a file from the API (`api` is config/api.js) through the signed-in
+ * client and save it. A failed request throws an Error carrying the server's
+ * message, read out of the blob body.
+ */
+export async function saveFile(api, path, params, fallbackName) {
+  let res;
+  try {
+    res = await api.get(path, { responseType: "blob", params });
+  } catch (err) {
+    throw new Error(await blobErrorText(err));
+  }
+  downloadBlob(dispositionFilename(res.headers?.["content-disposition"]) || fallbackName, res.data);
+}

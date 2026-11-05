@@ -39,6 +39,8 @@ import { AdminJobsPage } from "./pages/app/AdminJobsPage.jsx";
 import { AdminOrdersPage } from "./pages/app/AdminOrdersPage.jsx";
 import { AdminDepartmentsPage } from "./pages/app/AdminDepartmentsPage.jsx";
 import { ShipmentsPage } from "./pages/lab/ShipmentsPage.jsx";
+import { ReportsIndexPage } from "./modules/reports/ReportsIndexPage.jsx";
+import { ReportPage } from "./modules/reports/ReportPage.jsx";
 import { ShipmentLabelPrintPage } from "./pages/lab/ShipmentLabelPrintPage.jsx";
 import { MyCasesPage } from "./pages/doctor/MyCasesPage.jsx";
 import { AdminRxMappingPage } from "./pages/app/AdminRxMappingPage.jsx";
@@ -244,6 +246,8 @@ function AppRoutes() {
           <Route path="/admin/shipments" element={<ShipmentsPage />} />
           <Route path="/admin/rx-cases" element={<AdminRxCasesPage />} />
           <Route path="/admin/rx-cases/:id" element={<AdminRxCaseDetailPage />} />
+          <Route path="/reports" element={<ReportsIndexPage />} />
+          <Route path="/reports/:key" element={<ReportPage />} />
         </Route>
       </Route>
 

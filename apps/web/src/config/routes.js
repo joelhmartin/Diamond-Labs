@@ -37,6 +37,10 @@ export const ROUTES = {
   LAB_ORDER_DETAIL: "/lab/orders/:id",
   LAB_SHIPMENT_PRINT: "/lab/shipments/:id/print",
 
+  // Reports (admin + lab staff; each report narrows further by role)
+  REPORTS: "/reports",
+  REPORT: "/reports/:key",
+
   // Doctor
   DOCTOR_INVOICES: "/doctor/invoices",
   DOCTOR_INVOICE_DETAIL: "/doctor/invoices/:id",
@@ -59,6 +63,7 @@ export const labOrderPath = (id) => `/lab/orders/${id}`;
 export const doctorInvoicePath = (id) => `/doctor/invoices/${id}`;
 export const adminInvoicePath = (id) => `/admin/invoices/${id}`;
 export const shipmentPrintPath = (id) => `/lab/shipments/${id}/print`;
+export const reportPath = (key) => `/reports/${encodeURIComponent(key)}`;
 
 /**
  * Given the current user, return the URL that should serve as their "home"

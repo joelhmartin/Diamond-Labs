@@ -19,6 +19,7 @@ import {
   Building2,
   Landmark,
   Truck,
+  BarChart3,
 } from "lucide-react";
 import { brand } from "../../config/brand.js";
 import { isStaffRole } from "@my-app/shared";
@@ -37,6 +38,7 @@ const staffItems = [
   { label: "Production", to: ROUTES.LAB_BOARD,      icon: LayoutGrid },
   { label: "Rx Cases",   to: ROUTES.ADMIN_RX_CASES, icon: ClipboardCheck },
   { label: "Shipments",  to: ROUTES.ADMIN_SHIPMENTS, icon: Truck },
+  { label: "Reports",    to: ROUTES.REPORTS,         icon: BarChart3 },
 ];
 
 const adminItems = [
