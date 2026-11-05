@@ -72,6 +72,13 @@ test("GET /lab/deliveries answers an impossible calendar date with 422 before an
   assert.equal(status, null, "a real date passes to the handler (the span rule is deliveryRange's)");
 });
 
+test("a doctor reads one pickup by id through the party-scoped getPickup (no audit)", () => {
+  const body = handlerSource(source, 'fastify.get("/pickups/:id",');
+  assert.match(body, /preHandler: \[authenticate, requireApprovedDoctor\]/);
+  assert.match(body, /pickupsService\.getPickup\(request\.params\.id, request\.user\)/);
+  assert.doesNotMatch(body, /audit\(|STAFF/);
+});
+
 test("the routes are registered under /api/v1", () => {
   assert.match(index, /routes\/pickups\.routes\.js.*\{ prefix: "\/api\/v1" \}/);
 });

@@ -25,6 +25,10 @@ export default async function pickupsRoutes(fastify) {
   fastify.get("/pickups", { preHandler: [authenticate, requireApprovedDoctor, validateQuery(pickupListQuerySchema)] }, (request, reply) =>
     run(reply, () => pickupsService.listPickups(request.user, request.query)));
 
+  // One of the practice's pickups (a notification's ?pickup= link); another practice's is 404.
+  fastify.get("/pickups/:id", { preHandler: [authenticate, requireApprovedDoctor] }, (request, reply) =>
+    run(reply, () => pickupsService.getPickup(request.params.id, request.user)));
+
   fastify.post("/pickups", { preHandler: [authenticate, requireApprovedDoctor, validate(pickupRequestSchema)] }, (request, reply) =>
     run(reply, async () => {
       const p = await pickupsService.requestPickup(request.user, request.body);

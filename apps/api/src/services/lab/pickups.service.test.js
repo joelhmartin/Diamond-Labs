@@ -231,6 +231,13 @@ test("staff status=open filters requested + scheduled in one query", async () =>
   assert.deepEqual(calls[0].params.slice(0, 2), ["requested", "scheduled"]);
 });
 
+test("a doctor's getPickup is scoped to their party keys AND the id", async () => {
+  const { db, calls } = queueDb([]);
+  await assert.rejects(svc.getPickup("p9", d1, { database: db }), (e) => e instanceof PickupError && e.code === "NOT_FOUND");
+  assert.match(calls[0].sql, /"party_key" in \(\$1, \$2\) and "pickups"."id" = \$3/);
+  assert.deepEqual(calls[0].params.slice(0, 3), ["user:d1", "practice:P1", "p9"]);
+});
+
 test("getPickup returns the staff row, or NOT_FOUND", async () => {
   const found = await svc.getPickup("p1", staff, { database: fakeTx({ selects: [[{ ...row(), clientName: "Dr. Ada" }]] }) });
   assert.equal(found.id, "p1");

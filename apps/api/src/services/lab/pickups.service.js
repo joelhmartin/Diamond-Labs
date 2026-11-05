@@ -181,6 +181,7 @@ function staffConditions({ id, status, from, to, assigneeUserId, q }) {
 export async function listPickups(user, filters = {}, { database = db } = {}) {
   const staff = isStaff(user);
   const conds = staff ? staffConditions(filters) : [inArray(pickups.partyKey, partyKeysFor(user))];
+  if (!staff && filters.id) conds.push(eq(pickups.id, filters.id));
   if (!staff && filters.status) conds.push(eq(pickups.status, filters.status));
   const where = conds.length ? and(...conds) : undefined;
   const joined = (q) => (staff
@@ -227,7 +228,7 @@ export async function searchPickupClients(q, { database = db } = {}) {
   return rows.map((r) => ({ id: r.id, label: r.companyName ? `${r.companyName} (${r.name})` : r.name }));
 }
 
-/** One pickup in the lab list's row shape (staff), or NOT_FOUND. */
+/** One pickup in the caller's list row shape (a doctor only sees their party's), or NOT_FOUND. */
 export async function getPickup(id, user, { database = db } = {}) {
   const { rows } = await listPickups(user, { id }, { database });
   if (!rows[0]) throw notFound();
