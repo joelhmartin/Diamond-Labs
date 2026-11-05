@@ -222,7 +222,7 @@ Scheduling seeds a default calendar and eight starter workflows (migration 0036)
 
 Notes: imported Seazona orders keep their existing due date and have no stage plan. With no default workflow and no product assignment, a newly released order gets a due date 13 business days out (the calendar lead time).
 
-### Re-enter what Seazona never exposed (messaging, pickups, alerts, delivery method)
+## 6c. Re-enter what Seazona never exposed (before unfreeze)
 
 Seazona's API exposes no messages, pickups, notification settings or delivery method, so the load brought none and `delivery_method` starts null on legacy orders. Re-entry is by case number; do not paste patient names or free text from Labzona into the new app or into this runbook.
 

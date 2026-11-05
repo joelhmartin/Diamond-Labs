@@ -17,6 +17,7 @@ function* sourceFiles(dir) {
   }
 }
 
+// Limitation: this only catches string-literal event keys (a key built at runtime is invisible to it).
 // Emitters: files that call notify( and pass an `event: "<dotted.key>"` literal
 // (inline, or in a helper that builds the notify() arguments). The seam and the
 // notifications module itself are not emitters.
