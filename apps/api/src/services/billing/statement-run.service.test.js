@@ -75,7 +75,7 @@ test("planStatementRun: already sent, no activity and no email are skipped with 
   ] });
   assert.deepEqual(plan.send, ["a"]);
   assert.deepEqual(plan.skip, [
-    { id: "b", reason: "already_sent" }, { id: "c", reason: "no_activity" }, { id: "d", reason: "no_email" }, { id: "e", reason: "already_sent" },
+    { id: "b", reason: "already_sent" }, { id: "c", reason: "no_activity" }, { id: "d", reason: "no_email" }, { id: "e", reason: "unconfirmed" },
   ]);
   assert.deepEqual(svc.planStatementRun({ candidates: [{ clientUserId: "a", email: "a@x", activityCount: 1, closingCents: 0 }, { clientUserId: "z", email: "z@x", activityCount: 1, closingCents: 0 }], onlyIds: ["z"] }).send, ["z"]);
 });
@@ -175,6 +175,28 @@ test("the single action re-sends explicitly and overwrites sent_at", async () =>
   const row = store.rows.get(`d1|${MONTH}`);
   assert.ok(row.sentAt > before);
   assert.equal(row.runId, null);
+});
+
+test("a row left sending with no sent_at is planned unconfirmed and never re-taken by the bulk run", async () => {
+  const store = memoryStore();
+  store.rows.set(`d1|${MONTH}`, { id: "s0", clientUserId: "d1", month: MONTH, closingCents: 5000, status: "sending", sentAt: null });
+  const rows = await svc.previewStatementRun(MONTH, fakeTx({ selects: previewSelects() }), { store });
+  assert.equal(rows.find((r) => r.clientUserId === "d1").planned, "unconfirmed");
+  const { out, send } = await run(store);
+  assert.deepEqual(send.mock.calls.map((c) => c[0].to), ["d2@x.test"]);
+  assert.equal(out.skippedBy.unconfirmed, 1);
+  assert.equal(store.rows.get(`d1|${MONTH}`).status, "sending", "left for staff to resolve with the single send");
+  // A delivered month is still "already sent" even while a re-send is in flight.
+  store.rows.set(`d1|${MONTH}`, { id: "s0", clientUserId: "d1", month: MONTH, closingCents: 5000, status: "sending", sentAt: new Date() });
+  const again = await svc.previewStatementRun(MONTH, fakeTx({ selects: previewSelects() }), { store });
+  assert.equal(again.find((r) => r.clientUserId === "d1").planned, "already_sent");
+});
+
+test("openMonth: the current lab month and later are still open; earlier months are closed", () => {
+  const now = new Date("2026-11-01T03:00:00Z"); // still October 31 in the lab's timezone
+  assert.equal(svc.openMonth("2026-10", now), true);
+  assert.equal(svc.openMonth("2026-12", now), true);
+  assert.equal(svc.openMonth("2026-09", now), false);
 });
 
 test("previousLabMonth is the lab-local month before", () => {

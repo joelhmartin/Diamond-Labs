@@ -105,12 +105,13 @@ test("the emailed statement notice covers the practice, like the doctor's own do
 
 const runRoutes = read("../statement-run.routes.js");
 
-test("the monthly statement run is admin-only, validated, capped at the current lab month and registered", () => {
+test("the monthly statement run is admin-only, validated, limited to closed months and registered", () => {
   const get = handlerSource(runRoutes, 'fastify.get("/admin/statements/run",');
   const post = handlerSource(runRoutes, 'fastify.post("/admin/statements/run",');
   assert.match(get, /preHandler: \[\.\.\.ADMIN, validateQuery\(statementQuerySchema\)\]/);
   assert.match(post, /preHandler: \[\.\.\.ADMIN, validate\(statementRunSchema\)\]/);
-  for (const body of [get, post]) assert.match(body, /futureMonth\(/);
+  for (const body of [get, post]) assert.match(body, /if \(openMonth\(request\.(query|body)\.month\)\) return openMonthReply\(reply\)/);
+  assert.match(runRoutes, /ERROR_CODES\.STATEMENT_MONTH_OPEN/);
   assert.match(post, /runStatements\(\{ month: request\.body\.month, clientUserIds: request\.body\.clientUserIds, byUserId: request\.user\.id/);
   assert.match(index, /await fastify\.register\(statementRunRoutes, \{ prefix: "\/api\/v1" \}\)/);
 });

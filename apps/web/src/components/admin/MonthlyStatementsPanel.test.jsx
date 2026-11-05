@@ -21,6 +21,7 @@ const ROWS = [
   row("a"), row("b", { closingCents: 0 }),
   row("c", { alreadySentAt: "2026-11-01T15:00:00Z", planned: "already_sent" }),
   row("d", { email: null, planned: "no_email" }),
+  row("e", { planned: "unconfirmed" }),
 ];
 
 function mount() {
@@ -34,6 +35,21 @@ test("the preview loads last month by default", async () => {
   const lastMonth = recentMonths(labToday(), 2)[1].value;
   assert.deepEqual(get.mock.calls[0], ["/admin/statements/run", { params: { month: lastMonth } }]);
   assert.ok(screen.getByText("No email"));
+});
+
+test("the month picker offers closed months only (the run refuses the current month)", async () => {
+  mount();
+  await screen.findByText("Practice a");
+  const values = [...screen.getByRole("combobox", { name: /month/i }).querySelectorAll("option")].map((o) => o.value);
+  const [current, last] = recentMonths(labToday(), 2).map((m) => m.value);
+  assert.ok(!values.includes(current), "the current month is not offered");
+  assert.equal(values[0], last);
+  assert.equal(values.length, 12);
+});
+
+test("a send that was never confirmed says so and points to the single send", async () => {
+  mount();
+  assert.ok(await screen.findByText("Unconfirmed — check and use Email statement"));
 });
 
 test("the panel's Send button needs two clicks and names the count", async () => {

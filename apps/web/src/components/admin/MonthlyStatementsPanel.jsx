@@ -14,6 +14,8 @@ const clientName = (r) => r.practice || r.name || "—";
 const PLANNED = {
   send: { label: "Will send", tone: "bg-brand-500/10 text-brand-700" },
   already_sent: { label: "Already sent", tone: "bg-surface-100 text-navy/50" },
+  // Claimed and never settled: the email may or may not have gone out. The run never retries it.
+  unconfirmed: { label: "Unconfirmed — check and use Email statement", tone: "bg-amber-500/10 text-amber-700" },
   no_email: { label: "Missing email", tone: "bg-amber-500/10 text-amber-700" },
   no_activity: { label: "Nothing to send", tone: "bg-surface-100 text-navy/50" },
 };
@@ -54,8 +56,8 @@ const resultText = ({ sent = 0, failed = 0, skipped = 0 }) => `${sent} sent${fai
  */
 export function MonthlyStatementsPanel({ onClose }) {
   const { addToast } = useToast();
-  const months = recentMonths(labToday(), 13); // this month back a year; months ahead are refused
-  const [month, setMonth] = useState(months[1].value);
+  const months = recentMonths(labToday(), 13).slice(1); // last month back a year; the run refuses the current month
+  const [month, setMonth] = useState(months[0].value);
   const [rows, setRows] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);

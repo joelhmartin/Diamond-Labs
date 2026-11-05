@@ -76,15 +76,21 @@ export function previousLabMonth(now = new Date()) {
   return new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 7);
 }
 
-/** True when `month` is after the lab's current month (a statement for the future). */
-export function futureMonth(month, now = new Date()) {
-  return month > isoDateIn(LAB_TIMEZONE, now).slice(0, 7);
+/**
+ * True when `month` is the lab's current month or later: not closed yet, so the
+ * bulk run refuses it (a mid-month notice would freeze a partial statement as
+ * "sent" and the real one would never go out). The single send is not limited.
+ */
+export function openMonth(month, now = new Date()) {
+  return month >= isoDateIn(LAB_TIMEZONE, now).slice(0, 7);
 }
 
 /**
- * Who gets a notice. Pure. Order of reasons: already sent (or being sent by
- * another run), nothing to say (no activity and a zero closing), no address.
- * @returns {{ send: string[], skip: { id: string, reason: "already_sent"|"no_activity"|"no_email" }[] }}
+ * Who gets a notice. Pure. Order of reasons: already sent (delivered at least
+ * once), unconfirmed (claimed "sending" and never settled: the email may have
+ * gone out before a crash, so staff check and use the single send; the bulk run
+ * never re-takes it), nothing to say (no activity and a zero closing), no address.
+ * @returns {{ send: string[], skip: { id: string, reason: "already_sent"|"unconfirmed"|"no_activity"|"no_email" }[] }}
  */
 export function planStatementRun({ candidates, onlyIds }) {
   const only = onlyIds ? new Set(onlyIds) : null;
@@ -93,12 +99,24 @@ export function planStatementRun({ candidates, onlyIds }) {
   for (const c of candidates) {
     if (only && !only.has(c.clientUserId)) continue;
     const id = c.clientUserId;
-    if (c.alreadySentAt || c.sendStatus === "sending") skip.push({ id, reason: "already_sent" });
+    if (c.alreadySentAt) skip.push({ id, reason: "already_sent" });
+    else if (c.sendStatus === "sending") skip.push({ id, reason: "unconfirmed" });
     else if (!c.activityCount && !c.closingCents) skip.push({ id, reason: "no_activity" });
     else if (!c.email) skip.push({ id, reason: "no_email" });
     else send.push(id);
   }
   return { send, skip };
+}
+
+/** items → Map(key → [value]), appending in place. */
+function groupBy(items, keyOf, valueOf = (x) => x) {
+  const out = new Map();
+  for (const item of items) {
+    const k = keyOf(item);
+    if (!out.has(k)) out.set(k, []);
+    out.get(k).push(valueOf(item));
+  }
+  return out;
 }
 
 /** A practice is every doctor sharing a non-null seazonaClientId (the rule practiceUserIds applies), else the user alone. */
@@ -110,12 +128,9 @@ const practiceKey = (d) => (d.seazonaClientId ? `p:${d.seazonaClientId}` : `u:${
  * Candidates are approved doctors with activity in the month or a non-zero closing.
  */
 export function buildStatementCandidates({ doctors, activity, sends, month, generatedAt = new Date() }) {
-  const practices = new Map();
-  for (const d of doctors) practices.set(practiceKey(d), [...(practices.get(practiceKey(d)) ?? []), d.id]);
-  const invoicesBy = new Map();
-  for (const inv of activity.invoices) invoicesBy.set(inv.clientUserId, [...(invoicesBy.get(inv.clientUserId) ?? []), inv]);
-  const paymentsBy = new Map();
-  for (const p of activity.payments) paymentsBy.set(p.invoiceId, [...(paymentsBy.get(p.invoiceId) ?? []), p]);
+  const practices = groupBy(doctors, practiceKey, (d) => d.id);
+  const invoicesBy = groupBy(activity.invoices, (inv) => inv.clientUserId);
+  const paymentsBy = groupBy(activity.payments, (p) => p.invoiceId);
   const sendBy = new Map(sends.map((s) => [s.clientUserId, s]));
 
   const rows = [];
