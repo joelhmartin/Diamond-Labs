@@ -1,5 +1,7 @@
 # record-files
 
+## Purpose
+
 Private file attachments on any `(recordType, recordId)`, stored in the app's
 private bucket and served only through short-lived signed links. The module
 knows nothing about what the records are: record types are plain strings the

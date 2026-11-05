@@ -37,14 +37,16 @@ export function catalogLines(inputLines = [], variantsById) {
 
 /**
  * A staff entry → { labOrder, lines, event }. `dueDate` is already resolved
- * (the request's, or the scheduling default from lab-scheduling.js).
+ * (the request's, or the scheduling default from lab-scheduling.js). It may be
+ * null: with no workflow, no calendar lead time and no requested date there is
+ * nothing to compute, and the order is entered without one (as other sources are).
  */
 export function planStaffOrder({ input, variantsById, orderNumber, labOrderId, byUserId = null, now, dueDate }) {
   if (!input.clientUserId) throw new LabOrderError("INVALID", "Pick a practice.");
   const patientName = typeof input.patientName === "string" ? input.patientName.trim() : "";
   if (!patientName) throw new LabOrderError("INVALID", "Enter the patient's name.");
   if (patientName.length > LAB_PATIENT_NAME_MAX) throw new LabOrderError("INVALID", `Patient names are limited to ${LAB_PATIENT_NAME_MAX} characters.`);
-  if (!parseDueDate(dueDate)) throw new LabOrderError("INVALID", "Due date must be a real date (YYYY-MM-DD).");
+  if (dueDate != null && !parseDueDate(dueDate)) throw new LabOrderError("INVALID", "Due date must be a real date (YYYY-MM-DD).");
 
   const labOrder = {
     ...newOrder({ labOrderId, orderNumber, source: "staff", sourceId: labOrderId, clientUserId: input.clientUserId, now }),

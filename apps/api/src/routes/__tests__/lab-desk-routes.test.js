@@ -9,7 +9,6 @@ const desk = read("../lab-desk.routes.js");
 
 const NEW_ROUTES = [
   'fastify.post("/lab/orders",',
-  'fastify.get("/lab/orders/default-due",',
   'fastify.post("/lab/orders/price-preview",',
   'fastify.post("/lab/orders/:id/lines",',
   'fastify.get("/lab/practices",',
@@ -32,8 +31,12 @@ test("writes validate their body with the shared schemas and are audited with id
   assert.match(handlerSource(desk, 'fastify.post("/lab/orders/price-preview",'), /validate\(labPricePreviewSchema\)/);
 });
 
-test("the due default comes from the scheduling seam", () => {
-  assert.match(handlerSource(desk, 'fastify.get("/lab/orders/default-due",'), /defaultDueAt\(db, \{\}\)/);
+test("one due-date read path: the New order page uses piece 7's preview, the desk has no default-due route", () => {
+  assert.doesNotMatch(desk, /default-due/);
+});
+
+test("a scheduling refusal during staff entry is a reply, never a 500", () => {
+  assert.match(desk, /deskErrorReply = \(err\) => labRouteErrorReply\(err\) \?\? workflowErrorReply\(err\)/);
 });
 
 test("invoice and tag refusals map to replies (an issued draft is a 422, never a 500)", () => {

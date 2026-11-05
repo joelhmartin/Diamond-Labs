@@ -9,9 +9,9 @@ import { validate, validateQuery } from "../middleware/validate.js";
 import { barcodeLookupRoutes } from "../modules/barcode-lookup/index.js";
 import { recordFileRoutes } from "../modules/record-files/index.js";
 import { recordTagRoutes, tagErrorReply } from "../modules/record-tags/index.js";
+import { workflowErrorReply } from "../modules/workflows/routes.js";
 import { labLookups } from "../services/lab/lab-lookups.js";
 import { LAB_ORDER_RECORD_TYPE, labOrderIdsThatExist, onLabOrderTagsChanged } from "../services/lab/lab-tags.js";
-import { defaultDueAt } from "../services/lab/lab-scheduling.js";
 import { listFamilies } from "../services/catalog.service.js";
 import * as staffOrders from "../services/lab/staff-orders.service.js";
 import { changeLines } from "../services/lab/lab-order-lines.service.js";
@@ -27,8 +27,12 @@ import { run, audit, labRouteErrorReply } from "./lab-route-helpers.js";
  * Lab staff and admins only (same guard as every lab route).
  */
 
-/** Staff entry and line edits touch the order, its draft invoice and its labels: each refusal maps to its reply. */
-const deskErrorReply = (err) => labRouteErrorReply(err) ?? invoiceErrorReply(err) ?? tagErrorReply(err);
+/**
+ * Staff entry and line edits touch the order, its schedule (due date + stage plan), its draft
+ * invoice and its labels: each refusal maps to its reply. The due-date dry run for the New order
+ * page is piece 7's GET /lab/schedule/preview (lab-scheduling.routes.js), not a route here.
+ */
+const deskErrorReply = (err) => labRouteErrorReply(err) ?? workflowErrorReply(err) ?? invoiceErrorReply(err) ?? tagErrorReply(err);
 
 const ADMIN = [authenticate, requireAdmin];
 
@@ -76,11 +80,6 @@ export default async function labDeskRoutes(fastify) {
         })),
       },
     };
-  });
-
-  fastify.get("/lab/orders/default-due", { preHandler: STAFF }, async () => {
-    const { dueDate } = await defaultDueAt(db, {});
-    return { data: { dueDate } };
   });
 
   fastify.post("/lab/orders/price-preview", { preHandler: [...STAFF, validate(labPricePreviewSchema)] }, (request, reply) =>

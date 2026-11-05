@@ -47,7 +47,7 @@ test("an unknown product is refused, and quantities stay in 1–99", () => {
 test("missing due uses the scheduling default (the resolved date is what the plan stores)", () => {
   assert.equal(plan().labOrder.dueDate, "2026-11-19");
   assert.throws(() => plan({}, { dueDate: "2026-02-30" }), isInvalid);
-  assert.throws(() => plan({}, { dueDate: null }), isInvalid);
+  assert.equal(plan({}, { dueDate: null }).labOrder.dueDate, null, "scheduling may have nothing to compute");
 });
 
 test("patientName is required and trimmed", () => {

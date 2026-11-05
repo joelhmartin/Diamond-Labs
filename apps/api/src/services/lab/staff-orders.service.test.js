@@ -1,9 +1,17 @@
-import { test } from "vitest";
+import { beforeEach, test, vi } from "vitest";
 import assert from "node:assert/strict";
 
 process.env.PHI_ENCRYPTION_KEY ??= "a".repeat(64);
+// Scheduling has its own tests (lab-scheduling.test.js); here only the seam is pinned.
+const sched = vi.hoisted(() => ({ defaultDueAt: vi.fn(), saveSchedule: vi.fn() }));
+vi.mock("./lab-scheduling.js", () => sched);
+const SCHEDULED = { dueDate: "2026-11-19", plan: { workflowKey: "10d-printed", dueAt: "2026-11-19", stages: [] } };
+beforeEach(() => {
+  sched.defaultDueAt.mockReset().mockImplementation(async (_tx, { requestedDueDate }) => (
+    requestedDueDate ? { ...SCHEDULED, dueDate: requestedDueDate } : SCHEDULED));
+  sched.saveSchedule.mockReset().mockResolvedValue(undefined);
+});
 const { createStaffOrder, previewPrices } = await import("./staff-orders.service.js");
-const { defaultDueAt } = await import("./lab-scheduling.js");
 const { LabOrderError } = await import("./lab-order-rules.js");
 const { decryptField } = await import("../../lib/crypto.js");
 const { fakeTx, fakeDb } = await import("../../test/fake-tx.js");
@@ -31,9 +39,19 @@ test("quick entry: one transaction writes the order (patient sealed), its event 
   assert.deepEqual([order.source, order.sourceId, order.clientUserId], ["staff", out.labOrder.id, "doc1"]);
   assert.notEqual(order.patientName, "Jane Roe", "patient name sealed at rest");
   assert.equal(decryptField(order.patientName), "Jane Roe");
-  assert.equal(order.dueDate, (await defaultDueAt(null, {})).dueDate);
+  assert.equal(order.dueDate, "2026-11-19");
+  const [, args] = sched.defaultDueAt.mock.calls[0];
+  assert.deepEqual([args.variantIds, args.requestedDueDate, args.rush], [[], undefined, false]);
+  assert.deepEqual(sched.saveSchedule.mock.calls[0].slice(1), [out.labOrder.id, SCHEDULED.plan]);
   assert.equal(event.type, "release");
   assert.deepEqual([invoice.status, invoice.labOrderId, invoice.totalCents], ["draft", out.labOrder.id, 0]);
+});
+
+test("scheduling with nothing to compute enters the order without a due date", async () => {
+  sched.defaultDueAt.mockResolvedValueOnce({ dueDate: null, plan: null });
+  const tx = fakeTx({ selects: [doctor, [{ max: 100049 }], [{ max: 500010 }]] });
+  await createStaffOrder({ input: quick, byUserId: "staff1" }, fakeDb(tx));
+  assert.equal(inserts(tx)[0].dueDate, null);
 });
 
 test("a requested due date is kept", async () => {
@@ -69,6 +87,7 @@ test("lines come from the catalog and are priced for the client", async () => {
   const v1 = { id: "v1", code: "2608", name: "DDSO Nylon", basePriceCents: 45000, taxable: false };
   const tx = fakeTx({ selects: [doctor, [v1], [{ max: 100049 }], [v1], [{ variantId: "v1", priceCents: 40500 }], [{ max: 500010 }]] });
   await createStaffOrder({ input: { ...quick, lines: [{ variantId: "v1", qty: 2, name: "nope" }] }, byUserId: "staff1" }, fakeDb(tx));
+  assert.deepEqual(sched.defaultDueAt.mock.calls[0][1].variantIds, ["v1"], "the workflow is picked from the ordered variants");
   const [, benchLines, , invoice, invoiceLines] = inserts(tx);
   assert.deepEqual(benchLines.map((l) => [l.name, l.code, l.qty]), [["DDSO Nylon", "2608", 2]]);
   assert.equal(invoice.totalCents, 81000);

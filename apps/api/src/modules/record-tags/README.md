@@ -1,5 +1,7 @@
 # record-tags
 
+## Purpose
+
 Colored labels (admin-managed vocabulary) and per-user stars on any
 `(recordType, recordId)`. The module knows nothing about what the records are:
 record types are plain strings the host app passes in, and the host supplies

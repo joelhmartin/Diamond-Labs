@@ -64,6 +64,8 @@ export function NewLabOrderPage() {
   const [clientUserId, setClientUserId] = useState("");
   const [patientName, setPatientName] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [dueTouched, setDueTouched] = useState(false); // a typed date wins over the scheduled one
+  const [workflowName, setWorkflowName] = useState(null);
   const [pan, setPan] = useState("");
   const [notes, setNotes] = useState("");
   const [rush, setRush] = useState(false);
@@ -78,12 +80,22 @@ export function NewLabOrderPage() {
   const previewFailed = useRef(false); // toast a failed price preview once per failure streak
   const full = mode === "full";
 
-  // The due date starts at the lab's default lead time; typing over it wins.
+  // Until staff type a date, the due date follows the scheduling rules for the chosen lines and
+  // rush (a dry run: GET /lab/schedule/preview writes nothing). Typing over it wins.
+  const variantKey = useMemo(() => (full ? [...new Set(lines.map((l) => l.variantId))].join(",") : ""), [full, lines]);
+  const rushOn = full && rush;
   useEffect(() => {
+    if (dueTouched) return undefined;
     let live = true;
-    api.get("/lab/orders/default-due").then((res) => { if (live) setDueDate((d) => d || res.data.data.dueDate || ""); }).catch(() => {});
+    api.get("/lab/schedule/preview", { params: { variantIds: variantKey || undefined, rush: rushOn ? "true" : undefined } })
+      .then((res) => {
+        if (!live) return;
+        setDueDate(res.data.data.dueDate || "");
+        setWorkflowName(res.data.data.plan?.workflowName ?? null);
+      })
+      .catch(() => {});
     return () => { live = false; };
-  }, []);
+  }, [dueTouched, variantKey, rushOn]);
 
   useEffect(() => {
     if (!full || tags.length) return undefined;
@@ -129,7 +141,8 @@ export function NewLabOrderPage() {
   const body = () => ({
     clientUserId,
     patientName: patientName.trim(),
-    dueDate: dueDate || undefined,
+    // An untouched date is the scheduled one: let the server plan it forward rather than in reverse from it.
+    ...(dueTouched && dueDate ? { dueDate } : {}),
     pan: pan.trim() || null,
     notes: notes.trim() || null,
     ...(full ? {
@@ -189,7 +202,11 @@ export function NewLabOrderPage() {
             </Field>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Due date">
-                <input type="date" aria-label="Due date" className={INPUT} disabled={busy} value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+                <input
+                  type="date" aria-label="Due date" className={INPUT} disabled={busy} value={dueDate}
+                  onChange={(e) => { setDueTouched(true); setDueDate(e.target.value); }}
+                />
+                {!dueTouched && workflowName && <span className="mt-1 block text-[11px] text-navy/40">Scheduled by {workflowName}</span>}
               </Field>
               <Field label="Pan number">
                 <input aria-label="Pan number" className={INPUT} maxLength={LAB_PAN_MAX} disabled={busy} value={pan} onChange={(e) => setPan(e.target.value)} />

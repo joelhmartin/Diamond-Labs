@@ -40,9 +40,8 @@ const mainItems = [
 const staffItems = [
   { label: "Production", to: ROUTES.LAB_BOARD,      icon: LayoutGrid },
   { label: "Calendar",   to: ROUTES.LAB_CALENDAR,   icon: CalendarDays },
+  { label: "New order",  to: ROUTES.LAB_ORDER_NEW,  icon: FilePlus },
   { label: "Rx Cases",   to: ROUTES.ADMIN_RX_CASES, icon: ClipboardCheck },
-  { label: "New order",  to: ROUTES.LAB_ORDER_NEW, icon: FilePlus },
-  { label: "Rx Cases",  to: ROUTES.ADMIN_RX_CASES, icon: ClipboardCheck },
   { label: "Shipments",  to: ROUTES.ADMIN_SHIPMENTS, icon: Truck },
 ];
 
