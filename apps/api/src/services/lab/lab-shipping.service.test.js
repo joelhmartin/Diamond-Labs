@@ -126,8 +126,7 @@ test("markShipmentShipped emits lab.order_shipped once for the claimant only: ev
   assert.deepEqual(notified[0].args, {
     event: "lab.order_shipped", recordType: "shipment", recordId: "sh1", audience: { userIds: ["doc1"] },
     data: {
-      orderNumbers: [100245, 100246], shopOrderNumber: null, carrier: "UPS", trackingNumber: "1Z999AA10123456784",
-      trackingUrl: "https://www.ups.com/track?loc=en_US&tracknum=1Z999AA10123456784",
+      orderNumbers: [100245, 100246], moreOrders: 0, shopOrderNumber: null, carrier: "UPS", carrierCode: "ups", trackingNumber: "1Z999AA10123456784",
     },
   });
 });

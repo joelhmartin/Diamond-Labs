@@ -1,4 +1,4 @@
-import { carrierName, trackingUrl } from "@my-app/shared";
+import { shippedNoticeData } from "./lab-notifications.js";
 import { db } from "../../config/database.js";
 import { env } from "../../config/env.js";
 import { labIdentity } from "../../config/lab-identity.js";
@@ -207,10 +207,8 @@ async function notifyShipped(shipment, d) {
     recordType: "shipment",
     recordId: shipment.id,
     audience: to.userId ? { userIds: [to.userId] } : { addresses: { email: [to.email] } },
-    data: {
-      orderNumbers: boxed.map((o) => o.orderNumber), shopOrderNumber: to.shopOrderNumber ?? null, carrier: carrierName(shipment),
-      trackingNumber: shipment.trackingNumber, trackingUrl: trackingUrl(shipment.carrier, shipment.trackingNumber),
-    },
+    // Bounded so the data guard can never drop the shipped email (shippedNoticeData).
+    data: shippedNoticeData({ shipment, orderNumbers: boxed.map((o) => o.orderNumber), shopOrderNumber: to.shopOrderNumber }),
   });
 }
 

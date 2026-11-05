@@ -7,8 +7,8 @@ vi.mock("../email.service.js", () => ({
   sendShippedNotice: vi.fn(async (args, opts) => { shipped.push({ args, opts }); return { ok: true, reason: null }; }),
 }));
 
-const { clearEvents, listEvents, getEvent } = await import("../../modules/notifications/index.js");
-const { registerLabNotificationEvents, resolveLabAudience, labKindOf, LAB_EVENT_KEYS } = await import("./lab-notifications.js");
+const { clearEvents, listEvents, getEvent, createNotifier, createFakeStore, assertSafeData } = await import("../../modules/notifications/index.js");
+const { registerLabNotificationEvents, resolveLabAudience, labKindOf, LAB_EVENT_KEYS, shippedNoticeData } = await import("./lab-notifications.js");
 
 beforeEach(() => {
   clearEvents();
@@ -120,11 +120,16 @@ test("resolveLabAudience: staff kind returns admin+lab active users only; practi
 test("order_shipped email.send calls sendShippedNotice with orderNumbers and tracking", async () => {
   registerLabNotificationEvents();
   const send = getEvent("lab.order_shipped").email.send;
-  const data = { orderNumbers: [100245, 100246], shopOrderNumber: null, carrier: "UPS", trackingNumber: "1Z1", trackingUrl: "https://ups.test/1Z1" };
+  // The tracking link is derived from the carrier code and number, never carried in data.
+  const data = shippedNoticeData({ shipment: { carrier: "ups", trackingNumber: "1Z999AA10123456784" }, orderNumbers: [100245, 100246], shopOrderNumber: null });
+  assert.equal("trackingUrl" in data, false);
   const r = await send({ id: "d1", email: "dr@x.com", kind: "client" }, data);
   assert.deepEqual(r, { ok: true, reason: null }, "the detailed result passes through");
   assert.deepEqual(shipped[0], {
-    args: { to: "dr@x.com", orderNumbers: [100245, 100246], carrier: "UPS", trackingNumber: "1Z1", trackingUrl: "https://ups.test/1Z1" },
+    args: {
+      to: "dr@x.com", orderNumbers: [100245, 100246], carrier: "UPS", trackingNumber: "1Z999AA10123456784",
+      trackingUrl: "https://www.ups.com/track?loc=en_US&tracknum=1Z999AA10123456784",
+    },
     opts: { detailed: true },
   });
   await send({ id: null, email: "guest@x.com", kind: null }, { ...data, orderNumbers: [100300], shopOrderNumber: "DOL-12345678" });
@@ -136,4 +141,47 @@ test("order_shipped email.send calls sendShippedNotice with orderNumbers and tra
   registerLabNotificationEvents({ shippedEmailEnabled: () => false });
   assert.deepEqual(await getEvent("lab.order_shipped").email.send({ email: "dr@x.com" }, data), { ok: false, reason: "unconfigured" });
   assert.equal(shipped.length, 2);
+});
+
+// The shipped email used to go whatever the input; the data guard must never drop it now.
+async function shipThroughNotifier(data, deps) {
+  clearEvents();
+  registerLabNotificationEvents(deps);
+  const logs = [];
+  const notifier = createNotifier({
+    store: createFakeStore(), random: () => 0.5,
+    resolveAudience: async (_db, a) => (a.userIds ?? []).map((id) => ({ id, email: "dr@x.com", kind: "client" })),
+    log: { info: () => {}, warn: (m) => logs.push(m), error: (m) => logs.push(m) },
+  });
+  const counts = await notifier.notify(null, { event: "lab.order_shipped", recordType: "shipment", recordId: "sh1", audience: { userIds: ["d1"] }, data });
+  return { counts, logs };
+}
+
+test("a 300-character tracking URL still sends the shipped email (the URL never rides in data)", async () => {
+  const longUrl = `https://track.test/${"x".repeat(280)}`;
+  const data = shippedNoticeData({ shipment: { carrier: "ups", trackingNumber: "1Z999AA10123456784" }, orderNumbers: [100245], shopOrderNumber: null });
+  assert.doesNotThrow(() => assertSafeData(data));
+  const { counts, logs } = await shipThroughNotifier(data, { trackingUrlFor: () => longUrl });
+  assert.deepEqual(logs, []);
+  assert.equal(counts.inApp, 1);
+  assert.equal(counts.sent, 1);
+  assert.equal(shipped.length, 1);
+  assert.equal(shipped[0].args.trackingUrl, longUrl, "the email gets the full link");
+});
+
+test("300 order numbers and a long carrier name still send the shipped email, with a bounded list", async () => {
+  const many = Array.from({ length: 300 }, (_, i) => 100000 + i);
+  const data = shippedNoticeData({
+    shipment: { carrier: "manual", serviceName: "C".repeat(300), trackingNumber: "LS-1" }, orderNumbers: many, shopOrderNumber: "DOL-12345678",
+  });
+  assert.doesNotThrow(() => assertSafeData(data));
+  assert.equal(data.orderNumbers.length, 20);
+  assert.equal(data.moreOrders, 280);
+  const { counts, logs } = await shipThroughNotifier(data);
+  assert.deepEqual(logs, []);
+  assert.equal(counts.sent, 1);
+  assert.equal(shipped.length, 1);
+  assert.deepEqual(shipped[0].args.orderNumbers, many.slice(0, 20));
+  assert.equal(shipped[0].args.shopOrderNumber, "DOL-12345678");
+  assert.equal(getEvent("lab.order_shipped").title(data), `Orders ${many.slice(0, 20).map((n) => `#${n}`).join(", ")} and 280 more shipped`);
 });

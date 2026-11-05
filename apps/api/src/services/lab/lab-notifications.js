@@ -1,5 +1,5 @@
 import { and, eq, inArray, or } from "drizzle-orm";
-import { STAFF_ROLES, isStaffRole } from "@my-app/shared";
+import { MAX_ORDERS_PER_SHIPMENT, STAFF_ROLES, carrierName, isStaffRole, trackingUrl } from "@my-app/shared";
 import { env } from "../../config/env.js";
 import { users } from "../../db/schema/index.js";
 import { defineNotificationEvent, getEvent } from "../../modules/notifications/index.js";
@@ -30,7 +30,29 @@ const withQuery = (path, key, id) => (id ? `${path}?${key}=${enc(id)}` : path);
 function shippedTitle(d) {
   const nums = [].concat(d.orderNumbers ?? []).filter((n) => n != null && n !== "");
   if (!nums.length) return "Order shipped";
-  return `${nums.length === 1 ? "Order" : "Orders"} ${nums.map((n) => `#${n}`).join(", ")} shipped`;
+  const more = Number(d.moreOrders) > 0 ? ` and ${d.moreOrders} more` : "";
+  return `${nums.length === 1 && !more ? "Order" : "Orders"} ${nums.map((n) => `#${n}`).join(", ")}${more} shipped`;
+}
+
+const clipped = (v, n) => (v == null ? null : String(v).slice(0, n));
+
+/**
+ * lab.order_shipped's `data` for a shipment. Every value is bounded so the
+ * notifier's data guard (200 chars a string, 2 KB in all) can never drop the
+ * shipped email: the order list stops at MAX_ORDERS_PER_SHIPMENT (a box can't
+ * hold more) with the rest counted, and the tracking link is not carried at
+ * all; the email derives it from carrierCode + trackingNumber.
+ */
+export function shippedNoticeData({ shipment, orderNumbers, shopOrderNumber = null }) {
+  const nums = [].concat(orderNumbers ?? []);
+  return {
+    orderNumbers: nums.slice(0, MAX_ORDERS_PER_SHIPMENT),
+    moreOrders: Math.max(0, nums.length - MAX_ORDERS_PER_SHIPMENT),
+    shopOrderNumber: clipped(shopOrderNumber || null, 60),
+    carrier: clipped(carrierName(shipment), 100),
+    carrierCode: clipped(shipment?.carrier, 20),
+    trackingNumber: clipped(shipment?.trackingNumber, 60),
+  };
 }
 
 function pickupLink(d, kind) {
@@ -38,7 +60,9 @@ function pickupLink(d, kind) {
 }
 
 /** The lab's events, in registration order (the spec's "Event-name registry"). */
-export function labEventDefs({ sendShipped = sendShippedNotice, shippedEmailEnabled = () => env.SHIPPED_EMAIL_ENABLED } = {}) {
+export function labEventDefs({
+  sendShipped = sendShippedNotice, shippedEmailEnabled = () => env.SHIPPED_EMAIL_ENABLED, trackingUrlFor = trackingUrl,
+} = {}) {
   return [
     {
       key: "message.received", label: "New message", kinds: ["staff", "client"], defaults: BOTH, sms: true,
@@ -77,7 +101,7 @@ export function labEventDefs({ sendShipped = sendShippedNotice, shippedEmailEnab
           if (!shippedEmailEnabled()) return { ok: false, reason: "unconfigured" };
           return sendShipped({
             to: recipient.email, orderNumbers: [].concat(d.orderNumbers ?? []), carrier: d.carrier,
-            trackingNumber: d.trackingNumber, trackingUrl: d.trackingUrl ?? null,
+            trackingNumber: d.trackingNumber, trackingUrl: trackingUrlFor(d.carrierCode, d.trackingNumber) ?? null,
             ...(d.shopOrderNumber ? { shopOrderNumber: d.shopOrderNumber } : {}),
           }, { detailed: true });
         },
