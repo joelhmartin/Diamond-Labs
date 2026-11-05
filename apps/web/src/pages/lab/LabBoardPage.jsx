@@ -4,7 +4,7 @@ import { Loader2, RefreshCw, Search, AlertCircle, Truck, LayoutGrid, Rows3, X } 
 import { LAB_BOARD_COLUMNS, LAB_BOARD_TILES, LAB_STATUS_LABELS, formatUsDate, isTerminalLabStatus } from "@my-app/shared";
 import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
-import { groupByStatus, boardParams } from "../../lib/lab-board.js";
+import { groupByStatus, boardParams, LAB_ORDER_TAG_TYPE } from "../../lib/lab-board.js";
 import { labelBadge } from "../../lib/shipping.js";
 import { ConfirmButton } from "../../components/ui/ConfirmButton.jsx";
 import { errorText, isStale } from "../../lib/requests.js";
@@ -12,6 +12,7 @@ import { BoardCard } from "../../components/lab/BoardCard.jsx";
 import { BoardTableView } from "../../components/lab/BoardTableView.jsx";
 import { BoardTiles } from "../../components/lab/BoardTiles.jsx";
 import { ScanBox } from "../../modules/barcode-lookup/index.js";
+import { TagPicker, useTagDefinitions } from "../../modules/record-tags/index.js";
 import { SegmentedControl } from "../../components/ui/SegmentedControl.jsx";
 import { INPUT_BASE } from "../../components/lab/form-styles.js";
 
@@ -78,7 +79,7 @@ export function LabBoardPage() {
     try { localStorage.setItem(VIEW_KEY, v); } catch { /* storage unavailable: the choice just won't persist */ }
   };
   const [query, setQuery] = useState("");
-  const [filters, setFilters] = useState({ departmentId: "", assigneeUserId: "", rush: false, dueBefore: "", q: "" });
+  const [filters, setFilters] = useState({ departmentId: "", assigneeUserId: "", rush: false, starred: false, tagIds: [], dueBefore: "", q: "" });
   // The tile and a calendar day live in the URL so they can be linked to and survive a reload.
   const [searchParams, setSearchParams] = useSearchParams();
   const tile = LAB_BOARD_TILES.includes(searchParams.get("tile")) ? searchParams.get("tile") : "";
@@ -90,6 +91,7 @@ export function LabBoardPage() {
     return next;
   }, { replace: true });
   const [tiles, setTiles] = useState(null);
+  const { definitions: tagDefinitions } = useTagDefinitions(LAB_ORDER_TAG_TYPE);
 
   // Only the newest request may write results: a slow response for an older
   // filter must not overwrite what the current filter shows.
@@ -230,9 +232,13 @@ export function LabBoardPage() {
           <input type="checkbox" checked={filters.rush} onChange={(e) => set({ rush: e.target.checked })} /> Rush only
         </label>
         <label className="flex items-center gap-1.5 text-sm text-navy">
+          <input type="checkbox" checked={filters.starred} onChange={(e) => set({ starred: e.target.checked })} /> Starred
+        </label>
+        <label className="flex items-center gap-1.5 text-sm text-navy">
           Due by
           <input type="date" className={INPUT_BASE} value={filters.dueBefore} onChange={(e) => set({ dueBefore: e.target.value })} />
         </label>
+        <TagPicker recordType={LAB_ORDER_TAG_TYPE} value={filters.tagIds} onChange={(tagIds) => set({ tagIds })} />
       </div>
 
       {error && (
@@ -246,7 +252,7 @@ export function LabBoardPage() {
           <Loader2 size={18} className="mr-2 animate-spin" /> Loading the board…
         </div>
       ) : view === "table" ? (
-        <BoardTableView columns={columns} busyId={busyId} onMove={move} onChanged={reloadAll} />
+        <BoardTableView columns={columns} busyId={busyId} onMove={move} onChanged={reloadAll} tagDefinitions={tagDefinitions} />
       ) : (
         <div className="grid auto-cols-[minmax(250px,1fr)] grid-flow-col gap-4 overflow-x-auto pb-4">
           {LAB_BOARD_COLUMNS.map((status) => (

@@ -79,7 +79,7 @@ export async function starsFor(recordType, ids, userId, database = appDb) {
 
 /**
  * Bulk add/remove labels. Missing records land in `failed`; the rest apply in
- * one transaction, then `onChange(tx, [{ recordId, added, removed }])` runs in
+ * one transaction, then `onChange(tx, [{ recordId, added, removed }], { byUserId })` runs in
  * that same transaction (the glue records its own history there).
  */
 export async function applyTags({ recordType, ids, add = [], remove = [], byUserId, exists: existsFn, onChange }, database = appDb) {
@@ -111,7 +111,7 @@ export async function applyTags({ recordType, ids, add = [], remove = [], byUser
           inArray(recordTags.tagId, c.removed.map((t) => t.id)),
         ));
       }
-      if (onChange) await onChange(tx, changes);
+      if (onChange) await onChange(tx, changes, { byUserId: byUserId ?? null });
     });
   }
   return { ok: true, failed };

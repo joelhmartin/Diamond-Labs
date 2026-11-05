@@ -21,6 +21,7 @@ import {
   Truck,
   CalendarDays,
   CalendarClock,
+  Tags,
   FilePlus,
   ListChecks,
 } from "lucide-react";
@@ -57,6 +58,7 @@ const adminItems = [
   { label: "Users",      to: ROUTES.ADMIN_USERS,       icon: UserCog },
   { label: "Products",   to: ROUTES.ADMIN_PRODUCTS,    icon: Package },
   { label: "Scheduling", to: ROUTES.ADMIN_SCHEDULING, icon: CalendarClock },
+  { label: "Labels",     to: ROUTES.ADMIN_LABELS,     icon: Tags },
   { label: "Rx Mapping", to: ROUTES.ADMIN_RX_MAPPING,  icon: FlaskConical },
 ];
 

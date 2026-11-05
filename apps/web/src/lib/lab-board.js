@@ -2,6 +2,9 @@ import api from "../config/api.js";
 import { eachRow } from "./data-table/bulk.js";
 import { LAB_BOARD_COLUMNS, LAB_STATUS_LABELS, allowedNextStatuses, reasonRequiredFor, formatUsDate, LAB_DELIVERY_LABELS } from "@my-app/shared";
 
+/** The record-tags / record-files record type for lab orders. */
+export const LAB_ORDER_TAG_TYPE = "lab_order";
+
 const label = (s) => LAB_STATUS_LABELS[s] ?? s ?? "—";
 
 /** Cards → one list per board column (every column present; off-board statuses dropped). */
@@ -79,6 +82,9 @@ export function boardParams(filters = {}) {
     if (v) out[k] = v;
   }
   if (filters.rush) out.rush = "true";
+  if (filters.starred) out.starred = "true";
+  const tagIds = (filters.tagIds ?? []).map((t) => String(t).trim()).filter(Boolean);
+  if (tagIds.length) out.tagIds = tagIds.join(",");
   return out;
 }
 
@@ -97,6 +103,7 @@ export function describeEvent(e, { staffById = {}, departmentsById = {} } = {}) 
     case "enclosed": return `${who}: ${e.note ?? "enclosed items updated"}`;
     case "note": return `${who}: ${e.note ?? "note"}`;
     case "workflow": return e.from ? `${who}: workflow changed from ${e.from} to ${e.to}` : `${who}: workflow set to ${e.to}`;
+    case "label": return `${who}: ${e.note ?? "Label changed"}${e.to ? ` — ${e.to}` : ""}`;
     case "lines":
     case "materials": return `${who}: ${e.note ?? e.type}`;
     case "shipment": return `${who}: ${e.note ?? (e.to ? "shipping label bought" : "shipping label voided")}`;

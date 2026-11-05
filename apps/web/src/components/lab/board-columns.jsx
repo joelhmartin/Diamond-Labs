@@ -1,10 +1,11 @@
 import { Link } from "react-router-dom";
-import { AlertTriangle, Zap, RotateCcw, Tag } from "lucide-react";
+import { AlertTriangle, Zap, RotateCcw, Tag, Star } from "lucide-react";
 import { formatUsDate } from "@my-app/shared";
 import { labOrderPath } from "../../config/routes.js";
 import { quickMoves } from "../../lib/lab-board.js";
 import { labelBadge } from "../../lib/shipping.js";
 import { Badge } from "../ui/Badge.jsx";
+import { TagChips } from "../../modules/record-tags/index.js";
 
 /** Rush / remake / label badges for a lab order. Shared by the kanban card and the table row. */
 export function FlagBadges({ card }) {
@@ -80,6 +81,18 @@ export const PAN_COLUMN = {
   exportValue: (c) => c.panNumber ?? "",
 };
 
+/** The order's labels (and a star when the viewer starred it), shared by the board table and the admin Orders list. */
+export const LABELS_COLUMN = {
+  id: "labels", header: "Labels", sortValue: (c) => (c.tags ?? []).map((t) => t.label).join(" "),
+  cell: (c) => (
+    <span className="flex flex-wrap items-center gap-1">
+      {c.starred && <Star size={12} className="text-amber-500" fill="currentColor" aria-label="Starred" />}
+      <TagChips tags={c.tags} />
+    </span>
+  ),
+  exportValue: (c) => [c.starred && "Starred", ...(c.tags ?? []).map((t) => t.label)].filter(Boolean).join("; "),
+};
+
 /** DataTable columns for a lab order row. */
 export function boardColumns({ busyId, onMove }) {
   return [
@@ -99,6 +112,7 @@ export function boardColumns({ busyId, onMove }) {
       exportValue: (c) => c.dueDate ?? "",
     },
     { id: "assignee", header: "Assignee", cell: (c) => <AssigneeInitials card={c} />, exportValue: (c) => c.assigneeInitials ?? "" },
+    LABELS_COLUMN,
     {
       id: "flags", header: "Flags",
       cell: (c) => <div className="flex flex-wrap gap-1"><FlagBadges card={c} /></div>,

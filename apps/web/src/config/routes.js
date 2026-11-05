@@ -33,6 +33,7 @@ export const ROUTES = {
   ADMIN_REASONS: "/admin/lab/adjustment-reasons",
   ADMIN_SHIPMENTS: "/admin/shipments",
   ADMIN_SCHEDULING: "/admin/scheduling",
+  ADMIN_LABELS: "/admin/labels",
 
   // Lab (admin + lab staff)
   LAB_BOARD: "/lab",

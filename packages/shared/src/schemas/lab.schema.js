@@ -58,12 +58,22 @@ export const labDepartmentUpdateSchema = z.object({
   active: z.boolean().optional(),
 }).refine((o) => Object.keys(o).length > 0, "Nothing to change.");
 
+/** A query-string id list: "a,b" or a repeated key; blanks and repeats dropped; at most `max`. */
+const idListOf = (max) => z
+  .union([z.string(), z.array(z.string())])
+  .optional()
+  .transform((v) => [...new Set([].concat(v ?? []).flatMap((s) => s.split(",")).map((s) => s.trim()).filter(Boolean))])
+  .pipe(z.array(id).max(max));
+const idList = idListOf(100);
+
 export const labOrderListQuerySchema = z.object({
   status: z.enum(LAB_ORDER_STATUSES).optional(),
   source: z.enum(LAB_ORDER_SOURCES).optional(),
   departmentId: id.optional(),
   assigneeUserId: id.optional(),
   rush: flag,
+  tagIds: idListOf(20), // labels: an order with any of them
+  starred: flag, // only the viewer's starred orders
   dueBefore: isoDate.optional(),
   dueOn: isoDate.optional(),
   tile: z.enum(LAB_BOARD_TILES).optional(),
@@ -83,12 +93,6 @@ export const labWorkflowChangeSchema = z.object({
   expectedVersion: version,
 });
 
-/** `variantIds` arrives as "a,b" or as a repeated query key. */
-const idList = z
-  .union([z.string(), z.array(z.string())])
-  .optional()
-  .transform((v) => [...new Set([].concat(v ?? []).flatMap((s) => s.split(",")).map((s) => s.trim()).filter(Boolean))])
-  .pipe(z.array(id).max(100));
 
 /** A dry run of the due-date rules, for staff order entry. */
 export const labSchedulePreviewQuerySchema = z.object({

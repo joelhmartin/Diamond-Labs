@@ -4,9 +4,11 @@ import { LAB_BOARD_COLUMNS, LAB_STATUS_LABELS } from "@my-app/shared";
 import { DataTable } from "../ui/data-table/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
 import { moveBulkActions } from "../../lib/lab-board.js";
+import { tagBulkActions } from "../../modules/record-tags/index.js";
+import { LAB_ORDER_TAG_TYPE } from "../../lib/lab-board.js";
 import { boardColumns } from "./board-columns.jsx";
 
-function StatusSection({ status, cards, columns, post, onChanged }) {
+function StatusSection({ status, cards, columns, post, onChanged, tagDefinitions }) {
   const [open, setOpen] = useState(false);
   const overdue = cards.filter((c) => c.overdue).length;
   return (
@@ -22,15 +24,19 @@ function StatusSection({ status, cards, columns, post, onChanged }) {
         <span className="rounded-full bg-white px-2 py-0.5 text-[11px] text-navy">{cards.length}</span>
         {overdue > 0 && <span className="text-[11px] font-semibold text-red-600">· {overdue} overdue</span>}
       </button>
-      {open && <SectionTable status={status} cards={cards} columns={columns} post={post} onChanged={onChanged} />}
+      {open && <SectionTable status={status} cards={cards} columns={columns} post={post} onChanged={onChanged} tagDefinitions={tagDefinitions} />}
     </section>
   );
 }
 
 // Mounted only while open, so a collapsed section costs nothing.
-function SectionTable({ status, cards, columns, post, onChanged }) {
+function SectionTable({ status, cards, columns, post, onChanged, tagDefinitions }) {
   const table = useDataTable({ mode: "client", rows: cards, getRowId: (c) => c.id, initialPageSize: 20 });
-  const bulkActions = moveBulkActions(table.selection.selectedRows, { post, after: onChanged });
+  const rows = table.selection.selectedRows;
+  const bulkActions = [
+    ...moveBulkActions(rows, { post, after: onChanged }),
+    ...tagBulkActions(rows, { recordType: LAB_ORDER_TAG_TYPE, definitions: tagDefinitions, after: onChanged, labelOf: (c) => `#${c.orderNumber}` }),
+  ];
   return (
     <div className="px-1 pb-2 pt-1">
       <DataTable
@@ -47,12 +53,12 @@ function SectionTable({ status, cards, columns, post, onChanged }) {
 }
 
 /** The production board as a stack of collapsible status tables (all closed on load). */
-export function BoardTableView({ columns: byStatus, busyId, onMove, onChanged, post }) {
+export function BoardTableView({ columns: byStatus, busyId, onMove, onChanged, post, tagDefinitions = [] }) {
   const columns = useMemo(() => boardColumns({ busyId, onMove }), [busyId, onMove]);
   return (
     <div className="space-y-3">
       {LAB_BOARD_COLUMNS.map((status) => (
-        <StatusSection key={status} status={status} cards={byStatus[status] ?? []} columns={columns} post={post} onChanged={onChanged} />
+        <StatusSection key={status} status={status} cards={byStatus[status] ?? []} columns={columns} post={post} onChanged={onChanged} tagDefinitions={tagDefinitions} />
       ))}
     </div>
   );

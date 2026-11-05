@@ -22,13 +22,13 @@ export const STAFF = [authenticate, requireRole(...STAFF_ROLES)];
 
 export default async function labRoutes(fastify) {
   fastify.get("/lab/orders", { preHandler: [...STAFF, validateQuery(labOrderListQuerySchema)] }, async (request) => ({
-    data: await labOrdersService.listLabOrders(request.query), // { orders, truncated }
+    data: await labOrdersService.listLabOrders({ ...request.query, viewerUserId: request.user.id }), // { orders, truncated }
   }));
 
   fastify.get("/lab/orders/:id", { preHandler: STAFF }, async (request, reply) => {
     let detail;
     try {
-      detail = await labOrdersService.getLabOrderDetail(request.params.id);
+      detail = await labOrdersService.getLabOrderDetail(request.params.id, new Date(), { viewerUserId: request.user.id });
     } catch (err) {
       // Decrypt failures land here — never echo the error (it can carry PHI context).
       request.log.error({ labOrderId: request.params.id, err: err.message }, "lab order detail failed");

@@ -51,6 +51,7 @@ import { LabBoardPage } from "./pages/lab/LabBoardPage.jsx";
 import { LabOrderDetailPage } from "./pages/lab/LabOrderDetailPage.jsx";
 import { OrdersCalendarPage } from "./pages/lab/OrdersCalendarPage.jsx";
 import { AdminSchedulingPage } from "./pages/app/AdminSchedulingPage.jsx";
+import { AdminLabelsPage } from "./pages/app/AdminLabelsPage.jsx";
 import { NewLabOrderPage } from "./pages/lab/NewLabOrderPage.jsx";
 
 // Marketing pages
@@ -243,6 +244,7 @@ function AppRoutes() {
           <Route path="/admin/jobs" element={<AdminJobsPage />} />
           <Route path="/admin/rx-mapping" element={<AdminRxMappingPage />} />
           <Route path="/admin/scheduling" element={<AdminSchedulingPage />} />
+          <Route path="/admin/labels" element={<AdminLabelsPage />} />
         </Route>
         <Route element={<RequireStaff />}>
           <Route path="/lab" element={<LabBoardPage />} />

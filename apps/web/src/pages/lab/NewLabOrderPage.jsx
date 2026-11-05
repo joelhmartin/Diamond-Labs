@@ -13,6 +13,7 @@ import { PracticePicker } from "../../components/lab/order-entry/PracticePicker.
 import { LinePicker } from "../../components/lab/order-entry/LinePicker.jsx";
 import { EnclosedFields } from "../../components/lab/order-entry/EnclosedFields.jsx";
 import { FileDrop, uploadRecordFiles } from "../../modules/record-files/index.js";
+import { TagPicker } from "../../modules/record-tags/index.js";
 import { formatCents } from "../../lib/money.js";
 import { errorText } from "../../lib/requests.js";
 
@@ -73,7 +74,6 @@ export function NewLabOrderPage() {
   const [enclosures, setEnclosures] = useState([]);
   const [lines, setLines] = useState([]);
   const [tagIds, setTagIds] = useState([]);
-  const [tags, setTags] = useState([]);
   const [files, setFiles] = useState([]);
   const [prices, setPrices] = useState({}); // variantId -> { unitCents, priceSource }
   const [busy, setBusy] = useState(false);
@@ -96,13 +96,6 @@ export function NewLabOrderPage() {
       .catch(() => {});
     return () => { live = false; };
   }, [dueTouched, variantKey, rushOn]);
-
-  useEffect(() => {
-    if (!full || tags.length) return undefined;
-    let live = true;
-    api.get(`/tags/${RECORD_TYPE}/definitions`).then((res) => { if (live) setTags(res.data.data); }).catch(() => {});
-    return () => { live = false; };
-  }, [full, tags.length]);
 
   // Price the lines for the chosen practice: the client's own price where it has one.
   const lineKey = useMemo(() => lines.map((l) => `${l.variantId}x${l.qty}`).join(","), [lines]);
@@ -257,23 +250,9 @@ export function NewLabOrderPage() {
               <LinePicker onAdd={addLine} disabled={busy} />
             </Section>
 
-            {tags.length > 0 && (
-              <Section title="Labels">
-                <div className="flex flex-wrap gap-x-4 gap-y-2">
-                  {tags.map((t) => (
-                    <label key={t.id} className="flex items-center gap-2 text-sm text-navy">
-                      <input
-                        type="checkbox"
-                        disabled={busy}
-                        checked={tagIds.includes(t.id)}
-                        onChange={() => setTagIds((cur) => (cur.includes(t.id) ? cur.filter((x) => x !== t.id) : [...cur, t.id]))}
-                      />
-                      {t.label}
-                    </label>
-                  ))}
-                </div>
-              </Section>
-            )}
+            <Section title="Labels">
+              <TagPicker recordType={RECORD_TYPE} value={tagIds} onChange={setTagIds} disabled={busy} />
+            </Section>
 
             <Section title="Files">
               {files.length > 0 && (

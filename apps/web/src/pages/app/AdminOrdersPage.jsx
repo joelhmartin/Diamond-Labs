@@ -5,21 +5,24 @@ import { LAB_ORDER_STATUSES, LAB_STATUS_LABELS, formatLabDate } from "@my-app/sh
 import api from "../../config/api.js";
 import { labOrderPath } from "../../config/routes.js";
 import { sourceLabel } from "../../lib/staff.js";
-import { moveBulkActions } from "../../lib/lab-board.js";
+import { moveBulkActions, LAB_ORDER_TAG_TYPE } from "../../lib/lab-board.js";
 import { pageParams } from "../../lib/data-table/server.js";
 import { DataTable } from "../../components/ui/data-table/index.js";
-import { FlagBadges, DueLabel, PAN_COLUMN } from "../../components/lab/board-columns.jsx";
+import { FlagBadges, DueLabel, PAN_COLUMN, LABELS_COLUMN } from "../../components/lab/board-columns.jsx";
+import { tagBulkActions, useTagDefinitions } from "../../modules/record-tags/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
 
 const opt = (list, label) => list.map((x) => ({ value: x.id, label: label(x) }));
 
 /** Admin filters; departments and staff arrive after the first render. */
-function orderFilters(departments, staff) {
+function orderFilters(departments, staff, tagDefinitions) {
   return [
     { id: "status", label: "Status", type: "select", placeholder: "All statuses", options: LAB_ORDER_STATUSES.map((s) => ({ value: s, label: LAB_STATUS_LABELS[s] })) },
     { id: "source", label: "Source", type: "select", placeholder: "Rx cases and shop", options: [{ value: "rx_case", label: "Rx cases" }, { value: "shop_order", label: "Shop orders" }] },
     { id: "departmentId", label: "Department", type: "select", placeholder: "All departments", options: opt(departments, (d) => d.name) },
     { id: "assigneeUserId", label: "Assignee", type: "select", placeholder: "Anyone", options: opt(staff, (s) => s.name) },
+    { id: "tagIds", label: "Labels", type: "multiselect", options: opt(tagDefinitions, (t) => t.label) },
+    { id: "starred", label: "Starred", type: "toggle" },
     { id: "rush", label: "Rush only", type: "toggle" },
     { id: "dueBefore", label: "Due by", type: "date" },
   ];
@@ -30,6 +33,8 @@ async function fetchPage({ page, pageSize, q, filters }) {
   const params = { ...pageParams({ page, pageSize, q }), includeClosed: "true" };
   for (const k of ["status", "source", "departmentId", "assigneeUserId", "dueBefore"]) if (filters[k]) params[k] = filters[k];
   if (filters.rush) params.rush = "true";
+  if (filters.starred) params.starred = "true";
+  if (filters.tagIds?.length) params.tagIds = filters.tagIds.join(",");
   const res = await api.get("/lab/orders", { params });
   return { rows: res.data.data.orders, total: res.data.data.total };
 }
@@ -58,6 +63,7 @@ const COLUMNS = [
       </span>
     ),
   },
+  LABELS_COLUMN,
   { id: "due", header: "Due", cell: (o) => <span className="text-xs"><DueLabel card={o} prefix={false} /></span>, exportValue: (o) => o.dueDate ?? "" },
   { id: "received", header: "Received", cell: (o) => <span className="text-navy/60">{formatLabDate(o.receivedAt) || "—"}</span>, exportValue: (o) => o.receivedAt ?? "" },
 ];
@@ -72,8 +78,14 @@ export function AdminOrdersPage() {
       .catch(() => { /* the department and assignee filters just stay empty */ });
   }, []);
 
-  const table = useDataTable({ mode: "server", fetchPage, filters: orderFilters(departments, staff), urlKey: "ord", getRowId: (o) => o.id });
-  const bulkActions = moveBulkActions(table.selection.selectedRows, { after: table.reload });
+  const { definitions: tagDefinitions } = useTagDefinitions(LAB_ORDER_TAG_TYPE);
+
+  const table = useDataTable({ mode: "server", fetchPage, filters: orderFilters(departments, staff, tagDefinitions), urlKey: "ord", getRowId: (o) => o.id });
+  const rows = table.selection.selectedRows;
+  const bulkActions = [
+    ...moveBulkActions(rows, { after: table.reload }),
+    ...tagBulkActions(rows, { recordType: LAB_ORDER_TAG_TYPE, definitions: tagDefinitions, after: table.reload, labelOf: (o) => `#${o.orderNumber}` }),
+  ];
 
   return (
     <div className="mx-auto max-w-7xl space-y-4 p-6 md:p-8">

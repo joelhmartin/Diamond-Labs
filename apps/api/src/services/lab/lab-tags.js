@@ -1,6 +1,7 @@
 import { inArray } from "drizzle-orm";
 import { db } from "../../config/database.js";
-import { labOrders } from "../../db/schema/index.js";
+import { labOrders, labOrderEvents } from "../../db/schema/index.js";
+import { sealEvent } from "./lab-order-crypto.js";
 
 /**
  * Lab orders as a record-tags / record-files record type ("lab_order"): the
@@ -16,9 +17,21 @@ export async function labOrderIdsThatExist(ids, database = db) {
   return new Set(rows.map((r) => r.id));
 }
 
+const EVENT_TO_MAX = 128; // lab_order_events.to_value
+
 /**
- * Called by record-tags in the same transaction as a label change. A no-op
- * for now; Task 8 records it as a `label` event (tags never bump the version).
+ * Called by record-tags in the same transaction as a label change: one `label`
+ * event per order and label actually added or removed (a no-op apply has no
+ * changes, so writes none). Labels never bump the order's version.
  */
-// eslint-disable-next-line no-unused-vars
-export async function onLabOrderTagsChanged(tx, changes) {}
+export async function onLabOrderTagsChanged(tx, changes, { byUserId = null } = {}) {
+  const base = Date.now();
+  const events = [];
+  for (const c of changes) {
+    const event = (verb) => (tag) => ({ labOrderId: c.recordId, type: "label", from: null, to: String(tag.label).slice(0, EVENT_TO_MAX), byUserId, note: `Label ${verb}` });
+    events.push(...c.added.map(event("added")), ...c.removed.map(event("removed")));
+  }
+  if (!events.length) return;
+  // Distinct timestamps keep the timeline in the order the changes were made.
+  await tx.insert(labOrderEvents).values(events.map((e, i) => sealEvent({ ...e, at: new Date(base + i) })));
+}

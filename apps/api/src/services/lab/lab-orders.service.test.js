@@ -136,6 +136,16 @@ test("a calendar day click (dueOn) is not trimmed by the shipped window, so it m
   assert.match(body, /!f\.includeClosed && !f\.q && !f\.dueOn/);
 });
 
+test("the board filters by labels and by the viewer's stars, and cards carry both", () => {
+  const where = source.slice(source.indexOf("function boardWhere"), source.indexOf("export const LIST_LIMIT"));
+  assert.match(where, /taggedWithAny\(LAB_ORDER_RECORD_TYPE, labOrders\.id, f\.tagIds\)/);
+  assert.match(where, /starredBy\(LAB_ORDER_RECORD_TYPE, labOrders\.id, f\.viewerUserId\)/);
+  assert.match(where, /sql`false`/, "starred with no viewer matches nothing");
+  const list = source.slice(source.indexOf("export async function listLabOrders"), source.indexOf("async function countLabOrders"));
+  assert.match(list, /tagsFor\(LAB_ORDER_RECORD_TYPE/);
+  assert.match(list, /starsFor\(LAB_ORDER_RECORD_TYPE, ids, filters\.viewerUserId/);
+});
+
 test("Admin > Orders is newest-received-first and says when the cap trimmed it; the board keeps rush/due order", () => {
   assert.equal(mod.LIST_LIMIT, 1000);
   assert.notDeepEqual(mod.listOrder({ includeClosed: true }), mod.listOrder({ includeClosed: false }));

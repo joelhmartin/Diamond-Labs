@@ -20,7 +20,7 @@ Everything is exported from `index.js`. Service functions take an optional
 - `starsFor(recordType, ids, userId)` → `Set<recordId>`
 - `applyTags({ recordType, ids, add, remove, byUserId, exists, onChange })` → `{ ok, failed }`
   - `exists(ids)` returns the `Set` of ids that exist; the rest land in `failed` as `{ id, message: "not found" }`
-  - `onChange(tx, [{ recordId, added, removed }])` runs in the same transaction as the writes
+  - `onChange(tx, [{ recordId, added, removed }], { byUserId })` runs in the same transaction as the writes
   - at most 500 ids; tags must belong to `recordType`; inactive tags can be removed but not added
 - `setStar({ recordType, recordId, userId, starred })`
 - `taggedWithAny(recordType, idColumn, tagIds)` and `starredBy(recordType, idColumn, userId)`
@@ -75,4 +75,8 @@ record's own row or version; the host records history through `onChange`.
 2. Register `recordTagRoutes` with a `recordTypes` map and two guards.
 3. Join `tagsFor` / `starsFor` into list responses and AND `taggedWithAny` / `starredBy` into list filters.
 
-(Web half and a worked example are completed in a later task.)
+## Web
+
+`apps/web/src/modules/record-tags/` is the browser half: see its
+[README](../../../../web/src/modules/record-tags/README.md) (`TagChips`, `TagPicker`,
+`StarToggle`, `tagBulkActions`, `TagDefinitionsAdmin`).

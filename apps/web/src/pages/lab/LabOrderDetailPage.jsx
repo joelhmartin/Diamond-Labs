@@ -19,6 +19,7 @@ import { LabNotesPanel } from "../../components/lab/LabNotesPanel.jsx";
 import { RxAnswersPanel } from "../../components/lab/RxAnswersPanel.jsx";
 import { TimelinePanel } from "../../components/lab/TimelinePanel.jsx";
 import { ReasonModal } from "../../components/lab/ReasonModal.jsx";
+import { LabelsPanel } from "../../components/lab/LabelsPanel.jsx";
 import { FileList } from "../../modules/record-files/index.js";
 import { errorText, blobErrorText, isStale, openInNewTab, openPdf } from "../../lib/requests.js";
 
@@ -109,7 +110,7 @@ export function LabOrderDetailPage() {
     );
   }
 
-  const { order, lines, events, rxCase, files, shopOrder, shipment, legacy, schedule, scheduleFlags, staff: staffEntry } = detail;
+  const { order, lines, events, rxCase, files, shopOrder, shipment, legacy, schedule, scheduleFlags, staff: staffEntry, tags, starred } = detail;
   const moves = allowedNextStatuses(order.status, { heldFrom: order.heldFrom, labelled: Boolean(order.shipmentId) });
   const answerGroups = rxCase ? groupRxAnswers(getRxForm(rxCase.formType), rxCase.formData) : [];
   const devices = lines.filter((l) => !l.noteOnly);
@@ -191,6 +192,8 @@ export function LabOrderDetailPage() {
           <ShippingPanel order={order} shipment={shipment} onChanged={load} />
 
           <StatusPanel order={order} moves={moves} busy={busy} onMove={move} />
+
+          <LabelsPanel order={order} tags={tags ?? []} starred={Boolean(starred)} onChanged={load} />
 
           <WorkPanel
             order={order} staff={staff} departments={departments} busy={busy} closed={closed} onField={setField}

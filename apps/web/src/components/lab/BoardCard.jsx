@@ -1,4 +1,6 @@
 import { Link } from "react-router-dom";
+import { Star } from "lucide-react";
+import { TagChips } from "../../modules/record-tags/index.js";
 import { labOrderPath } from "../../config/routes.js";
 import { FlagBadges, DueLabel, AssigneeInitials, QuickMoveButtons } from "./board-columns.jsx";
 
@@ -9,6 +11,7 @@ export function BoardCard({ card, busy, onMove }) {
       <div className="flex items-start justify-between gap-2">
         <Link to={labOrderPath(card.id)} className="font-mono text-sm font-bold text-navy hover:text-brand-600">
           #{card.orderNumber}
+          {card.starred && <Star size={11} className="ml-1 inline text-amber-500" fill="currentColor" aria-label="Starred" />}
         </Link>
         <div className="flex flex-wrap justify-end gap-1">
           <FlagBadges card={card} />
@@ -21,6 +24,7 @@ export function BoardCard({ card, busy, onMove }) {
           {[card.reference, card.panNumber && `Pan ${card.panNumber}`].filter(Boolean).join(" · ")}
         </div>
       )}
+      {card.tags?.length > 0 && <div className="mt-1.5"><TagChips tags={card.tags} /></div>}
       <div className="mt-2 flex items-center justify-between text-[11px]">
         <DueLabel card={card} />
         <AssigneeInitials card={card} />

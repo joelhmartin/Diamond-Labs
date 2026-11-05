@@ -17,6 +17,7 @@ import { devicesForCase } from "../rx/case-devices.js";
 import { compileNotesMulti } from "../rx/case-notes.js";
 import { filesFor } from "../../modules/record-files/index.js";
 import { LAB_ORDER_RECORD_TYPE } from "./lab-tags.js";
+import { tagsFor, starsFor, taggedWithAny, starredBy } from "../../modules/record-tags/index.js";
 import {
   LabOrderError, planRxRelease, planShopLabOrder, planRemake,
   assertFresh, planStatusChange, planFieldChange, presentBoardCard, rushFromCase,
@@ -145,6 +146,9 @@ function boardWhere(f, now, scope = null) {
   if (f.dueBefore) conds.push(lte(labOrders.dueDate, f.dueBefore));
   if (f.dueOn) conds.push(eq(labOrders.dueDate, f.dueOn));
   if (f.tile) conds.push(tileCondition(f.tile, scope));
+  if (f.tagIds?.length) conds.push(taggedWithAny(LAB_ORDER_RECORD_TYPE, labOrders.id, f.tagIds));
+  // "Starred" is the viewer's own stars; with no viewer it matches nothing rather than everything.
+  if (f.starred) conds.push(f.viewerUserId ? starredBy(LAB_ORDER_RECORD_TYPE, labOrders.id, f.viewerUserId) : sql`false`);
   if (f.q) {
     // Order number, case number, practice, client and shop order number.
     // Patient names are encrypted and deliberately not searchable here.
@@ -222,7 +226,15 @@ export async function listLabOrders(filters = {}, now = new Date(), database = d
     byOrder.get(l.labOrderId).push(l);
   }
   const plans = await schedulesOf(database, ids);
-  const cards = rows.map((r) => presentBoardCard(r, byOrder.get(r.order.id) ?? [], today, { plan: plans.get(r.order.id) ?? null, calendar }));
+  const [tags, starred] = await Promise.all([
+    tagsFor(LAB_ORDER_RECORD_TYPE, ids, database),
+    filters.viewerUserId ? starsFor(LAB_ORDER_RECORD_TYPE, ids, filters.viewerUserId, database) : new Set(),
+  ]);
+  const cards = rows.map((r) => ({
+    ...presentBoardCard(r, byOrder.get(r.order.id) ?? [], today, { plan: plans.get(r.order.id) ?? null, calendar }),
+    tags: tags.get(r.order.id) ?? [],
+    starred: starred.has(r.order.id),
+  }));
   return page ? { orders: cards, total } : { orders: cards, truncated: rows.length >= LIST_LIMIT };
 }
 
@@ -243,7 +255,7 @@ async function countLabOrders(where, database) {
  * case's PHI (patient name, form answers) — callers must never log the
  * result. Throws on a decrypt failure; routes turn that into a generic 500.
  */
-export async function getLabOrderDetail(id, now = new Date()) {
+export async function getLabOrderDetail(id, now = new Date(), { viewerUserId = null } = {}) {
   const [row] = await db
     .select({
       order: labOrders,
@@ -317,6 +329,10 @@ export async function getLabOrderDetail(id, now = new Date()) {
     legacy = { seazonaOrderId: order.sourceId, patientName: order.legacyPatient ?? null, caseId: c?.id ?? null, caseNumber: c?.caseNumber ?? null };
   }
 
+  const [tags, starred] = await Promise.all([
+    tagsFor(LAB_ORDER_RECORD_TYPE, [id]),
+    viewerUserId ? starsFor(LAB_ORDER_RECORD_TYPE, [id], viewerUserId) : new Set(),
+  ]);
   const shipment = order.shipmentId ? ((await shipmentSummaries([order.shipmentId])).get(order.shipmentId) ?? null) : null;
   const [plan, calendar] = await Promise.all([scheduleOf(db, id), getCalendar(db)]);
   const today = dateIn(calendar.timezone, now);
@@ -347,6 +363,9 @@ export async function getLabOrderDetail(id, now = new Date()) {
     // Files attached to the order itself (record-files); `files` stays the Rx case's.
     recordFiles: recordFilesById.get(id) ?? [],
     shipment,
+    // Labels on the order and the viewer's own star.
+    tags: tags.get(id) ?? [],
+    starred: starred.has(id),
   };
 }
 
