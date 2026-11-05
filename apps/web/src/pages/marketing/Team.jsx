@@ -1,341 +1,109 @@
-import { useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
-import gsap from "gsap";
-import { ArrowRight, Users, Wrench, ShieldCheck, Cpu } from "lucide-react";
-import { playOnView } from "../../lib/playOnView";
+import { PageHero } from "../../components/marketing/PageHero";
+import { SectionHeading } from "../../components/marketing/SectionHeading";
+import { CtaBand } from "../../components/marketing/CtaBand";
+import { StatRow } from "../../components/marketing/StatRow";
+import { Reveal } from "../../components/marketing/Reveal";
 
-const TEAM = {
-  leadership: [
-    { name: "Matt Rago", role: "Director of Operations" },
-  ],
-  engineering: [
-    { name: "Franco Di Paolo", role: "Lead Digital Engineer" },
-    { name: "James Albrecht", role: "Digital Engineering" },
-  ],
-  technicians: [
-    { name: "David Leonard", role: "Lead Dental Technician" },
-    { name: "John Olmos", role: "Dental / Digital Technician" },
-    { name: "Adam Walnus", role: "Dental Technician" },
-    { name: "Elmer Onofre", role: "Dental Technician" },
-    { name: "Edgar Aguillar", role: "Dental Technician" },
-    { name: "Austin Knutson", role: "Dental Technician" },
-    { name: "Inho Ko", role: "Dental Technician" },
-    { name: "Crosby Hessel", role: "Dental Technician" },
-    { name: "Jose Martinez", role: "Dental Technician" },
-    { name: "Ivan Sanchez", role: "Dental Technician" },
-    { name: "John Bernel", role: "Dental Technician" },
-  ],
-  quality: [
-    { name: "Barbara Rago", role: "RN, MSN — Compliance & Regulations" },
-    { name: "Jay Tuyay", role: "Case Quality Assurance" },
-  ],
-  operations: [
-    { name: "Tracy Adams", role: "Products / Procurement Coordinator" },
-    { name: "Sammy Mitchell", role: "Communication Logistics Coordinator" },
-    { name: "Krystee Rago", role: "Operations" },
-  ],
-};
+const GROUPS = [
+  { label: "Leadership", people: [{ name: "Matt Rago", role: "Director of Operations" }] },
+  {
+    label: "Digital engineering",
+    people: [
+      { name: "Franco Di Paolo", role: "Lead Digital Engineer" },
+      { name: "James Albrecht", role: "Digital Engineering" },
+    ],
+  },
+  {
+    label: "Dental technicians",
+    people: [
+      { name: "David Leonard", role: "Lead Dental Technician" },
+      { name: "John Olmos", role: "Dental / Digital Technician" },
+      { name: "Adam Walnus", role: "Dental Technician" },
+      { name: "Elmer Onofre", role: "Dental Technician" },
+      { name: "Edgar Aguillar", role: "Dental Technician" },
+      { name: "Austin Knutson", role: "Dental Technician" },
+      { name: "Inho Ko", role: "Dental Technician" },
+      { name: "Crosby Hessel", role: "Dental Technician" },
+      { name: "Jose Martinez", role: "Dental Technician" },
+      { name: "Ivan Sanchez", role: "Dental Technician" },
+      { name: "John Bernel", role: "Dental Technician" },
+    ],
+  },
+  {
+    label: "Quality and compliance",
+    people: [
+      { name: "Barbara Rago", role: "RN, MSN — Compliance & Regulations" },
+      { name: "Jay Tuyay", role: "Case Quality Assurance" },
+    ],
+  },
+  {
+    label: "Operations and logistics",
+    people: [
+      { name: "Tracy Adams", role: "Products / Procurement Coordinator" },
+      { name: "Sammy Mitchell", role: "Communication Logistics Coordinator" },
+      { name: "Krystee Rago", role: "Operations" },
+    ],
+  },
+];
 
-function initials(name) {
-  return name
-    .split(" ")
-    .map((w) => w[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-}
+const byLabel = (label) => GROUPS.find((g) => g.label === label).people;
 
-function Hero() {
-  const ref = useRef(null);
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.from("[data-team-hero]", {
-        y: 40,
-        opacity: 0,
-        duration: 1,
-        stagger: 0.08,
-        ease: "power3.out",
-        delay: 0.3,
-      });
-    }, ref);
-    return () => ctx.revert();
-  }, []);
+// Every figure is read from the lists above so the counts cannot drift.
+const STATS = [
+  { value: String(GROUPS.reduce((n, g) => n + g.people.length, 0)), label: "People on the team" },
+  { value: String(byLabel("Dental technicians").length), label: "Dental technicians" },
+  { value: String(byLabel("Digital engineering").length), label: "Digital engineers" },
+  { value: "1", label: "Lab, in La Mesa, California" },
+];
 
+function Group({ label, people }) {
   return (
-    <section
-      ref={ref}
-      className="relative h-[70dvh] min-h-[500px] flex items-end overflow-hidden bg-gradient-to-t from-navy via-navy-light to-transparent section-pad"
-    >
-      <div className="absolute inset-0 opacity-[0.08]">
-        <img
-          src="https://images.unsplash.com/photo-1581093588401-fbb62a02f120?auto=format&fit=crop&w=1920&q=80"
-          alt=""
-          className="w-full h-full object-cover"
-          loading="lazy"
-        />
-      </div>
-      {/* <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/60 to-transparent" /> */}
-
-      <div className="relative z-10 pb-16 md:pb-24 w-full max-w-6xl mx-auto">
-        <div className="max-w-3xl">
-        <span
-          data-team-hero
-          className="font-mono text-xs text-on-dark/40 uppercase tracking-widest"
-        >
-          Our Team
-        </span>
-        <h1 data-team-hero className="mt-4 text-on-dark">
-          <span className="block font-heading font-bold text-4xl sm:text-5xl md:text-7xl tracking-tight leading-[0.95]">
-            Meet the
-          </span>
-          <span className="block font-drama italic text-5xl sm:text-6xl md:text-8xl tracking-tight leading-[0.9] text-brand-500">
-            Diamond team.
-          </span>
-        </h1>
-        <p
-          data-team-hero
-          className="mt-6 text-on-dark/80 text-base md:text-lg max-w-lg leading-relaxed"
-        >
-          Dental technicians, digital engineers, and clinical specialists —
-          every case, every appliance, passes through these hands.
-        </p>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function StatBar() {
-  const ref = useRef(null);
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-team-stat]",
-        { y: 20, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.6,
-          stagger: 0.08,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
-  const totalTechs = TEAM.technicians.length;
-  const stats = [
-    { value: "20+", label: "Team Members" },
-    { value: `${totalTechs}`, label: "Dental Technicians" },
-    { value: "4", label: "Specialist Disciplines" },
-    { value: "1", label: "San Diego Lab" },
-  ];
-
-  return (
-    <section ref={ref} className="section-pad py-16 md:py-20 border-b border-b-gray-200/40">
-      <div className="max-w-6xl mx-auto">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12 ">
-          {stats.map((s, i) => (
-            <div key={i} data-team-stat>
-              <span className="block font-heading font-bold text-3xl md:text-4xl text-navy tracking-tight">
-                {s.value}
-              </span>
-              <span className="block font-mono text-[10px] text-navy/30 uppercase tracking-wider mt-1">
-                {s.label}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function PersonCard({ name, role, accent = false }) {
-  return (
-    <div className="group bg-white card-radius p-6 border border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-navy/5 transition-all duration-500">
-      <div className="flex items-center gap-4">
-        <div
-          className={`w-12 h-12 rounded-2xl flex items-center justify-center font-heading font-bold text-sm tracking-tight transition-colors duration-500 ${
-            accent
-              ? "bg-brand-500 text-white"
-              : "bg-surface-200 text-navy/60 group-hover:bg-brand-500/10 group-hover:text-brand-500"
-          }`}
-        >
-          {initials(name)}
-        </div>
-        <div className="min-w-0">
-          <div className="font-heading font-semibold text-sm text-navy tracking-tight truncate">
-            {name}
-          </div>
-          <div className="text-navy/45 text-xs mt-0.5 truncate">{role}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Group({ label, Icon, people, accentAll = false }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-person]",
-        { y: 24, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.6,
-          stagger: 0.04,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
-  return (
-    <div ref={ref} className="mb-16 md:mb-20">
-      <div className="flex items-center gap-3 mb-6 md:mb-8">
-        <Icon size={16} className="text-brand-500" />
-        <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
-          {label}
-        </span>
-        <div className="flex-1 h-px bg-surface-300/60" />
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
+    <div className="grid grid-cols-1 md:grid-cols-[14rem_1fr] gap-4 md:gap-10 py-8 border-t border-navy/15">
+      <h3 className="font-heading font-bold text-lg text-navy">{label}</h3>
+      <ul className="grid grid-cols-1 lg:grid-cols-2 gap-x-10">
         {people.map((p) => (
-          <div key={p.name} data-person>
-            <PersonCard {...p} accent={accentAll} />
-          </div>
+          <li key={p.name} className="py-2.5 border-b border-navy/10 last:border-b-0 lg:[&:nth-last-child(2):nth-child(odd)]:border-b-0">
+            <span className="font-semibold text-navy">{p.name}</span>
+            <span className="block text-sm text-navy/70">{p.role}</span>
+          </li>
         ))}
-      </div>
+      </ul>
     </div>
-  );
-}
-
-function CTA() {
-  const ref = useRef(null);
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-team-cta]",
-        { y: 40, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.8,
-          stagger: 0.1,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
-  return (
-    <section ref={ref} className="section-pad py-24 md:py-28">
-      <div className="max-w-3xl mx-auto text-center">
-        <span
-          data-team-cta
-          className="font-mono text-xs text-navy/40 uppercase tracking-widest"
-        >
-          Partner With Us
-        </span>
-        <h2
-          data-team-cta
-          className="mt-4 font-heading font-bold text-3xl md:text-5xl tracking-tight"
-        >
-          Work with the people who
-          <br />
-          <span className="font-drama italic text-brand-500">
-            know the protocol.
-          </span>
-        </h2>
-        <div
-          data-team-cta
-          className="mt-10 flex flex-wrap items-center justify-center gap-4"
-        >
-          <Link
-            to="/contact"
-            className="btn-magnetic group px-8 py-4 rounded-full bg-accent-500 text-white font-semibold"
-          >
-            <span className="btn-bg bg-accent-600 rounded-full" />
-            <span className="relative z-10 flex items-center gap-2">
-              Contact the Lab
-              <ArrowRight
-                size={16}
-                className="group-hover:translate-x-1 transition-transform"
-              />
-            </span>
-          </Link>
-          <Link
-            to="/about"
-            className="px-8 py-4 rounded-full border border-surface-300 text-navy/70 font-medium hover:bg-surface-200/60 transition-colors duration-300"
-          >
-            Our Story
-          </Link>
-        </div>
-      </div>
-    </section>
   );
 }
 
 export function TeamPage() {
   return (
     <>
-      <Hero />
-      <StatBar />
-      <section className="section-pad py-20 md:py-28">
+      <PageHero
+        variant="image"
+        title="Meet the"
+        titleAccent="Diamond team."
+        intro="Dental technicians, digital engineers and clinical specialists. Every case passes through their hands."
+        image="/images/ddso-full.webp"
+        imageAlt="A blue and white orthotic appliance on a stainless steel bench in the Diamond lab, with an articulator beside it"
+      />
+      <Reveal className="section-pad py-16 md:py-20">
         <div className="max-w-6xl mx-auto">
-          <Group
-            label="Leadership"
-            Icon={Users}
-            people={TEAM.leadership}
-            accentAll
-          />
-          <Group
-            label="Digital Engineering"
-            Icon={Cpu}
-            people={TEAM.engineering}
-          />
-          <Group
-            label="Dental Technicians"
-            Icon={Wrench}
-            people={TEAM.technicians}
-          />
-          <Group
-            label="Quality & Compliance"
-            Icon={ShieldCheck}
-            people={TEAM.quality}
-          />
-          <Group
-            label="Operations & Logistics"
-            Icon={Users}
-            people={TEAM.operations}
-          />
+          <StatRow stats={STATS} />
         </div>
-      </section>
-      <CTA />
+      </Reveal>
+      <Reveal className="section-pad pb-20 md:pb-24">
+        <div className="max-w-6xl mx-auto">
+          <SectionHeading title="Who does what" />
+          <div className="mt-10">
+            {GROUPS.map((g) => (
+              <Group key={g.label} {...g} />
+            ))}
+          </div>
+        </div>
+      </Reveal>
+      <CtaBand
+        title="Talk to the lab"
+        intro="Questions about a case or an appliance go straight to the people who make it."
+        primary={{ label: "Contact the lab", to: "/contact" }}
+        secondary={{ label: "About the lab", to: "/about" }}
+      />
     </>
   );
 }

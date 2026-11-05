@@ -1,6 +1,4 @@
-import { useEffect, useRef, useState } from "react";
-import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { useState } from "react";
 import {
   Mail,
   Phone,
@@ -15,8 +13,8 @@ import {
   Youtube,
 } from "lucide-react";
 import { CONTACT_SUBJECTS } from "@my-app/shared";
-
-gsap.registerPlugin(ScrollTrigger);
+import { PageHero } from "../../components/marketing/PageHero";
+import { Reveal } from "../../components/marketing/Reveal";
 
 const SOCIALS = [
   { icon: Facebook, href: "https://facebook.com/diamondorthotic", label: "Facebook" },
@@ -24,57 +22,6 @@ const SOCIALS = [
   { icon: Linkedin, href: "https://linkedin.com/company/diamond-orthotic-laboratory", label: "LinkedIn" },
   { icon: Youtube, href: "https://youtube.com/@diamondorthotic", label: "YouTube" },
 ];
-
-/* ─── CONTACT HERO ─── */
-function ContactHero() {
-  const heroRef = useRef(null);
-
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.from("[data-chero]", {
-        y: 40,
-        opacity: 0,
-        duration: 1,
-        stagger: 0.08,
-        ease: "power3.out",
-        delay: 0.3,
-      });
-    }, heroRef);
-    return () => ctx.revert();
-  }, []);
-
-  return (
-    <section
-      ref={heroRef}
-      className="relative h-[45dvh] min-h-[350px] flex items-end overflow-hidden section-pad"
-    >
-      <div className="absolute inset-0">
-        <img
-          src="https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=1920&q=80"
-          alt="Precision medical work"
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/80 to-transparent/40" />
-        <div className="absolute inset-0 bg-gradient-to-t from-navy via-transparent to-transparent" />
-      </div>
-      <div className="relative z-10 pb-12 md:pb-16 w-full max-w-6xl mx-auto">
-        <div className="max-w-3xl">
-        <span data-chero className="font-mono text-xs text-on-dark/40 uppercase tracking-widest">
-          Contact
-        </span>
-        <h1 data-chero className="mt-4 text-on-dark">
-          <span className="block font-heading font-bold text-3xl sm:text-4xl md:text-6xl tracking-tight leading-[0.95]">
-            Let&apos;s talk about
-          </span>
-          <span className="block font-drama italic text-4xl sm:text-5xl md:text-7xl tracking-tight leading-[0.9] text-brand-500">
-            your next case.
-          </span>
-        </h1>
-        </div>
-      </div>
-    </section>
-  );
-}
 
 /* ─── CONTACT FORM ─── */
 /** Sends the form's filled-in fields; throws unless the API accepted them. */
@@ -123,8 +70,8 @@ function ContactForm() {
             <label
               className={`absolute left-4 transition-all duration-300 pointer-events-none ${
                 focused[field.name]
-                  ? "top-2 text-[10px] text-brand-500 font-semibold"
-                  : "top-4 text-sm text-navy/40"
+                  ? "top-2 text-[10px] text-brand-700 font-semibold"
+                  : "top-4 text-sm text-navy/70"
               }`}
             >
               {field.label}
@@ -134,7 +81,7 @@ function ContactForm() {
               name={field.name}
               required={field.required}
               maxLength={field.maxLength}
-              className="w-full pt-6 pb-2 px-4 rounded-2xl bg-surface-100 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all duration-300"
+              className="w-full pt-6 pb-2 px-4 rounded-2xl bg-surface-100 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-700 focus:ring-2 focus:ring-brand-700/15 transition-all duration-300"
               onFocus={() =>
                 setFocused((prev) => ({ ...prev, [field.name]: true }))
               }
@@ -152,15 +99,15 @@ function ContactForm() {
         <label
           className={`absolute left-4 transition-all duration-300 pointer-events-none ${
             focused.subject
-              ? "top-2 text-[10px] text-brand-500 font-semibold"
-              : "top-4 text-sm text-navy/40"
+              ? "top-2 text-[10px] text-brand-700 font-semibold"
+              : "top-4 text-sm text-navy/70"
           }`}
         >
           Subject
         </label>
         <select
           name="subject"
-          className="w-full pt-6 pb-2 px-4 rounded-2xl bg-surface-100 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all duration-300 appearance-none cursor-pointer"
+          className="w-full pt-6 pb-2 px-4 rounded-2xl bg-surface-100 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-700 focus:ring-2 focus:ring-brand-700/15 transition-all duration-300 appearance-none cursor-pointer"
           onFocus={() =>
             setFocused((prev) => ({ ...prev, subject: true }))
           }
@@ -182,8 +129,8 @@ function ContactForm() {
         <label
           className={`absolute left-4 transition-all duration-300 pointer-events-none ${
             focused.message
-              ? "top-2 text-[10px] text-brand-500 font-semibold"
-              : "top-4 text-sm text-navy/40"
+              ? "top-2 text-[10px] text-brand-700 font-semibold"
+              : "top-4 text-sm text-navy/70"
           }`}
         >
           Message
@@ -193,7 +140,7 @@ function ContactForm() {
           required
           maxLength={5000}
           rows={4}
-          className="w-full pt-6 pb-2 px-4 rounded-2xl bg-surface-100 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all duration-300 resize-none"
+          className="w-full pt-6 pb-2 px-4 rounded-2xl bg-surface-100 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-700 focus:ring-2 focus:ring-brand-700/15 transition-all duration-300 resize-none"
           onFocus={() =>
             setFocused((prev) => ({ ...prev, message: true }))
           }
@@ -230,7 +177,7 @@ function ContactForm() {
         disabled={formState === "sending" || formState === "success"}
         className={`btn-magnetic w-full py-4 rounded-full font-semibold text-sm transition-all duration-500 ${
           formState === "success"
-            ? "bg-emerald-500 text-white"
+            ? "bg-navy text-white"
             : "bg-accent-500 text-white"
         }`}
       >
@@ -261,8 +208,8 @@ function ContactForm() {
 function ContactInfo() {
   const items = [
     { icon: Mail, label: "Email", value: "info@diamondorthotic.com" },
-    { icon: Phone, label: "Phone", value: "(555) 123-4567" },
-    { icon: MapPin, label: "Location", value: "San Diego, California" },
+    { icon: Phone, label: "Phone", value: "619.724.6400", mono: true },
+    { icon: MapPin, label: "Location", value: "La Mesa, California" },
     { icon: Clock, label: "Hours", value: "Mon–Fri, 8:00 AM – 5:00 PM PST" },
   ];
 
@@ -271,7 +218,7 @@ function ContactInfo() {
       <h2 className="font-heading font-bold text-2xl md:text-3xl tracking-tight">
         Get in touch.
       </h2>
-      <p className="mt-3 text-navy/50 text-sm leading-relaxed max-w-sm">
+      <p className="mt-3 text-navy/70 text-sm leading-relaxed max-w-sm">
         Whether you have questions about our products, need help with case
         submission, or want to learn about our digital workflow — we&apos;re
         here to help.
@@ -281,13 +228,11 @@ function ContactInfo() {
         {items.map((item, i) => (
           <div key={i} className="flex items-start gap-4">
             <div className="w-10 h-10 rounded-xl bg-brand-500/10 flex items-center justify-center flex-shrink-0">
-              <item.icon size={16} className="text-brand-500" />
+              <item.icon size={16} className="text-brand-700" />
             </div>
             <div>
-              <span className="font-mono text-[10px] text-navy/30 uppercase tracking-wider">
-                {item.label}
-              </span>
-              <p className="text-sm font-medium text-navy/80">{item.value}</p>
+              <span className="text-xs text-navy/70">{item.label}</span>
+              <p className={`text-sm font-medium text-navy ${item.mono ? "font-mono" : ""}`}>{item.value}</p>
             </div>
           </div>
         ))}
@@ -295,9 +240,7 @@ function ContactInfo() {
 
       {/* Social links */}
       <div className="mt-8 pt-6 border-t border-surface-300/30">
-        <span className="font-mono text-[10px] text-navy/30 uppercase tracking-wider">
-          Follow Us
-        </span>
+        <span className="text-xs text-navy/70">Follow us</span>
         <div className="mt-3 flex items-center gap-3">
           {SOCIALS.map((s) => (
             <a
@@ -305,7 +248,7 @@ function ContactInfo() {
               href={s.href}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-10 h-10 rounded-xl bg-surface-100 border border-surface-300/50 flex items-center justify-center text-navy/40 hover:text-brand-500 hover:border-brand-500/30 transition-all duration-300"
+              className="w-10 h-10 rounded-xl bg-surface-100 border border-surface-300/50 flex items-center justify-center text-navy/70 hover:text-brand-700 hover:border-brand-700/40 transition-all duration-300"
               aria-label={s.label}
             >
               <s.icon size={16} />
@@ -319,54 +262,23 @@ function ContactInfo() {
 
 /* ─── PAGE EXPORT ─── */
 export function ContactPage() {
-  const sectionRef = useRef(null);
-
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.from("[data-contact-anim]", {
-        y: 40,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.1,
-        ease: "power3.out",
-      });
-    }, sectionRef);
-    return () => ctx.revert();
-  }, []);
-
   return (
-    <div ref={sectionRef}>
-      <ContactHero />
-
-      {/* Main contact section */}
-      <section className="section-pad py-16 md:py-24">
-        <div className="max-w-6xl mx-auto">
-          <div
-            data-contact-anim
-            className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16"
-          >
-            <ContactInfo />
-            <div className="bg-white card-radius p-6 md:p-8 border border-surface-300/50 shadow-sm">
-              <ContactForm />
-            </div>
+    <>
+      <PageHero
+        variant="image"
+        title="Contact the lab"
+        intro="Questions about a product, a case in progress or setting up an account. Call, email or use the form."
+        image="/images/hero.webp"
+        imageAlt="A white sleep appliance with blue connectors on a dark surface"
+      />
+      <Reveal className="section-pad py-16 md:py-24">
+        <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16">
+          <ContactInfo />
+          <div className="bg-white card-radius p-6 md:p-8 border border-surface-300/50 shadow-sm">
+            <ContactForm />
           </div>
         </div>
-      </section>
-
-      {/* Ambient image */}
-      <section className="section-pad pb-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="relative w-full aspect-[21/9] rounded-[2rem] overflow-hidden">
-            <img
-              src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1920&q=80"
-              alt="Modern office environment"
-              className="w-full h-full object-cover"
-              loading="lazy"
-            />
-            <div className="absolute inset-0 bg-gradient-to-r from-brand-500/20 to-navy/30" />
-          </div>
-        </div>
-      </section>
-    </div>
+      </Reveal>
+    </>
   );
 }
