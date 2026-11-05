@@ -1,54 +1,8 @@
-import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
-import gsap from "gsap";
 import { Lock, Clock, Package, Send } from "lucide-react";
 import { useAuthStore } from "../../stores/auth.store.js";
 import { ROUTES } from "../../config/routes.js";
-
-/* ════════════════════════════════════════════════════════════════
-   HERO
-   ════════════════════════════════════════════════════════════════ */
-
-function CaseHero() {
-  const ref = useRef(null);
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.from("[data-ch]", {
-        y: 30,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.08,
-        ease: "power3.out",
-        delay: 0.2,
-      });
-    }, ref);
-    return () => ctx.revert();
-  }, []);
-
-  return (
-    <section ref={ref} className="relative hero-gradient pt-36 pb-56 -mb-32">
-      <div className="section-pad text-center max-w-2xl mx-auto">
-        <span data-ch className="font-mono text-xs text-on-dark/60 uppercase tracking-widest">
-          Digital Rx
-        </span>
-        <h1
-          data-ch
-          className="mt-4 font-heading font-bold text-3xl md:text-5xl text-on-dark tracking-tight"
-        >
-          Submit a New Case
-        </h1>
-        <p
-          data-ch
-          className="mt-3 text-on-dark/70 text-sm md:text-base max-w-lg mx-auto"
-        >
-          HIPAA-compliant digital submission for every Diamond-fabricated device.
-          Pick the device, configure it, upload your scans and records, sign —
-          we begin fabrication within one business day.
-        </p>
-      </div>
-    </section>
-  );
-}
+import { PageHero } from "../../components/marketing/PageHero";
 
 /* ════════════════════════════════════════════════════════════════
    MARKETING TEASER PAGE
@@ -63,16 +17,19 @@ export function CaseSubmissionPage() {
 
   return (
     <div>
-      <CaseHero />
+      <PageHero
+        title="Submit a new case"
+        intro="HIPAA-compliant digital submission for every Diamond-fabricated device. Pick the device, configure it, upload your scans and records, sign. We begin fabrication within one business day."
+      />
 
-      <section className="relative z-10 section-pad -mt-8 pb-20">
+      <section className="section-pad py-16 md:py-20">
         <div className="max-w-2xl mx-auto">
 
           {/* CTA card */}
           <div className="bg-white rounded-[2rem] border border-surface-300/50 shadow-xl shadow-navy/5 overflow-hidden">
             <div className="p-8 md:p-12 text-center">
               <div className="w-16 h-16 rounded-2xl bg-brand-500/10 flex items-center justify-center mx-auto mb-6">
-                <Lock size={28} className="text-brand-500" />
+                <Lock size={28} className="text-brand-700" />
               </div>
 
               {isApprovedDoctor ? (
@@ -80,7 +37,7 @@ export function CaseSubmissionPage() {
                   <h2 className="font-heading font-bold text-2xl text-navy">
                     Online Submission — Coming Soon
                   </h2>
-                  <p className="mt-3 text-sm text-navy/50 max-w-md mx-auto leading-relaxed">
+                  <p className="mt-3 text-sm text-navy/70 max-w-md mx-auto leading-relaxed">
                     Submitting a new case from the website isn&apos;t available
                     right now while we rebuild this page. We&apos;re still
                     accepting prescriptions — call 619.724.6400 or email
@@ -104,7 +61,7 @@ export function CaseSubmissionPage() {
                   <h2 className="font-heading font-bold text-2xl text-navy">
                     Doctors Only
                   </h2>
-                  <p className="mt-3 text-sm text-navy/50 max-w-md mx-auto leading-relaxed">
+                  <p className="mt-3 text-sm text-navy/70 max-w-md mx-auto leading-relaxed">
                     Online case submission from the website is temporarily
                     unavailable. Approved Diamond Labs partner doctors can
                     still submit through the Rx form in their account portal
@@ -124,7 +81,7 @@ export function CaseSubmissionPage() {
                     </Link>
                     <Link
                       to={ROUTES.REGISTER_DOCTOR}
-                      className="inline-flex items-center gap-2 px-6 py-3.5 rounded-full text-sm font-medium border border-surface-300/50 text-navy/60 hover:text-navy hover:border-brand-500/30 transition-all"
+                      className="inline-flex items-center gap-2 px-6 py-3.5 rounded-full text-sm font-medium border border-surface-300/50 text-navy/70 hover:text-navy hover:border-brand-500/30 transition-all"
                     >
                       Apply for a doctor account
                     </Link>
@@ -142,10 +99,10 @@ export function CaseSubmissionPage() {
               ].map(({ icon: Icon, label }) => (
                 <div
                   key={label}
-                  className="flex items-center justify-center gap-2 text-xs text-navy/40"
+                  className="flex items-center justify-center gap-2 text-xs text-navy/70"
                 >
                   <Icon size={14} />
-                  <span className="font-mono">{label}</span>
+                  <span>{label}</span>
                 </div>
               ))}
             </div>
@@ -153,7 +110,7 @@ export function CaseSubmissionPage() {
 
           {/* Secondary explanation — only relevant for unauthenticated visitors */}
           {!isApprovedDoctor && (
-            <p className="mt-6 text-center text-xs text-navy/30 max-w-sm mx-auto leading-relaxed">
+            <p className="mt-6 text-center text-sm text-navy/70 max-w-sm mx-auto leading-relaxed">
               Already an approved doctor? Sign in above — the link will take you
               straight to the Rx form.
             </p>

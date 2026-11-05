@@ -1,7 +1,5 @@
-import { useEffect, useRef } from "react";
-import gsap from "gsap";
-import { playOnView } from "../../lib/playOnView";
-import { Play } from "lucide-react";
+import { PageHero } from "../../components/marketing/PageHero";
+import { Reveal } from "../../components/marketing/Reveal";
 
 const VIDEOS = [
   {
@@ -36,81 +34,19 @@ const VIDEOS = [
 ];
 
 export function InstructionalVideosPage() {
-  const sectionRef = useRef(null);
-
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      gsap.from("[data-vid-hero]", {
-        y: 30,
-        opacity: 0,
-        duration: 0.8,
-        stagger: 0.08,
-        ease: "power3.out",
-        delay: 0.2,
-      });
-      const tween = gsap.fromTo(
-        "[data-vid-card]",
-        { y: 30, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.6,
-          stagger: 0.08,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      const grid = sectionRef.current?.querySelector("[data-vid-grid]");
-      cleanup = playOnView(grid, tween);
-    }, sectionRef);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
   return (
-    <div ref={sectionRef}>
-      {/* Hero */}
-      <section className="relative hero-gradient pt-36 pb-60 -mb-32">
-        <div className="section-pad text-center max-w-3xl mx-auto">
-          <span
-            data-vid-hero
-            className="font-mono text-xs text-on-dark/60 uppercase tracking-widest"
-          >
-            Resources
-          </span>
-          <h1
-            data-vid-hero
-            className="mt-4 font-heading font-bold text-3xl md:text-5xl text-on-dark tracking-tight"
-          >
-            Instructional Videos
-          </h1>
-          <p
-            data-vid-hero
-            className="mt-4 text-on-dark/60 text-sm md:text-base max-w-lg mx-auto leading-relaxed"
-          >
-            Training and technique videos to help you get the best results with
-            Diamond Orthotic Laboratory products.
-          </p>
-        </div>
-      </section>
+    <div>
+      <PageHero
+        title="Instructional videos"
+        intro="Training and technique videos to help you get the best results with Diamond Orthotic Laboratory products."
+      />
 
-      {/* Video grid */}
-      <section className="relative z-10 section-pad -mt-8 pb-20">
-        <div
-          data-vid-grid
-          className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6"
-        >
+      <Reveal className="section-pad py-16 md:py-20">
+        <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
           {VIDEOS.map((video) => (
-            <div
-              key={video.id}
-              data-vid-card
-              className="bg-white card-radius overflow-hidden border border-surface-300/50 shadow-sm hover:shadow-lg transition-shadow duration-300"
-            >
+            <div key={video.id}>
               <div
-                className="relative w-full"
+                className="relative w-full rounded-[2rem] overflow-hidden bg-navy"
                 style={{ paddingTop: video.aspect || "56.25%" }}
               >
                 <iframe
@@ -123,18 +59,11 @@ export function InstructionalVideosPage() {
                   loading="lazy"
                 />
               </div>
-              <div className="p-4 flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-brand-500/10 flex items-center justify-center flex-shrink-0">
-                  <Play size={14} className="text-brand-500 ml-0.5" />
-                </div>
-                <h3 className="font-heading font-semibold text-sm text-navy tracking-tight">
-                  {video.title}
-                </h3>
-              </div>
+              <h2 className="mt-3 px-2 font-heading font-semibold text-base text-navy">{video.title}</h2>
             </div>
           ))}
         </div>
-      </section>
+      </Reveal>
     </div>
   );
 }
