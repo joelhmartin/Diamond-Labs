@@ -11,7 +11,7 @@ const LOCAL_FILES_BASE = join(__dirname, "..", "..", ".localfiles");
 /**
  * Sanitize a single path segment so it cannot escape its parent directory.
  * Neutralizes `..` (replaced with `__`) then strips path separators and colons.
- * Applied to caseId, kind, and originalName before building any object path.
+ * Applied to prefix, ownerId, kind, and originalName before building any object path.
  *
  * @param {string} s
  * @returns {string}
@@ -23,31 +23,36 @@ function sanitizeSegment(s) {
 }
 
 /**
- * Upload a case file to GCS (production) or local disk (dev fallback).
+ * Upload a private object to GCS (production) or local disk (dev fallback) at
+ * <prefix>/<ownerId>/<kind>/<uuid>-<name>. Every segment is sanitized.
  *
  * Reads process.env.RX_GCS_BUCKET at call time so tests can run without
  * loading the full env schema (env.js calls process.exit on validation failure).
  *
- * @param {{ caseId: string, kind: string, buffer: Buffer, originalName: string, contentType?: string }} opts
+ * @param {{ prefix: string, ownerId: string, kind: string, buffer: Buffer, originalName: string, contentType?: string }} opts
  * @returns {Promise<{ gcsUrl: string, size: number }>}
  */
-export async function uploadCaseFile({ caseId, kind, buffer, originalName, contentType }) {
+export async function uploadPrivateObject({ prefix, ownerId, kind, buffer, originalName, contentType }) {
   // --- input validation ---
   if (!Buffer.isBuffer(buffer)) {
-    throw new Error("uploadCaseFile: buffer must be a Buffer");
+    throw new Error("uploadPrivateObject: buffer must be a Buffer");
   }
-  if (!caseId || typeof caseId !== "string") {
-    throw new Error("uploadCaseFile: caseId must be a non-empty string");
+  if (!prefix || typeof prefix !== "string") {
+    throw new Error("uploadPrivateObject: prefix must be a non-empty string");
+  }
+  if (!ownerId || typeof ownerId !== "string") {
+    throw new Error("uploadPrivateObject: ownerId must be a non-empty string");
   }
   if (!kind || typeof kind !== "string") {
-    throw new Error("uploadCaseFile: kind must be a non-empty string");
+    throw new Error("uploadPrivateObject: kind must be a non-empty string");
   }
 
   // Sanitize ALL path segments so none can escape via traversal or separator injection.
-  const safeCaseId = sanitizeSegment(caseId);
+  const safePrefix = sanitizeSegment(prefix);
+  const safeOwnerId = sanitizeSegment(ownerId);
   const safeKind = sanitizeSegment(kind);
   const safeName = sanitizeSegment(String(originalName || "file"));
-  const objectPath = `rx-cases/${safeCaseId}/${safeKind}/${crypto.randomUUID()}-${safeName}`;
+  const objectPath = `${safePrefix}/${safeOwnerId}/${safeKind}/${crypto.randomUUID()}-${safeName}`;
 
   const bucket = process.env.RX_GCS_BUCKET;
 
@@ -81,6 +86,10 @@ export async function uploadCaseFile({ caseId, kind, buffer, originalName, conte
   await writeFile(absPath, buffer);
   return { gcsUrl: `file://${absPath}`, size: buffer.length };
 }
+
+/** Rx case files live under rx-cases/<caseId>/. */
+export const uploadCaseFile = ({ caseId, kind, buffer, originalName, contentType }) =>
+  uploadPrivateObject({ prefix: "rx-cases", ownerId: caseId, kind, buffer, originalName, contentType });
 
 /**
  * Issue a short-lived signed READ URL for a stored file (HIPAA: PHI files are

@@ -27,3 +27,4 @@ export { shipments, shipmentEvents } from "./shipments.js";
 export { calendars, calendarHolidays } from "../../modules/business-calendar/schema.js";
 export { workflows, workflowStages, workflowAssignments, workflowPlans } from "../../modules/workflows/schema.js";
 export { tagDefinitions, recordTags, recordStars } from "../../modules/record-tags/schema.js";
+export { recordFiles } from "../../modules/record-files/schema.js";

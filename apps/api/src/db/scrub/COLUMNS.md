@@ -72,6 +72,7 @@ Pre-check before the transaction: every plan table and column must exist live ("
 | Table | Why |
 |---|---|
 | rx_case_files | Patient scans/photos/prescriptions/sleep studies; deleting rows removes every GCS reference (`gcs_url`, `original_name`). GCS objects are never touched. |
+| record_files | Generic attachments (record-files module); like rx_case_files, `original_name` and `storage_url` can identify a patient, so every row is deleted. Objects are never touched. |
 | sessions | Refresh-token hashes, IPs, user agents. |
 | kv_store | Magic links, MFA setup state, temp tokens, rate-limit counters. |
 | approval_tokens | One-click approval tokens. |

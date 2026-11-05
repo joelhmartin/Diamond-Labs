@@ -282,6 +282,14 @@ export const SCRUB_PLAN = {
   tag_definitions: { mode: "update", columns: { id: K, record_type: K, label: K, color: K, position: K, active: K, created_at: K, updated_at: K } },
   record_tags: { mode: "update", columns: { id: K, record_type: K, record_id: K, tag_id: K, created_by: K, created_at: K } },
   record_stars: { mode: "update", columns: { record_type: K, record_id: K, user_id: K, created_at: K } },
+  // record_files (record-files module): like rx_case_files, the file name and storage url can identify a patient, so rows are deleted (GCS objects are never touched).
+  record_files: {
+    mode: "delete",
+    columns: {
+      id: K, record_type: K, record_id: K, kind: K, original_name: gone("phi"), storage_url: gone("phi"),
+      content_type: K, size: K, created_by: K, created_at: K,
+    },
+  },
   lab_orders: {
     mode: "update",
     columns: {
