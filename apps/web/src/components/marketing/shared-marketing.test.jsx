@@ -58,3 +58,30 @@ test("under reduced motion, hero content is never hidden in the initial markup",
     assert.doesNotMatch(html, /opacity:\s*0(?![.\d])/);
   }
 });
+/* ---- Task 2: navigation and footer ---- */
+import { NAV_LINKS } from "./Navbar.jsx";
+import { Footer } from "./Footer.jsx";
+
+const flatNav = () => NAV_LINKS.flatMap((l) => [l, ...(l.children || [])]);
+
+test("the nav has no Dr. Olmos entry and names the courses link plainly", () => {
+  const all = flatNav();
+  assert.ok(!all.some((l) => l.to === "/about/dr-olmos"));
+  assert.ok(!all.some((l) => /Dr\. Steven Olmos/.test(l.label)));
+  const courses = all.find((l) => l.label === "Courses");
+  assert.equal(courses?.to, "/resources/courses");
+  assert.ok(NAV_LINKS.some((l) => l.label === "Resources"));
+});
+
+test("the footer has no status line and links each name to its page", () => {
+  const html = render(<Footer />);
+  assert.doesNotMatch(html, /System Operational/);
+  assert.match(html, /href="\/services\/digital-workflow"[^>]*>[\s\S]*?Digital Workflow/);
+  assert.match(html, /href="\/submit-case"[^>]*>[\s\S]*?Case Submission/);
+  assert.doesNotMatch(html, /Olmos-Method|Olmos Series/);
+});
+
+test("/about/dr-olmos is still registered in App.jsx", () => {
+  const src = readFileSync(new URL("../../App.jsx", import.meta.url), "utf8");
+  assert.match(src, /path="\/about\/dr-olmos"/);
+});

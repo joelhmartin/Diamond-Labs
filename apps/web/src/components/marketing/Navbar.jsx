@@ -17,14 +17,13 @@ import LogoFull from "../../images/logoFull.jsx";
 import { useAuth } from "../../hooks/useAuth.js";
 import { ROUTES, roleHome } from "../../config/routes.js";
 
-const NAV_LINKS = [
+export const NAV_LINKS = [
   {
     label: "About Us",
     to: "/about",
     children: [
       { label: "Our Story", to: "/about" },
       { label: "Our Team", to: "/about/team" },
-      { label: "Dr. Steven Olmos", to: "/about/dr-olmos" },
     ],
   },
   {
@@ -45,12 +44,12 @@ const NAV_LINKS = [
     ],
   },
   {
-    label: "Additional Resources",
+    label: "Resources",
     children: [
       { label: "New Client Account Form", to: "/resources/new-client" },
       { label: "Instructional Videos", to: "/resources/videos" },
       { label: "Our Centres / Certified Labs", to: "/resources/certified-labs" },
-      { label: "Dr. Steven Olmos Courses", to: "/resources/courses" },
+      { label: "Courses", to: "/resources/courses" },
     ],
   },
 ];

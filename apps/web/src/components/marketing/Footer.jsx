@@ -10,20 +10,19 @@ const SOCIALS = [
 
 const FOOTER_NAV = {
   Products: [
-    { label: "Olmos Series", to: "/products" },
-    { label: "DDSO Sleep Orthotic", to: "/products" },
-    { label: "TMD Orthotics", to: "/products" },
-    { label: "Materials", to: "/products" },
+    { label: "All Products", to: "/products" },
+    { label: "TMD Orthotics", to: "/services/tmd" },
+    { label: "Sleep Appliances", to: "/services/sleep" },
   ],
   Company: [
     { label: "About Us", to: "/about" },
-    { label: "Our Process", to: "/about" },
+    { label: "Our Team", to: "/about/team" },
     { label: "Contact", to: "/contact" },
   ],
   Resources: [
-    { label: "For Dentists", to: "/contact" },
-    { label: "Case Submission", to: "/contact" },
-    { label: "Digital Workflow", to: "/about" },
+    { label: "Case Submission", to: "/submit-case" },
+    { label: "Digital Workflow", to: "/services/digital-workflow" },
+    { label: "New Client Account", to: "/resources/new-client" },
   ],
 };
 
@@ -39,8 +38,8 @@ export function Footer() {
               Diamond Orthotic Laboratory
             </h3>
             <p className="mt-3 text-on-dark/50 text-sm leading-relaxed max-w-xs">
-              The premier Olmos-Method orthotic laboratory. Digital-first
-              precision for TMJ and sleep breathing disorders.
+              A digital orthotic laboratory in La Mesa, California, making TMD
+              orthotics and sleep appliances for dentists.
             </p>
             {/* Social links */}
             <div className="mt-6 flex items-center gap-3">
@@ -58,13 +57,6 @@ export function Footer() {
               ))}
             </div>
 
-            <div className="mt-4 flex items-center gap-3 font-mono text-xs text-on-dark/40">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-              </span>
-              System Operational
-            </div>
           </div>
 
           {/* Nav columns */}
