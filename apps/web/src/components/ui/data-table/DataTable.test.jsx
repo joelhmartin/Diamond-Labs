@@ -398,6 +398,26 @@ test("groupBy paging counts data rows only, and the group header repeats on the 
   assert.deepEqual(headers, ["Tue · 1 stops", "Wed · 1 stops"]);
 });
 
+test("highlightRowId marks that row (aria-current) and scrolls it into view once", () => {
+  const scrolled = [];
+  const orig = window.HTMLElement.prototype.scrollIntoView;
+  window.HTMLElement.prototype.scrollIntoView = function scrollIntoView() { scrolled.push(this.textContent); };
+  try {
+    const { rerender } = mount(<Harness highlightRowId="r3" />);
+    const current = bodyRows().filter((tr) => tr.getAttribute("aria-current") === "true");
+    assert.equal(current.length, 1);
+    assert.match(current[0].textContent, /Row 03/);
+    assert.equal(scrolled.length, 1);
+    rerender(<MemoryRouter><ToastProvider><Harness highlightRowId="r3" /></ToastProvider></MemoryRouter>);
+    assert.equal(scrolled.length, 1, "not scrolled again on a re-render");
+  } finally {
+    window.HTMLElement.prototype.scrollIntoView = orig;
+  }
+  cleanup();
+  mount(<Harness />);
+  assert.equal(bodyRows().filter((tr) => tr.hasAttribute("aria-current")).length, 0);
+});
+
 test("groupBy works with paginated={false}", () => {
   mount(<GroupHarness paginated={false} tableOptions={{ initialPageSize: 1000 }} />);
   assert.equal(screen.queryByRole("button", { name: "Next page" }), null);

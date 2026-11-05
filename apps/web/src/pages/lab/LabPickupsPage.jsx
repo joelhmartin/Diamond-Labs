@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
 import { CalendarCheck, CheckCircle2, Plus, XCircle } from "lucide-react";
 import { PICKUP_STATUSES, formatUsDate } from "@my-app/shared";
 import { DataTable } from "../../components/ui/data-table/index.js";
@@ -9,6 +8,7 @@ import { PickupRequestModal } from "../../components/lab/PickupRequestModal.jsx"
 import { ScheduleModal } from "../../components/lab/ScheduleModal.jsx";
 import { PickupDetailModal } from "../../components/lab/PickupDetailModal.jsx";
 import { useDataTable } from "../../hooks/useDataTable.js";
+import { useLinkedRecord } from "../../hooks/useLinkedRecord.js";
 import { pageParams } from "../../lib/data-table/server.js";
 import { eachRow } from "../../lib/data-table/bulk.js";
 import { errorText } from "../../lib/requests.js";
@@ -35,11 +35,9 @@ async function fetchPage({ page, pageSize, q, filters }) {
 /** The lab's pickup desk: open pickups by default, bulk Schedule / Complete / Cancel, "New pickup" for a client. */
 export function LabPickupsPage() {
   const { addToast } = useToast();
-  const [params, setParams] = useSearchParams();
   const [staff, setStaff] = useState([]);
   const [creating, setCreating] = useState(false);
   const [dialog, setDialog] = useState(null); // { mode: "schedule" | "cancel", rows }
-  const [linked, setLinked] = useState(null);
 
   useEffect(() => { fetchAssignableStaff().then(setStaff).catch(() => setStaff([])); }, []);
 
@@ -55,24 +53,8 @@ export function LabPickupsPage() {
   });
 
   // ?pickup=<id> opens that pickup, read fresh by id (so its version is current); a missing one is toasted.
-  const linkedId = params.get("pickup");
-  const closeDetail = () => setParams((prev) => { const next = new URLSearchParams(prev); next.delete("pickup"); return next; }, { replace: true });
-  const openDetail = (p) => setParams((prev) => { const next = new URLSearchParams(prev); next.set("pickup", p.id); return next; }, { replace: true });
-  useEffect(() => {
-    if (!linkedId) return undefined;
-    let live = true;
-    fetchLabPickup(linkedId)
-      .then((p) => { if (live) setLinked(p); })
-      .catch((err) => {
-        if (!live) return;
-        addToast({ message: err?.response?.status === 404 ? "That pickup was not found." : errorText(err), type: "error" });
-        closeDetail();
-      });
-    return () => { live = false; };
-    // closeDetail and addToast are stable enough for a one-shot read per linked id.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linkedId]);
-  const detail = linkedId && linked?.id === linkedId ? linked : null;
+  const linked = useLinkedRecord("pickup", fetchLabPickup, { notFoundText: "That pickup was not found." });
+  const { open: openDetail, clear: closeDetail, record: detail } = linked;
 
   const report = (result) => addToast({ message: summarizeResult(result), type: result.failed.length === 0 ? "success" : result.ok ? "warning" : "error", duration: result.failed.length ? 8000 : 4000 });
 
@@ -122,6 +104,7 @@ export function LabPickupsPage() {
         columns={columns}
         bulkActions={bulkActions}
         onRowClick={openDetail}
+        highlightRowId={linked.id}
         searchPlaceholder="Number or client"
         exportable={false}
         itemLabel="pickups"

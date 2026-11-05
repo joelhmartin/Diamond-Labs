@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { MessageSquare, RotateCcw } from "lucide-react";
 import { formatLabDate, formatUsDate } from "@my-app/shared";
 import api from "../../config/api.js";
@@ -57,6 +57,31 @@ const COLUMNS = [
   },
 ];
 
+/**
+ * ?case=<id> (a message's record link): once the cases load, search for that
+ * case so its row is on screen whatever page it was on; the table highlights
+ * it. A case that isn't in the list is toasted and the param removed. → the id.
+ */
+function useLinkedCase({ cases, loading, error, table, addToast }) {
+  const [params, setParams] = useSearchParams();
+  const linkedId = params.get("case");
+  const applied = useRef(null);
+  useEffect(() => {
+    if (!linkedId || loading || error || applied.current === linkedId) return;
+    applied.current = linkedId;
+    const hit = cases.find((c) => c.id === linkedId);
+    if (hit) {
+      table.setQ(hit.caseNumber);
+      return;
+    }
+    addToast({ message: "That case was not found.", type: "error" });
+    setParams((prev) => { const out = new URLSearchParams(prev); out.delete("case"); return out; }, { replace: true });
+    // table and addToast are read once per linked id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedId, loading, error, cases]);
+  return linkedId;
+}
+
 export function MyCasesPage() {
   const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -104,6 +129,7 @@ export function MyCasesPage() {
     match: (c, v) => c.status === v,
   }];
   const table = useDataTable({ mode: "client", rows: cases, searchFn, filters, loading, error, reload: load });
+  const linkedId = useLinkedCase({ cases, loading, error, table, addToast });
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
@@ -117,6 +143,7 @@ export function MyCasesPage() {
         searchPlaceholder="Case #, device, or patient"
         itemLabel="cases"
         exportFileName="my-cases.csv"
+        highlightRowId={linkedId}
         emptyText="No cases yet. Submitted prescriptions appear here with their production status."
       />
       <NewThreadModal

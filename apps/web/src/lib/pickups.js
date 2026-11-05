@@ -65,6 +65,8 @@ export function addressLine(address) {
 const data = (res) => res.data.data;
 
 export const fetchPickups = async (params) => data(await api.get("/pickups", { params }));
+/** One of the practice's pickups (404 for any other). */
+export const fetchPickup = async (id) => data(await api.get(`/pickups/${encodeURIComponent(id)}`));
 export const requestPickup = async (body, { staff = false } = {}) => data(await api.post(staff ? "/lab/pickups" : "/pickups", body));
 export const cancelOwnPickup = (p) => api.post(`/pickups/${p.id}/cancel`, { expectedVersion: p.version });
 export const searchPickupClients = async (q) => data(await api.get("/lab/pickup-clients", { params: q ? { q } : {} })).clients;

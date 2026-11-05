@@ -6,10 +6,11 @@ import { ConfirmButton } from "../../components/ui/ConfirmButton.jsx";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { PickupRequestModal } from "../../components/lab/PickupRequestModal.jsx";
 import { useDataTable } from "../../hooks/useDataTable.js";
+import { useLinkedRecord } from "../../hooks/useLinkedRecord.js";
 import { pageParams } from "../../lib/data-table/server.js";
 import { eachRow } from "../../lib/data-table/bulk.js";
 import { errorText } from "../../lib/requests.js";
-import { cancelOwnPickup, fetchPickups, isOpenPickup, statusLabel, timePreferenceLabel, windowLabel } from "../../lib/pickups.js";
+import { cancelOwnPickup, fetchPickup, fetchPickups, isOpenPickup, statusLabel, timePreferenceLabel, windowLabel } from "../../lib/pickups.js";
 
 const FILTERS = [
   { id: "status", label: "Status", type: "select", placeholder: "Any status", options: PICKUP_STATUSES.map((s) => ({ value: s, label: statusLabel(s) })) },
@@ -19,11 +20,27 @@ async function fetchPage({ page, pageSize, filters }) {
   return fetchPickups({ ...pageParams({ page, pageSize }), ...(filters.status ? { status: filters.status } : {}) });
 }
 
+/** A notification's pickup, shown above the list whichever page its row is on. */
+function LinkedPickup({ pickup, onDismiss }) {
+  const when = pickup.scheduledDate ? `scheduled for ${formatUsDate(pickup.scheduledDate)}` : windowLabel(pickup);
+  return (
+    <div role="status" aria-label="Linked pickup" className="flex flex-wrap items-center gap-2 rounded-xl bg-brand-500/5 px-4 py-2 text-xs text-navy/70">
+      <span className="font-mono font-semibold text-navy">Pickup #{pickup.pickupNumber}</span>
+      <span className="font-medium text-navy">{statusLabel(pickup.status)}</span>
+      <span>{when}</span>
+      <button type="button" onClick={onDismiss} className="ml-auto font-medium text-brand-600 hover:underline">Dismiss</button>
+    </div>
+  );
+}
+
 /** A practice's pickups: request one, watch it get scheduled, cancel while it is still open. */
 export function PickupsPage() {
   const { addToast } = useToast();
   const [requesting, setRequesting] = useState(false);
   const table = useDataTable({ mode: "server", fetchPage, filters: FILTERS, urlKey: "pk", getRowId: (p) => p.id, isRowSelectable: isOpenPickup });
+  // ?pickup=<id> (a notification's link): read by id, shown above the list, its row highlighted.
+  const linked = useLinkedRecord("pickup", fetchPickup, { notFoundText: "That pickup was not found." });
+  const reload = () => { table.reload(); if (linked.id) linked.reload(); };
 
   const cancelOne = async (p) => {
     try {
@@ -32,7 +49,7 @@ export function PickupsPage() {
     } catch (err) {
       addToast({ message: errorText(err), type: "error" });
     }
-    table.reload();
+    reload();
   };
 
   const columns = [
@@ -56,7 +73,7 @@ export function PickupsPage() {
     id: "cancel", label: "Cancel pickups", icon: <XCircle size={12} />, tone: "danger", confirmLabel: "Click again to cancel",
     run: async (rows) => {
       const result = await eachRow(rows, cancelOwnPickup, (p) => `#${p.pickupNumber}`);
-      table.reload();
+      reload();
       return result;
     },
   }];
@@ -68,6 +85,8 @@ export function PickupsPage() {
         table={table}
         columns={columns}
         bulkActions={bulkActions}
+        highlightRowId={linked.id}
+        notice={linked.record ? <LinkedPickup pickup={linked.record} onDismiss={linked.clear} /> : null}
         searchable={false}
         exportable={false}
         itemLabel="pickups"
@@ -78,7 +97,7 @@ export function PickupsPage() {
           </button>
         )}
       />
-      <PickupRequestModal open={requesting} onClose={() => setRequesting(false)} onCreated={() => table.reload()} />
+      <PickupRequestModal open={requesting} onClose={() => setRequesting(false)} onCreated={reload} />
     </div>
   );
 }

@@ -22,7 +22,15 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
-const mount = () => render(<MemoryRouter><ToastProvider><PickupsPage /></ToastProvider></MemoryRouter>);
+const mount = (url = "/doctor/pickups") => render(<MemoryRouter initialEntries={[url]}><ToastProvider><PickupsPage /></ToastProvider></MemoryRouter>);
+const byUrl = (map) => api.get.mockImplementation(async (url) => {
+  if (url in map) {
+    const v = map[url];
+    if (v instanceof Error) throw v;
+    return { data: { data: v } };
+  }
+  return { data: { data: { rows: ROWS, total: 4 } } };
+});
 
 test("lists practice pickups in a DataTable", async () => {
   mount();
@@ -44,4 +52,26 @@ test("Cancel is a ConfirmButton and only on requested/scheduled rows", async () 
   fireEvent.click(screen.getByRole("button", { name: "Click again to cancel" }));
   await waitFor(() => assert.equal(api.post.mock.calls.length, 1));
   assert.deepEqual(api.post.mock.calls[0], ["/pickups/a/cancel", { expectedVersion: 1 }]);
+});
+
+test("?pickup=<id> reads that pickup by id, shows it above the list and highlights its row", async () => {
+  byUrl({ "/pickups/b": row("b", 2, "scheduled") });
+  mount("/doctor/pickups?pickup=b");
+  const notice = await screen.findByRole("status", { name: "Linked pickup" });
+  assert.match(notice.textContent, /Pickup #2/);
+  assert.match(notice.textContent, /Scheduled/);
+  assert.match(notice.textContent, /11\/07\/2026/);
+  await screen.findByText("#1");
+  const current = screen.getAllByRole("row").filter((tr) => tr.getAttribute("aria-current") === "true");
+  assert.equal(current.length, 1);
+  assert.match(current[0].textContent, /#2/);
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+  await waitFor(() => assert.equal(screen.queryByRole("status", { name: "Linked pickup" }), null));
+});
+
+test("?pickup=<id> that is not the practice's is toasted as not found", async () => {
+  byUrl({ "/pickups/zz": Object.assign(new Error("nf"), { response: { status: 404 } }) });
+  mount("/doctor/pickups?pickup=zz");
+  await screen.findByText("That pickup was not found.");
+  assert.equal(screen.queryByRole("status", { name: "Linked pickup" }), null);
 });

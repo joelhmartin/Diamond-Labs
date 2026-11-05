@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AlertCircle, ArrowDown, ArrowUp, ChevronRight, Loader2 } from "lucide-react";
 import { Pagination } from "../Pagination.jsx";
 import { errorText } from "../../../lib/requests.js";
@@ -14,7 +14,8 @@ const ALIGN = { left: "text-left", right: "text-right", center: "text-center" };
  * The one list table. State comes from `useDataTable`; columns describe the
  * cells. Selection: checkbox or ⌘/Ctrl-click toggles, Shift-click extends from
  * the anchor, a plain click runs `onRowClick` (or selects only that row when
- * there is none), Esc clears.
+ * there is none), Esc clears. `highlightRowId` marks one row (a deep link's
+ * target: aria-current and a ring) and scrolls it into view once.
  */
 export function DataTable({
   table,
@@ -22,6 +23,7 @@ export function DataTable({
   bulkActions,
   onRowClick,
   rowClassName,
+  highlightRowId = null,
   renderExpanded,
   footer,
   toolbarRight,
@@ -40,6 +42,7 @@ export function DataTable({
   const { selection, registerColumns } = table;
   const [openId, setOpenId] = useState(null);
   const shiftHeld = useShiftHeld();
+  const scrollToHighlight = useScrollOnce(highlightRowId);
 
   useLayoutEffect(() => registerColumns(columns), [registerColumns, columns]);
 
@@ -70,9 +73,12 @@ export function DataTable({
     const canSelect = table.isRowSelectable(row);
     const open = openId === id;
     const expanded = open ? renderExpanded?.(row) : null;
+    const highlighted = highlightRowId != null && id === highlightRowId;
     return (
       <Fragment key={id}>
         <tr
+          ref={highlighted ? scrollToHighlight : undefined}
+          aria-current={highlighted ? "true" : undefined}
           onClick={(e) => handleRowClick(e, row)}
           onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }}
           aria-selected={selectable ? selected : undefined}
@@ -81,6 +87,7 @@ export function DataTable({
             selected ? "bg-brand-500/5" : "hover:bg-surface-50/60",
             shiftHeld && "select-none",
             (onRowClick || selectable) && "cursor-pointer",
+            highlighted && "outline outline-2 -outline-offset-2 outline-brand-500/60",
             rowClassName?.(row),
           ].filter(Boolean).join(" ")}
         >
@@ -301,4 +308,14 @@ function useShiftHeld() {
     };
   }, []);
   return held;
+}
+
+/** A ref callback that scrolls its element into view the first time it mounts for each `key`. */
+function useScrollOnce(key) {
+  const done = useRef(null);
+  return useCallback((el) => {
+    if (!el || key == null || done.current === key) return;
+    done.current = key;
+    el.scrollIntoView?.({ block: "center", behavior: "smooth" });
+  }, [key]);
 }
