@@ -32,8 +32,9 @@ function setup() {
   });
   reg.defineDashboard({ key: "secret", title: "Secret", roles: ["admin"], tiles: [] });
   const executed = [];
+  const txOpts = [];
   const tx = { execute: async (q) => { executed.push(JSON.stringify(q)); } };
-  const db = { transaction: async (fn) => fn(tx) };
+  const db = { transaction: async (fn, opts) => { txOpts.push(opts); return fn(tx); } };
   let t = 1000;
   const clock = () => t;
   const cache = createDashboardCache({ clock });
@@ -41,7 +42,7 @@ function setup() {
     registry: reg, db, key: "main", query: {}, actor: { id: "u1", role: "staff" },
     slots: createRunSlots(), cache, tz: "UTC", ...over,
   });
-  return { reg, runs, metricRun, go, executed, advance: (ms) => { t += ms; }, cache };
+  return { reg, runs, metricRun, go, executed, tx, db, txOpts, advance: (ms) => { t += ms; }, cache };
 }
 
 describe("resolveDashboard", () => {
@@ -150,6 +151,42 @@ describe("resolveDashboard", () => {
     s.reg.defineDashboard({ key: "bad", title: "B", tiles: [{ id: "x", kind: "stat", metric: "m.nope" }] });
     const out = await s.go({ key: "bad" });
     expect(out.tiles[0]).toMatchObject({ id: "x", ok: false, error: { code: "NOT_FOUND" } });
+  });
+});
+
+describe("review follow-ups", () => {
+  test("a single-tile refresh bypasses the cache for that tile (a feed poll is never stale)", async () => {
+    const s = setup();
+    await s.go();
+    expect(s.runs.list).toHaveBeenCalledTimes(1);
+    const one = await s.go({ tile: "list" });
+    expect(s.runs.list).toHaveBeenCalledTimes(2);
+    expect(one.tiles[0]).toMatchObject({ id: "list", ok: true });
+    // The fresh result refills the cache, so the next full load within 60 s reuses it.
+    await s.go();
+    expect(s.runs.list).toHaveBeenCalledTimes(2);
+    expect(s.metricRun).toHaveBeenCalledTimes(1);
+  });
+
+  test("a tile never lengthens a report's own shorter time limit", async () => {
+    const s = setup();
+    s.reg.defineReport({ key: "r.quick", group: "g", title: "Quick", timeoutMs: 2000, columns: [{ id: "a", label: "A", type: "int" }], run: async () => ({ rows: [] }) });
+    s.reg.defineReport({ key: "r.long", group: "g", title: "Long", timeoutMs: 20000, columns: [{ id: "a", label: "A", type: "int" }], run: async () => ({ rows: [] }) });
+    s.reg.defineDashboard({ key: "t", title: "T", tiles: [{ id: "q", kind: "table", report: "r.quick" }] });
+    s.reg.defineDashboard({ key: "l", title: "L", tiles: [{ id: "l", kind: "table", report: "r.long" }] });
+    await s.go({ key: "t" });
+    expect(s.executed.at(-1)).toContain("statement_timeout = 2000");
+    await s.go({ key: "l" });
+    expect(s.executed.at(-1)).toContain("statement_timeout = 5000");
+  });
+
+  test("a metric's run receives the read-only transaction, not the raw handle", async () => {
+    const s = setup();
+    await s.go({ tile: "count" });
+    expect(s.metricRun.mock.calls[0][0]).toBe(s.tx);
+    expect(s.metricRun.mock.calls[0][0]).not.toBe(s.db);
+    expect(s.txOpts).toEqual([{ accessMode: "read only" }]);
+    expect(s.executed).toEqual([expect.stringContaining("statement_timeout = 5000")]);
   });
 });
 

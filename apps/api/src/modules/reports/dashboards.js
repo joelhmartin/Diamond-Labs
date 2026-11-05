@@ -8,6 +8,8 @@
  *
  * Successful tiles are cached per process for 60 s, keyed by tile, params and
  * role. Tiles therefore must not depend on who the actor is beyond their role.
+ * A one-tile request (`tile`, a feed's poll) skips the cache read and refills it.
+ * A tile's limit never exceeds its report's own `timeoutMs`.
  */
 import { runReport, inReadOnlyTx, ReportError, defaultRunSlots, runClock } from "./runner.js";
 import { paramsSchema } from "./params.js";
@@ -69,6 +71,9 @@ function tileHead(tile, source) {
   return head;
 }
 
+/** A tile's statement limit: 5000 ms, or the source's own limit when that is shorter. */
+export const tileTimeoutMs = (def) => Math.min(TILE_TIMEOUT_MS, def?.timeoutMs ?? TILE_TIMEOUT_MS);
+
 async function runMetric({ def, query, db, actor, slots, now, tz }) {
   let params = query;
   if (def.params) {
@@ -79,13 +84,13 @@ async function runMetric({ def, query, db, actor, slots, now, tz }) {
       throw new ReportError("INVALID", "Invalid tile settings");
     }
   }
-  return inReadOnlyTx({ db, timeoutMs: TILE_TIMEOUT_MS, slots }, (tx) => def.run(tx, params, actor, runClock(now, tz)));
+  return inReadOnlyTx({ db, timeoutMs: tileTimeoutMs(def), slots }, (tx) => def.run(tx, params, actor, runClock(now, tz)));
 }
 
 function runTile({ registry, tile, source, query, db, actor, slots, now, tz }) {
   if (!source.def) throw new ReportError("NOT_FOUND", "This tile's source is missing.");
   if (source.type === "report") {
-    return runReport({ registry, db, key: tile.report, query, actor, now, tz, slots, timeoutMs: TILE_TIMEOUT_MS });
+    return runReport({ registry, db, key: tile.report, query, actor, now, tz, slots, timeoutMs: tileTimeoutMs(source.def) });
   }
   return runMetric({ def: source.def, query, db, actor, slots, now, tz });
 }
@@ -124,7 +129,8 @@ export async function resolveDashboard({
     const head = tileHead(tile, source);
     const tileQuery = { ...(tile.params || {}), ...shared };
     const cacheKey = `${dash.key}:${tile.id}|${stableJson(tileQuery)}|${actor?.role ?? ""}`;
-    const hit = cache.get(cacheKey);
+    // A one-tile request is a refresh (the feed's poll): it always runs, then refills the cache.
+    const hit = onlyTile === undefined ? cache.get(cacheKey) : undefined;
     if (hit !== undefined) return { ...head, ok: true, data: hit };
     try {
       const data = await runTile({ registry, tile, source, query: tileQuery, db, actor, slots, now, tz });
