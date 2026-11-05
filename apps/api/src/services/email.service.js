@@ -612,10 +612,12 @@ export async function sendStatementNotice({ to, monthLabel, closingCents }) {
  * (lab-shipping.service markShipmentShipped). Order numbers, carrier, tracking
  * number and link ONLY: it reads nothing else from its input, so shipping
  * never carries clinical content. Sent only when there is a tracking number.
- * Never throws (deliver()).
+ * Never throws (deliver()). It is the lab.order_shipped event's email
+ * (lab-notifications.js), which passes `{ detailed: true }` to get deliver's
+ * `{ ok, reason }` instead of a boolean.
  */
-export async function sendShippedNotice({ to, orderNumbers = [], shopOrderNumber = null, carrier, trackingNumber, trackingUrl = null }) {
-  if (!to || !trackingNumber) return false;
+export async function sendShippedNotice({ to, orderNumbers = [], shopOrderNumber = null, carrier, trackingNumber, trackingUrl = null }, { detailed = false } = {}) {
+  if (!to || !trackingNumber) return detailed ? { ok: false, reason: "undeliverable" } : false;
   const lab = labIdentity().name;
   const labNumbers = orderNumbers.map((n) => `#${n}`).join(", ");
   // A guest shop customer knows their shop order number (DOL-…), not our lab order number: lead with it.
@@ -640,8 +642,11 @@ export async function sendShippedNotice({ to, orderNumbers = [], shopOrderNumber
     (typeof trackingUrl === "string" && trackingUrl.startsWith("https:")) ? `Track your package: ${trackingUrl}` : null,
     lab,
   ].filter(Boolean).join("\n");
-  return deliver({ to, subject: `Your order has shipped — ${lab}`, html, text });
+  return deliver({ to, subject: `Your order has shipped — ${lab}`, html, text }, { detailed });
 }
+
+/** Whether email can actually leave (a mail provider is configured); for status cards. */
+export const isEmailConfigured = () => Boolean(mailgun);
 
 /**
  * The generic notifications module's email channel (modules/notifications).

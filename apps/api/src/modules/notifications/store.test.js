@@ -45,6 +45,21 @@ test("markUnread refuses when another unread row holds the same collapse key", a
   assert.match(calls[0].sql.replace(/\s+/g, " "), /not exists \(select 1 from "notifications" "n2" where/);
 });
 
+test("the in-app list and its count share one filter; deliveries filter by channel and status", async () => {
+  const store = createDrizzleStore();
+  const list = recordingDb([]);
+  await store.listInApp(list.db, "u1", { unreadOnly: true, event: "thing.happened", limit: 10, offset: 0 });
+  const count = recordingDb([[3]]);
+  assert.equal(await store.countInApp(count.db, "u1", { unreadOnly: true, event: "thing.happened" }), 3);
+  const where = (sql) => sql.replace(/\s+/g, " ").match(/where (.*?)( order by|$)/)[1];
+  assert.equal(where(list.calls[0].sql), where(count.calls[0].sql));
+  assert.match(count.calls[0].sql, /"read_at" is null/);
+  assert.deepEqual(count.calls[0].params, ["u1", "thing.happened"]);
+  const d = recordingDb([]);
+  await store.listDeliveries(d.db, { channel: "sms", status: "failed", limit: 5, offset: 0 });
+  assert.match(d.calls[0].sql, /"channel" = \$1 and "notification_deliveries"."status" = \$2/);
+});
+
 test("pruneDeliveries deletes rows older than the given days", async () => {
   const { db, calls } = recordingDb([]);
   await createDrizzleStore().pruneDeliveries(db, 90);

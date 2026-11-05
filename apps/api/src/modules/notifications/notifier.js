@@ -43,7 +43,8 @@ export function createNotifier({
     recipients: createRecipients({ store, events, sender, orgName, use, newId }),
     deliveries: {
       list: (db, q = {}) => store.listDeliveries(use(db), {
-        event: q.event || undefined, limit: clampInt(q.limit, 1, 500, 100), offset: clampInt(q.offset, 0, 1e6, 0),
+        event: q.event || undefined, channel: q.channel || undefined, status: q.status || undefined,
+        limit: clampInt(q.limit, 1, 500, 100), offset: clampInt(q.offset, 0, 1e6, 0),
       }),
     },
   };

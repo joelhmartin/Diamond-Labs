@@ -2,6 +2,8 @@ import { PREFERENCE_CHANNELS } from "@my-app/shared";
 import { effectivePreference, isOffered } from "./preferences.js";
 import { clampInt, NotificationInputError, uniq } from "./util.js";
 
+const listFilter = (q) => ({ unreadOnly: q.unread === true || q.unread === "true", event: q.event || undefined });
+
 /** A user's own side: in-app list and read state, and their channel preferences. */
 export function createInbox({ store, events, use }) {
   async function getPreferences(db, user) {
@@ -24,10 +26,11 @@ export function createInbox({ store, events, use }) {
 
   return {
     listForUser: (db, userId, q = {}) => store.listInApp(use(db), userId, {
-      unreadOnly: q.unread === true || q.unread === "true",
+      ...listFilter(q),
       limit: clampInt(q.limit, 1, 100, 50),
       offset: clampInt(q.offset, 0, 1e6, 0),
     }),
+    countForUser: (db, userId, q = {}) => store.countInApp(use(db), userId, listFilter(q)),
     unreadCount: (db, userId) => store.unreadCount(use(db), userId),
     markRead: (db, userId, { ids, all } = {}) => store.markRead(use(db), userId, all ? null : uniq(ids)),
     markUnread: (db, userId, id) => store.markUnread(use(db), userId, id),

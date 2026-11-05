@@ -15,6 +15,8 @@ export function createFakeStore({ preferences = [], recipients = [] } = {}) {
   const now = () => new Date();
   const mine = (userId) => state.notifications.filter((n) => n.userId === userId);
   const newestFirst = (a, b) => b.updatedAt - a.updatedAt;
+  const inApp = (userId, { unreadOnly, event }) =>
+    mine(userId).filter((n) => (!unreadOnly || !n.readAt) && (!event || n.event === event));
 
   return {
     state,
@@ -41,8 +43,11 @@ export function createFakeStore({ preferences = [], recipients = [] } = {}) {
       state.notifications.push({ ...row, count: 1, readAt: null, createdAt: now(), updatedAt: now() });
       return { id: row.id, inserted: true };
     },
-    async listInApp(_db, userId, { unreadOnly = false, limit = 50, offset = 0 } = {}) {
-      return mine(userId).filter((n) => !unreadOnly || !n.readAt).sort(newestFirst).slice(offset, offset + limit);
+    async listInApp(_db, userId, { unreadOnly = false, event, limit = 50, offset = 0 } = {}) {
+      return inApp(userId, { unreadOnly, event }).sort(newestFirst).slice(offset, offset + limit);
+    },
+    async countInApp(_db, userId, { unreadOnly = false, event } = {}) {
+      return inApp(userId, { unreadOnly, event }).length;
     },
     async unreadCount(_db, userId) {
       return mine(userId).filter((n) => !n.readAt).length;
@@ -100,8 +105,10 @@ export function createFakeStore({ preferences = [], recipients = [] } = {}) {
     async insertDelivery(_db, row) {
       state.deliveries.push({ createdAt: now(), ...row });
     },
-    async listDeliveries(_db, { event, limit = 100, offset = 0 } = {}) {
-      return state.deliveries.filter((d) => !event || d.event === event).slice().reverse().slice(offset, offset + limit);
+    async listDeliveries(_db, { event, channel, status, limit = 100, offset = 0 } = {}) {
+      return state.deliveries
+        .filter((d) => (!event || d.event === event) && (!channel || d.channel === channel) && (!status || d.status === status))
+        .slice().reverse().slice(offset, offset + limit);
     },
     async pruneDeliveries(_db, days) {
       state.prunes.push(days);

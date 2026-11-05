@@ -37,9 +37,13 @@ export function createDrizzleStore() {
         .returning({ id: notifications.id, inserted: sql`(xmax = 0)` });
       return { id: r?.id ?? row.id, inserted: r?.inserted === true || r?.inserted === "t" };
     },
-    async listInApp(db, userId, { unreadOnly = false, limit = 50, offset = 0 } = {}) {
-      const where = unreadOnly ? and(eq(notifications.userId, userId), isNull(notifications.readAt)) : eq(notifications.userId, userId);
-      return db.select().from(notifications).where(where).orderBy(desc(notifications.updatedAt)).limit(limit).offset(offset);
+    async listInApp(db, userId, { unreadOnly = false, event, limit = 50, offset = 0 } = {}) {
+      return db.select().from(notifications).where(inAppWhere(userId, { unreadOnly, event }))
+        .orderBy(desc(notifications.updatedAt)).limit(limit).offset(offset);
+    },
+    async countInApp(db, userId, { unreadOnly = false, event } = {}) {
+      const [r] = await db.select({ n: sql`count(*)::int` }).from(notifications).where(inAppWhere(userId, { unreadOnly, event }));
+      return Number(r?.n ?? 0);
     },
     async unreadCount(db, userId) {
       const [r] = await db.select({ n: sql`count(*)::int` }).from(notifications)
@@ -104,13 +108,26 @@ export function createDrizzleStore() {
     async insertDelivery(db, row) {
       await db.insert(notificationDeliveries).values(row);
     },
-    async listDeliveries(db, { event, limit = 100, offset = 0 } = {}) {
+    async listDeliveries(db, { event, channel, status, limit = 100, offset = 0 } = {}) {
+      const conds = [
+        event && eq(notificationDeliveries.event, event),
+        channel && eq(notificationDeliveries.channel, channel),
+        status && eq(notificationDeliveries.status, status),
+      ].filter(Boolean);
       const q = db.select().from(notificationDeliveries);
-      return (event ? q.where(eq(notificationDeliveries.event, event)) : q)
+      return (conds.length ? q.where(and(...conds)) : q)
         .orderBy(desc(notificationDeliveries.createdAt)).limit(limit).offset(offset);
     },
     pruneDeliveries,
   };
+}
+
+function inAppWhere(userId, { unreadOnly, event }) {
+  return and(
+    eq(notifications.userId, userId),
+    unreadOnly ? isNull(notifications.readAt) : undefined,
+    event ? eq(notifications.event, event) : undefined,
+  );
 }
 
 /** Delete delivery log rows older than `days`. */

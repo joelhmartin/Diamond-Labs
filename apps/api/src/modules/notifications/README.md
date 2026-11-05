@@ -33,6 +33,7 @@ and callers must not depend on the counts it returns.
 | `util.js` | `NotificationInputError`, small helpers, `safeReason` (masked error text) |
 | `store.js` | the drizzle data access, `pruneDeliveries(db, days)` |
 | `fake-store.js` | the same surface in memory, for tests |
+| `routes.js` | `notificationRoutes(fastify, {...})`: the HTTP surface, every collaborator injected |
 | `index.js` | the public surface, `configureNotifications`, `currentNotifier` |
 
 `CHANNELS` (`["in_app", "email", "sms"]`), `PREFERENCE_CHANNELS`,
@@ -93,7 +94,8 @@ Resolves to `{ inApp, sent, skipped, failed }`.
 ### The rest of the notifier
 
 ```js
-listForUser(db, userId, { unread?, limit?, offset? })
+listForUser(db, userId, { unread?, event?, limit?, offset? })
+countForUser(db, userId, { unread?, event? })
 unreadCount(db, userId)
 markRead(db, userId, { ids } | { all: true })
 markUnread(db, userId, id)     // false when another unread row holds the same key
@@ -105,7 +107,7 @@ recipients.add(db, { event, channel: "sms"|"email", address, label?, createdByUs
 recipients.setActive(db, id, active)
 recipients.remove(db, id)
 recipients.sendTest(db, id)    // → { ok, error? }
-deliveries.list(db, { event?, limit?, offset? })
+deliveries.list(db, { event?, channel?, status?, limit?, offset? })
 ```
 
 ## Configuration
@@ -155,6 +157,40 @@ override may still answer a boolean.
 
 No DB foreign keys. Staging scrub: `db/scrub/plan.js` and `COLUMNS.md`.
 
+## Routes
+
+`routes.js` exports `notificationRoutes(fastify, { notifier, authenticate,
+requireAdmin, kindOf, channelStatus?, normalizePhone?, db? })`. Register it
+under the API prefix. Every route runs `authenticate` first; the
+`/admin/notifications/*` routes also run `requireAdmin`.
+
+| Method | Path | |
+|---|---|---|
+| GET | `/notifications` | `?unread&event&limit&offset` → `{ rows, total }` |
+| GET | `/notifications/unread-count` | `{ count }` |
+| POST | `/notifications/read` | `{ ids }` (1–200) or `{ all: true }` → `{ updated }` |
+| POST | `/notifications/:id/unread` | 409 when another unread row holds the same key |
+| DELETE | `/notifications/:id` | dismiss; 404 when not the caller's |
+| GET / PUT | `/notifications/preferences` | events offered to `kindOf(user)`; PUT `{ event, channel, enabled }`, 400 when not offered |
+| GET / POST | `/admin/notifications/recipients` | addresses go back masked; an SMS number is normalised to E.164 (400 when it can't be); 409 duplicate |
+| PATCH / DELETE | `/admin/notifications/recipients/:id` | `{ active }` |
+| POST | `/admin/notifications/recipients/:id/test` | one test send |
+| GET | `/admin/notifications/deliveries` | `?channel&status&event&limit&offset` |
+| GET | `/admin/notifications/channels` | whatever `channelStatus()` returns |
+
+Schemas live in `@my-app/shared` (`notifications/schemas.js`); a schema
+failure is 422, a `NotificationInputError` 400 (409 for a duplicate).
+
 ## Wiring it into another app
 
-To be written with the boot wiring (task 11).
+1. Register the app's events once at boot (`defineNotificationEvent`; make it
+   idempotent with `getEvent(key)` so a second boot doesn't throw).
+2. Write `resolveAudience(db, audience)` for the app's users and kinds.
+3. `configureNotifications(createNotifier({ db, resolveAudience, channels, appUrl, orgName, log }))`
+   in every process that emits (the API server and any job runner).
+4. Register `notificationRoutes` with the app's `authenticate`, admin guard
+   and `kindOf`.
+5. Emit through the app's seam after commits.
+
+This app does all of it in `services/app-modules.js`, with its event list and
+resolver in a glue file it imports from there.

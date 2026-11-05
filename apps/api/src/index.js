@@ -11,7 +11,8 @@ import fastifyStatic from "@fastify/static";
 import multipart from "@fastify/multipart";
 import { env } from "./config/env.js";
 import { assertSafeConfig, assertScrubMarker, registerStagingHeaders } from "./config/app-env.js";
-import { queryClient } from "./config/database.js";
+import { db, queryClient } from "./config/database.js";
+import { configureAppModules, appModuleRoutes } from "./services/app-modules.js";
 import { reqSerializer } from "./lib/log-serializers.js";
 import project from "../../../project.config.js";
 import { errorHandler } from "./middleware/error-handler.js";
@@ -218,6 +219,9 @@ await fastify.register(rateLimit, {
 // Global error handler
 fastify.setErrorHandler(errorHandler);
 
+// Generic modules (notifications, ...) are configured once, before any route can emit.
+configureAppModules({ env, db, log: fastify.log });
+
 // Routes
 await fastify.register(healthRoutes, { prefix: "/api/v1" });
 await fastify.register(mediaRoutes, { prefix: "/api/v1" });
@@ -246,6 +250,7 @@ await fastify.register(shippingRoutes, { prefix: "/api/v1" });
 await fastify.register(themeRoutes,     { prefix: "/api/v1" });
 await fastify.register(autopayRoutes,   { prefix: "/api/v1" });
 await fastify.register(adminPaymentRoutes, { prefix: "/api/v1" });
+await fastify.register(appModuleRoutes, { prefix: "/api/v1" });
 
 registerAllJobs();
 registerJobTriggerRoutes(fastify);
