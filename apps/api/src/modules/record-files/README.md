@@ -69,9 +69,11 @@ the staging scrub deletes every row.
 
 ## Web
 
-`apps/web/src/modules/record-files/`: `<FileDrop accept maxFiles onFiles />` (drag
-and drop, inline size/count messages) and `<FileList recordType recordId />`
-(lists files, opens the signed link, optional delete).
+`apps/web/src/modules/record-files/`: `<FileDrop accept maxFiles maxBytes onFiles />` (drag
+and drop, inline size/count messages; `maxBytes` defaults to the 75 MB limit),
+`checkFiles(files, { maxFiles, maxBytes })`, `fileSizeLabel(bytes)` and
+`<FileList recordType recordId />` (lists files, opens the signed link,
+optional delete).
 
 ## Wiring it into another app
 

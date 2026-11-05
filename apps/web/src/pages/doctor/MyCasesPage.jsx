@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { RotateCcw } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { MessageSquare, RotateCcw } from "lucide-react";
 import { formatLabDate, formatUsDate } from "@my-app/shared";
 import api from "../../config/api.js";
-import { ROUTES } from "../../config/routes.js";
+import { ROUTES, doctorThreadPath } from "../../config/routes.js";
 import { DataTable } from "../../components/ui/data-table/index.js";
+import { useToast } from "../../components/ui/Toast.jsx";
+import { errorText } from "../../lib/requests.js";
+import { NewThreadModal, fetchRecordThreads } from "../../modules/messaging/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
 
 const TONES = {
@@ -54,10 +57,57 @@ const COLUMNS = [
   },
 ];
 
+/**
+ * ?case=<id> (a message's record link): once the cases load, search for that
+ * case so its row is on screen whatever page it was on; the table highlights
+ * it. A case that isn't in the list is toasted and the param removed. → the id.
+ */
+function useLinkedCase({ cases, loading, error, table, addToast }) {
+  const [params, setParams] = useSearchParams();
+  const linkedId = params.get("case");
+  const applied = useRef(null);
+  useEffect(() => {
+    if (!linkedId || loading || error || applied.current === linkedId) return;
+    applied.current = linkedId;
+    const hit = cases.find((c) => c.id === linkedId);
+    if (hit) {
+      table.setQ(hit.caseNumber);
+      return;
+    }
+    addToast({ message: "That case was not found.", type: "error" });
+    setParams((prev) => { const out = new URLSearchParams(prev); out.delete("case"); return out; }, { replace: true });
+    // table and addToast are read once per linked id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedId, loading, error, cases]);
+  return linkedId;
+}
+
 export function MyCasesPage() {
   const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [messaging, setMessaging] = useState(null); // the case a new thread is being started on
+  const navigate = useNavigate();
+  const { addToast } = useToast();
+
+  // Opens the case's existing conversation, or starts one.
+  const messageTheLab = async (c) => {
+    try {
+      const threads = await fetchRecordThreads({ recordType: "rx_case", recordId: c.id, side: "party" });
+      if (threads.length) navigate(doctorThreadPath(threads[0].id));
+      else setMessaging(c);
+    } catch (err) {
+      addToast({ message: errorText(err), type: "error" });
+    }
+  };
+  const columns = [...COLUMNS, {
+    id: "message", header: "", export: false, align: "right",
+    cell: (c) => (
+      <button type="button" onClick={() => messageTheLab(c)} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50">
+        <MessageSquare size={12} /> Message the lab
+      </button>
+    ),
+  }];
 
   const load = async () => {
     try {
@@ -79,6 +129,7 @@ export function MyCasesPage() {
     match: (c, v) => c.status === v,
   }];
   const table = useDataTable({ mode: "client", rows: cases, searchFn, filters, loading, error, reload: load });
+  const linkedId = useLinkedCase({ cases, loading, error, table, addToast });
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
@@ -88,11 +139,19 @@ export function MyCasesPage() {
       </div>
       <DataTable
         table={table}
-        columns={COLUMNS}
+        columns={columns}
         searchPlaceholder="Case #, device, or patient"
         itemLabel="cases"
         exportFileName="my-cases.csv"
+        highlightRowId={linkedId}
         emptyText="No cases yet. Submitted prescriptions appear here with their production status."
+      />
+      <NewThreadModal
+        open={Boolean(messaging)}
+        onClose={() => setMessaging(null)}
+        title={messaging ? `Message the lab about ${messaging.caseNumber}` : "Message the lab"}
+        record={messaging ? { recordType: "rx_case", recordId: messaging.id } : null}
+        onCreated={(thread) => { setMessaging(null); navigate(doctorThreadPath(thread.id)); }}
       />
     </div>
   );

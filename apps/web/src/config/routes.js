@@ -32,6 +32,9 @@ export const ROUTES = {
   ADMIN_RX_CASE_DETAIL: "/admin/rx-cases/:id",
   ADMIN_AUTOPAY: "/admin/autopay",
   ADMIN_JOBS: "/admin/jobs",
+  NOTIFICATIONS: "/notifications",
+  DOCTOR_NOTIFICATIONS: "/doctor/notifications",
+  ADMIN_LAB_ALERTS: "/admin/notifications",
   ADMIN_DEPARTMENTS: "/admin/lab/departments",
   ADMIN_REASONS: "/admin/lab/adjustment-reasons",
   ADMIN_SHIPMENTS: "/admin/shipments",
@@ -45,6 +48,11 @@ export const ROUTES = {
   LAB_ORDER_NEW: "/lab/orders/new", // declared before LAB_ORDER_DETAIL so "new" is never read as an id
   LAB_ORDER_DETAIL: "/lab/orders/:id",
   LAB_SHIPMENT_PRINT: "/lab/shipments/:id/print",
+  LAB_MESSAGES: "/lab/messages",
+  LAB_THREAD: "/lab/messages/:id",
+  LAB_PICKUPS: "/lab/pickups",
+  LAB_DELIVERIES: "/lab/deliveries",
+  LAB_DELIVERIES_PRINT: "/lab/deliveries/print",
 
   // Doctor
   DOCTOR_INVOICES: "/doctor/invoices",
@@ -53,6 +61,9 @@ export const ROUTES = {
   DOCTOR_SAVED_CARDS: "/doctor/saved-cards",
   DOCTOR_AUTOPAY: "/doctor/autopay",
   DOCTOR_CASES: "/doctor/cases",
+  DOCTOR_MESSAGES: "/doctor/messages",
+  DOCTOR_THREAD: "/doctor/messages/:id",
+  DOCTOR_PICKUPS: "/doctor/pickups",
   DOCTOR_NEW_CASE: "/app/cases/new",
 
   // Rx forms (faithful 1:1 JotForm ports)
@@ -67,6 +78,8 @@ export const ROUTES = {
 export const labOrderPath = (id) => `/lab/orders/${id}`;
 export const doctorInvoicePath = (id) => `/doctor/invoices/${id}`;
 export const adminInvoicePath = (id) => `/admin/invoices/${id}`;
+export const labThreadPath = (id) => `/lab/messages/${id}`;
+export const doctorThreadPath = (id) => `/doctor/messages/${id}`;
 export const shipmentPrintPath = (id) => `/lab/shipments/${id}/print`;
 
 /**

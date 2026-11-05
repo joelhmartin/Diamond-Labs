@@ -17,6 +17,8 @@ const ROOTS = [
     fileURLToPath(new URL(`../../../../packages/shared/src/${m}`, import.meta.url)),
   ),
   fileURLToPath(new URL("../../../../packages/shared/src/exports", import.meta.url)),
+  fileURLToPath(new URL("../../../../packages/shared/src/notifications", import.meta.url)),
+  fileURLToPath(new URL("../../../../packages/shared/src/messaging", import.meta.url)),
 ];
 // The exports dirs are also free of the word "invoice" (the invoice source is
 // app glue in apps/api/src/exports).

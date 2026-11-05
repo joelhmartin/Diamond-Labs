@@ -1,10 +1,10 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { agingKeyFor, daysPastDue, ageBalances, buildReceivables } from "./aging.js";
-import { addDaysIso } from "./invoice-rules.js";
+import { addIsoDays } from "@my-app/shared";
 
 const asOf = "2026-10-15";
-const dueDaysAgo = (n) => addDaysIso(asOf, -n);
+const dueDaysAgo = (n) => addIsoDays(asOf, -n);
 
 test("aging buckets at their boundaries: due today, 30, 31, 90, 91 days", () => {
   assert.equal(agingKeyFor(dueDaysAgo(-5), asOf), "current", "not yet due");

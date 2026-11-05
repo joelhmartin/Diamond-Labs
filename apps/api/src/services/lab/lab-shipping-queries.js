@@ -66,7 +66,7 @@ export async function shipContext(labOrderId, database = db) {
 }
 
 /**
- * Who gets the shipped email: the client doctor, else the shop order's email (a guest).
+ * Who gets the shipped alert: the client doctor (`userId`), else the shop order's email (a guest, `userId` null).
  * `shopOrderNumber` is the customer's own order number (DOL-…) for a shop-order box.
  */
 export async function shipmentRecipient(boxed, database = db) {
@@ -74,7 +74,7 @@ export async function shipmentRecipient(boxed, database = db) {
   if (!first) return null;
   const shop = await shopOrderFor(first, database);
   const email = first.clientUserId ? (await loadClient(first.clientUserId, database))?.email : shop?.email;
-  return email ? { email, shopOrderNumber: shop?.orderNumber ?? null } : null;
+  return email ? { email, userId: first.clientUserId ?? null, shopOrderNumber: shop?.orderNumber ?? null } : null;
 }
 
 /**

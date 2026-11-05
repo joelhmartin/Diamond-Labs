@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 process.env.PHI_ENCRYPTION_KEY ??= "a".repeat(64);
-const sentEmails = [];
-vi.mock("../email.service.js", () => ({ sendShippedNotice: vi.fn(async (args) => { sentEmails.push(args); return true; }) }));
+// The shipped alert goes through the notify seam (lab.order_shipped; its email is sendShippedNotice).
+const notified = [];
+vi.mock("../notify-seam.js", () => ({ notify: vi.fn(async (db, args) => { notified.push({ db, args }); return { inApp: 1, sent: 1, skipped: 0, failed: 0 }; }) }));
 
 const changeStatusMock = vi.fn(async () => ({ order: { id: "lo1" }, changed: true }));
 vi.mock("./lab-orders.service.js", async (orig) => ({ ...(await orig()), changeStatus: (...a) => changeStatusMock(...a) }));
@@ -108,8 +109,8 @@ test("void: carrier first, then the shipment, the order link and the invoice lin
   assert.equal(tx.log.find((l) => l.op === "set").values.status, "voided");
 });
 
-test("mark shipped: every order in the box ships, and ONE email lists them all", async () => {
-  sentEmails.length = 0;
+test("markShipmentShipped emits lab.order_shipped once for the claimant only: every order in the box, one alert", async () => {
+  notified.length = 0;
   const a = order({ shipmentId: "sh1" });
   const b = order({ id: "lo2", orderNumber: 100246, version: 1, shipmentId: "sh1" });
   const client = { id: "doc1", name: "Dr. Ada", email: "dr@x.com", role: "doctor", accountNumber: null, profile: null };
@@ -120,15 +121,18 @@ test("mark shipped: every order in the box ships, and ONE email lists them all",
   });
   const out = await svc.markShipmentShipped("sh1", { byUserId: "u1" }, deps(tx));
   assert.deepEqual(out, { shipmentId: "sh1", ordersShipped: [100245, 100246], alreadyShipped: false });
-  assert.equal(sentEmails.length, 1);
-  assert.deepEqual(sentEmails[0], {
-    to: "dr@x.com", orderNumbers: [100245, 100246], carrier: "UPS", trackingNumber: "1Z999AA10123456784",
-    trackingUrl: "https://www.ups.com/track?loc=en_US&tracknum=1Z999AA10123456784",
+  assert.equal(notified.length, 1);
+  assert.equal(notified[0].db, tx, "the root db, after commit");
+  assert.deepEqual(notified[0].args, {
+    event: "lab.order_shipped", recordType: "shipment", recordId: "sh1", audience: { userIds: ["doc1"] },
+    data: {
+      orderNumbers: [100245, 100246], moreOrders: 0, shopOrderNumber: null, carrier: "UPS", carrierCode: "ups", trackingNumber: "1Z999AA10123456784",
+    },
   });
 });
 
 test("marking a legacy (Seazona) order shipped issues and drafts no invoice: its bill is the imported legacy invoice", async () => {
-  sentEmails.length = 0;
+  notified.length = 0;
   const a = order({ shipmentId: "sh1", source: "legacy", sourceId: "ord-1" });
   const client = { id: "doc1", name: "Dr. Ada", email: "dr@x.com", role: "doctor", accountNumber: null, profile: null };
   const tx = fakeTx({
@@ -142,28 +146,28 @@ test("marking a legacy (Seazona) order shipped issues and drafts no invoice: its
   assert.equal(tx.log.some((l) => l.op === "update" && l.values?.status === "issued"), false);
 });
 
-test("a shop-order box emails the guest with the shop order number (DOL-…) as well", async () => {
-  sentEmails.length = 0;
+test("a shop-order box alerts the guest's address with the shop order number (DOL-…) as well", async () => {
+  notified.length = 0;
   const a = order({ shipmentId: "sh1", source: "shop_order", sourceId: "so1", clientUserId: null });
   const tx = fakeTx({
     selects: [[shipment], [a], [a], [], [], [a], [{ id: "so1", orderNumber: "DOL-12345678", email: "guest@x.com", phone: null, shipping: null }]],
     updates: [[{ id: "sh1" }], [{ ...a, status: "shipped", version: 4 }]],
   });
   await svc.markShipmentShipped("sh1", { byUserId: "u1" }, deps(tx));
-  assert.equal(sentEmails.length, 1);
-  assert.equal(sentEmails[0].to, "guest@x.com");
-  assert.equal(sentEmails[0].shopOrderNumber, "DOL-12345678");
-  assert.deepEqual(sentEmails[0].orderNumbers, [100245]);
+  assert.equal(notified.length, 1);
+  assert.deepEqual(notified[0].args.audience, { addresses: { email: ["guest@x.com"] } });
+  assert.equal(notified[0].args.data.shopOrderNumber, "DOL-12345678");
+  assert.deepEqual(notified[0].args.data.orderNumbers, [100245]);
 });
 
 test("mark shipped twice (staff and the tracking sync racing): the second sends nothing", async () => {
-  sentEmails.length = 0;
+  notified.length = 0;
   const shippedA = order({ shipmentId: "sh1", status: "shipped" });
   const tx = fakeTx({ selects: [[{ ...shipment, shippedAt: new Date() }], [{ ...shipment, shippedAt: new Date() }], [shippedA]], updates: [[]] });
   // shipment read, the re-read after the lost claim (not voided), then the box: the order is already shipped and skipped
   const out = await svc.markShipmentShipped("sh1", { byUserId: null }, deps(tx));
   assert.deepEqual(out, { shipmentId: "sh1", ordersShipped: [], alreadyShipped: true });
-  assert.equal(sentEmails.length, 0);
+  assert.equal(notified.length, 0);
 });
 
 test("mark shipped on one order: an unlabelled order takes the plain status path", async () => {
@@ -183,9 +187,9 @@ test("mark shipped on a labelled order: ships the box; changed is false when thi
   assert.equal(out.changed, false);
 });
 
-test("a throwing log sink on the email path can't reject after the box shipped", async () => {
-  const mail = await import("../email.service.js");
-  mail.sendShippedNotice.mockRejectedValueOnce(Object.assign(new Error("secret@addr"), { code: "MAIL_DOWN" }));
+test("a throwing log sink on the alert path can't reject after the box shipped", async () => {
+  const seam = await import("../notify-seam.js");
+  seam.notify.mockRejectedValueOnce(Object.assign(new Error("secret@addr"), { code: "MAIL_DOWN" }));
   const a = order({ shipmentId: "sh1" });
   const client = { id: "doc1", name: "Dr. Ada", email: "dr@x.com", role: "doctor", accountNumber: null, profile: null };
   const tx = fakeTx({
@@ -196,9 +200,9 @@ test("a throwing log sink on the email path can't reject after the box shipped",
   assert.equal(out.alreadyShipped, false);
 });
 
-test("email failures log the error code, never the message", async () => {
-  const mail = await import("../email.service.js");
-  mail.sendShippedNotice.mockRejectedValueOnce(Object.assign(new Error("secret@addr"), { code: "MAIL_DOWN" }));
+test("alert failures log the error code, never the message", async () => {
+  const seam = await import("../notify-seam.js");
+  seam.notify.mockRejectedValueOnce(Object.assign(new Error("secret@addr"), { code: "MAIL_DOWN" }));
   const a = order({ shipmentId: "sh1" });
   const client = { id: "doc1", name: "Dr. Ada", email: "dr@x.com", role: "doctor", accountNumber: null, profile: null };
   const tx = fakeTx({ selects: [[shipment], [a], [a], [], [], [a], [client]], updates: [[{ id: "sh1" }], [{ ...a, status: "shipped", version: 4 }]] });
@@ -312,7 +316,7 @@ const rollbackDb = (tx) => {
 };
 
 test("sync: first movement ships the box, then sends the one email after commit", async () => {
-  sentEmails.length = 0;
+  notified.length = 0;
   const a = order({ shipmentId: "sh1" });
   const client = { id: "doc1", name: "Dr. Ada", email: "dr@x.com", role: "doctor", accountNumber: null, profile: null };
   const tx = fakeTx({
@@ -323,12 +327,12 @@ test("sync: first movement ships the box, then sends the one email after commit"
   const out = await svc.syncLabTracking({ registry: fakeRegistry([pickedUp()]), database: db, log: { error: () => {}, warn: () => {} } }, deps(db));
   assert.equal(out.moved, 1);
   assert.equal(db.rolledBack, 0);
-  assert.equal(sentEmails.length, 1);
-  assert.deepEqual(sentEmails[0].orderNumbers, [100245]);
+  assert.equal(notified.length, 1);
+  assert.deepEqual(notified[0].args.data.orderNumbers, [100245]);
 });
 
 test("sync: a failure while shipping the orders rolls the status change back and is retried", async () => {
-  sentEmails.length = 0;
+  notified.length = 0;
   const lines = [];
   // the order's conditional UPDATE matches no row (someone else moved it) -> mutateIn throws a LabOrderError in the transaction
   const o = order({ shipmentId: "sh1" });
@@ -340,5 +344,5 @@ test("sync: a failure while shipping the orders rolls the status change back and
   assert.equal(out.updated, 0);
   assert.equal(out.errors, 1);
   assert.match(lines[0], /^\[SHIP\]\[MARK_SHIPPED_FAILED\] shipment=sh1 error=(STALE|CONFLICT)$/);
-  assert.equal(sentEmails.length, 0);
+  assert.equal(notified.length, 0);
 });

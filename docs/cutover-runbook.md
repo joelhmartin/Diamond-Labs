@@ -222,6 +222,15 @@ Scheduling seeds a default calendar and eight starter workflows (migration 0036)
 
 Notes: imported Seazona orders keep their existing due date and have no stage plan. With no default workflow and no product assignment, a newly released order gets a due date 13 business days out (the calendar lead time).
 
+## 6c. Re-enter what Seazona never exposed (before unfreeze)
+
+Seazona's API exposes no messages, pickups, notification settings or delivery method, so the load brought none and `delivery_method` starts null on legacy orders. Re-entry is by case number; do not paste patient names or free text from Labzona into the new app or into this runbook.
+
+- [ ] **Open pickups.** For each open pickup in Labzona, staff create it with "New pickup" (source `staff`) and schedule it if it has a date.
+- [ ] **Open messages.** For each unread or not-completed Labzona thread, staff start a thread on the case (or a general one) and paste a one-line summary, identified by case number. The history stays in Labzona.
+- [ ] **Lab alert numbers.** Admin › Lab alerts: add the lab's text number for `lab.order_received`, `lab.pickup_requested` and `message.received`. It takes effect only once Twilio is on (`docs/notifications-operations.md`).
+- [ ] **Delivery method.** Staff set "Local delivery" on the open orders that go by van. Later Rx releases carry the client's last method forward; shop orders stay unset.
+
 ## 7. Unfreeze
 
 **Unset the flag; never set it to an empty value** (an empty string fails env validation and the revision never becomes ready):

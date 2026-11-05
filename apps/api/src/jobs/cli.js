@@ -11,7 +11,12 @@ import { registerAllJobs } from "./definitions/index.js";
 import { runJob } from "./runner.js";
 import { listJobs } from "./registry.js";
 import { parseCliArgs } from "./cli-args.js";
+import { env } from "../config/env.js";
+import { db } from "../config/database.js";
+import { configureAppModules } from "../services/app-modules.js";
 
+// Jobs emit notifications too (the tracking sync sends lab.order_shipped).
+configureAppModules({ env, db });
 registerAllJobs();
 
 const parsed = parseCliArgs(process.argv.slice(2));

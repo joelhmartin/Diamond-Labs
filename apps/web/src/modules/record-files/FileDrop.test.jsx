@@ -42,3 +42,11 @@ test("more files than maxFiles is refused inline", () => {
   assert.match(screen.getByRole("alert").textContent, /up to 1 file/);
   assert.equal(onFiles.mock.calls.length, 0);
 });
+
+test("a maxBytes prop tightens the size limit", () => {
+  const onFiles = vi.fn();
+  render(<FileDrop maxBytes={1024 * 1024} onFiles={onFiles} />);
+  drop([file("photo.jpg", 1024 * 1024 + 1)]);
+  assert.match(screen.getByRole("alert").textContent, /photo\.jpg.*1 MB/);
+  assert.equal(onFiles.mock.calls.length, 0);
+});

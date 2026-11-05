@@ -7,8 +7,7 @@ import { DataTable } from "../../components/ui/data-table/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
 import { FileDrop } from "./FileDrop.jsx";
 import { recordFilesPath as base, uploadRecordFiles } from "./upload.js";
-
-const sizeLabel = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+import { fileSizeLabel } from "./format.js";
 
 /**
  * Lists a record's files; clicking one opens a short-lived signed link in a new tab.
@@ -65,7 +64,7 @@ export function FileList({ recordType, recordId, canEdit = false, uploadKind = "
       cell: (f) => <button type="button" className="text-left text-brand-700 hover:underline" onClick={() => open(f)}>{f.originalName}</button>,
     },
     { id: "kind", header: "Kind", cell: (f) => f.kind, sortValue: (f) => f.kind },
-    { id: "size", header: "Size", align: "right", cell: (f) => sizeLabel(f.size), sortValue: (f) => f.size },
+    { id: "size", header: "Size", align: "right", cell: (f) => fileSizeLabel(f.size), sortValue: (f) => f.size },
     ...(canEdit
       ? [{ id: "actions", header: "", export: false, align: "right", cell: (f) => <ConfirmButton onConfirm={() => remove(f)} confirmLabel="Click again to remove">Remove</ConfirmButton> }]
       : []),

@@ -1,9 +1,9 @@
-import { carrierName, trackingUrl } from "@my-app/shared";
+import { shippedNoticeData } from "./lab-notifications.js";
 import { db } from "../../config/database.js";
 import { env } from "../../config/env.js";
 import { labIdentity } from "../../config/lab-identity.js";
 import { createId } from "../../lib/id.js";
-import { sendShippedNotice } from "../email.service.js";
+import { notify } from "../notify-seam.js";
 import { addShipmentLine, removeShipmentLine } from "../billing/invoices.service.js";
 import { afterCommit } from "../shipping/after-commit.js";
 import { carrierRegistry } from "../shipping/carrier-registry.js";
@@ -29,7 +29,6 @@ function resolve(deps = {}) {
     log: deps.log ?? console,
     shipFrom: deps.shipFrom !== undefined ? deps.shipFrom : labIdentity().address,
     charge: deps.charge ?? { policy: env.SHIPPING_CHARGE_POLICY, flatCents: env.SHIPPING_FLAT_CENTS },
-    emailEnabled: deps.emailEnabled ?? env.SHIPPED_EMAIL_ENABLED,
   };
 }
 
@@ -177,7 +176,7 @@ export async function shipBoxIn(tx, shipmentId, { byUserId = null, now = new Dat
   return { shipment, claimed, moved };
 }
 
-/** After commit, ONLY the caller that claimed shippedAt sends the one shipped email; it can never fail the ship. */
+/** After commit, ONLY the caller that claimed shippedAt emits the one shipped alert; it can never fail the ship. */
 function emailAfterShip(d, { shipment, claimed }) {
   if (!claimed) return Promise.resolve();
   return afterCommit(() => notifyShipped(shipment, d), (err) =>
@@ -192,14 +191,24 @@ export async function markShipmentShipped(shipmentId, { byUserId = null } = {}, 
   return { shipmentId, ordersShipped: result.moved, alreadyShipped: !result.claimed };
 }
 
+/**
+ * lab.order_shipped to the client doctor (in-app + the shipped email), or to a
+ * guest shop order's address (email only). The email is sendShippedNotice,
+ * the event's email.send (lab-notifications.js), which honours
+ * SHIPPED_EMAIL_ENABLED. Order numbers, carrier and tracking only.
+ */
 async function notifyShipped(shipment, d) {
-  if (!d.emailEnabled || !shipment.trackingNumber) return false;
+  if (!shipment.trackingNumber) return;
   const boxed = await ordersOnShipment(shipment.id, d.database);
   const to = await shipmentRecipient(boxed, d.database);
-  if (!to) return false;
-  return sendShippedNotice({
-    to: to.email, ...(to.shopOrderNumber ? { shopOrderNumber: to.shopOrderNumber } : {}), orderNumbers: boxed.map((o) => o.orderNumber), carrier: carrierName(shipment),
-    trackingNumber: shipment.trackingNumber, trackingUrl: trackingUrl(shipment.carrier, shipment.trackingNumber),
+  if (!to) return;
+  await notify(d.database, {
+    event: "lab.order_shipped",
+    recordType: "shipment",
+    recordId: shipment.id,
+    audience: to.userId ? { userIds: [to.userId] } : { addresses: { email: [to.email] } },
+    // Bounded so the data guard can never drop the shipped email (shippedNoticeData).
+    data: shippedNoticeData({ shipment, orderNumbers: boxed.map((o) => o.orderNumber), shopOrderNumber: to.shopOrderNumber }),
   });
 }
 

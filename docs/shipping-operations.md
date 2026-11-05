@@ -101,7 +101,8 @@ Admin › Shipments › Carriers as disabled, and the panel says why.
 | `[SHIP][VOID_UNRECORDED] shipment= carrier=` | The carrier voided the label but our DB write failed | The shipment still reads "Label created" and the orders are still labelled. Press Void on the shipment again: the adapters treat the carrier's "already voided/cancelled" answer as success, so the second void completes the database side (shipment, order links, invoice line). If the second void is refused with the carrier's words, the already-voided matcher doesn't recognise them yet (see go-live step 3, re-void) |
 | `[SHIP][UNKNOWN_STATUS] carrier= code=` | The tracking sync saw a code we don't map | Add it to `carrier-status.js` |
 | `[SHIP][MARK_SHIPPED_FAILED] shipment=` | A moving shipment's orders couldn't be marked shipped | Retried on the next sync. Persistent: open the order |
-| `[SHIP][EMAIL_FAILED] shipment=` | The shipped email failed | Nothing to retry automatically. Tell the doctor if needed |
+| `[SHIP][EMAIL_FAILED] shipment=` | Building the shipped alert failed (reading the box or its recipient) | Nothing to retry automatically. Tell the doctor if needed |
+| `[NOTIFY][SEND_FAILED] event=lab.order_shipped channel=email` | The shipped email itself failed (it is now the `lab.order_shipped` notification's email; `SHIPPED_EMAIL_ENABLED=false` records a skipped delivery) | Check Admin › Lab alerts deliveries. Tell the doctor if needed |
 
 ## Rules worth knowing
 

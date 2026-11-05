@@ -23,9 +23,10 @@ import {
 import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { useAuth } from "../../hooks/useAuth.js";
-import { LAB_STATUS_LABELS, isStaffRole } from "@my-app/shared";
+import { LAB_STATUS_LABELS, LAB_TIMEZONE, isStaffRole } from "@my-app/shared";
 import { Modal } from "../../components/ui/Modal.jsx";
-import { ROUTES, labOrderPath } from "../../config/routes.js";
+import { ROUTES, labOrderPath, labThreadPath } from "../../config/routes.js";
+import { RecordThreads } from "../../modules/messaging/index.js";
 import { caseStatusLabel, resolutionLabel } from "../../lib/rx-case-labels.js";
 
 // ── Pure helpers (exported for tests) ───────────────────────────────────────
@@ -1057,6 +1058,10 @@ export function AdminRxCaseDetailPage() {
           </p>
         </div>
       )}
+
+      <div className="mt-6">
+        <RecordThreads recordType="rx_case" recordId={caseRow.id} side="host" threadPath={labThreadPath} timeZone={LAB_TIMEZONE} />
+      </div>
 
       <Modal open={confirmLegacyOpen} onClose={() => setConfirmLegacyOpen(false)} title="Check Seazona first">
         <p className="text-sm text-navy/70">

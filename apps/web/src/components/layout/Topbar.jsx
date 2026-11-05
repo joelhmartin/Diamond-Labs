@@ -4,6 +4,8 @@ import { Dropdown, DropdownItem } from "../ui/Dropdown.jsx";
 import { AccountSwitcher } from "../account/AccountSwitcher.jsx";
 import { useNavigate } from "react-router-dom";
 import { ROUTES } from "../../config/routes.js";
+import { LAB_TIMEZONE } from "@my-app/shared";
+import { NotificationBell } from "../../modules/notifications/index.js";
 
 export function Topbar() {
   const { user, logout } = useAuth();
@@ -18,6 +20,7 @@ export function Topbar() {
     <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-6">
       <AccountSwitcher />
       <div className="flex items-center gap-4">
+        <NotificationBell to={ROUTES.NOTIFICATIONS} timeZone={LAB_TIMEZONE} />
         <Dropdown
           align="right"
           trigger={

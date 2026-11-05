@@ -7,6 +7,7 @@ import { redis } from "../config/redis.js";
 import { orders, orderItems } from "../db/schema/index.js";
 import { createId } from "../lib/id.js";
 import { createShopLabOrder } from "../services/lab/lab-orders.service.js";
+import { notify } from "../services/notify-seam.js";
 import { ERROR_CODES, checkoutSchema } from "@my-app/shared";
 import { withIdempotency, ChargeInProgressError, safeParse, idemResultKey } from "../lib/payment-helpers.js";
 import { toDecimalString } from "../lib/money.js";
@@ -127,12 +128,20 @@ async function recordGuestOrder({
   // The job for the bench and its paid shop invoice. Deliberately OUTSIDE the paid-order transaction: the
   // card is already charged, so a DB error here must never roll back the order row.
   // No PHI or card data in the log line.
+  let labOrder = null;
   try {
-    await db.transaction((tx) =>
+    labOrder = await db.transaction((tx) =>
       createShopLabOrder(tx, { orderId, clientUserId: pricedForUserId, quote, transactionId: result.transactionId })
     );
   } catch (err) {
     log.error({ orderId }, `[LAB][SHOP_ORDER_FAILED] order=${orderId}: ${String(err?.message || err)} — the shop-lab-orders-repair sweep will create the lab order and invoice`);
+  }
+  // The lab's alert, after the lab order committed (lab.order_received). Never throws.
+  if (labOrder) {
+    await notify(db, {
+      event: "lab.order_received", recordType: "lab_order", recordId: labOrder.id, audience: { kinds: ["staff"] },
+      data: { orderNumber: labOrder.orderNumber, labOrderId: labOrder.id },
+    });
   }
 
   log.info({ orderNumber }, "catalog order recorded");
