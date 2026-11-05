@@ -52,4 +52,6 @@ pnpm --filter @my-app/api sms:smoke --to "(555) 123-4567"          # Twilio test
 pnpm --filter @my-app/api sms:smoke --to "(555) 123-4567" --live   # sends a real text
 ```
 
-Prints only `ok`, the masked number and the provider id.
+Prints only `ok`, the masked number and the provider id. Without `--live` it
+refuses unless the provider is `log`, or Twilio with the test sender and no
+messaging service SID.

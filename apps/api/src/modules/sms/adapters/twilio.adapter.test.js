@@ -47,9 +47,10 @@ test("2xx → { ok: true, providerId: sid }", async () => {
 
 test("4xx → { ok: false, error: \"21211 <message>\" } and never includes the token", async () => {
   const { fetchImpl } = fake(400, fixture("twilio-error-21211"));
-  const r = await createTwilioAdapter({ config: { twilio: TWILIO }, fetchImpl }).send({ to: "+15550000", body: "hi" });
+  const r = await createTwilioAdapter({ config: { twilio: TWILIO }, fetchImpl }).send({ to: "+15550001234", body: "hi" });
   assert.equal(r.ok, false);
-  assert.equal(r.error, "21211 The 'To' number +15550000 is not a valid phone number.");
+  assert.equal(r.error, "21211 The 'To' number •••1234 is not a valid phone number.");
+  assert.ok(!r.error.includes("5550001234"), "the full destination number is masked");
   assert.ok(!JSON.stringify(r).includes("secret-token-xyz"));
 });
 

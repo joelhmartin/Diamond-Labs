@@ -10,7 +10,7 @@ export function createLogAdapter({ log = console.log } = {}) {
     label: "Log only",
     configured: () => ({ ok: true }),
     async send({ to, body }) {
-      log(`[sms:log] to ${maskPhone(to)} (${String(body ?? "").length} chars)`);
+      log(`[SMS] to=${maskPhone(to)} len=${String(body ?? "").length}`);
       return { ok: true, providerId: "log" };
     },
   };

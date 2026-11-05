@@ -8,7 +8,6 @@
  * id. Never prints credentials or the message text. Without --live it refuses
  * unless TWILIO_FROM is Twilio's magic test number.
  */
-const TEST_FROM = "+15005550006";
 const args = process.argv.slice(2);
 if (args.includes("--help") || args.includes("-h")) {
   console.log("Usage: sms:smoke --to <number> [--live]\nSends one text through the configured provider. Without --live only Twilio test credentials (TWILIO_FROM=+15005550006) are allowed.");
@@ -26,14 +25,17 @@ const live = args.includes("--live");
 const { env } = await import("../src/config/env.js");
 const { smsRegistry } = await import("../src/modules/sms/sms-registry.js");
 const { normalizePhone, maskPhone } = await import("../src/modules/sms/phone.js");
+const { smsConfig } = await import("../src/modules/sms/sms-config.js");
+const { smokeRefusal } = await import("../src/modules/sms/smoke-guard.js");
 
 const registry = smsRegistry();
 const status = registry.status();
 console.log(`provider=${status.provider} ok=${status.ok}${status.reason ? ` reason=${status.reason}` : ""}`);
 if (!status.ok) process.exit(1);
 
-if (!live && (status.provider !== "twilio" || env.TWILIO_FROM !== TEST_FROM)) {
-  console.error(`Refusing: without --live the provider must be twilio with TWILIO_FROM=${TEST_FROM} (Twilio test credentials).`);
+const refusal = smokeRefusal(smsConfig(env), { live });
+if (refusal) {
+  console.error(refusal);
   process.exit(1);
 }
 

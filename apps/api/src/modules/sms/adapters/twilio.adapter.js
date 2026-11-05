@@ -1,4 +1,5 @@
 import { missingConfigReason } from "../sms-config.js";
+import { maskPhone } from "../phone.js";
 
 const TIMEOUT_MS = 10_000;
 
@@ -39,7 +40,9 @@ export function createTwilioAdapter({ config, fetchImpl = globalThis.fetch }) {
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok) return { ok: true, providerId: data.sid };
-        return { ok: false, error: `${data.code ?? res.status} ${data.message ?? "Twilio rejected the message"}` };
+        // Twilio's text can embed the destination number (21211): mask it.
+        const message = String(data.message ?? "Twilio rejected the message").replace(/\+?\d{8,15}/g, maskPhone);
+        return { ok: false, error: `${data.code ?? res.status} ${message}` };
       } catch (err) {
         return { ok: false, error: `Twilio request failed: ${err?.name === "TimeoutError" ? "timed out" : "network error"}` };
       }
