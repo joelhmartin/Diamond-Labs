@@ -45,10 +45,29 @@ timezone, not UTC). Custom ranges are checked for `from <= to` and `maxDays`.
 returns `{ band: "healthy" | "stable" | "declining" | "inactive", trend, isNew }`.
 The host chooses the windows and thresholds.
 
+## Running and routes
+
+`runReport({ registry, db, key, query, actor, tz, slots })` validates, then runs
+in a read-only transaction after `SET LOCAL statement_timeout` (report
+`timeoutMs`, default 10000), inside one of 4 per-process run slots (5 s wait,
+then `BUSY`). It throws `ReportError(code)` with code `NOT_FOUND`, `FORBIDDEN`,
+`INVALID` (with `field`), `UNAVAILABLE`, `TIMEOUT` or `BUSY`. Server-paged
+reports read `limit` (default 50, max 500), `offset` and `sort` from the query;
+client-paged results are cut at 5000 rows with `truncated`. `streamCsv` pages a
+server report by 2000 up to 100000 rows, one short transaction per page.
+
+`createReportRoutes({ registry, db, preHandler, audit, favorites, tz?, slots? })`
+returns a Fastify plugin: `GET /reports`, `/reports/:key/run`,
+`/reports/:key/export.csv`, `PUT|DELETE /reports/:key/favorite` and
+`GET /reports/lookups/:source`. `audit(request, action, targetId, metadata)` is
+called on export with parameter names only.
+
 ## Favorites (injected, not owned)
 
 The module does not create a favorites table. Favorites go through a store the
-host injects, backed by the app's generic per-user stars table:
+host injects (`createReportRoutes({ ..., favorites })`), for example one backed
+by the app's generic per-user stars table. `createMemoryFavoritesStore()` is a
+complete in-memory implementation (forgets on restart):
 
 ```js
 {

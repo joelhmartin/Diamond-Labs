@@ -41,6 +41,7 @@ import shippingRoutes from "./routes/shipping.routes.js";
 import themeRoutes from "./routes/theme.routes.js";
 import autopayRoutes from "./routes/autopay.routes.js";
 import adminPaymentRoutes from "./routes/admin-payment.routes.js";
+import reportsRoutes from "./routes/reports.routes.js";
 import { registerAllJobs } from "./jobs/definitions/index.js";
 import { registerJobTriggerRoutes } from "./jobs/triggers/http.js";
 
@@ -246,6 +247,7 @@ await fastify.register(shippingRoutes, { prefix: "/api/v1" });
 await fastify.register(themeRoutes,     { prefix: "/api/v1" });
 await fastify.register(autopayRoutes,   { prefix: "/api/v1" });
 await fastify.register(adminPaymentRoutes, { prefix: "/api/v1" });
+await fastify.register(reportsRoutes, { prefix: "/api/v1" });
 
 registerAllJobs();
 registerJobTriggerRoutes(fastify);

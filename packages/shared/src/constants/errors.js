@@ -52,6 +52,11 @@ export const ERROR_CODES = {
   PRICE_CHANGED: { code: "PRICE_CHANGED", status: 409, message: "Prices changed — please review your order." },
   REFUND_UNCERTAIN: { code: "REFUND_UNCERTAIN", status: 409, message: "The reversal's outcome could not be confirmed — it may have already gone through. Do NOT retry; verify the transaction in Authorize.net and reconcile manually." },
 
+  // Reports
+  REPORT_UNAVAILABLE: { code: "REPORT_UNAVAILABLE", status: 409, message: "This report is not available yet." },
+  REPORT_TIMEOUT: { code: "REPORT_TIMEOUT", status: 503, message: "This report took too long. Try a shorter date range." },
+  REPORTS_BUSY: { code: "REPORTS_BUSY", status: 503, message: "Reports are busy" },
+
   // General
   VALIDATION_ERROR: { code: "VALIDATION_ERROR", status: 422, message: "Validation failed." },
   NOT_FOUND: { code: "NOT_FOUND", status: 404, message: "Resource not found." },
