@@ -95,9 +95,15 @@ test("balances reads a stored export by --file-id, and refuses a missing or wron
 
 test("balances per-invoice also takes balances derived from the Payments export (payments_derived), never per-client", async () => {
   const r = rig();
-  r.stored.set("d1", { kind: "payments_derived", bytes: derivedExportBytes([{ key: "1001", cents: 0 }, { key: "1002", cents: 2500 }]) });
+  const provenance = { maxInvoiceNumber: 1002, invoiceRecords: 2, derivedRows: 2, sourceFiles: 3, unclear: "credit-definite", derivedAt: "2026-11-05T12:00:00.000Z" };
+  r.stored.set("d1", { kind: "payments_derived", bytes: derivedExportBytes([{ key: "1001", cents: 0 }, { key: "1002", cents: 2500 }], provenance) });
   assert.equal(await r.run(["balances", "--balances", "per-invoice", "--file-id", "d1", "--target", "rehearsal"]), 0);
   assert.equal(last()[1].fileId, "d1");
+  assert.deepEqual(last()[1].derived, provenance, "the loader is told the file is derived, so a missing invoice stays open");
+  assert.match(r.out.lines.join("\n"), /DERIVED from 3 Payments export\(s\) at 2026-11-05T12:00:00.000Z.*highest invoice 1002/);
+  r.stored.set("f9", { kind: "balances_invoice", bytes: fixture("invoices-export.xls") });
+  await r.run(["balances", "--balances", "per-invoice", "--file-id", "f9", "--target", "rehearsal"]);
+  assert.equal(last()[1].derived, null, "a lab export is not derived");
   await assert.rejects(r.run(["balances", "--balances", "per-client", "--file-id", "d1", "--target", "rehearsal"]), /No per-client export stored with id d1/);
 });
 

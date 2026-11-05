@@ -47,8 +47,9 @@ export const EXPORT_KINDS = {
  * in this same HTML shape), so every per-invoice consumer reads it with
  * readExport unchanged.
  */
+export const DERIVED_BALANCE_KIND = "payments_derived";
 export const BALANCE_FILE_KINDS = {
-  invoice: ["balances_invoice", "payments_derived"],
+  invoice: ["balances_invoice", DERIVED_BALANCE_KIND],
   client: ["balances_client"],
 };
 export const isBalanceFile = (stored, kind) => Boolean(stored) && (BALANCE_FILE_KINDS[kind] ?? []).includes(stored.kind);
@@ -94,11 +95,16 @@ export function exportText(bytes) {
  * attribute values.
  */
 export function htmlTableRows(html) {
+  return htmlTableRowsDetailed(html).map((r) => r.cells);
+}
+
+/** htmlTableRows with, per row, whether it holds any <th> cell (a header row). */
+export function htmlTableRowsDetailed(html) {
   const text = String(html).replace(/<!--[\s\S]*?-->/g, "");
   const rows = [];
   for (const tr of text.matchAll(/<tr\b[^>]*>([\s\S]*?)(?=<tr\b|<\/table>|$)/gi)) {
-    const cells = [...tr[1].matchAll(/<t[dh]\b[^>]*>([\s\S]*?)(?=<t[dh]\b|<\/tr>|$)/gi)].map((m) => cellText(m[1]));
-    if (cells.length) rows.push(cells);
+    const found = [...tr[1].matchAll(/<t([dh])\b[^>]*>([\s\S]*?)(?=<t[dh]\b|<\/tr>|$)/gi)];
+    if (found.length) rows.push({ cells: found.map((m) => cellText(m[2])), th: found.some((m) => m[1].toLowerCase() === "h") });
   }
   return rows;
 }

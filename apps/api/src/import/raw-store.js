@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { createId } from "../lib/id.js";
 import { encryptJson, decryptJson, encryptField, decryptField } from "../lib/crypto.js";
 import { seazonaRecords, fetchRuns, importFiles, parityReports } from "./db/schema.js";
+import { bySeazonaId } from "./seazona-records.js";
 
 /**
  * The raw store's reads and writes. Payloads are sealed whole on the way in
@@ -41,10 +42,14 @@ export async function upsertRecords(importDb, { entity, records, runId, now = ne
   return distinct.length;
 }
 
-/** Every record of one entity, opened. PHI in memory only. */
+/**
+ * Every record of one entity, opened, ordered by seazonaId (bySeazonaId), so
+ * the invoices step and payments-match pick the same record when two share a
+ * number. PHI in memory only.
+ */
 export async function readRecords(importDb, entity) {
   const rows = await importDb.select().from(seazonaRecords).where(eq(seazonaRecords.entity, entity));
-  return rows.map((r) => ({ seazonaId: r.seazonaId, payload: decryptJson(r.payload), lastModified: r.lastModified ?? null, fetchedAt: r.fetchedAt }));
+  return [...rows].sort(bySeazonaId).map((r) => ({ seazonaId: r.seazonaId, payload: decryptJson(r.payload), lastModified: r.lastModified ?? null, fetchedAt: r.fetchedAt }));
 }
 
 /** seazonaId → lastModified for one entity, without opening anything. */

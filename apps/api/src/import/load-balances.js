@@ -58,9 +58,11 @@ async function paymentsOn(candidates, paidCents, db) {
   return paid;
 }
 
-async function perInvoice({ raw, db, live, target, legacy, parsed, existingTransactionIds, paidCents, starts, report, guard }) {
+async function perInvoice({ raw, db, live, target, legacy, parsed, derived, existingTransactionIds, paidCents, starts, report, guard }) {
   const paidByInvoice = await paymentsOn(settlementCandidates(legacy, "per-invoice", existingTransactionIds), paidCents, db);
-  const plan = planInvoiceSettlements({ legacyInvoices: legacy, exportRows: parsed.rows, existingTransactionIds, paidByInvoice, leftOpenKeys: leftOpenKeys(parsed) });
+  const plan = planInvoiceSettlements({
+    legacyInvoices: legacy, exportRows: parsed.rows, existingTransactionIds, paidByInvoice, leftOpenKeys: leftOpenKeys(parsed), missingMeansOpen: derived != null,
+  });
   report.reconciliation = plan.reconciliation;
   report.counts = {
     exportRows: parsed.rows.length, settlements: plan.rows.length, settledCents: sum(plan.rows, (r) => r.appliedCents),
@@ -76,6 +78,7 @@ async function perInvoice({ raw, db, live, target, legacy, parsed, existingTrans
     ["open_balance_on_void_invoice", strings(plan.openOnVoid)],
     ["invoice_has_real_payments_not_settled", strings(plan.hasPayments)],
     ["credit_balance_for_staff", strings(plan.credits.map((c) => c.invoiceNumber))],
+    ["invoice_absent_from_derived_file", strings(plan.absentFromDerived)],
   ]);
   // Settlements take no numbers, but the seed check runs on every balances run (as the CLI and runbook say), so a bad start is caught here too.
   report.seeds = (await enforceSeeds({ raw, db, target, live, starts })).summary;
@@ -143,12 +146,16 @@ async function perClient({ raw, db, live, target, legacy, parsed, existingTransa
  * had problems unless `acceptExportProblems` (Ruling Q4); the problems are
  * always in the report (row numbers and keys only).
  *
+ * `derived` is the provenance of a payments_derived file (load-cli.js reads
+ * it), or null for a lab export. With it, an issued invoice the file does
+ * not list stays OPEN (`invoice_absent_from_derived_file`), never paid.
+ *
  * Per-client opening invoices for an account with no single eligible owner
  * load unowned; correcting the link and re-running `invoices` attaches them
  * (load-invoices.js reattach).
  */
 export async function loadBalances({
-  raw, db, live, target, mode, parsed, fileId = null, starts = {}, cutoverAt = new Date(), paidCents, acceptExportProblems = false, lock = null,
+  raw, db, live, target, mode, parsed, fileId = null, starts = {}, cutoverAt = new Date(), paidCents, acceptExportProblems = false, lock = null, derived = null,
 }) {
   if (!SETTLEMENT_PREFIX[mode]) throw new ImportRefusal("--balances must be per-invoice or per-client.");
   if (typeof paidCents !== "function") throw new TypeError("loadBalances needs the injected paidCents(invoiceIds, db) ledger sum.");
@@ -159,10 +166,10 @@ export async function loadBalances({
     throw new ImportRefusal(`The balance export has problems: ${summary}. ${noKey}${mismatch}Fix the file, or pass --accept-export-problems: rows with an unreadable or duplicated balance then stay open (nothing is settled for them), but keyless rows still cannot be matched.`);
   }
   return withLoadLock({ lock, live, step: "balances" }, (guard) =>
-    run({ raw, db, live, target, mode, parsed, fileId, starts, cutoverAt, paidCents, guard }));
+    run({ raw, db, live, target, mode, parsed, derived, fileId, starts, cutoverAt, paidCents, guard }));
 }
 
-async function run({ raw, db, live, target, mode, parsed, fileId, starts, cutoverAt, paidCents, guard }) {
+async function run({ raw, db, live, target, mode, parsed, derived, fileId, starts, cutoverAt, paidCents, guard }) {
   const legacy = await db
     .select({
       id: invoices.id, invoiceNumber: invoices.invoiceNumber, kind: invoices.kind, legacySeazonaInvoiceId: invoices.legacySeazonaInvoiceId,
@@ -178,7 +185,8 @@ async function run({ raw, db, live, target, mode, parsed, fileId, starts, cutove
     throw new ImportRefusal(`Balances were already loaded ${other} on this target. Re-clone the rehearsal (or restore production from the cutover backup) before switching paths.`);
   }
   const report = { step: "balances", live, mode, fileId, exportProblems: parsed.problems, exportTotalCents: parsed.exportTotalCents ?? null };
+  if (derived) report.derivedFile = derived;
   if (noKeyRows(parsed)) report.warnings = [NO_KEY_WARNING];
-  const args = { raw, db, live, target, legacy, parsed, existingTransactionIds, paidCents, starts, cutoverAt, report, guard };
+  const args = { raw, db, live, target, legacy, parsed, derived, existingTransactionIds, paidCents, starts, cutoverAt, report, guard };
   return mode === "per-invoice" ? perInvoice(args) : perClient(args);
 }

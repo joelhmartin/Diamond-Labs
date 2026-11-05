@@ -17,6 +17,7 @@ import { ImportRefusal } from "./import-errors.js";
 import { assertNotCloudRun } from "./targets.js";
 import { openTargetSession } from "./cli-session.js";
 import { readExport, parseColumnsFlag, isBalanceFile } from "./export-table.js";
+import { derivedFileInfo } from "./payments-export.js";
 import { enforceSeeds } from "./seed-check.js";
 import { readSeazonaSide, readAppSide, readOnly } from "./parity-queries.js";
 import { buildParity, applyAccepted, exportBalances, exportCreditCents, DIFFERENCE_KINDS } from "./parity.js";
@@ -41,6 +42,8 @@ async function exportSide(raw, flags, app) {
     balanceByAccount: exportBalances(rows, flags.balances, app.accountByInvoiceNumber),
     exportCreditCents: exportCreditCents(rows),
     exportProblems: problems,
+    // A payments_derived file is our inference, not the lab's report: parity labels it and raises "balance export is derived".
+    exportDerived: derivedFileInfo(stored),
   };
 }
 

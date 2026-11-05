@@ -58,10 +58,16 @@ test("with a stored export its rows and problems join the report", async () => {
   assert.ok(!/Example|Sample/.test(JSON.stringify(report)));
 });
 
-test("a payments_derived file is a per-invoice export to parity", async () => {
-  const r = rig({ files: { d1: { kind: "payments_derived", bytes: derivedExportBytes([{ key: "1001", cents: 2500 }]) } } });
+test("a payments_derived file is compared per-invoice but labelled: 'balance export is derived' must be accepted", async () => {
+  const provenance = { maxInvoiceNumber: 1001, sourceFiles: 2, unclear: "credit-definite", derivedAt: "2026-11-05T12:00:00.000Z" };
+  const r = rig({ files: { d1: { kind: "payments_derived", bytes: derivedExportBytes([{ key: "1001", cents: 2500 }], provenance) } } });
   await r.run(["--target", "rehearsal", "--balances", "per-invoice", "--file-id", "d1"]);
-  assert.equal(r.out.reports[0].balances.exportTotalCents, 2500);
+  const report = r.out.reports[0];
+  assert.equal(report.balances.exportTotalCents, 2500);
+  assert.deepEqual(report.balanceExportDerived, provenance);
+  assert.ok(report.differences.includes("balance export is derived"));
+  await r.run(["--target", "rehearsal", "--balances", "per-invoice", "--file-id", "d1", "--accept", "balance export is derived"]);
+  assert.ok(r.out.reports[1].accepted.includes("balance export is derived"));
   await assert.rejects(r.run(["--target", "rehearsal", "--balances", "per-client", "--file-id", "d1"]), /No per-client export stored/);
 });
 

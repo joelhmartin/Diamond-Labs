@@ -14,7 +14,8 @@
  *   pnpm --filter @my-app/api import:fetch export --balances per-invoice|per-client --file <export.xls> [--columns …]
  *     (seals a portal balance export into the import DB, prints its id and the parser's problems; no Seazona call)
  *   pnpm --filter @my-app/api import:fetch payments-match --file <payments.xls> [--file <more.xls> …] [--columns …]
- *        [--unclear open|review] [--review-out <path>] [--live [--accept-export-problems]]
+ *        [--unclear credit-definite|open] [--review-out <path>] [--live [--accept-export-problems]
+ *        [--accept-unresolved-clients] [--accept-unmapped-status] [--accept-unattributed-refunds]]
  *     (derives per-invoice open balances from the lab's Payments exports; --live seals them as a
  *      payments_derived file for `import:load balances --balances per-invoice`; no Seazona call)
  *
@@ -51,11 +52,11 @@ import { SUMMARY_ENTITIES, DETAIL_ENTITIES, APPROVAL_THRESHOLD, REQUESTS_PER_MIN
 import { runSummaryCommand, runDetailCommand, createPacer } from "./seazona-fetch.js";
 import { makeFetchLock } from "./fetch-lock.js";
 import { printLines, printReport, runIfMain } from "./report.js";
-import { runPaymentsMatch, PAYMENTS_MATCH_FLAGS } from "./payments-match-command.js";
+import { runPaymentsMatch, PAYMENTS_MATCH_FLAGS, PAYMENTS_MATCH_BOOLEANS } from "./payments-match-command.js";
 
 const FLAGS = {
-  allowed: ["live", "detail", "ids", "since", "open", "open-balance", "file-id", "columns", "refetch", "resume", "approved", "file", "balances", "mark-stale", "accept-capped-timestamp", "unclear", "review-out", "accept-export-problems"],
-  booleans: ["live", "detail", "open", "open-balance", "refetch", "accept-export-problems"],
+  allowed: ["live", "detail", "ids", "since", "open", "open-balance", "file-id", "columns", "refetch", "resume", "approved", "file", "balances", "mark-stale", "accept-capped-timestamp", ...PAYMENTS_MATCH_FLAGS.filter((f) => !["file", "columns", "live"].includes(f))],
+  booleans: ["live", "detail", "open", "open-balance", "refetch", ...PAYMENTS_MATCH_BOOLEANS],
   repeatable: ["file"],
 };
 
@@ -202,7 +203,7 @@ function checkShape(name, entity, flags, positional) {
     const stray = Object.keys(flags).filter((f) => !FILE_COMMANDS[name].includes(f));
     if (stray.length) throw new ImportRefusal(`${name} takes only --${FILE_COMMANDS[name].join(", --")} (not --${stray.join(", --")}).`);
   } else if (entity) {
-    const stray = ["balances", "file", "unclear", "review-out", "accept-export-problems"].filter((f) => flags[f] !== undefined);
+    const stray = ["balances", ...PAYMENTS_MATCH_FLAGS.filter((f) => f !== "columns" && f !== "live")].filter((f) => flags[f] !== undefined);
     if (stray.length) throw new ImportRefusal(`--${stray.join(", --")} belongs to export or payments-match, not a Seazona fetch.`);
   }
   if ((!entity && !FILE_COMMANDS[name]) || positional.length !== 1) {
