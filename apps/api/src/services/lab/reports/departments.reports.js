@@ -17,14 +17,12 @@ import {
   pastDueSql, statusBadge, unitsJoin,
 } from "./order-metrics.js";
 import { dependentReport } from "./dependent.js";
+import { int, sumOf, sums, uncategorizedSql } from "./report-helpers.js";
 
 const GROUP = "departments";
 const RANGE = { name: "range", label: "Dates", type: "dateRange", default: "last30", maxDays: 1100 };
 const DEPARTMENT = { name: "department", label: "Department", type: "lookup", source: "department" };
 const DEPT_COL = { id: "department", label: "Department", type: "text" };
-const int = (id, label) => ({ id, label, type: "int" });
-const sumOf = (rows, k) => rows.reduce((s, r) => s + (r[k] ?? 0), 0);
-const sums = (rows, ids) => Object.fromEntries(ids.map((id) => [id, sumOf(rows, id)]));
 /** The statuses an open order can be in, in board order. */
 const OPEN_STATUSES = LAB_ORDER_STATUSES.filter((s) => !TERMINAL_LAB_STATUSES.includes(s));
 
@@ -190,7 +188,7 @@ const deptUnits = {
   async run(tx) {
     const raw = await rowsOf(tx, sql`
       select ${labOrders.departmentId} as "departmentId", ${departmentName} as "department",
-        coalesce(${productFamilies.category}, 'Uncategorised') as "category",
+        coalesce(${productFamilies.category}, ${uncategorizedSql}) as "category",
         sum(${labOrderLines.qty}) as "units", count(distinct ${labOrders.id}) as "orders"
       from ${labOrderLines}
       join ${labOrders} on ${labOrders.id} = ${labOrderLines.labOrderId}

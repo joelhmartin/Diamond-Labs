@@ -15,14 +15,11 @@ import {
   assigneeName, departmentName, isOpenOrder, orderJoins, ordersByDay, shippedByDay, statusBadge,
 } from "./order-metrics.js";
 import { dependentReport } from "./dependent.js";
+import { int, share, sumOf, sums } from "./report-helpers.js";
 
 const GROUP = "operations";
 const RANGE = { name: "range", label: "Dates", type: "dateRange", default: "last30", maxDays: 1100 };
 const ORDER_COL = { id: "orderNumber", label: "Order #", type: "text", link: ORDER_LINK };
-const int = (id, label) => ({ id, label, type: "int" });
-const share = (part, whole) => (whole ? part / whole : 0);
-const sumOf = (rows, k) => rows.reduce((s, r) => s + (r[k] ?? 0), 0);
-const sums = (rows, ids) => Object.fromEntries(ids.map((id) => [id, sumOf(rows, id)]));
 
 // ── Case Submission ──────────────────────────────────────────────────────
 

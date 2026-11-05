@@ -12,25 +12,20 @@ import {
 } from "./lab-metrics.js";
 import { HEALTH_BANDS, clientHealthRows, healthCounts } from "./client-health.js";
 import { dependentReport } from "./dependent.js";
+import { ADMIN, clientsOnlyJoin, money, share, sumOf } from "./report-helpers.js";
 
-const ADMIN = ["admin"];
 const GROUP = "clients";
 const RANGE = { name: "range", label: "Dates", type: "dateRange", default: "last12m", maxDays: 1100 };
 const COUNT = { name: "count", label: "How many clients", type: "number", default: 25, min: 1, max: 500 };
 const DAYS = { name: "days", label: "Days", type: "number", default: 90, min: 1, max: 3650 };
 const CLIENT_COL = { id: "client", label: "Client", type: "text", link: CLIENT_LINK };
 const ACCOUNT_COL = { id: "accountNumber", label: "Account", type: "text" };
-const money = (id, label) => ({ id, label, type: "money" });
-const share = (part, whole) => (whole ? part / whole : 0);
-const sumOf = (rows, k) => rows.reduce((s, r) => s + (r[k] ?? 0), 0);
 const whole = (v, fallback) => (Number.isFinite(v) ? Math.trunc(v) : fallback);
 const capital = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 /** asOf for the health rule: the pinned instant, else now. */
 const asOfOf = (ctx) => ctx?.now ?? new Date();
 
-/** Join a lab_orders/invoices client column to the client and their profile. */
-const clientJoin = (col) => sql`join ${users} on ${users.id} = ${col} and ${isClient} left join ${doctorProfiles} on ${doctorProfiles.userId} = ${users.id}`;
 const clientGroup = sql`${users.id}, ${doctorProfiles.companyName}, ${users.name}, ${users.seazonaAccountNumber}`;
 
 // ── Client Health ────────────────────────────────────────────────────────
@@ -213,7 +208,7 @@ const inactive = {
       select ${users.id} as "clientUserId", ${clientName} as "client", ${users.seazonaAccountNumber} as "accountNumber",
         ${labDayText(sql`max(${labOrders.receivedAt})`)} as "lastDay", ls.cents as "lifetime"
       from ${labOrders}
-      ${clientJoin(labOrders.clientUserId)}
+      ${clientsOnlyJoin(labOrders.clientUserId)}
       left join (
         select ${invoices.clientUserId} as client_user_id, sum(${invoices.subtotalCents}) as cents from ${invoices} where ${isSale} group by 1
       ) ls on ls.client_user_id = ${users.id}
@@ -247,7 +242,7 @@ const newOrders = {
         (array_agg(${labOrders.orderNumber} order by ${labOrders.receivedAt}, ${labOrders.id}))[1] as "firstOrderNumber",
         count(*) filter (where ${labDayBetween(labOrders.receivedAt, range)}) as "orders"
       from ${labOrders}
-      ${clientJoin(labOrders.clientUserId)}
+      ${clientsOnlyJoin(labOrders.clientUserId)}
       where ${isLiveOrder}
       group by ${clientGroup}
       having ${labDayBetween(first, range)}
@@ -274,7 +269,7 @@ const noRecentSales = {
         sum(${invoices.subtotalCents}) filter (where ${labDayBetween(invoices.issuedAt, prior)}) as "prior",
         ${labDayText(sql`max(${invoices.issuedAt})`)} as "lastDay"
       from ${invoices}
-      ${clientJoin(invoices.clientUserId)}
+      ${clientsOnlyJoin(invoices.clientUserId)}
       where ${salesWhere({ from: prior.from, to: recent.to })}
       group by ${clientGroup}
       having count(*) filter (where ${labDayBetween(invoices.issuedAt, recent)}) = 0

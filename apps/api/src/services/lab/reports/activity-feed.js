@@ -19,16 +19,15 @@
  */
 import { sql } from "drizzle-orm";
 import { CARRIER_LABELS, LAB_STATUS_LABELS, LAB_TIMEZONE, formatCell } from "@my-app/shared";
-import { labOrders, labOrderEvents, shipments, invoicePayments, invoices, users, doctorProfiles } from "../../../db/schema/index.js";
+import { labOrders, labOrderEvents, shipments, invoicePayments, invoices } from "../../../db/schema/index.js";
 import { clientName, num, rowsOf } from "./lab-metrics.js";
+import { optionalClientJoin } from "./report-helpers.js";
 
 export const FEED_LIMIT = 50;
 /** How far back the feed looks. */
 export const FEED_DAYS = 7;
 const DAY_MS = 86400000;
 
-/** The client (+ profile) of a users id column; left joins. */
-const clientJoin = (col) => sql`left join ${users} on ${users.id} = ${col} left join ${doctorProfiles} on ${doctorProfiles.userId} = ${users.id}`;
 const after = (col, since) => sql`${col} >= ${since.toISOString()}::timestamptz`;
 
 const statusLabel = (s) => LAB_STATUS_LABELS[s] ?? s;
@@ -43,7 +42,7 @@ async function orderEvents(db, since, limit) {
       ${labOrderEvents.at} as "at", ${labOrders.id} as "labOrderId", ${labOrders.orderNumber} as "orderNumber", ${clientName} as "client"
     from ${labOrderEvents}
     join ${labOrders} on ${labOrders.id} = ${labOrderEvents.labOrderId}
-    ${clientJoin(labOrders.clientUserId)}
+    ${optionalClientJoin(labOrders.clientUserId)}
     where ${labOrderEvents.type} in ('status', 'hold') and ${after(labOrderEvents.at, since)}
       and not (${labOrderEvents.to} = 'shipped' and ${labOrders.shipmentId} is not null)
     order by ${labOrderEvents.at} desc, ${labOrderEvents.id} desc limit ${limit}`);
@@ -60,7 +59,7 @@ async function shipmentEvents(db, since, limit) {
       ${labOrders.id} as "labOrderId", ${labOrders.orderNumber} as "orderNumber", ${clientName} as "client"
     from ${shipments}
     join ${labOrders} on ${labOrders.shipmentId} = ${shipments.id}
-    ${clientJoin(labOrders.clientUserId)}
+    ${optionalClientJoin(labOrders.clientUserId)}
     where ${shipments.status} <> 'voided' and ${after(shipments.purchasedAt, since)}
     order by ${shipments.purchasedAt} desc, ${labOrders.id} desc limit ${limit}`);
   return raw.map((r) => ({
@@ -75,7 +74,7 @@ async function paymentEvents(db, since, limit) {
     from ${invoicePayments}
     left join ${invoices} on ${invoices.id} = ${invoicePayments.invoiceId}
     left join ${labOrders} on ${labOrders.id} = ${invoices.labOrderId}
-    ${clientJoin(invoices.clientUserId)}
+    ${optionalClientJoin(invoices.clientUserId)}
     where ${invoicePayments.appliedCents} > 0 and ${after(invoicePayments.createdAt, since)}
     order by ${invoicePayments.createdAt} desc, ${invoicePayments.id} desc limit ${limit}`);
   return raw.map((r) => ({

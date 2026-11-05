@@ -15,13 +15,11 @@ import {
   rowsOf, turnaroundDaysSql,
 } from "./lab-metrics.js";
 import { assigneeJoin, assigneeName, orderJoins, statusBadge, unitsJoin } from "./order-metrics.js";
+import { int, sumOf, sums, uncategorizedSql } from "./report-helpers.js";
 
 const GROUP = "productivity";
 const RANGE = { name: "range", label: "Dates", type: "dateRange", default: "last30", maxDays: 1100 };
-const int = (id, label) => ({ id, label, type: "int" });
 const days = (id, label) => ({ id, label, type: "duration_days" });
-const sumOf = (rows, k) => rows.reduce((s, r) => s + (r[k] ?? 0), 0);
-const sums = (rows, ids) => Object.fromEntries(ids.map((id) => [id, sumOf(rows, id)]));
 const orNull = (v) => (v == null ? null : Number(v));
 const inList = (col, values) => sql`${col} in (${sql.join(values.map((v) => sql`${v}`), sql`, `)})`;
 
@@ -273,7 +271,7 @@ const turnaround = {
       select x.month as "month", x.category as "category", count(*) as "orders", avg(x.days) as "avgDays",
         percentile_cont(0.5) within group (order by x.days) as "medianDays", grouping(x.month) as "isTotal"
       from (
-        select ${labMonthText(labOrders.shippedAt)} as month, coalesce(cat.category, 'Uncategorised') as category, ${turnaroundDaysSql} as days
+        select ${labMonthText(labOrders.shippedAt)} as month, coalesce(cat.category, ${uncategorizedSql}) as category, ${turnaroundDaysSql} as days
         from ${labOrders} ${firstCategory}
         where ${labOrders.status} = 'shipped' and ${labOrders.shippedAt} is not null and ${labDayBetween(labOrders.shippedAt, range)}
       ) x

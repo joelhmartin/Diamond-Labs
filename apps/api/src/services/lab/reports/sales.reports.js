@@ -10,13 +10,11 @@ import {
   CLIENT_LINK, catalogJoins, clientName, coverageNotice, discountNotices, labDayText, labToday, num, orderAndPage, rowsOf, salesBreakdown, salesByDay, salesByMonth, salesWhere,
 } from "./lab-metrics.js";
 import { dependentReport } from "./dependent.js";
+import { ADMIN, money, share, sumOf, sums, uncategorizedSql } from "./report-helpers.js";
 
-const ADMIN = ["admin"];
 const GROUP = "sales";
 const RANGE = { name: "range", label: "Dates", type: "dateRange", default: "last30", maxDays: 1100 };
-const money = (id, label, extra = {}) => ({ id, label, type: "money", ...extra });
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const share = (part, whole) => (whole ? part / whole : 0);
 
 const comparison = {
   key: "sales.comparison", group: GROUP, roles: ADMIN, featured: true, title: "Sales Comparison",
@@ -35,8 +33,7 @@ const comparison = {
     const byMonth = new Map((await salesByMonth(tx, { from: `${year - 2}-01-01`, to: `${year}-12-31` })).map((m) => [m.month, m.cents]));
     const cents = (y, i) => byMonth.get(`${y}-${String(i + 1).padStart(2, "0")}`) ?? 0;
     const rows = MONTHS.map((month, i) => ({ month, y2: cents(year - 2, i), y1: cents(year - 1, i), y0: cents(year, i) }));
-    const total = (k) => rows.reduce((s, r) => s + r[k], 0);
-    return { rows, summary: { month: "Total", y2: total("y2"), y1: total("y1"), y0: total("y0") }, notice: `Comparing ${year - 2}, ${year - 1} and ${year}.` };
+    return { rows, summary: { month: "Total", ...sums(rows, ["y2", "y1", "y0"]) }, notice: `Comparing ${year - 2}, ${year - 1} and ${year}.` };
   },
 };
 
@@ -71,7 +68,7 @@ const daily = {
   chart: { type: "bar", x: "day", series: [{ field: "sales", label: "Sales" }] },
   async run(tx, { range }) {
     const rows = (await salesByDay(tx, range)).map((d) => ({ day: d.day, invoices: d.invoices, sales: d.cents }));
-    return { rows, summary: { day: "Total", sales: rows.reduce((s, r) => s + r.sales, 0), invoices: rows.reduce((s, r) => s + r.invoices, 0) } };
+    return { rows, summary: { day: "Total", sales: sumOf(rows, "sales"), invoices: sumOf(rows, "invoices") } };
   },
 };
 
@@ -94,7 +91,7 @@ const labSales = {
       const cents = num(byKind.get(k)?.cents);
       return { channel: INVOICE_KIND_LABELS[k] ?? k, invoices: num(byKind.get(k)?.invoices), sales: cents, share: share(cents, total) };
     });
-    return { rows, summary: { channel: "Total", invoices: rows.reduce((s, r) => s + r.invoices, 0), sales: total, share: total ? 1 : 0 } };
+    return { rows, summary: { channel: "Total", invoices: sumOf(rows, "invoices"), sales: total, share: total ? 1 : 0 } };
   },
 };
 
@@ -106,7 +103,7 @@ const netChart = {
   chart: { type: "line", x: "month", series: [{ field: "net", label: "Net sales" }] },
   async run(tx, { range }) {
     const rows = (await salesByMonth(tx, range)).map((m) => ({ month: m.month, net: m.cents }));
-    return { rows, summary: { month: "Total", net: rows.reduce((s, r) => s + r.net, 0) } };
+    return { rows, summary: { month: "Total", net: sumOf(rows, "net") } };
   },
 };
 
@@ -120,7 +117,7 @@ const category = {
     // A line names its variant; an imported line only its code, so it is matched to the catalog by code.
     const raw = await rowsOf(tx, sql`
       select coalesce(${productFamilies.category}, case
-          when ${productFamilies.id} is not null then 'Uncategorized'
+          when ${productFamilies.id} is not null then ${uncategorizedSql}
           when ${invoiceLines.kind} = 'adjustment' then 'Adjustments'
           when ${invoiceLines.kind} = 'fee' then 'Fees'
           else 'No product' end) as "category",
@@ -135,7 +132,7 @@ const category = {
     const notice = coverageNotice(range) ?? undefined;
     return {
       rows, notice,
-      summary: { category: "Total", units: rows.reduce((s, r) => s + r.units, 0), amount: rows.reduce((s, r) => s + r.amount, 0) },
+      summary: { category: "Total", units: sumOf(rows, "units"), amount: sumOf(rows, "amount") },
     };
   },
 };

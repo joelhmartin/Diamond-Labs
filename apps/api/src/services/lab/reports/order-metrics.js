@@ -25,6 +25,7 @@ import {
 } from "@my-app/shared";
 import { labOrders, labOrderLines, labDepartments, users, doctorProfiles, shipments, productFamilies } from "../../../db/schema/index.js";
 import { catalogJoins, clientName, isLiveOrder, labDay, labDayBetween, labDayText, num, rowsOf, turnaroundDaysSql } from "./lab-metrics.js";
+import { uncategorizedSql } from "./report-helpers.js";
 
 // ── SQL building blocks ──────────────────────────────────────────────────
 
@@ -222,7 +223,7 @@ export async function shippedByDay(db, range) {
 /** Units on open orders per catalog category: [{ category, units, orders }], most units first. */
 export async function openUnitsByCategory(db) {
   const raw = await rowsOf(db, sql`
-    select coalesce(${productFamilies.category}, 'Uncategorised') as "category",
+    select coalesce(${productFamilies.category}, ${uncategorizedSql}) as "category",
       sum(${labOrderLines.qty}) as "units", count(distinct ${labOrders.id}) as "orders"
     from ${labOrderLines}
     join ${labOrders} on ${labOrders.id} = ${labOrderLines.labOrderId}

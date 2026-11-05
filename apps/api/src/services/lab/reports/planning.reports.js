@@ -11,15 +11,13 @@ import {
   AT_RISK_DAYS, assigneeJoin, assigneeName, dueSoonSql, isOnHold, isOpenOrder, orderJoins, pastDueSql, statusBadge, unitsJoin,
 } from "./order-metrics.js";
 import { dependentReport } from "./dependent.js";
+import { int, sumOf, sums } from "./report-helpers.js";
 
 const GROUP = "planning";
 const RANGE = { name: "range", label: "Dates", type: "dateRange", default: "last30", maxDays: 1100 };
 const STAFF = { name: "assignee", label: "Assigned to", type: "lookup", source: "staff" };
 const ASSIGNEE_COL = { id: "assignee", label: "Assigned to", type: "text" };
 const ORDER_COL = { id: "orderNumber", label: "Order #", type: "text", link: ORDER_LINK };
-const int = (id, label) => ({ id, label, type: "int" });
-const sumOf = (rows, k) => rows.reduce((s, r) => s + (r[k] ?? 0), 0);
-const sums = (rows, ids) => Object.fromEntries(ids.map((id) => [id, sumOf(rows, id)]));
 /** Per assignee, named people first (by name), Unassigned last. */
 const byAssignee = sql`group by ${labOrders.assigneeUserId}, assignee.name order by (${labOrders.assigneeUserId} is null), 2`;
 

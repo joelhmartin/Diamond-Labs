@@ -7,18 +7,16 @@
  */
 import { inArray, sql } from "drizzle-orm";
 import {
-  invoices, invoiceLines, labOrders, labOrderLines, productVariants, productFamilies, users, doctorProfiles,
+  invoices, invoiceLines, labOrders, labOrderLines, productVariants, productFamilies,
 } from "../../../db/schema/index.js";
 import {
   ORDER_LINK, byCode, catalogJoins, clientName, coverageNotice, isLiveOrder, labDayBetween, labDayText, num, orderAndPage, rowsOf, salesWhere,
 } from "./lab-metrics.js";
 import { dependentReport } from "./dependent.js";
+import { ADMIN, optionalClientJoin, share, sumOf } from "./report-helpers.js";
 
-const ADMIN = ["admin"];
 const GROUP = "products";
 const RANGE = { name: "range", label: "Dates", type: "dateRange", default: "last30", maxDays: 1100 };
-const share = (part, whole) => (whole ? part / whole : 0);
-const sumOf = (rows, k) => rows.reduce((s, r) => s + (r[k] ?? 0), 0);
 
 /** Bench lines that are products (not build instructions) on non-cancelled orders received in the range. */
 const unitLinesWhere = (range) =>
@@ -146,8 +144,7 @@ const unitsDetail = {
     const from = sql`
       from ${labOrderLines}
       join ${labOrders} on ${labOrders.id} = ${labOrderLines.labOrderId}
-      left join ${users} on ${users.id} = ${labOrders.clientUserId}
-      left join ${doctorProfiles} on ${doctorProfiles.userId} = ${users.id}`;
+      ${optionalClientJoin(labOrders.clientUserId)}`;
     const where = sql`where ${unitLinesWhere(range)}`;
     const sorts = {
       received: labOrders.receivedAt, orderNumber: labOrders.orderNumber, client: clientName,

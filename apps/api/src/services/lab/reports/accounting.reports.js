@@ -9,7 +9,7 @@ import {
   AGING_BUCKETS, CREDIT_SOURCE, INVOICE_KIND_LABELS, INVOICE_STATUS_LABELS, LEGACY_SETTLEMENT_SOURCE,
   PAYMENT_SOURCE_LABELS, invoiceStatusLabel,
 } from "@my-app/shared";
-import { invoices, invoiceLines, invoicePayments, users, doctorProfiles } from "../../../db/schema/index.js";
+import { invoices, invoiceLines, invoicePayments } from "../../../db/schema/index.js";
 import { listReceivables, loadStatementActivity, loadClientNames } from "../../billing/statements.service.js";
 import { statementEvents, monthBounds } from "../../billing/statement-model.js";
 import { deriveBalance } from "../../billing/invoice-rules.js";
@@ -17,22 +17,15 @@ import {
   CLIENT_LINK, INVOICE_LINK, clientLabel, discountNotices, clientName, isDiscountLine, labDayBetween, labDayText, labMonthText, labToday, num, orderAndPage,
   paymentDay, paymentDayBetween, rowsOf, salesWhere,
 } from "./lab-metrics.js";
+import { ADMIN, money, optionalClientJoin, sumOf, sums } from "./report-helpers.js";
 
-const ADMIN = ["admin"];
 const GROUP = "accounting";
 
 const RANGE = { name: "range", label: "Dates", type: "dateRange", default: "last30", maxDays: 1100 };
 const CLIENT = { name: "client", label: "Client", type: "lookup", source: "client" };
-const money = (id, label, extra = {}) => ({ id, label, type: "money", ...extra });
 const clientCol = { id: "client", label: "Client", type: "text", link: CLIENT_LINK };
 const invoiceCol = { id: "invoiceNumber", label: "Invoice", type: "text", link: INVOICE_LINK };
-const sumOf = (rows, id) => rows.reduce((s, r) => s + (r[id] ?? 0), 0);
-const sums = (rows, ids) => Object.fromEntries(ids.map((id) => [id, sumOf(rows, id)]));
 const invoiceNo = (v) => (v === null || v === undefined ? null : String(v));
-
-/** Who a row bills, joined from a client user id expression. */
-const clientJoin = (clientUserIdExpr) =>
-  sql`left join ${users} on ${users.id} = ${clientUserIdExpr} left join ${doctorProfiles} on ${doctorProfiles.userId} = ${users.id}`;
 
 const AGING_COLUMNS = AGING_BUCKETS.map((b) => money(b.key, b.label));
 
@@ -77,12 +70,12 @@ const adjustments = {
     const raw = await rowsOf(tx, sql`
       select 'Adjustment' as "type", ${labDayText(invoices.issuedAt)} as "day", ${invoices.id} as "invoiceId", ${invoices.invoiceNumber} as "invoiceNumber",
         ${invoices.clientUserId} as "clientUserId", ${clientName} as "client", ${invoiceLines.description} as "description", ${invoiceLines.lineCents} as "amount"
-      from ${invoiceLines} join ${invoices} on ${invoices.id} = ${invoiceLines.invoiceId} ${clientJoin(invoices.clientUserId)}
+      from ${invoiceLines} join ${invoices} on ${invoices.id} = ${invoiceLines.invoiceId} ${optionalClientJoin(invoices.clientUserId)}
       where ${invoiceLines.kind} = 'adjustment' and ${salesWhere(range)}
       union all
       select 'Credit', to_char(${paymentDay}, 'YYYY-MM-DD'), ${invoices.id}, ${invoices.invoiceNumber},
         ${invoices.clientUserId}, ${clientName}, null, -${invoicePayments.appliedCents}
-      from ${invoicePayments} join ${invoices} on ${invoices.id} = ${invoicePayments.invoiceId} ${clientJoin(invoices.clientUserId)}
+      from ${invoicePayments} join ${invoices} on ${invoices.id} = ${invoicePayments.invoiceId} ${optionalClientJoin(invoices.clientUserId)}
       where ${invoicePayments.source} = ${CREDIT_SOURCE} and ${paymentDayBetween(range)}
       order by 2, 4, 1`);
     const rows = raw.map((r) => ({ ...r, invoiceNumber: invoiceNo(r.invoiceNumber), amount: num(r.amount) }));
@@ -99,7 +92,7 @@ const discounts = {
     const raw = await rowsOf(tx, sql`
       select ${labDayText(invoices.issuedAt)} as "day", ${invoices.id} as "invoiceId", ${invoices.invoiceNumber} as "invoiceNumber",
         ${invoices.clientUserId} as "clientUserId", ${clientName} as "client", ${invoiceLines.description} as "description", ${invoiceLines.lineCents} as "amount"
-      from ${invoiceLines} join ${invoices} on ${invoices.id} = ${invoiceLines.invoiceId} ${clientJoin(invoices.clientUserId)}
+      from ${invoiceLines} join ${invoices} on ${invoices.id} = ${invoiceLines.invoiceId} ${optionalClientJoin(invoices.clientUserId)}
       where ${isDiscountLine} and ${salesWhere(range)}
       order by 1, ${invoices.invoiceNumber}, ${invoiceLines.position}`);
     const rows = raw.map((r) => ({ ...r, invoiceNumber: invoiceNo(r.invoiceNumber), amount: num(r.amount) }));
@@ -137,7 +130,7 @@ const invoicesList = {
         ${invoices.kind} as "kind", ${invoices.clientUserId} as "clientUserId", ${clientName} as "client",
         ${invoices.subtotalCents} as "subtotal", ${invoices.taxCents} as "tax", ${invoices.shippingCents} as "shipping", ${invoices.totalCents} as "total",
         to_char(${invoices.dueDate}, 'YYYY-MM-DD') as "dueDate"
-      from ${invoices} ${clientJoin(invoices.clientUserId)}
+      from ${invoices} ${optionalClientJoin(invoices.clientUserId)}
       where ${where} ${orderAndPage(ctx?.page, sorts, { id: "day", desc: true }, invoices.id)}`);
     const rows = raw.map((r) => ({
       invoiceId: r.id, invoiceNumber: invoiceNo(r.invoiceNumber), day: r.day, status: INVOICE_STATUS_LABELS[r.status] ?? r.status,
@@ -168,7 +161,7 @@ const invoicesSummary = {
     const raw = await rowsOf(tx, sql`
       select ${bucket} as "bucket", ${clientId} as "clientUserId", count(*) as "invoices", sum(${invoices.subtotalCents}) as "subtotal",
         sum(${invoices.taxCents}) as "tax", sum(${invoices.shippingCents}) as "shipping", sum(${invoices.totalCents}) as "total"
-      from ${invoices} ${clientJoin(invoices.clientUserId)}
+      from ${invoices} ${optionalClientJoin(invoices.clientUserId)}
       where ${salesWhere(range)}
       group by 1, 2 order by ${by === "client" ? sql`4 desc, 1, 2` : sql`1`}`);
     const ids = ["invoices", "subtotal", "tax", "shipping", "total"];
@@ -206,7 +199,7 @@ const invoicesPayments = {
       select ${invoices.id} as "id", ${invoices.invoiceNumber} as "invoiceNumber", ${labDayText(invoices.issuedAt)} as "day", ${invoices.status} as "status",
         to_char(${invoices.dueDate}, 'YYYY-MM-DD') as "dueDate", ${invoices.clientUserId} as "clientUserId", ${clientName} as "client",
         ${invoices.totalCents} as "total", ${paid} as "paid", to_char(ledger.last_paid, 'YYYY-MM-DD') as "lastPaid"
-      from ${invoices} left join ${ledgerTotals} on ledger.invoice_id = ${invoices.id} ${clientJoin(invoices.clientUserId)}
+      from ${invoices} left join ${ledgerTotals} on ledger.invoice_id = ${invoices.id} ${optionalClientJoin(invoices.clientUserId)}
       where ${where} ${orderAndPage(ctx?.page, sorts, { id: "day", desc: true }, invoices.id)}`);
     const today = labToday(ctx);
     const rows = raw.map((r) => {
@@ -256,7 +249,7 @@ const paymentsReceived = {
       SOURCE_FILTERS[source] ? sql`${invoicePayments.source} in (${inList(SOURCE_FILTERS[source])})` : undefined,
       client ? sql`${payer} = ${client}` : undefined,
     ].filter(Boolean), sql` and `);
-    const from = sql`from ${invoicePayments} left join ${invoices} on ${invoices.id} = ${invoicePayments.invoiceId} ${clientJoin(payer)}`;
+    const from = sql`from ${invoicePayments} left join ${invoices} on ${invoices.id} = ${invoicePayments.invoiceId} ${optionalClientJoin(payer)}`;
     const number = sql`coalesce(${invoices.invoiceNumber}::text, ${invoicePayments.invoiceNumber})`;
     const sorts = {
       day: paymentDay, client: clientName, invoiceNumber: numberSort(number), sourceLabel: sourceLabelSql,

@@ -21,8 +21,8 @@ import {
 } from "./order-metrics.js";
 import { HEALTH_BANDS, clientHealthRows, healthCounts } from "./client-health.js";
 import { activityFeedReport } from "./activity-feed.js";
+import { ADMIN, int, sumOf } from "./report-helpers.js";
 
-const ADMIN = ["admin"];
 const TOP_CLIENTS = 10;
 const DUE_DAYS = 14;
 const TREND_WEEKS = 26;
@@ -36,7 +36,6 @@ export function reportHref(key, params = {}) {
 }
 
 const stat = (value, { previous = null, format = "int", href, detail } = {}) => ({ value, previous, format, href, ...(detail ? { detail } : {}) });
-const sum = (rows, k) => rows.reduce((s, r) => s + (r[k] ?? 0), 0);
 
 /** The same month and day a year earlier; Feb 29 becomes Feb 28. */
 export function sameDayLastYear(day) {
@@ -125,9 +124,9 @@ const SALES_METRICS = [
       const today = labToday(ctx);
       const days = await salesByDay(tx, { from: `${today.slice(0, 7)}-01`, to: today });
       const previous = await salesCents(tx, monthToDateBefore(today));
-      return stat(sum(days, "cents"), {
+      return stat(sumOf(days, "cents"), {
         previous, format: "money", href: reportHref("sales.daily", { range: "mtd" }),
-        detail: [{ id: "invoices", label: "invoices", value: sum(days, "invoices") }],
+        detail: [{ id: "invoices", label: "invoices", value: sumOf(days, "invoices") }],
       });
     },
   },
@@ -139,8 +138,8 @@ const INSIGHT_METRICS = [
     async run(tx, _params, _actor, ctx) {
       const today = labToday(ctx);
       const days = await ordersByDay(tx, { from: addDays(today, -59), to: today });
-      return stat(sum(days.slice(30), "orders"), {
-        previous: sum(days.slice(0, 30), "orders"), href: reportHref("operations.daily-orders", { range: "last30" }),
+      return stat(sumOf(days.slice(30), "orders"), {
+        previous: sumOf(days.slice(0, 30), "orders"), href: reportHref("operations.daily-orders", { range: "last30" }),
       });
     },
   },
@@ -170,8 +169,6 @@ export const LAB_METRICS = [...OPS_METRICS, ...SALES_METRICS, ...INSIGHT_METRICS
 
 // ── Dashboard-only reports (unlisted) ────────────────────────────────────
 
-const int = (id, label) => ({ id, label, type: "int" });
-
 const atRiskList = {
   key: "ops.at-risk-orders", group: "operations", unlisted: true, title: "At-risk orders",
   description: "Open orders still received or in production and due today through the next 2 days, soonest first.",
@@ -197,7 +194,7 @@ const dueDays = {
   async run(tx, _params, _actor, ctx) {
     const today = labToday(ctx);
     const rows = await dueByDay(tx, { from: today, to: addDays(today, DUE_DAYS - 1) });
-    return { rows, summary: { day: "Total", orders: sum(rows, "orders"), rush: sum(rows, "rush") } };
+    return { rows, summary: { day: "Total", orders: sumOf(rows, "orders"), rush: sumOf(rows, "rush") } };
   },
 };
 
@@ -209,7 +206,7 @@ const openUnits = {
   chart: { type: "bar", x: "category", series: [{ field: "units", label: "Units" }] },
   async run(tx) {
     const rows = await openUnitsByCategory(tx);
-    return { rows, summary: { category: "Total", units: sum(rows, "units") } };
+    return { rows, summary: { category: "Total", units: sumOf(rows, "units") } };
   },
 };
 
