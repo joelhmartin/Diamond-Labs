@@ -33,6 +33,7 @@ export function DataTable({
   notice,
   selectable = true,
   dense = false,
+  paginated = true,
 }) {
   const { selection, registerColumns } = table;
   const [openId, setOpenId] = useState(null);
@@ -148,7 +149,7 @@ export function DataTable({
           </table>
         </div>
       </div>
-      {table.total > 0 && <Pagination {...table.pagination} itemLabel={itemLabel} />}
+      {paginated && table.total > 0 && <Pagination {...table.pagination} itemLabel={itemLabel} />}
     </div>
   );
 }

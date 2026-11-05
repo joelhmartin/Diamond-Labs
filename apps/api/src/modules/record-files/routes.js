@@ -22,27 +22,31 @@ const notFound = (reply, message = "Not found.") =>
  */
 async function readUploads(request) {
   const files = [];
-  for await (const part of request.parts({ limits: { fileSize: MAX_FILE_SIZE_BYTES, files: RECORD_FILES_MAX_COUNT } })) {
-    if (part.type !== "file") continue;
-    const kind = recordFileKindSchema.safeParse(part.fieldname);
-    if (!kind.success) {
-      await part.toBuffer().catch(() => {});
-      return { error: new FileError("INVALID", "Invalid file kind.") };
+  const tooLarge = (name) => new FileError("TOO_LARGE", `File "${name}" exceeds the ${MAX_FILE_SIZE_BYTES / MB} MB size limit.`);
+  // The multipart parser throws FST_REQ_FILE_TOO_LARGE / FST_FILES_LIMIT; anything else is a real failure and propagates.
+  try {
+    for await (const part of request.parts({ limits: { fileSize: MAX_FILE_SIZE_BYTES, files: RECORD_FILES_MAX_COUNT } })) {
+      if (part.type !== "file") continue;
+      const kind = recordFileKindSchema.safeParse(part.fieldname);
+      if (!kind.success) {
+        await part.toBuffer().catch(() => {});
+        return { error: new FileError("INVALID", "Invalid file kind.") };
+      }
+      let buffer;
+      try {
+        buffer = await part.toBuffer();
+      } catch (err) {
+        if (err?.code === "FST_REQ_FILE_TOO_LARGE") return { error: tooLarge(part.filename || part.fieldname) };
+        throw err;
+      }
+      files.push({ kind: kind.data, buffer, originalName: part.filename || `upload-${Date.now()}`, contentType: part.mimetype || null });
     }
-    if (files.length >= RECORD_FILES_MAX_COUNT) {
-      await part.toBuffer().catch(() => {});
+  } catch (err) {
+    if (err?.code === "FST_FILES_LIMIT") {
       return { error: new FileError("TOO_LARGE", `Too many files, maximum ${RECORD_FILES_MAX_COUNT} per upload.`) };
     }
-    let buffer;
-    try {
-      buffer = await part.toBuffer();
-    } catch {
-      return { error: new FileError("TOO_LARGE", `File "${part.filename || part.fieldname}" exceeds the ${MAX_FILE_SIZE_BYTES / MB} MB size limit.`) };
-    }
-    if (part.file?.truncated) {
-      return { error: new FileError("TOO_LARGE", `File "${part.filename || part.fieldname}" exceeds the ${MAX_FILE_SIZE_BYTES / MB} MB size limit.`) };
-    }
-    files.push({ kind: kind.data, buffer, originalName: part.filename || `upload-${Date.now()}`, contentType: part.mimetype || null });
+    if (err?.code === "FST_REQ_FILE_TOO_LARGE") return { error: tooLarge("upload") };
+    throw err;
   }
   if (!files.length) return { error: new FileError("INVALID", "Attach at least one file.") };
   return { files };

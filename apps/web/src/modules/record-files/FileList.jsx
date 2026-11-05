@@ -3,6 +3,8 @@ import api from "../../config/api.js";
 import { errorText, openInNewTab } from "../../lib/requests.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { ConfirmButton } from "../../components/ui/ConfirmButton.jsx";
+import { DataTable } from "../../components/ui/data-table/index.js";
+import { useDataTable } from "../../hooks/useDataTable.js";
 import { FileDrop } from "./FileDrop.jsx";
 
 const base = (recordType, recordId) => `/files/${encodeURIComponent(recordType)}/${encodeURIComponent(recordId)}`;
@@ -17,6 +19,8 @@ export function FileList({ recordType, recordId, canEdit = false, uploadKind = "
   const fail = (err) => addToast({ message: errorText(err), type: "error" });
   const [files, setFiles] = useState(null);
   const [busy, setBusy] = useState(false);
+
+  const table = useDataTable({ mode: "client", rows: files ?? [], loading: files === null, initialPageSize: 1000 });
 
   const load = useCallback(async () => {
     try {
@@ -57,21 +61,31 @@ export function FileList({ recordType, recordId, canEdit = false, uploadKind = "
     }
   };
 
-  if (files === null) return <p className="text-sm text-gray-500">Loading files...</p>;
+  const columns = [
+    {
+      id: "name", header: "File", sortValue: (f) => f.originalName,
+      cell: (f) => <button type="button" className="text-left text-brand-700 hover:underline" onClick={() => open(f)}>{f.originalName}</button>,
+    },
+    { id: "kind", header: "Kind", cell: (f) => f.kind, sortValue: (f) => f.kind },
+    { id: "size", header: "Size", align: "right", cell: (f) => sizeLabel(f.size), sortValue: (f) => f.size },
+    ...(canEdit
+      ? [{ id: "actions", header: "", export: false, align: "right", cell: (f) => <ConfirmButton onConfirm={() => remove(f)} confirmLabel="Click again to remove">Remove</ConfirmButton> }]
+      : []),
+  ];
+
   return (
     <div className="space-y-2">
-      {files.length === 0 && <p className="text-sm text-gray-500">No files.</p>}
-      <ul className="divide-y divide-gray-100">
-        {files.map((f) => (
-          <li key={f.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-            <button type="button" className="text-left text-brand-700 hover:underline truncate" onClick={() => open(f)}>
-              {f.originalName}
-            </button>
-            <span className="shrink-0 text-gray-500">{f.kind} · {sizeLabel(f.size)}</span>
-            {canEdit && <ConfirmButton onConfirm={() => remove(f)} confirmLabel="Click again to remove">Remove</ConfirmButton>}
-          </li>
-        ))}
-      </ul>
+      <DataTable
+        table={table}
+        columns={columns}
+        searchable={false}
+        selectable={false}
+        exportable={false}
+        paginated={false}
+        dense
+        itemLabel="files"
+        emptyText="No files."
+      />
       {canEdit && <FileDrop accept={accept} onFiles={upload} disabled={busy} />}
     </div>
   );
