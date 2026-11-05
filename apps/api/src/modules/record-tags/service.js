@@ -1,4 +1,5 @@
 import { and, asc, eq, exists, inArray, sql } from "drizzle-orm";
+import { TAG_APPLY_MAX_IDS } from "@my-app/shared";
 import { db as appDb } from "../../config/database.js";
 import { createId } from "../../lib/id.js";
 import { tagDefinitions, recordTags, recordStars } from "./schema.js";
@@ -29,9 +30,10 @@ export async function createDefinition({ recordType, label, color = "slate" }, d
   }
 }
 
-export async function updateDefinition(id, patch, database = appDb) {
+/** `recordType` (optional) must match the tag's own type; checked before any write. */
+export async function updateDefinition(id, patch, recordType = null, database = appDb) {
   const [current] = await database.select().from(tagDefinitions).where(eq(tagDefinitions.id, id));
-  if (!current) throw new TagError("NOT_FOUND", "Tag not found.");
+  if (!current || (recordType && current.recordType !== recordType)) throw new TagError("NOT_FOUND", "Tag not found.");
   const set = { updatedAt: new Date() };
   if (patch.label !== undefined) {
     const clean = normalizeLabel(patch.label);
@@ -86,8 +88,8 @@ export async function applyTags({ recordType, ids, add = [], remove = [], byUser
     ? (await database.select().from(tagDefinitions).where(inArray(tagDefinitions.id, tagIds))).map(toTag)
     : [];
   const unique = [...new Set(ids)];
-  const found = unique.length <= 500 ? await existsFn(unique) : new Set();
-  const currentRows = unique.length <= 500 && tagIds.length
+  const found = unique.length <= TAG_APPLY_MAX_IDS ? await existsFn(unique) : new Set();
+  const currentRows = unique.length <= TAG_APPLY_MAX_IDS && tagIds.length
     ? await database.select().from(recordTags).where(and(eq(recordTags.recordType, recordType), inArray(recordTags.recordId, unique)))
     : [];
   const current = new Map();

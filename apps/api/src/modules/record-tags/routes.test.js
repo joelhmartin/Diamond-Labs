@@ -59,6 +59,32 @@ test("an unknown :recordType is a 404 on every route group", async () => {
   await app.close();
 });
 
+test("PATCH passes the URL record type to the service so a wrong type is refused before any write", async () => {
+  const seen = [];
+  const app = await build({
+    updateDefinition: async (id, patch, type) => {
+      seen.push(type);
+      if (type !== "widget") throw new TagError("NOT_FOUND", "Tag not found.");
+      return { id, recordType: type, ...patch };
+    },
+  });
+  const ok = await app.inject({ method: "PATCH", url: "/admin/tags/widget/definitions/t1", payload: { label: "x" } });
+  assert.equal(ok.statusCode, 200);
+  assert.deepEqual(seen, ["widget"]);
+  await app.close();
+});
+
+test("updateDefinition refuses a tag of another type without writing", async () => {
+  const { updateDefinition } = await import("./service.js");
+  let wrote = false;
+  const fakeDb = {
+    select: () => ({ from: () => ({ where: async () => [{ id: "t1", recordType: "other", label: "A" }] }) }),
+    update: () => { wrote = true; },
+  };
+  await assert.rejects(() => updateDefinition("t1", { label: "B" }, "widget", fakeDb), (e) => e.code === "NOT_FOUND");
+  assert.equal(wrote, false);
+});
+
 test("a known type reaches the service and TagError maps to its status", async () => {
   const calls = [];
   const app = await build({

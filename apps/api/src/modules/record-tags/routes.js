@@ -58,8 +58,7 @@ export async function recordTagRoutes(fastify, { recordTypes, staffGuard, adminG
 
   fastify.patch("/admin/tags/:recordType/definitions/:id", { preHandler: [...admin, knownType, validate(tagDefinitionUpdateSchema)] }, (request, reply) =>
     run(reply, async () => {
-      const tag = await service.updateDefinition(request.params.id, request.body);
-      if (tag.recordType !== request.params.recordType) throw new TagError("NOT_FOUND", "Tag not found.");
+      const tag = await service.updateDefinition(request.params.id, request.body, request.params.recordType);
       audit?.(request, "tag_definition.updated", tag.id, { recordType: tag.recordType, fields: Object.keys(request.body) });
       return tag;
     }));
