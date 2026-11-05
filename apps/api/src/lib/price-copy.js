@@ -1,14 +1,15 @@
 import { createHash } from "node:crypto";
-import { resolveClientPrices } from "./pricing.js";
+import { liveLists, resolveClientPrices } from "./pricing.js";
 
 // Copy prices between clients (spec R3). Pure: the service loads each client's
 // state and applies the plan. Effective prices always come from
 // resolveClientPrices (lib/pricing.js), never a second resolver.
 //
-// state = { overrides: Map<variantId, cents>, listIds: string[] (assignment order),
-//           archivedListIds?: Set<string> }
+// state = { overrides: Map<variantId, cents>, listIds: string[] (assignment order, archived included) }
+// listsById = Map<listId, { listId, name, archived, items: Map }> (loadClientPriceStates' `lists`);
+// which lists apply is lib/pricing.js liveLists, never re-filtered here.
 
-const live = (state) => state.listIds.filter((id) => !state.archivedListIds?.has(id));
+const liveIds = (state, listsById) => liveLists(state.listIds, listsById).map((l) => l.listId);
 
 /**
  * replace: the target ends up with the source's live lists and exactly the source's overrides
@@ -16,17 +17,17 @@ const live = (state) => state.listIds.filter((id) => !state.archivedListIds?.has
  * overrides stay and the source's live lists the target lacks are appended. Archived lists never
  * travel (they do not apply, and cannot be newly assigned).
  */
-export function planCopy({ source, target, mode }) {
+export function planCopy({ source, target, mode, listsById }) {
   const upsert = [...source.overrides]
     .filter(([variantId, cents]) => target.overrides.get(variantId) !== cents)
     .map(([variantId, cents]) => ({ variantId, cents }))
     .sort((a, b) => a.variantId.localeCompare(b.variantId));
   if (mode === "replace") {
     const remove = [...target.overrides.keys()].filter((v) => !source.overrides.has(v)).sort();
-    return { overrides: { upsert, remove }, listIds: live(source) };
+    return { overrides: { upsert, remove }, listIds: liveIds(source, listsById) };
   }
   const have = new Set(target.listIds);
-  return { overrides: { upsert, remove: [] }, listIds: [...target.listIds, ...live(source).filter((id) => !have.has(id))] };
+  return { overrides: { upsert, remove: [] }, listIds: [...target.listIds, ...liveIds(source, listsById).filter((id) => !have.has(id))] };
 }
 
 /** The state a plan produces on a target (the planner's inputs, applied). */
@@ -34,13 +35,12 @@ export function stateAfterPlan(target, plan) {
   const overrides = new Map(target.overrides);
   for (const v of plan.overrides.remove) overrides.delete(v);
   for (const { variantId, cents } of plan.overrides.upsert) overrides.set(variantId, cents);
-  return { overrides, listIds: plan.listIds, archivedListIds: target.archivedListIds ?? new Set() };
+  return { overrides, listIds: plan.listIds };
 }
 
-/** Effective prices for a state. `listsById`: Map<listId, { listId, name, items: Map }>. */
+/** Effective prices for a state. */
 export function effectiveAfterPlan(state, listsById) {
-  const lists = live(state).map((id) => listsById.get(id)).filter(Boolean);
-  return resolveClientPrices({ overrides: state.overrides, lists });
+  return resolveClientPrices({ overrides: state.overrides, lists: liveLists(state.listIds, listsById) });
 }
 
 /** Variants whose effective cents or source differ. A missing entry is the base price (null cents). */

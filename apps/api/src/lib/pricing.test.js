@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { priceLines, priceLabLines, unitPriceFor, assertQuotedTotal, resolveClientPrices, PricingError } from "./pricing.js";
+import { priceLines, priceLabLines, unitPriceFor, assertQuotedTotal, resolveClientPrices, liveLists, PricingError } from "./pricing.js";
 import { asRemakeLines } from "../services/billing/invoice-rules.js";
 
 const config = { taxRateBps: 800, shippingFlatCents: 1200, maxQty: 999 };
@@ -194,4 +194,13 @@ test("a list edit between quote and checkout is PRICE_CHANGED, not a silent char
   const atCheckout = priceWith(450);           // staff edited the list after the quote
   assert.equal(code(() => assertQuotedTotal(quoted.totalCents / 100, atCheckout)), "PRICE_CHANGED");
   assert.doesNotThrow(() => assertQuotedTotal(quoted.totalCents / 100, priceWith(400)));
+});
+
+test("liveLists keeps assignment order and drops archived and unknown lists", () => {
+  const byId = new Map([
+    ["L1", { listId: "L1", name: "Gold", archived: false, items: new Map() }],
+    ["L2", { listId: "L2", name: "Old", archived: true, items: new Map() }],
+    ["L3", { listId: "L3", name: "Silver", archived: false, items: new Map() }],
+  ]);
+  assert.deepEqual(liveLists(["L3", "L2", "L1", "LX"], byId).map((l) => l.listId), ["L3", "L1"]);
 });

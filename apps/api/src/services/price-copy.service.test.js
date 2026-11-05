@@ -46,6 +46,19 @@ test("preview diffs each target by effective price and reports lists before and 
   assert.equal(tx.log.filter((l) => l.op === "insert" || l.op === "update" || l.op === "delete").length, 0, "preview writes nothing");
 });
 
+test("merge keeps a target's archived list and reports it archived after the copy", async () => {
+  const tx = fakeTx({ selects: loaded({
+    assigned: [
+      { clientUserId: "src", listId: "L1", name: "Gold", archivedAt: null, position: 0 },
+      { clientUserId: "t1", listId: "L9", name: "Old", archivedAt: new Date(), position: 0 },
+    ],
+    items: [{ listId: "L1", variantId: "v2", priceCents: 800 }],
+  }) });
+  const out = await svc.previewCopy({ ...body, toClientUserIds: ["t1"], mode: "merge" }, fakeDb(tx));
+  assert.deepEqual(out.targets[0].listsAfter.map((l) => [l.name, l.archived]), [["Old", true], ["Gold", false]]);
+  assert.deepEqual(out.targets[0].changes.map((c) => [c.variantId, c.afterCents]), [["v2", 800]]);
+});
+
 test("copying a client onto itself is INVALID", async () => {
   const tx = fakeTx();
   assert.equal(await errCode(svc.previewCopy({ ...body, toClientUserIds: ["t1", "src"] }, fakeDb(tx))), "INVALID");

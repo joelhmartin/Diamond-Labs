@@ -3,7 +3,7 @@ import { db } from "../config/database.js";
 import {
   productVariants, productFamilies, clientPrices, priceLists, priceListItems, clientPriceLists,
 } from "../db/schema/index.js";
-import { priceLines, priceLabLines, resolveClientPrices } from "../lib/pricing.js";
+import { liveLists, priceLines, priceLabLines, resolveClientPrices } from "../lib/pricing.js";
 import { PRICING } from "../config/pricing.js";
 
 /** Whose negotiated prices apply to a request — null means guest pricing. */
@@ -77,9 +77,11 @@ export async function loadClientPriceResolution(clientUserId, variantIds, databa
 }
 
 /**
- * Many clients at once: every override and ordered list assignment (archived ones flagged), with live-list items,
- * in three selects (two when no live list is assigned). -> { states: Map<clientId, { overrides, listIds, archivedListIds }>, lists: Map<listId, { listId, name, archived, items }> }
- * Batched twin of loadClientPriceResolution for copy and same-pricing.
+ * Many clients at once: every override and ordered list assignment, with live-list items,
+ * in three selects (two when no live list is assigned). Batched twin of loadClientPriceResolution
+ * for copy and same-pricing. Each state's `liveLists` is ready for resolveClientPrices (archived
+ * lists dropped by lib/pricing.js liveLists); `listIds` keeps every assignment, archived included.
+ * -> { states: Map<clientId, { overrides, listIds, liveLists }>, lists: Map<listId, { listId, name, archived, items }> }
  */
 export async function loadClientPriceStates(tx, ids) {
   const overrideRows = await tx
@@ -100,13 +102,10 @@ export async function loadClientPriceStates(tx, ids) {
   for (const a of assigned) if (!lists.has(a.listId)) lists.set(a.listId, { listId: a.listId, name: a.name, archived: Boolean(a.archivedAt), items: new Map() });
   for (const r of itemRows) lists.get(r.listId)?.items.set(r.variantId, r.priceCents);
 
-  const states = new Map(ids.map((id) => [id, { overrides: new Map(), listIds: [], archivedListIds: new Set() }]));
+  const states = new Map(ids.map((id) => [id, { overrides: new Map(), listIds: [], liveLists: [] }]));
   for (const r of overrideRows) states.get(r.clientUserId)?.overrides.set(r.variantId, r.priceCents);
-  for (const a of assigned) {
-    const s = states.get(a.clientUserId);
-    s.listIds.push(a.listId);
-    if (a.archivedAt) s.archivedListIds.add(a.listId);
-  }
+  for (const a of assigned) states.get(a.clientUserId).listIds.push(a.listId);
+  for (const s of states.values()) s.liveLists = liveLists(s.listIds, lists);
   return { states, lists };
 }
 

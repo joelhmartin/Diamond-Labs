@@ -2,19 +2,17 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import { planCopy, diffEffective, previewHash, effectiveAfterPlan, stateAfterPlan } from "./price-copy.js";
 
-const state = (overrides = {}, listIds = [], archivedListIds = []) => ({
-  overrides: new Map(Object.entries(overrides)), listIds, archivedListIds: new Set(archivedListIds),
-});
+const state = (overrides = {}, listIds = []) => ({ overrides: new Map(Object.entries(overrides)), listIds });
 const lists = new Map([
-  ["L1", { listId: "L1", name: "Gold", items: new Map([["v1", 900], ["v2", 800]]) }],
-  ["L2", { listId: "L2", name: "Silver", items: new Map([["v3", 700]]) }],
+  ["L1", { listId: "L1", name: "Gold", archived: false, items: new Map([["v1", 900], ["v2", 800]]) }],
+  ["L2", { listId: "L2", name: "Silver", archived: false, items: new Map([["v3", 700]]) }],
 ]);
 const sorted = (m) => [...m].sort(([a], [b]) => a.localeCompare(b));
 
 test("replace makes the target's effective prices identical to the source's", () => {
   const source = state({ v1: 500, v4: 300 }, ["L1"]);
   const target = state({ v1: 450, v9: 100 }, ["L2"]);
-  const plan = planCopy({ source, target, mode: "replace" });
+  const plan = planCopy({ source, target, mode: "replace", listsById: lists });
   assert.deepEqual(plan.overrides.upsert, [{ variantId: "v1", cents: 500 }, { variantId: "v4", cents: 300 }]);
   assert.deepEqual(plan.overrides.remove, ["v9"]);
   assert.deepEqual(plan.listIds, ["L1"]);
@@ -25,7 +23,7 @@ test("replace makes the target's effective prices identical to the source's", ()
 test("merge keeps target-only overrides and appends missing lists", () => {
   const source = state({ v1: 500 }, ["L1", "L2"]);
   const target = state({ v9: 100 }, ["L2"]);
-  const plan = planCopy({ source, target, mode: "merge" });
+  const plan = planCopy({ source, target, mode: "merge", listsById: lists });
   assert.deepEqual(plan.overrides.upsert, [{ variantId: "v1", cents: 500 }]);
   assert.deepEqual(plan.overrides.remove, []);
   assert.deepEqual(plan.listIds, ["L2", "L1"]);
@@ -33,15 +31,23 @@ test("merge keeps target-only overrides and appends missing lists", () => {
 });
 
 test("an override already equal on the target is not rewritten", () => {
-  const plan = planCopy({ source: state({ v1: 500 }), target: state({ v1: 500 }), mode: "merge" });
+  const plan = planCopy({ source: state({ v1: 500 }), target: state({ v1: 500 }), mode: "merge", listsById: lists });
   assert.deepEqual(plan.overrides.upsert, []);
 });
 
 test("an archived source list is not copied; a target's archived list is kept by merge, dropped by replace", () => {
-  const source = state({}, ["L1", "L2"], ["L2"]);
-  const target = state({}, ["L3"], ["L3"]);
-  assert.deepEqual(planCopy({ source, target, mode: "merge" }).listIds, ["L3", "L1"]);
-  assert.deepEqual(planCopy({ source, target, mode: "replace" }).listIds, ["L1"]);
+  const listsById = new Map([
+    ["L1", { listId: "L1", name: "Gold", archived: false, items: new Map([["v1", 900]]) }],
+    ["L2", { listId: "L2", name: "Old", archived: true, items: new Map([["v1", 1]]) }],
+    ["L3", { listId: "L3", name: "Older", archived: true, items: new Map([["v1", 2]]) }],
+  ]);
+  const source = state({}, ["L1", "L2"]);
+  const target = state({}, ["L3"]);
+  const merged = planCopy({ source, target, mode: "merge", listsById });
+  assert.deepEqual(merged.listIds, ["L3", "L1"]);
+  assert.deepEqual(planCopy({ source, target, mode: "replace", listsById }).listIds, ["L1"]);
+  // The kept archived list still prices nothing.
+  assert.equal(effectiveAfterPlan(stateAfterPlan(target, merged), listsById).get("v1").cents, 900);
 });
 
 test("diff lists only variants whose effective cents or source change", () => {

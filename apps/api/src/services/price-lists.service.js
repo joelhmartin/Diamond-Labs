@@ -2,7 +2,7 @@ import { and, asc, count, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { PRICE_LIST_BULK_MAX } from "@my-app/shared";
 import { db } from "../config/database.js";
 import {
-  priceLists, priceListItems, clientPriceLists, productVariants, productFamilies, users, memberships, accounts,
+  priceLists, priceListItems, clientPriceLists, productVariants, productFamilies, users, doctorProfiles,
 } from "../db/schema/index.js";
 import { createId } from "../lib/id.js";
 import * as auditService from "./audit.service.js";
@@ -196,29 +196,22 @@ export function clientLists(clientUserId, database = db) {
 }
 
 /**
- * The clients assigned to a list, in assignment order. `practice` is the client's first active
- * account; ids, names and account numbers only (no PHI).
+ * The clients assigned to a list, in assignment order. `practice` is the profile's company name
+ * (what invoices and statements show); ids, names and account numbers only (no PHI).
  */
 export async function listClients(listId, database = db) {
   await requireList(database, listId);
   const rows = await database
     .select({
       id: users.id, name: users.name, email: users.email, accountNumber: users.seazonaAccountNumber,
-      position: clientPriceLists.position, assignedAt: clientPriceLists.assignedAt,
+      practice: doctorProfiles.companyName, position: clientPriceLists.position, assignedAt: clientPriceLists.assignedAt,
     })
     .from(clientPriceLists)
     .innerJoin(users, eq(users.id, clientPriceLists.clientUserId))
+    .leftJoin(doctorProfiles, eq(doctorProfiles.userId, users.id))
     .where(eq(clientPriceLists.priceListId, listId))
     .orderBy(asc(sql`lower(coalesce(${users.name}, ${users.email}))`));
-  if (rows.length === 0) return [];
-  const accountRows = await database
-    .select({ userId: memberships.userId, practice: accounts.name })
-    .from(memberships)
-    .innerJoin(accounts, eq(accounts.id, memberships.accountId))
-    .where(and(inArray(memberships.userId, rows.map((r) => r.id)), eq(memberships.status, "active")));
-  const practice = new Map();
-  for (const a of accountRows) if (!practice.has(a.userId)) practice.set(a.userId, a.practice);
-  return rows.map((r) => ({ ...r, name: r.name || r.email, practice: practice.get(r.id) ?? null }));
+  return rows.map((r) => ({ ...r, name: r.name || r.email, practice: r.practice ?? null }));
 }
 
 async function requireClient(tx, clientUserId) {

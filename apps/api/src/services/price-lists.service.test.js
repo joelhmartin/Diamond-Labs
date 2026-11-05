@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { test, vi } from "vitest";
 import assert from "node:assert/strict";
 import { fakeTx, fakeDb } from "../test/fake-tx.js";
@@ -146,15 +148,18 @@ function queuedDb(selects) {
   return { select: () => chain() };
 }
 
-test("clients on a list carry name, account number and first active practice", async () => {
+test("clients on a list carry name, account number and practice (the profile's company name, as billing shows it)", async () => {
   const out = await svc.listClients("L1", queuedDb([
     [LIST],
     [
-      { id: "c1", name: "Ana", email: "a@x.test", accountNumber: "10", position: 0, assignedAt: "t" },
-      { id: "c2", name: null, email: "b@x.test", accountNumber: null, position: 1, assignedAt: "t" },
+      { id: "c1", name: "Ana", email: "a@x.test", accountNumber: "10", practice: "Ruiz Dental", position: 0, assignedAt: "t" },
+      { id: "c2", name: null, email: "b@x.test", accountNumber: null, practice: null, position: 1, assignedAt: "t" },
     ],
-    [{ userId: "c1", practice: "Ruiz Dental" }, { userId: "c1", practice: "Second" }],
   ]));
+  const src = readFileSync(fileURLToPath(new URL("./price-lists.service.js", import.meta.url)), "utf8");
+  assert.match(src, /practice: doctorProfiles\.companyName/);
+  assert.match(src, /\.leftJoin\(doctorProfiles, eq\(doctorProfiles\.userId, users\.id\)\)/);
+  assert.doesNotMatch(src, /accounts\.name/);
   assert.deepEqual(out.map((r) => [r.id, r.name, r.practice, r.accountNumber]), [
     ["c1", "Ana", "Ruiz Dental", "10"],
     ["c2", "b@x.test", null, null],

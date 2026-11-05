@@ -38,7 +38,7 @@ function assertRequest({ fromClientUserId, toClientUserIds, mode }) {
   if (toClientUserIds.includes(fromClientUserId)) throw new PriceCopyError("INVALID", "A client cannot be copied onto itself.");
 }
 
-const listView = (state, lists) => state.listIds.map((id) => ({ listId: id, name: lists.get(id).name, archived: state.archivedListIds.has(id) }));
+const listView = (listIds, lists) => listIds.map((id) => ({ listId: id, name: lists.get(id).name, archived: lists.get(id).archived }));
 
 /** The plans, diffs and hash for a request. Throws on a bad request or a non-client source. */
 async function computeCopy(tx, req) {
@@ -57,14 +57,14 @@ async function computeCopy(tx, req) {
   const source = states.get(fromClientUserId);
   const planned = targets.map((clientUserId) => {
     const before = states.get(clientUserId);
-    const plan = planCopy({ source, target: before, mode });
+    const plan = planCopy({ source, target: before, mode, listsById: lists });
     const after = stateAfterPlan(before, plan);
     const changes = diffEffective(effectiveAfterPlan(before, lists), effectiveAfterPlan(after, lists));
     const listsChanged = plan.listIds.join() !== before.listIds.join();
     return {
       clientUserId, plan, changes, listsChanged,
-      listsBefore: listView(before, lists),
-      listsAfter: plan.listIds.map((id) => ({ listId: id, name: lists.get(id).name, archived: false })),
+      listsBefore: listView(before.listIds, lists),
+      listsAfter: listView(plan.listIds, lists),
     };
   });
   return { targets: planned, failed, previewHash: previewHash(planned.map(({ clientUserId, plan, changes }) => ({ clientUserId, plan, changes }))) };

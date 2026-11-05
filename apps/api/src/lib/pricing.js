@@ -25,6 +25,16 @@ export function unitPriceFor(variant, effective) {
 }
 
 /**
+ * The lists that apply to a client, in assignment order: archived lists never price
+ * anything. The one place the rule is written for batched states (loadClientPriceStates,
+ * copy, same-pricing); the single-client loader applies it in its SQL.
+ * `listsById`: Map<listId, { listId, name, archived, items }>.
+ */
+export function liveLists(listIds, listsById) {
+  return listIds.map((id) => listsById.get(id)).filter((l) => l && !l.archived);
+}
+
+/**
  * The precedence rule (spec R1): the client's own override beats every list;
  * lists apply in the order given (the caller passes them in assignment order
  * with archived lists already removed), and the first list with an item for a

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { test, vi } from "vitest";
 import assert from "node:assert/strict";
 import { fakeTx } from "../test/fake-tx.js";
@@ -6,22 +8,22 @@ vi.mock("../config/database.js", () => ({ db: {} }));
 
 const { sameClientPricingGroups } = await import("./same-pricing.service.js");
 
-const U = (id, name) => ({ id, name, email: `${id}@x.test`, accountNumber: `A${id}` });
-// Select order: users, overrides, assignments, list items, practices.
-const loaded = ({ users, overrides = [], assigned = [], items = [], practices = [] }) => [users, overrides, assigned, items, practices];
+const U = (id, name, practice = null) => ({ id, name, email: `${id}@x.test`, accountNumber: `A${id}`, practice });
+// Select order: users (with the profile's company name as practice), overrides, assignments, list items.
+const loaded = ({ users, overrides = [], assigned = [], items = [] }) => [users, overrides, assigned, items];
 const GOLD = { listId: "L1", name: "Gold", archivedAt: null, position: 0 };
 const GOLD_ITEMS = [{ listId: "L1", variantId: "v1", priceCents: 500 }];
 
 test("two clients on the same list with no overrides group together", async () => {
   const tx = fakeTx({ selects: loaded({
-    users: [U("a", "Ann"), U("b", "Bo"), U("c", "Cy")],
+    users: [U("a", "Ann", "Test Practice A"), U("b", "Bo"), U("c", "Cy")],
     assigned: [{ clientUserId: "a", ...GOLD }, { clientUserId: "b", ...GOLD }],
     items: GOLD_ITEMS,
   }) });
   const { groups } = await sameClientPricingGroups(tx);
   assert.equal(groups.length, 1);
   assert.equal(groups[0].size, 2);
-  assert.deepEqual(groups[0].clients.map((c) => c.id), ["a", "b"]);
+  assert.deepEqual(groups[0].clients.map((c) => [c.id, c.practice]), [["a", "Test Practice A"], ["b", null]]);
   assert.deepEqual(groups[0].lists, ["Gold"]);
 });
 
@@ -72,4 +74,10 @@ test("the service runs a fixed number of queries regardless of client count", as
     return tx.log.filter((l) => l.op === "select").length;
   };
   assert.equal(await count(2), await count(40));
+});
+
+test("practice is the profile's company name, the billing convention", () => {
+  const src = readFileSync(fileURLToPath(new URL("./same-pricing.service.js", import.meta.url)), "utf8");
+  assert.match(src, /practice: doctorProfiles\.companyName/);
+  assert.doesNotMatch(src, /accounts\.name/);
 });
