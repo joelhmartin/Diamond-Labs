@@ -20,6 +20,7 @@ test("a .exe is refused by name and the rest proceed", () => {
   const { groups, refused } = planIntakes([f("a.stl"), f("setup.exe"), f("noext")], "one");
   assert.deepEqual(groups[0].map((x) => x.originalName), ["a.stl"]);
   assert.deepEqual(refused.map((r) => r.name), ["setup.exe", "noext"]);
+  assert.deepEqual(refused.map((r) => r.reason), ["unsupported type", "unsupported type"], "a name-free reason a screen can count by");
   assert.match(refused[0].message, /setup\.exe/);
 });
 

@@ -159,7 +159,8 @@ function boardWhere(f, now, scope = null) {
       ilike(rxCases.practiceName, like),
       ilike(client.name, like),
       ilike(orders.orderNumber, like),
-      ilike(labOrders.panNumber, prefixPattern(f.q)), // pans are looked up by their start; indexed
+      // Pans match by their start. Not index-backed: an ilike inside this OR can't use the pan btree index.
+      ilike(labOrders.panNumber, prefixPattern(f.q)),
     ));
   }
   return conds.length ? and(...conds) : undefined;

@@ -49,6 +49,35 @@ export function computeTotals(lines, { taxRateBps }) {
 
 export const hasUnpriced = (lines) => lines.some((l) => l.priceSource === "unpriced");
 
+/** No billable item line at all (a quick-entry order shipped with no lines): issuing it would bill $0 for good. */
+export const hasNoItems = (lines) => !lines.some((l) => (l.kind ?? "item") === "item");
+
+/**
+ * What discounts come off: the item lines plus the discount credits (negative
+ * adjustments), overall and on the taxable side. Raw sums (may be negative).
+ * THE formula planDiscountLine sizes a discount by and assertDiscountCovered
+ * re-checks after every item edit, so the two cannot disagree.
+ */
+function discountBase(lines) {
+  const credits = lines.filter((l) => l.kind === "adjustment" && lineCentsOf(l) < 0);
+  const items = lines.filter((l) => (l.kind ?? "item") === "item");
+  return {
+    credits,
+    netCents: sumCents(items.map(lineCentsOf)) + sumCents(credits.map(lineCentsOf)),
+    taxableNetCents: sumCents(items.filter((l) => l.taxable).map(lineCentsOf)) + sumCents(credits.filter((l) => l.taxable).map(lineCentsOf)),
+  };
+}
+
+/**
+ * After an item edit (qty, price, remove — staff or bench), a discount already
+ * on the draft must still be covered: items + credits ≥ 0 overall and on the
+ * taxable side. Otherwise refuse; staff take the discount off first.
+ */
+export function assertDiscountCovered(linesAfter) {
+  const { credits, netCents, taxableNetCents } = discountBase(linesAfter);
+  if (credits.length && (netCents < 0 || taxableNetCents < 0)) throw new InvoiceError("INVALID", "Remove the discount first.");
+}
+
 /**
  * A remake's price: the reason's default percent off (100 = free, the default; null means 100).
  * Integer cents, rounded. Staff can still edit the draft.
@@ -195,6 +224,7 @@ export function planLineEdit(invoice, lines, edit, { now, taxRateBps }) {
     } else {
       throw new InvoiceError("INVALID", `Unknown edit: ${edit.op}`);
     }
+    assertDiscountCovered(after);
   }
   return { op, patch: { ...computeTotals(after, { taxRateBps }), ...bump(invoice, now) }, audit };
 }
@@ -213,11 +243,9 @@ export function planDiscountLine(invoice, lines, { label, text, percent, amountC
   const hasPercent = percent !== undefined && percent !== null;
   const hasAmount = amountCents !== undefined && amountCents !== null;
   if (hasPercent === hasAmount) throw new InvoiceError("INVALID", "Give either a percent or an amount for the discount.");
-  const credits = lines.filter((l) => l.kind === "adjustment" && lineCentsOf(l) < 0);
-  const items = lines.filter((l) => (l.kind ?? "item") === "item");
-  const net = Math.max(0, sumCents(items.map(lineCentsOf)) + sumCents(credits.map(lineCentsOf)));
-  const taxableGross = sumCents(items.filter((l) => l.taxable).map(lineCentsOf));
-  const taxableNet = Math.min(net, Math.max(0, taxableGross + sumCents(credits.filter((l) => l.taxable).map(lineCentsOf))));
+  const base = discountBase(lines);
+  const net = Math.max(0, base.netCents);
+  const taxableNet = Math.min(net, Math.max(0, base.taxableNetCents));
   let cents;
   if (hasPercent) {
     if (!Number.isInteger(percent) || percent < 1 || percent > 100) throw new InvoiceError("INVALID", "A discount percent is a whole number from 1 to 100.");
@@ -293,6 +321,12 @@ export function assertLinkedDraft(invoice) {
 const linkedPlan = (invoice, op, after, audit, { now, taxRateBps }) =>
   ({ op, patch: { ...computeTotals(after, { taxRateBps }), ...bump(invoice, now) }, audit });
 
+/** A bench qty change or removal: refused (and the bench edit rolled back) when it would leave a discount uncovered. */
+function linkedEditPlan(invoice, op, after, audit, opts) {
+  assertDiscountCovered(after);
+  return linkedPlan(invoice, op, after, audit, opts);
+}
+
 /** A new bench line → its priced invoice line (priceLabLines output, remake pricing already applied). */
 export function planLinkedLineAdd(invoice, lines, pricedLine, opts) {
   assertLinkedDraft(invoice);
@@ -310,7 +344,7 @@ export function planLinkedLineQty(invoice, lines, labOrderLineId, qty, opts) {
   checkQty(qty);
   const updated = { ...line, qty, lineCents: lineCentsOf({ ...line, qty }) };
   const audit = { op: "update", lineId: line.id, labOrderLineId, qty };
-  return linkedPlan(invoice, { update: { id: line.id, values: { qty, lineCents: updated.lineCents } } }, lines.map((l) => (l === line ? updated : l)), audit, opts);
+  return linkedEditPlan(invoice, { update: { id: line.id, values: { qty, lineCents: updated.lineCents } } }, lines.map((l) => (l === line ? updated : l)), audit, opts);
 }
 
 /** A bench line removed → delete the invoice line linked to it. Null when no line is linked. */
@@ -318,7 +352,7 @@ export function planLinkedLineRemove(invoice, lines, labOrderLineId, opts) {
   assertLinkedDraft(invoice);
   const line = lines.find((l) => l.labOrderLineId === labOrderLineId);
   if (!line) return null;
-  return linkedPlan(invoice, { delete: line.id }, lines.filter((l) => l !== line), { op: "remove", lineId: line.id, labOrderLineId }, opts);
+  return linkedEditPlan(invoice, { delete: line.id }, lines.filter((l) => l !== line), { op: "remove", lineId: line.id, labOrderLineId }, opts);
 }
 
 /** Issue a draft: due = the lab-local issue date + net terms. An unpriced line holds it. */

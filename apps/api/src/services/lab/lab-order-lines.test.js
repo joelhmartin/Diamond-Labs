@@ -126,3 +126,14 @@ test("a note-only line is not billed: nothing is added to the invoice", async ()
   assert.ok(!inserts(h.tx).some((v) => v && "labOrderLineId" in v), "no invoice line");
   assert.ok(inserts(h.tx).some((v) => v?.name === "DDSO Nylon" && v.noteOnly === true), "bench line written");
 });
+
+test("a bench remove that would leave a discount uncovered refuses and rolls the bench edit back", async () => {
+  const discount = { id: "il-d", invoiceId: "inv1", position: 1, kind: "adjustment", labOrderLineId: null, description: "Courtesy", qty: 1, unitCents: -5000, lineCents: -5000, taxable: false, priceSource: "manual" };
+  const h = harness({ rest: [[draftInvoice], [invoiceLine, discount]] });
+  await assert.rejects(
+    changeLines("lo1", { edit: { op: "remove", lineId: "l0" }, expectedVersion: 3, byUserId: "staff1" }, h.database),
+    (e) => e instanceof InvoiceError && e.code === "INVALID" && e.message === "Remove the discount first.",
+  );
+  assert.equal(h.rolledBack(), true, "the order bump and event roll back with it");
+  assert.equal(h.tx.log.filter((l) => l.op === "delete").length, 0, "neither the invoice line nor the bench line is deleted");
+});

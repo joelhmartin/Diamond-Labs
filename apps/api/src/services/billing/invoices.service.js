@@ -10,7 +10,7 @@ import * as auditService from "../audit.service.js";
 import { sealInvoice, openInvoice, sealLine, openLine } from "./invoice-crypto.js";
 import { remakePercentFor } from "./adjustment-reasons.service.js";
 import {
-  planDraftInvoice, planShopInvoice, asRemakeLines, hasUnpriced, planIssue, planVoid, InvoiceError, assertShipmentCharge,
+  planDraftInvoice, planShopInvoice, asRemakeLines, hasUnpriced, hasNoItems, planIssue, planVoid, InvoiceError, assertShipmentCharge,
   planShipmentLine, planShipmentLineRemoval, assertLinkedDraft, planLinkedLineAdd, planLinkedLineQty, planLinkedLineRemove,
 } from "./invoice-rules.js";
 
@@ -110,8 +110,10 @@ async function invoiceForLabOrder(tx, labOrderId) {
 
 /**
  * A lab order moved to shipped → issue its draft, due on the lab-local ship
- * date plus INVOICE_TERMS_DAYS. An unpriced line holds it at draft (it shows
- * under Admin › Invoices "Needs a price"). A lab order released before
+ * date plus INVOICE_TERMS_DAYS. An unpriced line, or no item line at all (a
+ * quick-entry order shipped with no lines — issuing it would bill $0 for good,
+ * one invoice per order), holds it at draft (it shows under Admin › Invoices
+ * "Needs a price or lines"). A lab order released before
  * invoicing existed is drafted first, so no shipped Rx job escapes billing.
  * Callers run this in a savepoint (lab-orders.service billingFollowUp): the
  * ship itself must commit whatever happens here.
@@ -132,6 +134,10 @@ export async function issueForShippedLabOrder(tx, { labOrderId, shippedAt, byUse
   }
   if (invoice.status !== "draft") return { issued: false, reason: invoice.status };
   const lines = await loadLines(tx, invoice.id);
+  if (hasNoItems(lines)) {
+    await auditInvoice(tx, "invoice.issue_held", invoice, byUserId, { reason: "no_lines" });
+    return { issued: false, reason: "no_lines" };
+  }
   if (hasUnpriced(lines)) {
     await auditInvoice(tx, "invoice.issue_held", invoice, byUserId, { reason: "unpriced" });
     return { issued: false, reason: "unpriced" };

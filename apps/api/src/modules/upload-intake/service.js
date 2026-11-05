@@ -30,7 +30,7 @@ const toIntake = (row, files = []) => {
  * upload fails leaves no row behind and its files are reported with the refused ones.
  *
  * @param {{ files: Array<{ kind: string, buffer: Buffer, originalName: string, contentType?: string }>, split?: "one"|"per_file", channel?: string, byUserId?: string, parsers?: object, storage?: object }} args
- * @returns {Promise<{ intakes: object[], refused: Array<{ name: string, message: string }> }>}
+ * @returns {Promise<{ intakes: object[], refused: Array<{ name: string, reason: string, message: string }> }>}
  */
 export async function createIntakes({ files, split = "one", channel = "upload", byUserId = null, parsers = defaultParsers, storage }, database = appDb) {
   const { groups, refused } = planIntakes(files, split);
@@ -48,10 +48,11 @@ export async function createIntakes({ files, split = "one", channel = "upload", 
       await database.insert(intakes).values(secrets.seal(row));
       created.push(toIntake(secrets.seal(row), attached));
     } catch (err) {
-      // Ids and the error only: file names can name a person.
-      console.error("[upload-intake] could not store a drop", { intakeId: row.id, code: err?.code, message: err?.message });
+      // Ids and the error code only: file names can name a person, and a storage
+      // error's message can echo the object path (which carries the file name).
+      console.error("[upload-intake] could not store a drop", { intakeId: row.id, code: err?.code ?? null, marker: "STORE_FAILED" });
       if (attached?.length) await database.delete(recordFiles).where(inArray(recordFiles.id, attached.map((f) => f.id))).catch(() => {});
-      for (const f of group) refused.push({ name: f.originalName, message: `"${f.originalName}" could not be stored. Try again.` });
+      for (const f of group) refused.push({ name: f.originalName, reason: "could not be stored", message: `"${f.originalName}" could not be stored. Try again.` });
     }
   }
   return { intakes: created, refused };

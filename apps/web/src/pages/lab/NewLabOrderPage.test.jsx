@@ -124,7 +124,7 @@ test("the due date follows the scheduling preview until staff type one, which is
   assert.equal(posts.find(([u]) => u === "/lab/orders")[1].dueDate, "2026-12-01");
 });
 
-test("a failed upload still navigates and toasts the file names", async () => {
+test("a failed upload still navigates and toasts a count, never the file names", async () => {
   const base = postReply;
   postReply = async (url, ...rest) => {
     if (url.startsWith("/files/")) throw new Error("Upload failed.");
@@ -133,10 +133,11 @@ test("a failed upload still navigates and toasts the file names", async () => {
   mount();
   await fillRequired();
   fireEvent.click(screen.getByRole("button", { name: "Full" }));
-  fireEvent.change(screen.getByTestId("file-drop-input"), { target: { files: [new File(["x"], "scan.stl")] } });
+  fireEvent.change(screen.getByTestId("file-drop-input"), { target: { files: [new File(["x"], "jane-doe-upper.stl"), new File(["y"], "jane-doe-lower.stl")] } });
   fireEvent.click(screen.getByRole("button", { name: "Create order" }));
   await screen.findByText("ORDER PAGE");
-  assert.ok(await screen.findByText(/did not upload: scan\.stl/));
+  assert.ok(await screen.findByText(/2 files did not upload/));
+  assert.equal(screen.queryByText(/jane-doe/), null, "no file name in the toast");
 });
 
 test("a pan warning toasts the other open order", async () => {

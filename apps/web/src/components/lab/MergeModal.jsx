@@ -54,6 +54,8 @@ export function MergeModal({ rows, onClose, onMerged, post = (path, body) => api
     <Modal open={Boolean(rows)} onClose={onClose} title={`Merge ${n} orders`}>
       <p className="mb-3 text-sm text-navy/70">
         Pick the order to keep. The others' lines move onto it and they are cancelled, marked “Merged into” it.
+        Their draft invoices are voided, so any edits there (price overrides, manual lines, discounts) are dropped,
+        and the moved lines are re-priced on the kept order's draft.
       </p>
       <fieldset className="space-y-1.5">
         <legend className="mb-1 text-xs font-semibold text-navy/60">Keep</legend>

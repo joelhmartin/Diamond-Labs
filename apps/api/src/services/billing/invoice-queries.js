@@ -55,9 +55,11 @@ export function invoiceListWhere(filters = {}) {
   if (filters.status) conds.push(eq(invoices.status, filters.status));
   if (filters.clientUserId) conds.push(eq(invoices.clientUserId, filters.clientUserId));
   if (filters.number) conds.push(eq(invoices.invoiceNumber, filters.number));
+  // "Needs a price or lines": a draft that shipping would hold (invoices.service issueForShippedLabOrder).
   if (filters.needsPrice) {
     conds.push(eq(invoices.status, "draft"));
-    conds.push(sql`exists (select 1 from ${invoiceLines} where ${invoiceLines.invoiceId} = ${invoices.id} and ${invoiceLines.priceSource} = 'unpriced')`);
+    conds.push(sql`(exists (select 1 from ${invoiceLines} where ${invoiceLines.invoiceId} = ${invoices.id} and ${invoiceLines.priceSource} = 'unpriced')
+      or not exists (select 1 from ${invoiceLines} where ${invoiceLines.invoiceId} = ${invoices.id} and ${invoiceLines.kind} = 'item'))`);
   }
   if (filters.q) {
     conds.push(/^\d+$/.test(filters.q)
@@ -87,14 +89,15 @@ export async function listInvoices(filters = {}, database = db) {
     ? await Promise.all([rowsQuery.limit(page.limit).offset(page.offset), countInvoices(where, database)])
     : [await rowsQuery.limit(INVOICE_LIST_LIMIT), null];
   const ids = rows.map((r) => r.invoice.id);
-  const unpriced = new Set(
-    ids.length
-      ? (await database
-          .selectDistinct({ id: invoiceLines.invoiceId })
-          .from(invoiceLines)
-          .where(and(inArray(invoiceLines.invoiceId, ids), eq(invoiceLines.priceSource, "unpriced")))).map((r) => r.id)
-      : []
-  );
+  // One read of the page's item lines: which have an unpriced one, which have any at all.
+  const itemRows = ids.length
+    ? await database
+        .selectDistinct({ id: invoiceLines.invoiceId, priceSource: invoiceLines.priceSource })
+        .from(invoiceLines)
+        .where(and(inArray(invoiceLines.invoiceId, ids), eq(invoiceLines.kind, "item")))
+    : [];
+  const unpriced = new Set(itemRows.filter((r) => r.priceSource === "unpriced").map((r) => r.id));
+  const withItems = new Set(itemRows.map((r) => r.id));
   const balanced = await withBalances(rows.map((r) => r.invoice), database);
   const out = {
     invoices: balanced.map((inv, i) => ({
@@ -102,7 +105,9 @@ export async function listInvoices(filters = {}, database = db) {
       clientUserId: inv.clientUserId, clientName: rows[i].clientName ?? null, practice: rows[i].practice ?? null,
       labOrderId: inv.labOrderId, labOrderNumber: rows[i].labOrderNumber ?? null,
       issuedAt: inv.issuedAt, dueDate: inv.dueDate, totalCents: inv.totalCents, paidCents: inv.paidCents, balanceCents: inv.balanceCents,
-      needsPrice: unpriced.has(inv.id),
+      // A draft with no item line is held at ship like an unpriced one (noLines tells the screen which).
+      noLines: inv.status === "draft" && !withItems.has(inv.id),
+      needsPrice: unpriced.has(inv.id) || (inv.status === "draft" && !withItems.has(inv.id)),
     })),
   };
   return page ? { ...out, total } : { ...out, truncated: rows.length >= INVOICE_LIST_LIMIT };

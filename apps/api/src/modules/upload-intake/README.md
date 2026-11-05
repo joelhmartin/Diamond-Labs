@@ -17,7 +17,10 @@ Everything is exported from `index.js`. Service functions take an optional
   → `{ intakes, refused }`. `split` is `"one"` (one intake for all files) or
   `"per_file"`. A file with an unaccepted extension is refused by name and the
   rest proceed; a group whose upload fails is reported in `refused` and leaves
-  no row. Files are stored with `record-files` under record type `"intake"`.
+  no row. Each refused entry is `{ name, reason, message }`; `reason` is
+  name-free (`"unsupported type"`, `"could not be stored"`) so a screen can
+  count refusals without echoing file names. Files are stored with
+  `record-files` under record type `"intake"`.
 - `listIntakes({ status, limit, offset })` → `{ rows, total }`, newest first,
   each row with its `files`.
 - `discardIntake(id, { reason, byUserId })`: only a pending intake can be discarded.

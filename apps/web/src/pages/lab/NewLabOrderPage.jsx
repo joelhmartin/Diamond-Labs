@@ -167,8 +167,10 @@ export function NewLabOrderPage() {
     if (full && files.length) {
       try {
         await uploadRecordFiles(RECORD_TYPE, labOrder.id, files);
-      } catch (err) {
-        addToast({ message: `Order #${labOrder.orderNumber} was created, but these files did not upload: ${files.map((f) => f.name).join(", ")}. ${errorText(err)}`, type: "error", duration: 10000 });
+      } catch {
+        // A count, never the names (scanner exports are often named after the patient; the server's text can echo one).
+        const n = files.length;
+        addToast({ message: `Order #${labOrder.orderNumber} was created, but ${n} ${n === 1 ? "file" : "files"} did not upload. Add ${n === 1 ? "it" : "them"} from the order page.`, type: "error", duration: 10000 });
       }
     }
     addToast({ message: `Order #${labOrder.orderNumber} created.`, type: "success" });

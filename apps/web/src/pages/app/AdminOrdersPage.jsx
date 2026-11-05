@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
-import { LAB_ORDER_STATUSES, LAB_STATUS_LABELS, formatLabDate } from "@my-app/shared";
+import { LAB_ORDER_STATUSES, LAB_STATUS_LABELS, LAB_ORDER_SOURCES, LAB_ORDER_SOURCE_LABELS, formatLabDate } from "@my-app/shared";
 import api from "../../config/api.js";
 import { labOrderPath } from "../../config/routes.js";
 import { sourceLabel } from "../../lib/staff.js";
@@ -19,7 +19,7 @@ const opt = (list, label) => list.map((x) => ({ value: x.id, label: label(x) }))
 function orderFilters(departments, staff, tagDefinitions) {
   return [
     { id: "status", label: "Status", type: "select", placeholder: "All statuses", options: LAB_ORDER_STATUSES.map((s) => ({ value: s, label: LAB_STATUS_LABELS[s] })) },
-    { id: "source", label: "Source", type: "select", placeholder: "Rx cases and shop", options: [{ value: "rx_case", label: "Rx cases" }, { value: "shop_order", label: "Shop orders" }] },
+    { id: "source", label: "Source", type: "select", placeholder: "All sources", options: LAB_ORDER_SOURCES.map((s) => ({ value: s, label: LAB_ORDER_SOURCE_LABELS[s] })) },
     { id: "departmentId", label: "Department", type: "select", placeholder: "All departments", options: opt(departments, (d) => d.name) },
     { id: "assigneeUserId", label: "Assignee", type: "select", placeholder: "Anyone", options: opt(staff, (s) => s.name) },
     { id: "tagIds", label: "Labels", type: "multiselect", options: opt(tagDefinitions, (t) => t.label) },

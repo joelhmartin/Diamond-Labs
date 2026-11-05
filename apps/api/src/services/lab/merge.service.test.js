@@ -21,6 +21,8 @@ const { mergeOrders } = await import("./merge.service.js");
 const { LabOrderError } = await import("./lab-order-rules.js");
 const { sealOrder } = await import("./lab-order-crypto.js");
 const { fakeTx, fakeDb } = await import("../../test/fake-tx.js");
+const { InvoiceError } = await import("../billing/invoice-rules.js");
+const { invoiceErrorReply } = await import("../billing/invoice-errors.js");
 
 const row = (id, n, extra = {}) => sealOrder({
   id, orderNumber: n, source: "staff", sourceId: id, clientUserId: "doc1", status: "received", heldFrom: null,
@@ -54,9 +56,11 @@ test("an order that no longer exists refuses before anything is written", async 
   assert.deepEqual(writes(tx), []);
 });
 
+const drafts = [{ labOrderId: "a", status: "draft" }, { labOrderId: "p", status: "draft" }];
+
 test("a merge cancels the others, moves their lines onto the primary's draft, unions tags and relinks files", async () => {
   const tx = fakeTx({
-    selects: [[A, P], [], lines],
+    selects: [[A, P], drafts, lines],
     updates: [[{ ...P, version: 4, dueDate: "2026-11-12" }], [{ ...A, version: 4, status: "cancelled" }]],
   });
   tags.tagsFor.mockResolvedValue(new Map([
@@ -76,7 +80,10 @@ test("a merge cancels the others, moves their lines onto the primary's draft, un
   assert.deepEqual(events.map((e) => [e.labOrderId, e.type]), [["p", "merge"], ["p", "due"], ["a", "status"]]);
   assert.ok(events.every((e) => !/jane|roe/i.test(JSON.stringify(e))), "no patient name in events");
 
-  assert.deepEqual(billing.voidForCancelledLabOrder.mock.calls.map(([, a]) => a.labOrderId), ["a"]);
+  assert.deepEqual(billing.voidForCancelledLabOrder.mock.calls.map(([, a]) => a.labOrderId), ["a"], "only the merged-away draft is voided");
+  assert.equal(billing.voidForCancelledLabOrder.mock.calls[0][0], tx, "directly in the merge's transaction (no savepoint)");
+  const invoiceRead = tx.log.filter((l) => l.op === "select")[1];
+  assert.ok(invoiceRead.calls.includes("for") && invoiceRead.calls.includes("orderBy"), "the invoices are row-locked in a fixed order");
   const [[, sync]] = billing.syncDraftLine.mock.calls;
   assert.deepEqual([sync.labOrder.id, sync.op, sync.line.id, sync.line.labOrderId], ["p", "add", "a0", "p"]);
   assert.deepEqual(files.relinkFiles.mock.calls.map(([, a]) => a), [{ fromType: "lab_order", fromId: "a", toType: "lab_order", toId: "p" }]);
@@ -105,4 +112,25 @@ test("a refusal (different practices) writes nothing", async () => {
     (e) => e.code === "INVALID" && /practice/.test(e.message),
   );
   assert.deepEqual(writes(tx), []);
+});
+
+test("a merged-away order whose invoice is no longer a draft at void time refuses (409 STALE) and writes nothing", async () => {
+  const tx = fakeTx({ selects: [[A, P], drafts, lines] });
+  billing.voidForCancelledLabOrder.mockResolvedValue({ voided: false }); // issued between the read and the void
+  await assert.rejects(
+    mergeOrders({ primaryId: "p", otherIds: ["a"], versions: { p: 3, a: 3 }, byUserId: "s1" }, fakeDb(tx)),
+    (e) => e instanceof InvoiceError && e.code === "STALE" && invoiceErrorReply(e).status === 409,
+  );
+  assert.deepEqual(writes(tx), [], "no order cancelled, no line moved");
+  assert.equal(billing.syncDraftLine.mock.calls.length, 0, "nothing added to the primary's draft");
+  assert.equal(files.relinkFiles.mock.calls.length, 0);
+});
+
+test("an order with no invoice yet is not voided and the merge goes ahead", async () => {
+  const tx = fakeTx({
+    selects: [[A, P], [], lines],
+    updates: [[{ ...P, version: 4 }], [{ ...A, version: 4, status: "cancelled" }]],
+  });
+  await mergeOrders({ primaryId: "p", otherIds: ["a"], versions: { p: 3, a: 3 }, byUserId: "s1" }, fakeDb(tx));
+  assert.equal(billing.voidForCancelledLabOrder.mock.calls.length, 0);
 });

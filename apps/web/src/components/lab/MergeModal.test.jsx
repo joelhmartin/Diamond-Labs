@@ -25,6 +25,7 @@ test("MergeModal requires choosing a primary and a second click", async () => {
   render(<ToastProvider><MergeModal rows={ROWS} onClose={vi.fn()} onMerged={onMerged} /></ToastProvider>);
   const merge = screen.getByRole("button", { name: "Merge 2 orders" });
   assert.equal(merge.disabled, true, "nothing happens until a primary is chosen");
+  assert.ok(screen.getByText(/edits there \(price overrides, manual lines, discounts\) are dropped/), "warns that the others' draft edits are lost");
 
   fireEvent.click(screen.getByLabelText(/#100102/));
   assert.equal(merge.disabled, false);

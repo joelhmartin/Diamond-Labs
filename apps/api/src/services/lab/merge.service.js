@@ -5,11 +5,11 @@ import { labOrders, labOrderLines, labOrderLineMaterials, labOrderEvents, invoic
 import { applyTags, tagsFor } from "../../modules/record-tags/index.js";
 import { relinkFiles } from "../../modules/record-files/index.js";
 import { decryptRxPhi } from "../rx/phi-crypto.js";
-import { syncDraftLine } from "../billing/invoices.service.js";
+import { syncDraftLine, voidForCancelledLabOrder } from "../billing/invoices.service.js";
+import { InvoiceError } from "../billing/invoice-rules.js";
 import { sealOrder, openOrder, sealEvent } from "./lab-order-crypto.js";
 import { LabOrderError, assertFresh } from "./lab-order-rules.js";
 import { planMerge } from "./merge-rules.js";
-import { billingFollowUp } from "./lab-orders.service.js";
 import { LAB_ORDER_RECORD_TYPE, onLabOrderTagsChanged } from "./lab-tags.js";
 
 /**
@@ -35,9 +35,18 @@ async function linesByOrder(tx, ids) {
   return out;
 }
 
-/** labOrderId → { status }; an order with a non-draft invoice keeps that one (it must refuse). */
+/**
+ * labOrderId → { status }; an order with a non-draft invoice keeps that one (it must refuse).
+ * The invoices are row-locked (after the orders, in id order, like every lock here) so an
+ * admin can't issue one between this read and the merge voiding it.
+ */
 async function invoicesByOrder(tx, ids) {
-  const rows = await tx.select({ labOrderId: invoices.labOrderId, status: invoices.status }).from(invoices).where(inArray(invoices.labOrderId, ids));
+  const rows = await tx
+    .select({ labOrderId: invoices.labOrderId, status: invoices.status })
+    .from(invoices)
+    .where(inArray(invoices.labOrderId, ids))
+    .orderBy(asc(invoices.id))
+    .for("update");
   const out = new Map();
   for (const r of rows) if (!out.has(r.labOrderId) || r.status !== "draft") out.set(r.labOrderId, { status: r.status });
   return out;
@@ -86,6 +95,20 @@ async function unionTags(tx, primaryId, otherIds, byUserId) {
 }
 
 /**
+ * Void each merged-away order's draft BEFORE anything else is written, with no
+ * savepoint: unlike a plain cancel (which must never block the bench), a merge
+ * re-bills these lines on the primary, so a draft that can't be voided must
+ * refuse the whole merge (409 STALE) or the same lines would be billed twice.
+ */
+async function voidMergedDrafts(tx, others, invoiceStates, byUserId) {
+  for (const o of others) {
+    if (invoiceStates.get(o.id)?.status !== "draft") continue;
+    const { voided } = await voidForCancelledLabOrder(tx, { labOrderId: o.id, byUserId });
+    if (!voided) throw new InvoiceError("STALE", `Order #${o.orderNumber}'s invoice changed — reload.`);
+  }
+}
+
+/**
  * @param {{ primaryId: string, otherIds: string[], versions: Record<string, number>, byUserId?: string|null }} input
  * @returns {{ primary: { id, orderNumber, version }, merged: Array<{ id, orderNumber }> }}
  */
@@ -97,13 +120,15 @@ export function mergeOrders({ primaryId, otherIds, versions = {}, byUserId = nul
     for (const id of new Set(ids)) assertFresh(orders.get(id), versions[id]);
     const primary = orders.get(primaryId);
     const others = otherIds.map((id) => orders.get(id));
+    const invoiceStates = await invoicesByOrder(tx, ids);
     const plan = planMerge({
       primary, others,
       patients: await patientsOf(tx, [...orders.values()]),
-      invoices: await invoicesByOrder(tx, ids),
+      invoices: invoiceStates,
       linesByOrder: await linesByOrder(tx, ids),
       now: new Date(), byUserId,
     });
+    await voidMergedDrafts(tx, others, invoiceStates, byUserId);
 
     const openedPrimary = await commit(tx, primary.id, primary.version, plan.primaryPatch);
     const cancelled = [];
@@ -119,9 +144,6 @@ export function mergeOrders({ primaryId, otherIds, versions = {}, byUserId = nul
       await tx.update(labOrderLineMaterials).set({ labOrderId: primary.id })
         .where(inArray(labOrderLineMaterials.labOrderLineId, plan.appendLines.map((l) => l.id)));
     }
-    // The others' drafts are voided by the cancel follow-up (savepoint; a failure is logged, the merge commits).
-    const voidDraft = billingFollowUp("cancelled", byUserId);
-    for (const o of cancelled) await voidDraft(tx, o);
     for (const line of plan.appendLines) await syncDraftLine(tx, { labOrder: openedPrimary, op: "add", line, byUserId });
 
     await unionTags(tx, primary.id, otherIds, byUserId);

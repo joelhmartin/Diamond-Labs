@@ -89,6 +89,17 @@ test("an unpriced line holds the invoice at draft; the ship is not affected", as
   assert.equal(inserts(tx).at(-1).action, "invoice.issue_held");
 });
 
+test("a draft with no item lines (quick entry, no lines) is held, not issued at $0; the ship is not affected", async () => {
+  for (const lines of [[], [{ id: "s1", kind: "shipping", description: "UPS Ground", priceSource: "shipment", priceNote: null }]]) {
+    const tx = fakeTx({ selects: [[{ ...draftRow, totalCents: 0 }], lines] });
+    const out = await mod.issueForShippedLabOrder(tx, { labOrderId: "lo1", shippedAt: new Date(), byUserId: "tech1" });
+    assert.deepEqual(out, { issued: false, reason: "no_lines" });
+    assert.equal(tx.log.filter((l) => l.op === "set").length, 0, "still a draft, so it can be billed once lines are added");
+    const audit = inserts(tx).at(-1);
+    assert.deepEqual([audit.action, audit.metadata], ["invoice.issue_held", { invoiceNumber: 500001, reason: "no_lines" }]);
+  }
+});
+
 test("an already-issued invoice is left alone on ship", async () => {
   const tx = fakeTx({ selects: [[{ ...draftRow, status: "issued" }]] });
   assert.deepEqual(await mod.issueForShippedLabOrder(tx, { labOrderId: "lo1", shippedAt: new Date() }), { issued: false, reason: "issued" });
