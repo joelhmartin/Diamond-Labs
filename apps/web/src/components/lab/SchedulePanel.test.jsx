@@ -48,6 +48,11 @@ test("SchedulePanel posts workflowKey, keepDueDate and expectedVersion", async (
   await waitFor(() => assert.equal(onChanged.mock.calls.length, 1));
 });
 
+test("a lead-time-only plan says so instead of showing a blank name", async () => {
+  mount({ schedule: { ...SCHEDULE, workflowKey: null, workflowName: null, stages: [] } });
+  assert.ok(await screen.findByText("Lead time only, no workflow"));
+});
+
 test("a stale reply toasts and reloads", async () => {
   post.mockRejectedValue({ response: { status: 409, data: { error: { code: "STALE", message: "This order changed." } } } });
   const onChanged = mount();

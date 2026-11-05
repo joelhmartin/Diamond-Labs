@@ -44,7 +44,7 @@ export function SchedulePanel({ order, schedule, onChanged }) {
   return (
     <div className="space-y-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        {schedule ? <span className="font-medium text-navy">{schedule.workflowName}</span> : <span className="text-navy/50">No schedule yet.</span>}
+        {schedule ? <span className="font-medium text-navy">{schedule.workflowName ?? "Lead time only, no workflow"}</span> : <span className="text-navy/50">No schedule yet.</span>}
         {schedule?.behind && <Badge color="red">Behind</Badge>}
         {schedule?.atRisk && <Badge color="yellow">At risk</Badge>}
       </div>

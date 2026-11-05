@@ -1,7 +1,6 @@
 import { canRemake, allowedNextStatuses, reasonRequiredFor, isTerminalLabStatus, isOverdue, LAB_STATUS_LABELS } from "@my-app/shared";
 import { canRelease } from "../rx/case-gates.js";
-// lab-scheduling.js imports parseDueDate back from here; both only call each other's functions at run time.
-import { scheduleFlags } from "./lab-scheduling.js";
+import { scheduleFlags } from "./lab-schedule-flags.js";
 
 /**
  * Pure rules for lab orders: numbering, and turning a released Rx case, a

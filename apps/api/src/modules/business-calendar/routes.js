@@ -96,6 +96,8 @@ export async function calendarRoutes(fastify, options = {}) {
       const { from, to, basis } = request.query;
       const calendar = await getCalendar(db, key);
       const counts = loadCounts ? await loadCounts(db, { from, to, basis: basis ?? calendar.capacityBasis }) : new Map();
-      return { days: calendarDays(calendar, from, to, counts) };
+      // A count in another unit than the capacity limits cannot be compared with them.
+      const comparable = basis == null || basis === calendar.capacityBasis ? calendar : { ...calendar, capacityBasis: "none" };
+      return { days: calendarDays(comparable, from, to, counts) };
     }));
 }

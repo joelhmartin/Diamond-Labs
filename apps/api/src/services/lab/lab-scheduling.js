@@ -1,11 +1,12 @@
 import { inArray } from "drizzle-orm";
-import { LAB_STATUS_LABELS, isTerminalLabStatus } from "@my-app/shared";
+import { isTerminalLabStatus } from "@my-app/shared";
 import { productVariants } from "../../db/schema/index.js";
-import { DEFAULT_CALENDAR, businessDaysBetween } from "../../modules/business-calendar/index.js";
+import { DEFAULT_CALENDAR } from "../../modules/business-calendar/index.js";
 import { getCalendar } from "../../modules/business-calendar/service.js";
-import { behindSchedule } from "../../modules/workflows/index.js";
+import { WorkflowError } from "../../modules/workflows/index.js";
 import { createWorkflowsService } from "../../modules/workflows/service.js";
 import { LabOrderError, parseDueDate } from "./lab-order-rules.js";
+import { labRank, rankOf, scheduleFlags } from "./lab-schedule-flags.js";
 
 /**
  * Lab glue for the generic business-calendar and workflows modules: which
@@ -17,20 +18,7 @@ import { LabOrderError, parseDueDate } from "./lab-order-rules.js";
 
 export const LAB_RECORD_TYPE = "lab_order";
 
-/** At risk: due within this many business days (or past due) and not yet in QC. */
-export const AT_RISK_BUSINESS_DAYS = 2;
-
-const MILESTONE_ORDER = ["received", "in_production", "quality_check", "ready_to_ship", "shipped"];
-const RANK = Object.fromEntries(MILESTONE_ORDER.map((m, i) => [m, i]));
-const rankOf = (milestone) => RANK[milestone] ?? 0;
-
-/** The milestones a lab workflow stage may name, in board order. */
-export const LAB_MILESTONES = MILESTONE_ORDER.map((value) => ({ value, label: LAB_STATUS_LABELS[value] }));
-
-/** An order's place on the milestone line, 0..4. An on-hold order ranks where it was held from. */
-export function labRank(status, heldFrom = null) {
-  return rankOf(status === "on_hold" ? heldFrom : status);
-}
+export { AT_RISK_BUSINESS_DAYS, LAB_MILESTONES, labRank, scheduleFlags } from "./lab-schedule-flags.js";
 
 /** Assignment tiers for workflowForSubjects: the variants first, then their catalog families. */
 async function subjectTiers(tx, variantIds) {
@@ -62,7 +50,14 @@ export async function defaultDueAt(tx, { variantIds = [], requestedDueDate = nul
   if (key == null) key = (await workflows.workflowForSubjects(await subjectTiers(tx, variantIds)))?.key ?? null;
   const dueAt = parseDueDate(requestedDueDate);
   if (key == null && dueAt == null && !calendar.leadDays) return { dueDate: null, plan: null };
-  const plan = await workflows.planFor({ workflowKey: key, startAt, rush, dueAt }, calendar);
+  let plan;
+  try {
+    plan = await workflows.planFor({ workflowKey: key, startAt, rush, dueAt }, calendar);
+  } catch (err) {
+    // Routes map only LabOrderError: an unknown explicit key is a bad request, not a 500.
+    if (err instanceof WorkflowError && err.code === "NOT_FOUND") throw new LabOrderError("INVALID", err.message);
+    throw err;
+  }
   return { dueDate: plan.dueAt, plan };
 }
 
@@ -111,24 +106,6 @@ export async function remakeSchedule(tx, { originalId, originalLines, now }) {
   return defaultDueAt(tx, {
     variantIds: originalLines.map((l) => l.variantId), workflowKey: original?.workflowKey ?? null, startAt: now,
   });
-}
-
-const NO_FLAGS = Object.freeze({ behind: false, lateStage: null, atRisk: false });
-
-/**
- * Computed on read, never stored. `behind`: a stage target has passed and the
- * order hasn't reached its milestone. `atRisk`: behind, or due within
- * AT_RISK_BUSINESS_DAYS business days (past due included) and not yet in QC.
- * Shipped and cancelled orders are neither. Works without a plan (due date only).
- */
-export function scheduleFlags(order, plan, todayIso, calendar = DEFAULT_CALENDAR) {
-  if (!order || isTerminalLabStatus(order.status)) return { ...NO_FLAGS };
-  const rank = labRank(order.status, order.heldFrom);
-  const { behind, lateStage } = behindSchedule(plan?.stages ?? [], rank, rankOf, todayIso);
-  const dueSoon = Boolean(order.dueDate)
-    && businessDaysBetween(todayIso, order.dueDate, calendar ?? DEFAULT_CALENDAR) <= AT_RISK_BUSINESS_DAYS
-    && rank < RANK.quality_check;
-  return { behind, lateStage, atRisk: behind || dueSoon };
 }
 
 /** The order page's Schedule panel (and the slip's): null when the order has no plan. */

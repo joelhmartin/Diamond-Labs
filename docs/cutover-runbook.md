@@ -191,7 +191,7 @@ pnpm --filter @my-app/api import:parity $T $S --balances <path> --file-id <final
 
 Scheduling seeds a default calendar and eight starter workflows (migration 0036); staff finish the setup in Admin › Scheduling:
 
-- Confirm the calendar timezone. It is seeded as `America/Chicago`, but the audit shows a California address, so check which zone due dates should be read in.
+- Confirm the calendar timezone. It is seeded as `America/Chicago`, but the audit shows a California address, so check which zone due dates should be read in. Changing it is not only a setting: invoices, statements, the ledger, slip timestamps and the calendar page's starting date all read `LAB_TIMEZONE` in `packages/shared/src/lab/lab-order-status.js`, so a different zone also needs that constant changed and a deploy (ruling R-F). There is deliberately no timezone field in the admin UI.
 - Enter the coming year's holidays.
 - Set capacity limits if wanted (basis and per-weekday limits); the seed has none.
 - Correct each of the 8 workflows' stages and day offsets against Labzona's Workflow screen. The seeded stages are editable defaults.

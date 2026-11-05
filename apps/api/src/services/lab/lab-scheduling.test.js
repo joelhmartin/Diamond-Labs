@@ -1,5 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
+import { LabOrderError } from "./lab-order-rules.js";
 import { fakeTx } from "../../test/fake-tx.js";
 import { toCalendar } from "../../modules/business-calendar/index.js";
 import {
@@ -195,4 +196,31 @@ test("presentSchedule marks reached milestones and late stages; no plan is null"
   assert.equal(out.atRisk, true);
   const shipped = presentSchedule(planOf(stages, "2026-11-20"), { status: "shipped", dueDate: "2026-11-20" }, "2026-11-25", calendar);
   assert.ok(shipped.stages.every((s) => s.reached && !s.late));
+});
+
+test("atRisk: a 3-year-past-due open order is at risk; a 9999-12-31 due date does not throw or flag", () => {
+  const today = "2026-11-02";
+  const flags = (dueDate) => scheduleFlags({ status: "received", heldFrom: null, dueDate }, null, today, calendar);
+  assert.equal(flags("2023-11-02").atRisk, true);
+  assert.equal(flags("9999-12-31").atRisk, false);
+});
+
+test("atRisk: a due date on a closed day uses the same window as an open one (window counts open days only)", () => {
+  const today = "2026-11-02"; // Mon; open days after: Tue 3, Wed 4, Thu 5
+  const flags = (dueDate) => scheduleFlags({ status: "received", heldFrom: null, dueDate }, null, today, calendar);
+  assert.equal(flags("2026-11-04").atRisk, true, "2nd open day");
+  assert.equal(flags("2026-11-05").atRisk, false, "3rd open day");
+  // Friday today: Sat/Sun are closed and count for nothing; Mon 9, Tue 10 are the 1st and 2nd open days.
+  const fri = (dueDate) => scheduleFlags({ status: "received", heldFrom: null, dueDate }, null, "2026-11-06", calendar);
+  assert.equal(fri("2026-11-08").atRisk, true, "Sunday: still 0 open days away");
+  assert.equal(fri("2026-11-10").atRisk, true, "2nd open day");
+  assert.equal(fri("2026-11-11").atRisk, false, "3rd open day");
+});
+
+test("defaultDueAt with an unknown explicit workflow key is INVALID, not a raw WorkflowError", async () => {
+  const tx = fakeTx({ selects: [...calendarSelects, ...templates(wf("std", 5))] });
+  await assert.rejects(
+    defaultDueAt(tx, { workflowKey: "nope", startAt: START }),
+    (e) => e instanceof LabOrderError && e.code === "INVALID",
+  );
 });

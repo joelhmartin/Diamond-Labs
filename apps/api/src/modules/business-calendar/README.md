@@ -63,7 +63,7 @@ The host owns the guards and passes `db`. `loadCounts(db, { from, to, basis })` 
 
 ## Wiring it into another app
 
-Needs from the host: a Drizzle `db`, Fastify with auth guards, `createId()` from `apps/api/src/lib/id.js`, `validate` and `validateQuery` from `apps/api/src/middleware/validate.js` (zod body and query validation), `@my-app/shared` for the request schemas, and on the web the shared UI kit (`Button`, `Input`, `DataTable` + `useDataTable`, `useResource`, `Toast`, `config/api.js`, `lib/requests.js`).
+Needs from the host: a Drizzle `db`, Fastify with auth guards, `createId()` from `apps/api/src/lib/id.js`, `validate` and `validateQuery` from `apps/api/src/middleware/validate.js` (zod body and query validation), `@my-app/shared` for the request schemas, and on the web the shared UI kit (`Button`, `Input`, `SegmentedControl`, `DataTable` + `useDataTable`, `useResource`, `Toast`, `config/api.js`, `lib/requests.js`).
 
 1. **Schema.** Re-export `calendars` and `calendarHolidays` from `modules/business-calendar/schema.js` in the app's Drizzle schema index, then generate a migration.
 2. **Routes.** Register `calendarRoutes` with `db`, `readGuard`, `writeGuard`, optionally `prefix` and `key`, `onAudit` and `loadCounts`. Map errors with `calendarErrorReply` where the host formats its own replies.

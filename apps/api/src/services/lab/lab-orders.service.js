@@ -134,8 +134,8 @@ function boardWhere(f, now, scope = null) {
     conds.push(eq(labOrders.status, f.status));
   } else if (f.tile) {
     conds.push(notInArray(labOrders.status, TERMINAL_LAB_STATUSES)); // a tile is about open work
-  } else if (!f.includeClosed && !f.q) {
-    // A search looks through history: the shipped window only keeps the board tidy.
+  } else if (!f.includeClosed && !f.q && !f.dueOn) {
+    // A search or a calendar-day click looks through history (the calendar counts every non-cancelled order): the shipped window only keeps the board tidy.
     const since = new Date(now.getTime() - SHIPPED_VISIBLE_DAYS * 86_400_000);
     conds.push(or(
       notInArray(labOrders.status, ["shipped", "cancelled"]),

@@ -43,10 +43,11 @@ async function run(reply, fn, status = 200) {
  */
 export async function workflowRoutes(fastify, options = {}) {
   const {
-    db = fastify.db, prefix = "/scheduling/workflows", readGuard, writeGuard, calendarKey = "default", milestones = [], onAudit,
+    db = fastify.db, prefix = "/scheduling/workflows", readGuard, writeGuard, calendarKey = "default", milestones, onAudit,
   } = options;
   if (!db) throw new Error("workflowRoutes needs a `db`.");
   if (!readGuard || !writeGuard) throw new Error("workflowRoutes needs a readGuard and a writeGuard.");
+  if (!Array.isArray(milestones) || !milestones.length) throw new Error("workflowRoutes needs a non-empty `milestones` list.");
   const read = [].concat(readGuard);
   const write = [].concat(writeGuard);
   const service = createWorkflowsService(db);

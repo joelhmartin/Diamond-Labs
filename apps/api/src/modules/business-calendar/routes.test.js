@@ -123,3 +123,15 @@ test("the factory refuses to register without guards", async () => {
   const app = Fastify();
   await assert.rejects(calendarRoutes(app, { db: DB }), /Guard/);
 });
+
+test("GET /days: counts in a unit other than the calendar's capacity basis get no load level", async () => {
+  mocks.getCalendar.mockResolvedValue(calendar({ capacityBasis: "orders", capacityByWeekday: { 1: 10 } }));
+  const loadCounts = vi.fn(async () => new Map([["2026-11-02", 50]]));
+  const { app } = await build({ loadCounts });
+  const same = await app.inject({ method: "GET", url: "/scheduling/calendar/days?from=2026-11-02&to=2026-11-02&basis=orders", headers: VIEWER });
+  assert.equal(same.json().data.days[0].level, "over");
+  const other = await app.inject({ method: "GET", url: "/scheduling/calendar/days?from=2026-11-02&to=2026-11-02&basis=units", headers: VIEWER });
+  assert.equal(other.json().data.days[0].level, "none");
+  assert.equal(other.json().data.days[0].capacity, null);
+  assert.equal(other.json().data.days[0].count, 50);
+});

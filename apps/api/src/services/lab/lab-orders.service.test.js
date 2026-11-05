@@ -128,6 +128,11 @@ test("a search looks through shipped history; the board's shipped window only ap
   assert.match(body, /!f\.includeClosed && !f\.q/);
 });
 
+test("a calendar day click (dueOn) is not trimmed by the shipped window, so it matches the calendar count", () => {
+  const body = source.slice(source.indexOf("function boardWhere"), source.indexOf("export async function listLabOrders"));
+  assert.match(body, /!f\.includeClosed && !f\.q && !f\.dueOn/);
+});
+
 test("Admin > Orders is newest-received-first and says when the cap trimmed it; the board keeps rush/due order", () => {
   assert.equal(mod.LIST_LIMIT, 1000);
   assert.notDeepEqual(mod.listOrder({ includeClosed: true }), mod.listOrder({ includeClosed: false }));

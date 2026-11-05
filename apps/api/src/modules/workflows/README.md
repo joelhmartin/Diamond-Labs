@@ -34,7 +34,7 @@ Milestones are your app's ordered states (for example "started", "in progress", 
 
 ## Configuration
 
-- `milestones`: `[{ value, label }]`, the host's ordered states that stages may name. Required by the routes factory.
+- `milestones`: `[{ value, label }]`, the host's ordered states that stages may name. Required and non-empty: the routes factory throws at registration without it (every stage would otherwise be rejected).
 - `calendarKey`: which `business-calendar` Calendar plans are computed against (default `"default"`).
 - `prefix`: route prefix (default `/scheduling/workflows`).
 - `rankOf`: passed to `behindSchedule` by the host; the module never orders milestones itself.
@@ -72,11 +72,11 @@ Plans are snapshots: editing a template never moves a saved plan. Deactivated te
 - `GET {prefix}/assignments?subjectType=`, `PUT {prefix}/assignments` (writeGuard).
 - `POST {prefix}/preview`: `{ workflowKey, startAt, rush, dueAt }` returns a plan using the stored calendar (readGuard).
 
-`milestones` is `[{ value, label }]`. `onAudit(request, action, targetId, metadata)` runs after each write; metadata is ids and keys only. Errors reply `{ error: { code, status, message } }`.
+`milestones` is a non-empty `[{ value, label }]`. `onAudit(request, action, targetId, metadata)` runs after each write; metadata is ids and keys only. Errors reply `{ error: { code, status, message } }`.
 
 ## Wiring it into another app
 
-Needs from the host: a Drizzle `db`, Fastify with auth guards, `createId()` from `apps/api/src/lib/id.js`, `validate` and `validateQuery` from `apps/api/src/middleware/validate.js`, `@my-app/shared` for the request schemas, the `business-calendar` module (plans are computed against its Calendar), and on the web the shared UI kit (`Button`, `Input`, `Modal`, `SegmentedControl`, `DataTable` + `useDataTable`, `useResource`, `Toast`, `config/api.js`, `lib/requests.js`).
+Needs from the host: a Drizzle `db`, Fastify with auth guards, `createId()` from `apps/api/src/lib/id.js`, `validate` and `validateQuery` from `apps/api/src/middleware/validate.js`, `@my-app/shared` for the request schemas, the `business-calendar` module (plans are computed against its Calendar), and on the web the shared UI kit (`Button`, `Input`, `Modal`, `DataTable` + `useDataTable`, `useResource`, `Toast`, `config/api.js`, `lib/requests.js`).
 
 1. **Schema.** Re-export `workflows`, `workflowStages`, `workflowAssignments` and `workflowPlans` from `modules/workflows/schema.js` in the app's Drizzle schema index, then generate a migration.
 2. **Routes.** Register `workflowRoutes` with `db`, `readGuard`, `writeGuard`, your `milestones`, and optionally `prefix`, `calendarKey` and `onAudit`.

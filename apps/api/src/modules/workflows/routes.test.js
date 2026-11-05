@@ -111,3 +111,8 @@ test("maps a WorkflowError to the repo error shape and lists assignments", async
   assert.deepEqual(list.json().data, { assignments: [{ subjectId: "s1", workflowKey: "std" }] });
   assert.equal(svc.assignmentsFor.mock.calls[0][0], "t");
 });
+
+test("registration fails without a milestones list", async () => {
+  await assert.rejects(build({ milestones: [] }), /milestones/);
+  await assert.rejects(build({ milestones: undefined }), /milestones/);
+});
