@@ -9,12 +9,12 @@ import { ToastProvider } from "../../components/ui/Toast.jsx";
 const posts = [];
 let postReply = async () => ({});
 const FAMILIES = [{ id: "fam1", name: "Night guard", active: true, variants: [{ id: "var1", code: "NG1", name: "Hard night guard", active: true }] }];
-const USERS = [{ id: "doc1", name: "Dr Smith", email: "smith@x.test", role: "doctor", status: "active" }, { id: "adm", name: "Admin", role: "admin", status: "active" }];
+const PRACTICES = [{ id: "doc1", name: "Dr Smith", email: "smith@x.test" }];
 vi.mock("../../config/api.js", () => ({
   default: {
     get: async (url) => {
-      if (url === "/admin/users") return { data: { data: { users: USERS } } };
-      if (url === "/admin/catalog/families") return { data: { data: { families: FAMILIES } } };
+      if (url === "/lab/practices") return { data: { data: { practices: PRACTICES } } };
+      if (url === "/lab/catalog/families") return { data: { data: { families: FAMILIES } } };
       if (url === "/lab/orders/default-due") return { data: { data: { dueDate: "2026-11-18" } } };
       if (url === "/tags/lab_order/definitions") return { data: { data: [{ id: "t1", label: "SAMPLE MODEL" }] } };
       throw new Error(`unexpected GET ${url}`);

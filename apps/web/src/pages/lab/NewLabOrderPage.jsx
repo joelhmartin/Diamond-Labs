@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, X } from "lucide-react";
 import {
@@ -75,6 +75,7 @@ export function NewLabOrderPage() {
   const [files, setFiles] = useState([]);
   const [prices, setPrices] = useState({}); // variantId -> { unitCents, priceSource }
   const [busy, setBusy] = useState(false);
+  const previewFailed = useRef(false); // toast a failed price preview once per failure streak
   const full = mode === "full";
 
   // The due date starts at the lab's default lead time; typing over it wins.
@@ -98,9 +99,15 @@ export function NewLabOrderPage() {
     let live = true;
     api.post("/lab/orders/price-preview", { clientUserId, lines: lines.map((l) => ({ variantId: l.variantId, qty: l.qty })) })
       .then((res) => {
+        previewFailed.current = false;
         if (live) setPrices(Object.fromEntries(res.data.data.lines.map((p) => [p.variantId, { unitCents: p.unitCents, priceSource: p.priceSource }])));
       })
-      .catch((err) => { if (live) { setPrices({}); addToast({ message: errorText(err), type: "error" }); } });
+      .catch((err) => {
+        if (!live) return;
+        setPrices({});
+        if (!previewFailed.current) addToast({ message: errorText(err), type: "error" });
+        previewFailed.current = true;
+      });
     return () => { live = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- lineKey stands for `lines`
   }, [full, clientUserId, lineKey]);

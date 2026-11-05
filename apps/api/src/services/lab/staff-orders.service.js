@@ -1,7 +1,8 @@
-import { and, asc, eq, ne, notInArray, sql } from "drizzle-orm";
+import { and, asc, eq, ilike, ne, notInArray, or, sql } from "drizzle-orm";
 import { db } from "../../config/database.js";
 import { labOrders, users } from "../../db/schema/index.js";
 import { createId } from "../../lib/id.js";
+import { containsPattern } from "../../lib/list-query.js";
 import { applyTags } from "../../modules/record-tags/index.js";
 import { loadVariantsById, priceLabOrderLines } from "../pricing.service.js";
 import { createDraftForLabOrder } from "../billing/invoices.service.js";
@@ -80,4 +81,20 @@ export function createStaffOrder({ input, byUserId = null }, database = db) {
 export async function previewPrices({ clientUserId, lines }, database = db) {
   const variantsById = await loadVariantsById(uniqueVariantIds(lines), database);
   return priceLabOrderLines(catalogLines(lines, variantsById), clientUserId, database);
+}
+
+const PRACTICE_LIMIT = 25;
+
+/** Active doctor users for the order-entry picker: id, name and email only, searched and capped here. */
+export async function searchPractices({ q = "" } = {}, database = db) {
+  const term = String(q).trim().slice(0, 100);
+  const like = term ? containsPattern(term) : null;
+  const conds = [eq(users.role, "doctor"), eq(users.status, "active")];
+  if (like) conds.push(or(ilike(users.name, like), ilike(users.email, like)));
+  return database
+    .select({ id: users.id, name: users.name, email: users.email })
+    .from(users)
+    .where(and(...conds))
+    .orderBy(asc(users.name), asc(users.id))
+    .limit(PRACTICE_LIMIT);
 }

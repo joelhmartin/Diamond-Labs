@@ -18,19 +18,19 @@ export function LinePicker({ onAdd, disabled = false }) {
 
   useEffect(() => {
     let live = true;
-    api.get("/admin/catalog/families")
-      .then((res) => { if (live) setFamilies(res.data.data.families.filter((f) => f.active !== false)); })
+    api.get("/lab/catalog/families")
+      .then((res) => { if (live) setFamilies(res.data.data.families); })
       .catch((err) => { if (live) { setFamilies([]); setError(errorText(err)); } });
     return () => { live = false; };
   }, []);
 
   const family = useMemo(() => (families ?? []).find((f) => f.id === familyId), [families, familyId]);
-  const variants = useMemo(() => (family?.variants ?? []).filter((v) => v.active !== false), [family]);
+  const variants = useMemo(() => (family?.variants ?? []), [family]);
   const variant = variants.find((v) => v.id === variantId);
 
   const pickFamily = (id) => {
     setFamilyId(id);
-    const only = ((families ?? []).find((f) => f.id === id)?.variants ?? []).filter((v) => v.active !== false);
+    const only = ((families ?? []).find((f) => f.id === id)?.variants ?? []);
     setVariantId(only.length === 1 ? only[0].id : "");
   };
 

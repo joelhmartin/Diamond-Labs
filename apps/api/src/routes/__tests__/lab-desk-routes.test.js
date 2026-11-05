@@ -12,6 +12,8 @@ const NEW_ROUTES = [
   'fastify.get("/lab/orders/default-due",',
   'fastify.post("/lab/orders/price-preview",',
   'fastify.post("/lab/orders/:id/lines",',
+  'fastify.get("/lab/practices",',
+  'fastify.get("/lab/catalog/families",',
 ];
 
 test("every new route is STAFF", () => {
@@ -47,4 +49,11 @@ test("files and tags are mounted for lab orders behind the lab guards", () => {
   assert.match(desk, /adminGuard: \[authenticate, requireAdmin\]/);
   assert.match(desk, /onRead: /);
   assert.match(desk, /lab_order\.file_url_issued/);
+});
+
+test("the practice lookup returns id, name and email only", () => {
+  const svc = read("../../services/lab/staff-orders.service.js");
+  const fn = svc.slice(svc.indexOf("export async function searchPractices"));
+  assert.match(fn, /select\(\{ id: users\.id, name: users\.name, email: users\.email \}\)/);
+  assert.match(fn, /\.limit\(/);
 });

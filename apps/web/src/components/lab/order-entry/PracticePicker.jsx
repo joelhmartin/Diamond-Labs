@@ -1,34 +1,38 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "../../../config/api.js";
 import { errorText } from "../../../lib/requests.js";
+import { useDebouncedValue } from "../../../hooks/useDebouncedValue.js";
 import { INPUT } from "../form-styles.js";
 
 /**
- * Chooses the practice (an active doctor user) an order is for. Reads the existing
- * admin user list once and filters it here; a search box narrows the list by name or email.
+ * Chooses the practice (an active doctor user) an order is for. Searches the
+ * staff practice lookup (server-side, debounced) by name or email.
  * Controlled: `value` is a user id, `onChange(id)`.
  */
 export function PracticePicker({ value, onChange, disabled = false }) {
-  const [users, setUsers] = useState(null);
+  const [practices, setPractices] = useState(null);
+  const [chosen, setChosen] = useState(null);
   const [error, setError] = useState("");
   const [q, setQ] = useState("");
+  const term = useDebouncedValue(q, 300);
 
   useEffect(() => {
     let live = true;
-    api.get("/admin/users")
-      .then((res) => { if (live) setUsers(res.data.data.users.filter((u) => u.role === "doctor" && u.status === "active")); })
-      .catch((err) => { if (live) { setUsers([]); setError(errorText(err)); } });
+    api.get("/lab/practices", { params: { q: term.trim() || undefined } })
+      .then((res) => { if (live) { setPractices(res.data.data.practices); setError(""); } })
+      .catch((err) => { if (live) { setPractices((cur) => cur ?? []); setError(errorText(err)); } });
     return () => { live = false; };
-  }, []);
+  }, [term]);
 
+  const pick = (id) => {
+    setChosen((practices ?? []).find((u) => u.id === id) ?? null);
+    onChange(id);
+  };
+  // The chosen practice stays selectable while the search narrows past it.
   const shown = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    const list = users ?? [];
-    const hits = needle ? list.filter((u) => `${u.name ?? ""} ${u.email ?? ""}`.toLowerCase().includes(needle)) : list;
-    // The chosen practice stays selectable while the search narrows past it.
-    const chosen = list.find((u) => u.id === value);
-    return chosen && !hits.includes(chosen) ? [chosen, ...hits] : hits;
-  }, [users, q, value]);
+    const list = practices ?? [];
+    return chosen && value === chosen.id && !list.some((u) => u.id === chosen.id) ? [chosen, ...list] : list;
+  }, [practices, chosen, value]);
 
   return (
     <div className="space-y-2">
@@ -37,11 +41,11 @@ export function PracticePicker({ value, onChange, disabled = false }) {
         className={INPUT}
         placeholder="Search practices by name or email"
         value={q}
-        disabled={disabled || users === null}
+        disabled={disabled}
         onChange={(e) => setQ(e.target.value)}
       />
-      <select aria-label="Practice" className={INPUT} disabled={disabled || users === null} value={value ?? ""} onChange={(e) => onChange(e.target.value)}>
-        <option value="">{users === null ? "Loading practices…" : "Choose a practice"}</option>
+      <select aria-label="Practice" className={INPUT} disabled={disabled || practices === null} value={value ?? ""} onChange={(e) => pick(e.target.value)}>
+        <option value="">{practices === null ? "Loading practices…" : "Choose a practice"}</option>
         {shown.map((u) => <option key={u.id} value={u.id}>{u.name || u.email}{u.name && u.email ? ` (${u.email})` : ""}</option>)}
       </select>
       {error && <p role="alert" className="text-xs text-red-600">Couldn't load practices: {error}</p>}

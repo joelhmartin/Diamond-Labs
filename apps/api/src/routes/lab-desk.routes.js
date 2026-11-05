@@ -9,6 +9,7 @@ import { recordTagRoutes, tagErrorReply } from "../modules/record-tags/index.js"
 import { labLookups } from "../services/lab/lab-lookups.js";
 import { LAB_ORDER_RECORD_TYPE, labOrderIdsThatExist, onLabOrderTagsChanged } from "../services/lab/lab-tags.js";
 import { defaultDueAt } from "../services/lab/lab-scheduling.js";
+import { listFamilies } from "../services/catalog.service.js";
 import * as staffOrders from "../services/lab/staff-orders.service.js";
 import { changeLines } from "../services/lab/lab-order-lines.service.js";
 import { invoiceErrorReply } from "../services/billing/invoice-errors.js";
@@ -51,6 +52,24 @@ export default async function labDeskRoutes(fastify) {
       });
       return out;
     }, 201, deskErrorReply));
+
+  // Order-entry lookups, readable by lab staff (the admin lists they replace are admin-only).
+  fastify.get("/lab/practices", { preHandler: STAFF }, async (request) => ({
+    data: { practices: await staffOrders.searchPractices({ q: request.query?.q }) },
+  }));
+
+  // Every active family with its active variants (rx-channel and unpriced ones included: the lab keys what is on the bench).
+  fastify.get("/lab/catalog/families", { preHandler: STAFF }, async () => {
+    const families = await listFamilies();
+    return {
+      data: {
+        families: families.filter((f) => f.active !== false).map((f) => ({
+          id: f.id, name: f.name,
+          variants: f.variants.filter((v) => v.active !== false).map((v) => ({ id: v.id, code: v.code, name: v.name })),
+        })),
+      },
+    };
+  });
 
   fastify.get("/lab/orders/default-due", { preHandler: STAFF }, async () => {
     const { dueDate } = await defaultDueAt(db, {});
