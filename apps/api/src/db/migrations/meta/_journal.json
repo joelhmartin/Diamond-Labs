@@ -243,8 +243,64 @@
     {
       "idx": 34,
       "version": "7",
-      "when": 1793912037340,
-      "tag": "0034_elite_marauders",
+      "when": 1793904201703,
+      "tag": "0034_orange_spirit",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793904703412,
+      "tag": "0035_mysterious_blacklash",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793905348071,
+      "tag": "0036_seed_lab_scheduling",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1793908553338,
+      "tag": "0037_wandering_galactus",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793909803845,
+      "tag": "0038_loving_morlun",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1793909807490,
+      "tag": "0039_seed_adjustment_reasons",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793910286290,
+      "tag": "0040_bitter_tana_nile",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793911124781,
+      "tag": "0041_goofy_albert_cleary",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1793913139236,
+      "tag": "0042_brown_silver_surfer",
       "breakpoints": true
     }
   ]
