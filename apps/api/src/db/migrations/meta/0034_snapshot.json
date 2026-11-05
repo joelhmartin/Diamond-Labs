@@ -1,5 +1,5 @@
 {
-  "id": "e055c62e-22af-4f17-9e58-6c131d2b92d1",
+  "id": "64c51e79-947a-4cc4-bece-3dcd4541d340",
   "prevId": "ec1ffbfa-193f-418c-8c76-cec86c8482d5",
   "version": "7",
   "dialect": "postgresql",
@@ -778,8 +778,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.client_price_lists": {
-      "name": "client_price_lists",
+    "public.calendar_holidays": {
+      "name": "calendar_holidays",
       "schema": "",
       "columns": {
         "id": {
@@ -788,50 +788,37 @@
           "primaryKey": true,
           "notNull": true
         },
-        "client_user_id": {
-          "name": "client_user_id",
-          "type": "varchar(128)",
+        "calendar_key": {
+          "name": "calendar_key",
+          "type": "varchar(60)",
           "primaryKey": false,
           "notNull": true
         },
-        "price_list_id": {
-          "name": "price_list_id",
-          "type": "varchar(128)",
+        "date": {
+          "name": "date",
+          "type": "date",
           "primaryKey": false,
           "notNull": true
         },
-        "position": {
-          "name": "position",
-          "type": "integer",
+        "label": {
+          "name": "label",
+          "type": "varchar(80)",
           "primaryKey": false,
           "notNull": true
-        },
-        "assigned_at": {
-          "name": "assigned_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "assigned_by": {
-          "name": "assigned_by",
-          "type": "varchar(128)",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
-        "client_price_lists_client_list_idx": {
-          "name": "client_price_lists_client_list_idx",
+        "calendar_holidays_key_date_idx": {
+          "name": "calendar_holidays_key_date_idx",
           "columns": [
             {
-              "expression": "client_user_id",
+              "expression": "calendar_key",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             },
             {
-              "expression": "price_list_id",
+              "expression": "date",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -841,23 +828,75 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "client_price_lists_list_idx": {
-          "name": "client_price_lists_list_idx",
-          "columns": [
-            {
-              "expression": "price_list_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.calendars": {
+      "name": "calendars",
+      "schema": "",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "varchar(60)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "timezone": {
+          "name": "timezone",
+          "type": "varchar(60)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'UTC'"
+        },
+        "lead_days": {
+          "name": "lead_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "closed_weekdays": {
+          "name": "closed_weekdays",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "capacity_basis": {
+          "name": "capacity_basis",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'none'"
+        },
+        "capacity_by_weekday": {
+          "name": "capacity_by_weekday",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -2987,166 +3026,6 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.price_list_items": {
-      "name": "price_list_items",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "varchar(128)",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "price_list_id": {
-          "name": "price_list_id",
-          "type": "varchar(128)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "variant_id": {
-          "name": "variant_id",
-          "type": "varchar(128)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "price_cents": {
-          "name": "price_cents",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "varchar(128)",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "price_list_items_list_variant_idx": {
-          "name": "price_list_items_list_variant_idx",
-          "columns": [
-            {
-              "expression": "price_list_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "variant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "price_list_items_variant_idx": {
-          "name": "price_list_items_variant_idx",
-          "columns": [
-            {
-              "expression": "variant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.price_lists": {
-      "name": "price_lists",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "varchar(128)",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "name": {
-          "name": "name",
-          "type": "varchar(120)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "archived_at": {
-          "name": "archived_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "varchar(128)",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "price_lists_name_lower_idx": {
-          "name": "price_lists_name_lower_idx",
-          "columns": [
-            {
-              "expression": "lower(\"name\")",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}

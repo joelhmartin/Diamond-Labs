@@ -84,7 +84,7 @@ newlines. Set `extension: "iif"` and a `contentType` of `text/plain`. Register
 it next to the CSV format when the app builds its registry, and it shows up in
 `list()` and the download route automatically.
 
-## Wiring into another app
+## Wiring it into another app
 
 The module has three parts: this server module, the pure CSV writer in
 `packages/shared/src/exports`, and the screen in `apps/web/src/modules/exports`.

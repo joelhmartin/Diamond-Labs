@@ -21,6 +21,8 @@ import {
   Truck,
   Download,
   Tags,
+  CalendarDays,
+  CalendarClock,
 } from "lucide-react";
 import { brand } from "../../config/brand.js";
 import { isStaffRole } from "@my-app/shared";
@@ -37,6 +39,7 @@ const mainItems = [
 
 const staffItems = [
   { label: "Production", to: ROUTES.LAB_BOARD,      icon: LayoutGrid },
+  { label: "Calendar",   to: ROUTES.LAB_CALENDAR,   icon: CalendarDays },
   { label: "Rx Cases",   to: ROUTES.ADMIN_RX_CASES, icon: ClipboardCheck },
   { label: "Shipments",  to: ROUTES.ADMIN_SHIPMENTS, icon: Truck },
 ];
@@ -53,6 +56,7 @@ const adminItems = [
   { label: "Users",      to: ROUTES.ADMIN_USERS,       icon: UserCog },
   { label: "Products",   to: ROUTES.ADMIN_PRODUCTS,    icon: Package },
   { label: "Price lists", to: ROUTES.ADMIN_PRICE_LISTS, icon: Tags },
+  { label: "Scheduling", to: ROUTES.ADMIN_SCHEDULING, icon: CalendarClock },
   { label: "Rx Mapping", to: ROUTES.ADMIN_RX_MAPPING,  icon: FlaskConical },
 ];
 

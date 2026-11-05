@@ -26,3 +26,5 @@ export { labDepartments, labOrders, labOrderLines, labOrderEvents } from "./lab-
 export { invoices, invoiceLines } from "./invoices.js";
 export { shipments, shipmentEvents } from "./shipments.js";
 export { statementSends, STATEMENT_SEND_STATUSES } from "./statement-sends.js";
+export { calendars, calendarHolidays } from "../../modules/business-calendar/schema.js";
+export { workflows, workflowStages, workflowAssignments, workflowPlans } from "../../modules/workflows/schema.js";

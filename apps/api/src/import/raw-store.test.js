@@ -29,6 +29,12 @@ test("records open on read; the index opens nothing", async () => {
   assert.deepEqual([...idx], [["s1", "x"], ["s2", null]]);
 });
 
+test("records come back ordered by seazonaId (code-unit order), so every step picks the same record on a duplicate number", async () => {
+  const row = (id) => ({ seazonaId: id, payload: encryptJson({ id }), lastModified: null, fetchedAt: new Date(0) });
+  const tx = fakeTx({ selects: [[row("s9"), row("s10"), row("S2"), row("s1")]] });
+  assert.deepEqual((await store.readRecords(tx, "invoice")).map((r) => r.seazonaId), ["S2", "s1", "s10", "s9"]);
+});
+
 test("an export file is stored sealed, once per content: insert-or-ignore, then re-select the surviving id", async () => {
   const bytes = Buffer.from("<table><tr><td>1324</td></tr></table>");
   const fresh = fakeTx({ selects: [[{ id: "f-new" }]] });

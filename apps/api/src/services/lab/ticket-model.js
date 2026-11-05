@@ -19,8 +19,18 @@ const labDateTime = (instant) => new Date(instant).toLocaleString("en-US", {
   timeZone: LAB_TIMEZONE, month: "2-digit", day: "2-digit", year: "numeric", hour: "numeric", minute: "2-digit",
 });
 
+const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+
+/** "DUE WED 11/12" for the slip; the weekday comes from the date's own parts, never the local zone. */
+function dueBadgeFor(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? "");
+  if (!m) return null;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  return `DUE ${WEEKDAYS[new Date(Date.UTC(y, mo - 1, d)).getUTCDay()]} ${m[2]}/${m[3]}`;
+}
+
 export function buildTicketModel(detail, { answerGroups = [], generatedAt }) {
-  const { order, lines, rxCase, files = [], shopOrder, legacy = null } = detail;
+  const { order, lines, rxCase, files = [], shopOrder, legacy = null, schedule = null } = detail;
   const banners = [];
   if (order.rush) banners.push(order.rushTier ? `RUSH — ${order.rushTier}` : "RUSH");
   if (order.isRemake) banners.push(order.remakeOfOrderNumber ? `REMAKE of #${order.remakeOfOrderNumber}` : "REMAKE");
@@ -32,6 +42,7 @@ export function buildTicketModel(detail, { answerGroups = [], generatedAt }) {
     title: `Work ticket #${order.orderNumber}`,
     orderNumber: String(order.orderNumber),
     barcodeText: String(order.orderNumber),
+    dueBadge: dueBadgeFor(order.dueDate),
     banners,
     header: [
       ["Order", `#${order.orderNumber}`],
@@ -42,6 +53,7 @@ export function buildTicketModel(detail, { answerGroups = [], generatedAt }) {
       ["Patient", rxCase?.patientName || legacy?.patientName || "—"],
       ["Received", labDate(order.receivedAt)],
       ["Due", usDate(order.dueDate)],
+      ...(schedule?.workflowName ? [["Workflow", schedule.workflowName]] : []),
       ["Status", LAB_STATUS_LABELS[order.status] ?? order.status],
       ["Department", order.departmentName || "—"],
       ["Assigned to", order.assigneeName || "—"],
@@ -49,6 +61,8 @@ export function buildTicketModel(detail, { answerGroups = [], generatedAt }) {
     lines: lines.filter((l) => !l.noteOnly).map((l) => ({
       qty: String(l.qty), code: l.code || "—", name: l.name, arch: archLabel(l.arch),
     })),
+    // The saved plan's stages, tick = milestone reached; empty without a plan.
+    schedule: (schedule?.stages ?? []).map((st) => ({ label: st.label, target: usDate(st.targetAt), reached: Boolean(st.reached) })),
     instructions: lines.filter((l) => l.noteOnly).map((l) => l.sourceLabel || l.name),
     buildNotes: rxCase?.buildNotes || null,
     comments: rxCase?.generalComments || null,

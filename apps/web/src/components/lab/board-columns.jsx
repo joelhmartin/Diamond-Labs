@@ -4,6 +4,7 @@ import { formatUsDate } from "@my-app/shared";
 import { labOrderPath } from "../../config/routes.js";
 import { quickMoves } from "../../lib/lab-board.js";
 import { labelBadge } from "../../lib/shipping.js";
+import { Badge } from "../ui/Badge.jsx";
 
 /** Rush / remake / label badges for a lab order. Shared by the kanban card and the table row. */
 export function FlagBadges({ card }) {
@@ -20,6 +21,8 @@ export function FlagBadges({ card }) {
           <RotateCcw size={10} /> Remake
         </span>
       )}
+      {card.behind && <Badge color="red">Behind</Badge>}
+      {card.atRisk && <Badge color="yellow">At risk</Badge>}
       {label && (
         <span className="flex items-center gap-0.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700">
           <Tag size={10} /> {label}
@@ -91,7 +94,7 @@ export function boardColumns({ busyId, onMove }) {
     {
       id: "flags", header: "Flags",
       cell: (c) => <div className="flex flex-wrap gap-1"><FlagBadges card={c} /></div>,
-      exportValue: (c) => [c.rush && "Rush", c.isRemake && "Remake"].filter(Boolean).join(" "),
+      exportValue: (c) => [c.rush && "Rush", c.isRemake && "Remake", c.behind && "Behind", c.atRisk && "At risk"].filter(Boolean).join(" "),
     },
     {
       id: "actions", header: "", export: false,

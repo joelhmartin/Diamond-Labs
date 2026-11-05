@@ -33,6 +33,8 @@ export function resultToast(result) {
  * Replaces the toolbar while rows are selected: count, actions, Export CSV, Clear.
  * A bulk action is `{ id, label, run(rows), icon?, tone?, confirmLabel?, disabled?(rows) }`;
  * `label` may be a string or `(selectedRows) => string` (e.g. a selected total).
+ * An action with `choices: [{ value, label }]` (and optional `choicePlaceholder`) shows a select
+ * beside its button; the button stays disabled until one is picked and `run(rows, value)` gets it.
  * `run` may return `{ ok, failed }` (see eachRow) to have the outcome toasted.
  * An action may carry a typed value: `input: { label, placeholder?, step? }` draws a number
  * input beside the button; `run(rows, value)`, `disabled(rows, value)`, `label`, `confirmLabel`
@@ -43,6 +45,7 @@ export function BulkBar({ table, columns, bulkActions = [], exportable, exportFi
   const { addToast } = useToast();
   const [busy, setBusy] = useState(null);
   const [inputs, setInputs] = useState({});
+  const [picked, setPicked] = useState({});
   const { count, selectedRows, clear } = table.selection;
 
   const run = async (action) => {
@@ -57,7 +60,9 @@ export function BulkBar({ table, columns, bulkActions = [], exportable, exportFi
     }
   };
 
+  // The action's picked choice, or its typed number (undefined until it holds a finite one).
   const valueOf = (action) => {
+    if (action.choices) return picked[action.id] || undefined;
     if (!action.input) return undefined;
     const raw = inputs[action.id];
     return raw === undefined || raw === "" || !Number.isFinite(Number(raw)) ? undefined : Number(raw);
@@ -68,7 +73,11 @@ export function BulkBar({ table, columns, bulkActions = [], exportable, exportFi
       <span className="mr-2 font-mono text-xs tabular-nums">{count} selected</span>
       {bulkActions.map((action) => {
         const value = valueOf(action);
-        const disabled = Boolean(busy) || (action.input && value === undefined) || Boolean(action.disabled?.(selectedRows, value));
+        const disabled =
+          Boolean(busy) ||
+          (action.input && value === undefined) ||
+          (action.choices && !value) ||
+          Boolean(action.disabled?.(selectedRows, value));
         const cls = TONE[action.tone ?? "default"] ?? TONE.default;
         const body = (
           <>
@@ -86,6 +95,22 @@ export function BulkBar({ table, columns, bulkActions = [], exportable, exportFi
             {body}
           </button>
         );
+        if (action.choices) {
+          return (
+            <span key={action.id} className="inline-flex items-center gap-1.5">
+              <select
+                aria-label={`${typeof action.label === "function" ? action.label(selectedRows, value) : action.label} choice`}
+                value={picked[action.id] ?? ""}
+                onChange={(e) => setPicked((p) => ({ ...p, [action.id]: e.target.value }))}
+                className="h-8 rounded-lg bg-white/10 px-2 text-xs text-white"
+              >
+                <option value="" className="text-navy">{action.choicePlaceholder ?? "Choose…"}</option>
+                {action.choices.map((c) => <option key={c.value} value={c.value} className="text-navy">{c.label}</option>)}
+              </select>
+              {button}
+            </span>
+          );
+        }
         if (!action.input) return button;
         const hint = value === undefined ? null : action.hint?.(selectedRows, value);
         return (

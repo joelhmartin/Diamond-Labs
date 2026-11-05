@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { id, isoDate, pageQueryShape } from "./common.schema.js";
-import { LAB_ORDER_STATUSES, LAB_ORDER_SOURCES } from "../lab/lab-order-status.js";
+import { LAB_ORDER_STATUSES, LAB_ORDER_SOURCES, LAB_BOARD_TILES } from "../lab/lab-order-status.js";
 import { ROLE_CHANGE_CHOICES } from "../constants/user-roles.js";
+import { workflowPreviewSchema } from "../workflows/workflow.schema.js";
 
 const version = z.number().int().positive();
 const reason = z.string().trim().max(500);
@@ -40,9 +41,37 @@ export const labOrderListQuerySchema = z.object({
   assigneeUserId: id.optional(),
   rush: flag,
   dueBefore: isoDate.optional(),
+  dueOn: isoDate.optional(),
+  tile: z.enum(LAB_BOARD_TILES).optional(),
   q: z.string().trim().max(100).optional(),
   includeClosed: flag,
   ...pageQueryShape,
+});
+
+// ── Scheduling ─────────────────────────────────────────────────────────────
+
+const workflowKey = workflowPreviewSchema.shape.workflowKey.unwrap(); // the workflows module's key format
+
+/** Put an order on another workflow; keepDueDate replans in reverse from the current due date. */
+export const labWorkflowChangeSchema = z.object({
+  workflowKey,
+  keepDueDate: z.boolean().optional().default(false),
+  expectedVersion: version,
+});
+
+/** `variantIds` arrives as "a,b" or as a repeated query key. */
+const idList = z
+  .union([z.string(), z.array(z.string())])
+  .optional()
+  .transform((v) => [...new Set([].concat(v ?? []).flatMap((s) => s.split(",")).map((s) => s.trim()).filter(Boolean))])
+  .pipe(z.array(id).max(100));
+
+/** A dry run of the due-date rules, for staff order entry. */
+export const labSchedulePreviewQuerySchema = z.object({
+  variantIds: idList,
+  rush: flag,
+  workflowKey: workflowKey.optional().transform((v) => v ?? null),
+  requestedDueDate: isoDate.optional().transform((v) => v ?? null),
 });
 
 export const rxReleaseSchema = z.object({ confirmNotInSeazona: z.boolean().optional() }).default({});
