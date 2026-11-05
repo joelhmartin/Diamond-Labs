@@ -75,6 +75,6 @@ test("loading the page makes no per-list item requests", async () => {
 test("an archived assigned list is struck through in the strip", async () => {
   mount({ prices: [], effective: [], assigned: [{ listId: "L1", name: "Gold", archivedAt: "2026-02-01", position: 0 }] });
   const strip = await screen.findByLabelText("Assigned lists");
-  const name = within(strip).getByText("Gold");
+  const name = await within(strip).findByText("Gold");
   assert.match(name.className, /line-through/);
 });
