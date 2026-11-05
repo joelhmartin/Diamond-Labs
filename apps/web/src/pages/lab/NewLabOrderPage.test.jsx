@@ -21,6 +21,7 @@ vi.mock("../../config/api.js", () => ({
         const rush = config?.params?.rush === "true";
         return { data: { data: { dueDate: rush ? "2026-11-12" : "2026-11-18", plan: { workflowName: rush ? "Rush 5-day" : "10-day printed" } } } };
       }
+      if (url === "/files/intake/i7") return { data: { data: [{ id: "f1", originalName: "dropped-scan.stl", kind: "scan", size: 3 }] } };
       if (url === "/tags/lab_order/definitions") return { data: { data: [{ id: "t1", label: "SAMPLE MODEL" }] } };
       throw new Error(`unexpected GET ${url}`);
     },
@@ -40,9 +41,9 @@ beforeEach(() => {
   };
 });
 
-function mount() {
+function mount(entry = "/lab/orders/new") {
   render(
-    <MemoryRouter initialEntries={["/lab/orders/new"]}>
+    <MemoryRouter initialEntries={[entry]}>
       <ToastProvider>
         <Routes>
           <Route path="/lab/orders/new" element={<NewLabOrderPage />} />
@@ -162,4 +163,13 @@ test("price preview shows client price and source badge", async () => {
   assert.ok(screen.getByText("Client price"));
   const preview = posts.find(([u]) => u === "/lab/orders/price-preview");
   assert.deepEqual(preview[1], { clientUserId: "doc1", lines: [{ variantId: "var1", qty: 1 }] });
+});
+
+test("?intake= shows that intake's files and sends intakeId on create", async () => {
+  mount("/lab/orders/new?intake=i7");
+  await screen.findByText("dropped-scan.stl");
+  await fillRequired();
+  fireEvent.click(screen.getByRole("button", { name: "Create order" }));
+  await screen.findByText("ORDER PAGE");
+  assert.deepEqual(posts[0][1], { clientUserId: "doc1", patientName: "Pat Jones", intakeId: "i7", pan: null, notes: null });
 });

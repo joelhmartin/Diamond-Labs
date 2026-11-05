@@ -53,13 +53,20 @@ test("invoice and tag refusals map to replies (an issued draft is a 422, never a
 });
 
 test("files and tags are mounted for lab orders behind the lab guards", () => {
-  assert.match(desk, /fastify\.register\(recordFileRoutes, \{\s*recordTypes: \{ \[LAB_ORDER_RECORD_TYPE\]/);
+  assert.match(desk, /fastify\.register\(recordFileRoutes, \{\s*recordTypes: \{\s*\[LAB_ORDER_RECORD_TYPE\]/);
   assert.match(desk, /fastify\.register\(recordTagRoutes, \{\s*recordTypes: \{ \[LAB_ORDER_RECORD_TYPE\]/);
   assert.match(read("../../services/lab/lab-tags.js"), /export const LAB_ORDER_RECORD_TYPE = "lab_order";/);
   assert.match(desk, /staffGuard: STAFF/);
   assert.match(desk, /adminGuard: \[authenticate, requireAdmin\]/);
   assert.match(desk, /onRead: /);
   assert.match(desk, /lab_order\.file_url_issued/);
+});
+
+test("scanner intakes are mounted under /lab/intake behind the lab guards, and their files are a record type", () => {
+  assert.match(desk, /fastify\.register\(intakeRoutes, \{\s*path: "\/lab\/intake",\s*staffGuard: STAFF/);
+  assert.match(desk, /\[INTAKE_RECORD_TYPE\]: \{ exists:/);
+  assert.match(desk, /notifyIntakesCreated/);
+  assert.match(read("../../services/lab/lab-intake.js"), /event: "intake\.created", recordType: INTAKE_RECORD_TYPE, recordId: i\.id, audience: "staff", data: \{\}/);
 });
 
 test("the practice lookup returns id, name and email only", () => {

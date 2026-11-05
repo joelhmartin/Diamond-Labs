@@ -56,6 +56,7 @@ import { OrdersCalendarPage } from "./pages/lab/OrdersCalendarPage.jsx";
 import { AdminSchedulingPage } from "./pages/app/AdminSchedulingPage.jsx";
 import { AdminLabelsPage } from "./pages/app/AdminLabelsPage.jsx";
 import { NewLabOrderPage } from "./pages/lab/NewLabOrderPage.jsx";
+import { IntakePage } from "./pages/lab/IntakePage.jsx";
 
 // Marketing pages
 import { HomePage } from "./pages/marketing/Home.jsx";
@@ -255,6 +256,7 @@ function AppRoutes() {
         <Route element={<RequireStaff />}>
           <Route path="/lab" element={<LabBoardPage />} />
           <Route path="/lab/calendar" element={<OrdersCalendarPage />} />
+          <Route path="/lab/intake" element={<IntakePage />} />
           <Route path="/lab/orders/new" element={<NewLabOrderPage />} />
           <Route path="/lab/orders/:id" element={<LabOrderDetailPage />} />
           <Route path="/admin/shipments" element={<ShipmentsPage />} />

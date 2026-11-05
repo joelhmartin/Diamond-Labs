@@ -9,9 +9,11 @@ import { validate, validateQuery } from "../middleware/validate.js";
 import { barcodeLookupRoutes } from "../modules/barcode-lookup/index.js";
 import { recordFileRoutes } from "../modules/record-files/index.js";
 import { recordTagRoutes, tagErrorReply } from "../modules/record-tags/index.js";
+import { intakeRoutes } from "../modules/upload-intake/index.js";
 import { workflowErrorReply } from "../modules/workflows/routes.js";
 import { labLookups } from "../services/lab/lab-lookups.js";
 import { LAB_ORDER_RECORD_TYPE, labOrderIdsThatExist, onLabOrderTagsChanged } from "../services/lab/lab-tags.js";
+import { INTAKE_RECORD_TYPE, intakeIdsThatExistForFiles, notifyIntakesCreated, withDroppedBy } from "../services/lab/lab-intake.js";
 import { listFamilies } from "../services/catalog.service.js";
 import * as staffOrders from "../services/lab/staff-orders.service.js";
 import { changeLines } from "../services/lab/lab-order-lines.service.js";
@@ -42,9 +44,27 @@ export default async function labDeskRoutes(fastify) {
 
   // /files/lab_order/:id[/...]: issuing a signed link is audit-logged (ids only).
   await fastify.register(recordFileRoutes, {
-    recordTypes: { [LAB_ORDER_RECORD_TYPE]: { exists: (ids) => labOrderIdsThatExist(ids) } },
+    recordTypes: {
+      [LAB_ORDER_RECORD_TYPE]: { exists: (ids) => labOrderIdsThatExist(ids) },
+      [INTAKE_RECORD_TYPE]: { exists: (ids) => intakeIdsThatExistForFiles(ids) }, // a dropped scan, until it becomes an order
+    },
     staffGuard: STAFF,
-    onRead: (request, file) => audit(request, "lab_order.file_url_issued", file.recordId, { fileId: file.id }),
+    onRead: (request, file) => {
+      const isIntake = file.recordType === INTAKE_RECORD_TYPE;
+      audit(request, isIntake ? "intake.file_url_issued" : "lab_order.file_url_issued", file.recordId, { fileId: file.id }, isIntake ? "intake" : "lab_order");
+    },
+  });
+
+  // /lab/intake (under /lab with the other desk routes, like the scan lookup): scanner-export drops waiting to become orders.
+  await fastify.register(intakeRoutes, {
+    path: "/lab/intake",
+    staffGuard: STAFF,
+    enrich: (rows) => withDroppedBy(rows),
+    onCreated: async (request, intakes) => {
+      await notifyIntakesCreated(intakes);
+      for (const i of intakes) audit(request, "intake.created", i.id, { fileCount: i.files.length, channel: i.channel }, "intake");
+    },
+    onDiscarded: (request, id) => audit(request, "intake.discarded", id, {}, "intake"),
   });
 
   // /tags/lab_order/... (staff) and /admin/tags/lab_order/... (admin). Labels never bump the order's version.

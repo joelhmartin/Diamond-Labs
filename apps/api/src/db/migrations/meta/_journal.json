@@ -288,6 +288,13 @@
       "when": 1793910286290,
       "tag": "0040_bitter_tana_nile",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793911124781,
+      "tag": "0041_goofy_albert_cleary",
+      "breakpoints": true
     }
   ]
 }

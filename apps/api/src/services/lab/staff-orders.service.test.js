@@ -75,11 +75,19 @@ test("tags are applied to the new order in the same transaction", async () => {
   assert.deepEqual([applied[0].recordType, applied[0].recordId, applied[0].createdBy], ["lab_order", out.labOrder.id, "staff1"]);
 });
 
-test("an intake id is refused until intake promotion exists (the whole create rolls back)", async () => {
-  const tx = fakeTx({ selects: [doctor, [{ max: 100049 }], [{ max: 500010 }]] });
+test("an intake id is promoted onto the new order in the same transaction", async () => {
+  const tx = fakeTx({ selects: [doctor, [{ max: 100049 }], [{ max: 500010 }]], updates: [[{ id: "in1" }], []] });
+  const out = await createStaffOrder({ input: { ...quick, intakeId: "in1" }, byUserId: "staff1" }, fakeDb(tx));
+  const sets = tx.log.filter((e) => e.op === "set").map((e) => e.values);
+  const claim = sets.find((v) => v.status === "promoted");
+  assert.deepEqual([claim.promotedRecordType, claim.promotedRecordId, claim.decidedBy], ["lab_order", out.labOrder.id, "staff1"]);
+});
+
+test("an intake that is already used refuses the whole create", async () => {
+  const tx = fakeTx({ selects: [doctor, [{ max: 100049 }], [{ max: 500010 }], [{ status: "promoted" }]], updates: [[]] });
   await assert.rejects(
     createStaffOrder({ input: { ...quick, intakeId: "in1" }, byUserId: "staff1" }, fakeDb(tx)),
-    (e) => e instanceof LabOrderError && e.message === "Intake not available",
+    (e) => e instanceof LabOrderError && /Already used/.test(e.message),
   );
 });
 

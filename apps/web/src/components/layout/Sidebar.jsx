@@ -25,6 +25,7 @@ import {
   CalendarClock,
   Tag,
   FilePlus,
+  Inbox,
   ListChecks,
 } from "lucide-react";
 import { brand } from "../../config/brand.js";
@@ -43,6 +44,7 @@ const mainItems = [
 const staffItems = [
   { label: "Production", to: ROUTES.LAB_BOARD,      icon: LayoutGrid },
   { label: "Calendar",   to: ROUTES.LAB_CALENDAR,   icon: CalendarDays },
+  { label: "Intake",     to: ROUTES.LAB_INTAKE,     icon: Inbox },
   { label: "New order",  to: ROUTES.LAB_ORDER_NEW,  icon: FilePlus },
   { label: "Rx Cases",   to: ROUTES.ADMIN_RX_CASES, icon: ClipboardCheck },
   { label: "Shipments",  to: ROUTES.ADMIN_SHIPMENTS, icon: Truck },

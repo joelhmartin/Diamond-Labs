@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, X } from "lucide-react";
 import {
   LAB_DELIVERY_METHODS, LAB_DELIVERY_LABELS, LAB_PAN_MAX, LAB_PATIENT_NAME_MAX, RECORD_FILES_MAX_COUNT, PRICE_SOURCE_LABELS,
@@ -12,13 +12,14 @@ import { INPUT } from "../../components/lab/form-styles.js";
 import { PracticePicker } from "../../components/lab/order-entry/PracticePicker.jsx";
 import { LinePicker } from "../../components/lab/order-entry/LinePicker.jsx";
 import { EnclosedFields } from "../../components/lab/order-entry/EnclosedFields.jsx";
-import { FileDrop, uploadRecordFiles } from "../../modules/record-files/index.js";
+import { FileDrop, FileList, uploadRecordFiles } from "../../modules/record-files/index.js";
 import { TagPicker } from "../../modules/record-tags/index.js";
 import { formatCents } from "../../lib/money.js";
 import { errorText } from "../../lib/requests.js";
 
 const MODES = [{ value: "quick", label: "Quick" }, { value: "full", label: "Full" }];
 const RECORD_TYPE = "lab_order";
+const INTAKE_TYPE = "intake";
 
 function Field({ label, children }) {
   return (
@@ -60,6 +61,8 @@ function PriceBadge({ price }) {
  */
 export function NewLabOrderPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const intakeId = searchParams.get("intake"); // a dropped scan this order is made from; its files move onto the order
   const { addToast } = useToast();
   const [mode, setMode] = useState("quick");
   const [clientUserId, setClientUserId] = useState("");
@@ -134,6 +137,7 @@ export function NewLabOrderPage() {
   const body = () => ({
     clientUserId,
     patientName: patientName.trim(),
+    ...(intakeId ? { intakeId } : {}),
     // An untouched date is the scheduled one: let the server plan it forward rather than in reverse from it.
     ...(dueTouched && dueDate ? { dueDate } : {}),
     pan: pan.trim() || null,
@@ -184,6 +188,12 @@ export function NewLabOrderPage() {
       </div>
 
       <form onSubmit={submit} className="space-y-5">
+        {intakeId && (
+          <Section title="From intake">
+            <FileList recordType={INTAKE_TYPE} recordId={intakeId} />
+            <p className="mt-2 text-[11px] text-navy/40">These files move onto the order when you create it.</p>
+          </Section>
+        )}
         <Section title="Order">
           <div className="space-y-3">
             <div>

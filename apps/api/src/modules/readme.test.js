@@ -13,6 +13,7 @@ const READMES = {
   "record-tags": "./record-tags/README.md",
   "record-files": "./record-files/README.md",
   "barcode-lookup": "./barcode-lookup/README.md",
+  "upload-intake": "./upload-intake/README.md",
 };
 
 for (const [mod, rel] of Object.entries(READMES)) {

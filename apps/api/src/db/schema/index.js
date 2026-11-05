@@ -31,3 +31,4 @@ export { workflows, workflowStages, workflowAssignments, workflowPlans } from ".
 export { tagDefinitions, recordTags, recordStars } from "../../modules/record-tags/schema.js";
 export { recordFiles } from "../../modules/record-files/schema.js";
 export { adjustmentReasons, labOrderLineMaterials } from "./production-desk.js";
+export { intakes } from "../../modules/upload-intake/schema.js";

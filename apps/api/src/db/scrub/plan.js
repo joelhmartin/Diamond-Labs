@@ -343,6 +343,14 @@ export const SCRUB_PLAN = {
       created_at: K,
     },
   },
+  // intakes (upload-intake module): hints (parsed from dropped file names) and discard_reason are sealed free text that can name a patient.
+  intakes: {
+    mode: "update",
+    columns: {
+      id: K, channel: K, status: K, parser_key: K, hints: phi("NULL"), promoted_record_type: K, promoted_record_id: K,
+      created_by: K, created_at: K, decided_by: K, decided_at: K, discard_reason: phi("NULL"),
+    },
+  },
   lab_order_events: {
     mode: "update",
     columns: {
