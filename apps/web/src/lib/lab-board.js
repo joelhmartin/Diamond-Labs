@@ -106,6 +106,7 @@ export function describeEvent(e, { staffById = {}, departmentsById = {} } = {}) 
     case "label": return `${who}: ${e.note ?? "Label changed"}${e.to ? ` — ${e.to}` : ""}`;
     case "lines":
     case "materials": return `${who}: ${e.note ?? e.type}`;
+    case "merge": return `${who}: ${e.note ?? "orders merged into this one"}`;
     case "shipment": return `${who}: ${e.note ?? (e.to ? "shipping label bought" : "shipping label voided")}`;
     default: return `${who}: ${e.type}`;
   }

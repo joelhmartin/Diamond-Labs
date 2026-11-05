@@ -281,6 +281,13 @@
       "when": 1793909807490,
       "tag": "0039_seed_adjustment_reasons",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793910286290,
+      "tag": "0040_bitter_tana_nile",
+      "breakpoints": true
     }
   ]
 }

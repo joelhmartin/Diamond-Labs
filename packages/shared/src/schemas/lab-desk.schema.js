@@ -3,7 +3,7 @@ import { id, isoDate } from "./common.schema.js";
 import { labEnclosuresSchema, labPanSchema, labDeliveryMethodSchema, labNotesSchema, labVersionSchema } from "./lab.schema.js";
 import {
   LAB_ARCHES, LAB_LINE_QTY_MAX, LAB_PATIENT_NAME_MAX, ADJUSTMENT_APPLIES_TO, ADJUSTMENT_LABEL_MAX,
-  LAB_MATERIALS_MAX, LAB_MATERIAL_NAME_MAX, LAB_MATERIAL_LOT_MAX,
+  LAB_MATERIALS_MAX, LAB_MATERIAL_NAME_MAX, LAB_MATERIAL_LOT_MAX, LAB_MERGE_MIN, LAB_MERGE_MAX,
 } from "../lab/production-desk.js";
 
 /**
@@ -81,3 +81,13 @@ export const labMaterialsPutSchema = z.object({
 });
 
 export const materialSuggestionsQuerySchema = z.object({ q: z.string().max(LAB_MATERIAL_NAME_MAX).optional() });
+
+/**
+ * Merge 2–5 open orders into a chosen primary. `versions` carries the version
+ * the client saw for EVERY order (primary included); any mismatch is STALE.
+ */
+export const labOrderMergeSchema = z.object({
+  primaryId: id,
+  otherIds: z.array(id).min(LAB_MERGE_MIN - 1).max(LAB_MERGE_MAX - 1),
+  versions: z.record(id, labVersionSchema),
+});

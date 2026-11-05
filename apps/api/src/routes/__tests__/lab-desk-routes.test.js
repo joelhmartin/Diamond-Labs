@@ -11,6 +11,7 @@ const NEW_ROUTES = [
   'fastify.post("/lab/orders",',
   'fastify.post("/lab/orders/price-preview",',
   'fastify.post("/lab/orders/:id/lines",',
+  'fastify.post("/lab/orders/merge",',
   'fastify.get("/lab/practices",',
   'fastify.get("/lab/catalog/families",',
 ];
@@ -29,6 +30,13 @@ test("writes validate their body with the shared schemas and are audited with id
   assert.match(lines, /validate\(labLineEditSchema\)/);
   assert.match(lines, /audit\(request, "lab_order\.lines_changed"/);
   assert.match(handlerSource(desk, 'fastify.post("/lab/orders/price-preview",'), /validate\(labPricePreviewSchema\)/);
+});
+
+test("merge validates with the shared schema and audits lab_order.merged with ids only", () => {
+  const merge = handlerSource(desk, 'fastify.post("/lab/orders/merge",');
+  assert.match(merge, /validate\(labOrderMergeSchema\)/);
+  assert.match(merge, /audit\(request, "lab_order\.merged", out\.primary\.id, \{ primaryId: out\.primary\.id, mergedIds: out\.merged\.map\(\(o\) => o\.id\) \}\)/);
+  assert.match(merge, /deskErrorReply/);
 });
 
 test("one due-date read path: the New order page uses piece 7's preview, the desk has no default-due route", () => {

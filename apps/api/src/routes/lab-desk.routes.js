@@ -1,5 +1,5 @@
 import {
-  labOrderCreateSchema, labLineEditSchema, labPricePreviewSchema,
+  labOrderCreateSchema, labLineEditSchema, labPricePreviewSchema, labOrderMergeSchema,
   adjustmentReasonCreateSchema, adjustmentReasonUpdateSchema, adjustmentReasonListQuerySchema, labMaterialsPutSchema, materialSuggestionsQuerySchema,
 } from "@my-app/shared";
 import { db } from "../config/database.js";
@@ -15,6 +15,7 @@ import { LAB_ORDER_RECORD_TYPE, labOrderIdsThatExist, onLabOrderTagsChanged } fr
 import { listFamilies } from "../services/catalog.service.js";
 import * as staffOrders from "../services/lab/staff-orders.service.js";
 import { changeLines } from "../services/lab/lab-order-lines.service.js";
+import { mergeOrders } from "../services/lab/merge.service.js";
 import { replaceLineMaterials, materialSuggestions } from "../services/lab/materials.service.js";
 import { listReasons, createReason, updateReason } from "../services/billing/adjustment-reasons.service.js";
 import { invoiceErrorReply } from "../services/billing/invoice-errors.js";
@@ -115,6 +116,14 @@ export default async function labDeskRoutes(fastify) {
   fastify.get("/lab/materials/suggestions", { preHandler: [...STAFF, validateQuery(materialSuggestionsQuerySchema)] }, async (request) => ({
     data: { suggestions: await materialSuggestions(request.query.q) },
   }));
+
+  // Merge 2–5 open orders for one practice and patient into a chosen primary (merge.service.js).
+  fastify.post("/lab/orders/merge", { preHandler: [...STAFF, validate(labOrderMergeSchema)] }, (request, reply) =>
+    run(reply, async () => {
+      const out = await mergeOrders({ ...request.body, byUserId: request.user.id });
+      audit(request, "lab_order.merged", out.primary.id, { primaryId: out.primary.id, mergedIds: out.merged.map((o) => o.id) });
+      return out;
+    }, 200, deskErrorReply));
 
   fastify.post("/lab/orders/:id/lines", { preHandler: [...STAFF, validate(labLineEditSchema)] }, (request, reply) =>
     run(reply, async () => {

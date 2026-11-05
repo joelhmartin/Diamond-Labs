@@ -7,6 +7,7 @@ import { moveBulkActions } from "../../lib/lab-board.js";
 import { tagBulkActions } from "../../modules/record-tags/index.js";
 import { LAB_ORDER_TAG_TYPE } from "../../lib/lab-board.js";
 import { boardColumns } from "./board-columns.jsx";
+import { MergeModal, mergeBulkAction } from "./MergeModal.jsx";
 
 function StatusSection({ status, cards, columns, post, onChanged, tagDefinitions }) {
   const [open, setOpen] = useState(false);
@@ -32,13 +33,21 @@ function StatusSection({ status, cards, columns, post, onChanged, tagDefinitions
 // Mounted only while open, so a collapsed section costs nothing.
 function SectionTable({ status, cards, columns, post, onChanged, tagDefinitions }) {
   const table = useDataTable({ mode: "client", rows: cards, getRowId: (c) => c.id, initialPageSize: 20 });
+  const [mergeRows, setMergeRows] = useState(null);
   const rows = table.selection.selectedRows;
   const bulkActions = [
     ...moveBulkActions(rows, { post, after: onChanged }),
     ...tagBulkActions(rows, { recordType: LAB_ORDER_TAG_TYPE, definitions: tagDefinitions, after: onChanged, labelOf: (c) => `#${c.orderNumber}` }),
+    mergeBulkAction(setMergeRows),
   ];
+  const merged = () => {
+    setMergeRows(null);
+    table.selection.clear();
+    onChanged?.();
+  };
   return (
     <div className="px-1 pb-2 pt-1">
+      <MergeModal rows={mergeRows} onClose={() => setMergeRows(null)} onMerged={merged} />
       <DataTable
         table={table}
         columns={columns}

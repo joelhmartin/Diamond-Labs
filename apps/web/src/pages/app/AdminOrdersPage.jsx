@@ -9,6 +9,7 @@ import { moveBulkActions, LAB_ORDER_TAG_TYPE } from "../../lib/lab-board.js";
 import { pageParams } from "../../lib/data-table/server.js";
 import { DataTable } from "../../components/ui/data-table/index.js";
 import { FlagBadges, DueLabel, PAN_COLUMN, LABELS_COLUMN } from "../../components/lab/board-columns.jsx";
+import { MergeModal, mergeBulkAction } from "../../components/lab/MergeModal.jsx";
 import { tagBulkActions, useTagDefinitions } from "../../modules/record-tags/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
 
@@ -81,11 +82,18 @@ export function AdminOrdersPage() {
   const { definitions: tagDefinitions } = useTagDefinitions(LAB_ORDER_TAG_TYPE);
 
   const table = useDataTable({ mode: "server", fetchPage, filters: orderFilters(departments, staff, tagDefinitions), urlKey: "ord", getRowId: (o) => o.id });
+  const [mergeRows, setMergeRows] = useState(null);
   const rows = table.selection.selectedRows;
   const bulkActions = [
     ...moveBulkActions(rows, { after: table.reload }),
     ...tagBulkActions(rows, { recordType: LAB_ORDER_TAG_TYPE, definitions: tagDefinitions, after: table.reload, labelOf: (o) => `#${o.orderNumber}` }),
+    mergeBulkAction(setMergeRows),
   ];
+  const merged = () => {
+    setMergeRows(null);
+    table.selection.clear();
+    table.reload();
+  };
 
   return (
     <div className="mx-auto max-w-7xl space-y-4 p-6 md:p-8">
@@ -107,6 +115,7 @@ export function AdminOrdersPage() {
         exportFileName="orders.csv"
         emptyText="No orders match."
       />
+      <MergeModal rows={mergeRows} onClose={() => setMergeRows(null)} onMerged={merged} />
     </div>
   );
 }

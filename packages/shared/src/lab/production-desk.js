@@ -24,6 +24,10 @@ export const ADJUSTMENT_APPLIES_TO = ["remake", "discount", "both"];
 export const ADJUSTMENT_APPLIES_LABELS = { remake: "Remakes", discount: "Discounts", both: "Both" };
 export const ADJUSTMENT_LABEL_MAX = 80;
 
+/** Merging orders for one practice and patient: how many orders one merge takes (the primary included). */
+export const LAB_MERGE_MIN = 2;
+export const LAB_MERGE_MAX = 5;
+
 /** Materials and lot numbers per bench line. */
 export const LAB_MATERIALS_MAX = 10;
 export const LAB_MATERIAL_NAME_MAX = 120;

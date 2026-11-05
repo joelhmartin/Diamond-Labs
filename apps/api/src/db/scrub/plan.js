@@ -320,6 +320,7 @@ export const SCRUB_PLAN = {
     columns: {
       id: K, order_number: K, source: K, source_id: K, client_user_id: K, status: K, held_from: K,
       department_id: K, assignee_user_id: K, due_date: K, rush: K, rush_tier: K, is_remake: K, remake_of_order_id: K, remake_reason_id: K,
+      merged_into_order_id: K,
       hold_reason: phi("NULL"),
       lab_notes: phi("NULL"),
       legacy_patient: phi("NULL"), // a Seazona order's patient (encrypted)

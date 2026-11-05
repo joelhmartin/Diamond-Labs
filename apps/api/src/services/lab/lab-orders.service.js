@@ -251,6 +251,27 @@ async function countLabOrders(where, database) {
 }
 
 /**
+ * A merge's links for the detail page, in one read: the orders merged INTO
+ * this one (`mergedFrom`, by order number) and the primary this one was
+ * merged into (`mergedInto`, or null). Ids and order numbers only.
+ */
+async function mergeLinksOf(database, order) {
+  const where = order.mergedIntoOrderId
+    ? or(eq(labOrders.mergedIntoOrderId, order.id), eq(labOrders.id, order.mergedIntoOrderId))
+    : eq(labOrders.mergedIntoOrderId, order.id);
+  const rows = await database
+    .select({ id: labOrders.id, orderNumber: labOrders.orderNumber, mergedIntoOrderId: labOrders.mergedIntoOrderId })
+    .from(labOrders)
+    .where(where)
+    .orderBy(asc(labOrders.orderNumber));
+  const into = order.mergedIntoOrderId ? rows.find((r) => r.id === order.mergedIntoOrderId) : null;
+  return {
+    mergedFrom: rows.filter((r) => r.mergedIntoOrderId === order.id).map(({ id, orderNumber }) => ({ id, orderNumber })),
+    mergedInto: into ? { id: into.id, orderNumber: into.orderNumber } : null,
+  };
+}
+
+/**
  * Everything the order detail page and the work ticket need. Decrypts the
  * case's PHI (patient name, form answers) — callers must never log the
  * result. Throws on a decrypt failure; routes turn that into a generic 500.
@@ -336,6 +357,7 @@ export async function getLabOrderDetail(id, now = new Date(), { viewerUserId = n
   const shipment = order.shipmentId ? ((await shipmentSummaries([order.shipmentId])).get(order.shipmentId) ?? null) : null;
   const [plan, calendar] = await Promise.all([scheduleOf(db, id), getCalendar(db)]);
   const today = dateIn(calendar.timezone, now);
+  const { mergedFrom, mergedInto } = await mergeLinksOf(db, order);
 
   // Patients are surfaced once each: a legacy order's under `legacy`, a staff order's under `staff`.
   const { legacyPatient: _openedPatient, patientName: _staffPatient, ...orderFields } = order;
@@ -366,6 +388,9 @@ export async function getLabOrderDetail(id, now = new Date(), { viewerUserId = n
     // Labels on the order and the viewer's own star.
     tags: tags.get(id) ?? [],
     starred: starred.has(id),
+    // Merge links (merge.service.js): orders merged into this one, and the one this was merged into.
+    mergedFrom,
+    mergedInto,
   };
 }
 
