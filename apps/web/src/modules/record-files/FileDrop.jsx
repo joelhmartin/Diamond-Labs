@@ -11,9 +11,10 @@ export function checkFiles(files, { maxFiles = RECORD_FILES_MAX_COUNT, maxBytes 
 
 /**
  * A drop zone / file picker. Validates size and count, shows problems inline,
- * and hands accepted files to `onFiles(files[])`.
+ * and hands accepted files to `onFiles(files[])`. `maxBytes` defaults to the
+ * record-files limit; a caller with a tighter one (message attachments) passes it.
  */
-export function FileDrop({ accept, maxFiles = RECORD_FILES_MAX_COUNT, onFiles, disabled = false, label = "Drop files here or click to choose" }) {
+export function FileDrop({ accept, maxFiles = RECORD_FILES_MAX_COUNT, maxBytes = MAX_FILE_SIZE_BYTES, onFiles, disabled = false, label = "Drop files here or click to choose" }) {
   const input = useRef(null);
   const [over, setOver] = useState(false);
   const [message, setMessage] = useState("");
@@ -21,7 +22,7 @@ export function FileDrop({ accept, maxFiles = RECORD_FILES_MAX_COUNT, onFiles, d
   const take = (list) => {
     const files = Array.from(list || []);
     if (!files.length) return;
-    const problem = checkFiles(files, { maxFiles });
+    const problem = checkFiles(files, { maxFiles, maxBytes });
     setMessage(problem || "");
     if (!problem) onFiles(files);
   };

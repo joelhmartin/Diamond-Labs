@@ -33,8 +33,15 @@ export function headerSafe(value, max = MAX_SUBJECT_LENGTH) {
  * THE single choke point for outbound mail: every sender below calls deliver(),
  * and it is the only code that talks to Mailgun. Staging redirection happens
  * here so no send can skip it (email-staging.test.js enforces this).
+ *
+ * Returns a boolean (accepted or not). With `{ detailed: true }` it returns
+ * `{ ok, reason }` instead, where reason tells a non-failure apart from a
+ * failure: "undeliverable" (only .invalid recipients), "suppressed" (staging
+ * with no STAGING_EMAIL_TO), "unconfigured" (no Mailgun: dev log-only) versus
+ * "rejected" (Mailgun said no) and "error" (network/throw). null when ok.
  */
-async function deliver({ to, bcc, subject, html, text }) {
+async function deliver({ to, bcc, subject, html, text }, { detailed = false } = {}) {
+  const done = (ok, reason = null) => (detailed ? { ok, reason } : ok);
   // `to` / `bcc` may be a string or an array of addresses. Each address is
   // sanitised on its own (so the 320-char cap can't cut a list mid-address) and
   // the list is joined with commas, which is what Mailgun takes: ONE message to
@@ -59,7 +66,7 @@ async function deliver({ to, bcc, subject, html, text }) {
   if (droppedUndeliverable && !to) {
     if (!bcc) {
       console.log("[EMAIL] skipped: no deliverable recipient");
-      return false;
+      return done(false, "undeliverable");
     }
     // Keep the real copies (e.g. the admin bcc); Mailgun needs a `to`, so they become it.
     to = bcc;
@@ -72,7 +79,7 @@ async function deliver({ to, bcc, subject, html, text }) {
   const rewritten = stagingRewrite({ to, bcc, subject }, env);
   if (!rewritten) {
     console.error("[EMAIL] Staging mode without STAGING_EMAIL_TO; message suppressed");
-    return false;
+    return done(false, "suppressed");
   }
   ({ to, bcc, subject } = rewritten);
 
@@ -81,7 +88,7 @@ async function deliver({ to, bcc, subject, html, text }) {
     if (env.NODE_ENV === "development") {
       console.log(`[EMAIL] Body preview (first 200 chars): ${html?.slice(0, 200)}`);
     }
-    return false;
+    return done(false, "unconfigured");
   }
 
   const form = new URLSearchParams();
@@ -104,12 +111,12 @@ async function deliver({ to, bcc, subject, html, text }) {
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       console.error(`[EMAIL] Mailgun rejected message to ${to} (subject: ${subject}): ${res.status} ${body.slice(0, 300)}`);
-      return false;
+      return done(false, "rejected");
     }
-    return true;
+    return done(true);
   } catch (err) {
     console.error(`[EMAIL] Mailgun send failed to ${to} (subject: ${subject}): ${String(err?.message || err)}`);
-    return false;
+    return done(false, "error");
   }
 }
 
@@ -605,10 +612,12 @@ export async function sendStatementNotice({ to, monthLabel, closingCents }) {
  * (lab-shipping.service markShipmentShipped). Order numbers, carrier, tracking
  * number and link ONLY: it reads nothing else from its input, so shipping
  * never carries clinical content. Sent only when there is a tracking number.
- * Never throws (deliver()).
+ * Never throws (deliver()). It is the lab.order_shipped event's email
+ * (lab-notifications.js), which passes `{ detailed: true }` to get deliver's
+ * `{ ok, reason }` instead of a boolean.
  */
-export async function sendShippedNotice({ to, orderNumbers = [], shopOrderNumber = null, carrier, trackingNumber, trackingUrl = null }) {
-  if (!to || !trackingNumber) return false;
+export async function sendShippedNotice({ to, orderNumbers = [], shopOrderNumber = null, carrier, trackingNumber, trackingUrl = null }, { detailed = false } = {}) {
+  if (!to || !trackingNumber) return detailed ? { ok: false, reason: "undeliverable" } : false;
   const lab = labIdentity().name;
   const labNumbers = orderNumbers.map((n) => `#${n}`).join(", ");
   // A guest shop customer knows their shop order number (DOL-…), not our lab order number: lead with it.
@@ -633,5 +642,33 @@ export async function sendShippedNotice({ to, orderNumbers = [], shopOrderNumber
     (typeof trackingUrl === "string" && trackingUrl.startsWith("https:")) ? `Track your package: ${trackingUrl}` : null,
     lab,
   ].filter(Boolean).join("\n");
-  return deliver({ to, subject: `Your order has shipped — ${lab}`, html, text });
+  return deliver({ to, subject: `Your order has shipped — ${lab}`, html, text }, { detailed });
+}
+
+/** Whether email can actually leave (a mail provider is configured); for status cards. */
+export const isEmailConfigured = () => Boolean(mailgun);
+
+/**
+ * The generic notifications module's email channel (modules/notifications).
+ * A heading, one line and an optional button: it renders ONLY these values,
+ * all escaped, and nothing from a record. The button renders only for an
+ * http(s) link. Never throws (deliver()).
+ *
+ * Returns `{ ok, reason }` (deliver's detailed result), so the notifier can
+ * record a suppressed or unconfigured send as such rather than as a failure.
+ */
+export async function sendNotificationEmail({ to, subject, heading, line, actionUrl = null, actionLabel = "Open" }) {
+  if (!to) return { ok: false, reason: "undeliverable" };
+  const link = typeof actionUrl === "string" && /^https?:\/\//i.test(actionUrl) ? actionUrl : null;
+  const button = link
+    ? `<p style="margin:0 0 8px;"><a href="${esc(link)}" style="display:inline-block;padding:12px 24px;background:#13AEEF;color:#fff;text-decoration:none;border-radius:999px;font-weight:600;">${esc(actionLabel)}</a></p>`
+    : "";
+  const html = `
+    <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a2733;">
+      <h1 style="font-size:20px;margin:0 0 12px;">${esc(heading)}</h1>
+      <p style="margin:0 0 20px;">${esc(line)}</p>
+      ${button}
+    </div>`;
+  const text = [heading, line, link ? `${actionLabel}: ${link}` : null].filter(Boolean).join("\n");
+  return deliver({ to, subject, html, text }, { detailed: true });
 }

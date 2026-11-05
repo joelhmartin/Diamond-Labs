@@ -11,6 +11,14 @@ const envSchema = z.object({
   K_SERVICE: z.string().optional(),
   // Staging only: every outbound email is redirected to this address.
   STAGING_EMAIL_TO: z.string().email().optional(),
+  // Text messages (modules/sms). Off until a provider and its credentials are set.
+  SMS_PROVIDER: z.enum(["twilio", "log", "off"]).default("off"),
+  TWILIO_ACCOUNT_SID: z.string().optional(),
+  TWILIO_AUTH_TOKEN: z.string().optional(),
+  TWILIO_FROM: z.string().optional(),
+  TWILIO_MESSAGING_SERVICE_SID: z.string().optional(),
+  // Staging only: every outbound text is redirected to this number.
+  STAGING_SMS_TO: z.string().optional(),
   // "true" hard-disables the Seazona wrapper (no network). Required under staging.
   SEAZONA_DISABLED: z.string().optional(),
   PORT: z.coerce.number().default(3000),

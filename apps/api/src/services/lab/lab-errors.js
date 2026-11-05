@@ -1,4 +1,5 @@
 import { LabOrderError } from "./lab-order-rules.js";
+import { PickupError } from "./pickup-rules.js";
 
 const STATUS = {
   NOT_FOUND: 404,
@@ -11,9 +12,9 @@ const STATUS = {
   RELEASE_BLOCKED: 422,
 };
 
-/** LabOrderError → HTTP reply ({ status, body }); anything else is not ours to swallow (null). */
+/** LabOrderError or PickupError → HTTP reply ({ status, body }); anything else is not ours to swallow (null). */
 export function labErrorReply(err) {
-  if (!(err instanceof LabOrderError)) return null;
+  if (!(err instanceof LabOrderError) && !(err instanceof PickupError)) return null;
   const status = STATUS[err.code] ?? 422;
   const error = { code: err.code, status, message: err.message };
   if (err.allowed) error.allowed = err.allowed;

@@ -1,6 +1,6 @@
 import {
   canRemake, allowedNextStatuses, reasonRequiredFor, isTerminalLabStatus, isOverdue, LAB_STATUS_LABELS,
-  LAB_DELIVERY_METHODS, LAB_PAN_MAX, normalizeEnclosures, parseEnclosures,
+  LAB_DELIVERY_METHODS, LAB_PAN_MAX, normalizeEnclosures, parseEnclosures, isCalendarDate,
 } from "@my-app/shared";
 import { canRelease } from "../rx/case-gates.js";
 import { scheduleFlags } from "./lab-schedule-flags.js";
@@ -26,18 +26,11 @@ export class LabOrderError extends Error {
   }
 }
 
-const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
-
 /** A "YYYY-MM-DD" that is a real calendar date, else null. */
 export function parseDueDate(value) {
   if (typeof value !== "string") return null;
   const s = value.trim();
-  const m = ISO_DATE.exec(s);
-  if (!m) return null;
-  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  const dt = new Date(Date.UTC(y, mo - 1, d));
-  if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
-  return s;
+  return isCalendarDate(s) ? s : null;
 }
 
 const NO_RUSH = "No Rush";

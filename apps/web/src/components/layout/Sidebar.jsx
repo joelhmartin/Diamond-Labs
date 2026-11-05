@@ -20,6 +20,9 @@ import {
   Landmark,
   Truck,
   BarChart3,
+  BellRing,
+  MessageSquare,
+  PackageOpen,
   Download,
   Tags,
   CalendarDays,
@@ -28,12 +31,14 @@ import {
   FilePlus,
   Inbox,
   ListChecks,
+  Route,
 } from "lucide-react";
 import { brand } from "../../config/brand.js";
 import { isStaffRole } from "@my-app/shared";
 import { ROUTES } from "../../config/routes.js";
 import { usePermission } from "../../hooks/usePermission.js";
 import { useAuth } from "../../hooks/useAuth.js";
+import { MessagesBadge } from "../../modules/messaging/index.js";
 
 const mainItems = [
   { label: "Dashboard", to: ROUTES.DASHBOARD,   icon: LayoutDashboard, permission: null },
@@ -52,6 +57,9 @@ const staffItems = [
   { label: "Rx Cases",   to: ROUTES.ADMIN_RX_CASES, icon: ClipboardCheck },
   { label: "Shipments",  to: ROUTES.ADMIN_SHIPMENTS, icon: Truck },
   { label: "Reports",    to: ROUTES.REPORTS,         icon: BarChart3 },
+  { label: "Messages",   to: ROUTES.LAB_MESSAGES,    icon: MessageSquare, badge: <MessagesBadge className="ml-auto" /> },
+  { label: "Pickups",    to: ROUTES.LAB_PICKUPS,     icon: PackageOpen },
+  { label: "Deliveries", to: ROUTES.LAB_DELIVERIES,  icon: Route },
 ];
 
 const adminItems = [
@@ -61,6 +69,7 @@ const adminItems = [
   { label: "Exports",    to: ROUTES.ADMIN_EXPORTS,     icon: Download },
   { label: "AutoPay",    to: ROUTES.ADMIN_AUTOPAY,     icon: Repeat },
   { label: "Jobs",       to: ROUTES.ADMIN_JOBS,        icon: Clock },
+  { label: "Lab alerts", to: ROUTES.ADMIN_LAB_ALERTS,  icon: BellRing },
   { label: "Orders",     to: ROUTES.ADMIN_ORDERS,      icon: ClipboardList },
   { label: "Departments", to: ROUTES.ADMIN_DEPARTMENTS, icon: Building2 },
   { label: "Reasons",    to: ROUTES.ADMIN_REASONS,     icon: ListChecks },
@@ -72,7 +81,7 @@ const adminItems = [
   { label: "Rx Mapping", to: ROUTES.ADMIN_RX_MAPPING,  icon: FlaskConical },
 ];
 
-function NavItem({ to, icon: Icon, label, end = true }) {
+function NavItem({ to, icon: Icon, label, end = true, badge = null }) {
   return (
     <NavLink
       to={to}
@@ -88,6 +97,7 @@ function NavItem({ to, icon: Icon, label, end = true }) {
     >
       <Icon size={16} />
       {label}
+      {badge}
     </NavLink>
   );
 }

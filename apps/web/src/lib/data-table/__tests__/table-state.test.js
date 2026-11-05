@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { applyClient, pageSlice, isEmptyFilterValue, paginationProps } from "../table-state.js";
+import { applyClient, pageSlice, isEmptyFilterValue, paginationProps, groupRows } from "../table-state.js";
 
 const ROWS = [
   { id: "1", name: "Bravo", status: "open", total: 30, tags: ["rush"] },
@@ -73,4 +73,14 @@ test("paginationProps: changing the page size goes back to page 1", () => {
   const p = paginationProps({ total: 50, page: 4, pageSize: 10, setPage: (n) => calls.push(["page", n]), setPageSize: (n) => calls.push(["size", n]) });
   p.setPageSize(50);
   assert.deepEqual(calls, [["size", 50], ["page", 1]]);
+});
+
+test("groupRows preserves order and groups consecutive keys", () => {
+  const rows = [{ id: 1, d: "mon" }, { id: 2, d: "mon" }, { id: 3, d: "tue" }, { id: 4, d: "mon" }];
+  assert.deepEqual(groupRows(rows, (r) => r.d), [
+    { key: "mon", rows: [rows[0], rows[1]] },
+    { key: "tue", rows: [rows[2]] },
+    { key: "mon", rows: [rows[3]] },
+  ]);
+  assert.deepEqual(groupRows([], (r) => r.d), []);
 });

@@ -78,3 +78,15 @@ test("the tracking button renders only for an https link", async () => {
   assert.doesNotMatch(p.get("text"), /javascript:/);
   vi.unstubAllGlobals();
 });
+
+test("the notifier asks for the detailed result: { ok, reason } instead of a bare boolean", async () => {
+  const f = capture();
+  const r = await email.sendShippedNotice({ to: "dr@x.com", orderNumbers: [1], carrier: "UPS", trackingNumber: "1Z1" }, { detailed: true });
+  assert.deepEqual(r, { ok: true, reason: null });
+  assert.deepEqual(
+    await email.sendShippedNotice({ to: "dr@x.com", orderNumbers: [1], carrier: "UPS", trackingNumber: null }, { detailed: true }),
+    { ok: false, reason: "undeliverable" },
+  );
+  assert.equal(f.mock.calls.length, 1);
+  vi.unstubAllGlobals();
+});

@@ -224,6 +224,8 @@ function useSelectionApi({ sel, setSel, visible, matching, allRows, knownRows, g
       setSel((s) => Sel.clickRow(s, { id, orderedIds, range, toggle, replace: !range && !toggle }));
     },
     togglePage: (on) => setSel((s) => Sel.setPage(s, pageIds, on)),
+    // A subset of the page (a DataTable groupBy header): its selectable rows on or off.
+    toggleRows: (rows, on) => setSel((s) => Sel.setPage(s, rows.filter(isRowSelectable).map(getRowId), on)),
     pageAllSelected,
     pageSomeSelected: pageIds.some((id) => sel.ids.has(id)),
     selectAllMatching: () => setSel((s) => Sel.selectAll(s, matchingIds)),

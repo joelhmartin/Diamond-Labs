@@ -297,6 +297,55 @@ test("release saves a workflow plan in the same transaction", async () => {
   assert.ok(all.indexOf(plan) > 0, "the plan is written after the order, inside the release transaction");
 });
 
+// ── Delivery method carry-forward (piece 8, ruling T10-a) ─────────────────
+
+/** A release whose workflow lookups are answered, then `last` for the client's latest delivery method. */
+function releaseTx(last) {
+  const w10 = wf("10d-printed", 10);
+  return fakeTx({
+    updates: [[{ id: "c1" }]],
+    selects: [
+      [{ status: "confirmed", noteOnly: false, seazonaCode: "2608", name: "DDSO Nylon" }],
+      [{ id: "v1", code: "2608" }],
+      [{ max: 100050 }],
+      [CAL_ROW], [],
+      [{ familyId: "f1" }],
+      [w10], stages(w10),
+      [{ subjectType: "variant", subjectId: "v1", workflowKey: "10d-printed" }],
+      [w10], stages(w10),
+      last,
+    ],
+  });
+}
+const releaseCase = (tx) => mod.releaseRxCase(tx, { caseRow: { id: "c1", userId: "u1", status: "in_review", dueDate: null, formData: {} }, byUserId: "u1" });
+
+test("releaseRxCase carries forward the client's latest delivery method", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(START);
+  const tx = releaseTx([{ deliveryMethod: "local_delivery" }]);
+  await releaseCase(tx);
+  assert.equal(inserts(tx)[0].deliveryMethod, "local_delivery");
+  const body = source.slice(source.indexOf("export async function releaseRxCase"), source.indexOf("export async function createShopLabOrder"));
+  assert.match(body, /latestDeliveryMethod\(tx, caseRow\.userId\)/);
+  const helper = source.slice(source.indexOf("export async function latestDeliveryMethod"));
+  assert.match(helper, /isNotNull\(labOrders\.deliveryMethod\)/);
+  assert.match(helper, /eq\(labOrders\.clientUserId, clientUserId\)/);
+  assert.match(helper, /desc\(labOrders\.receivedAt\)/);
+});
+
+test("releaseRxCase leaves the delivery method null when the client has none", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(START);
+  const tx = releaseTx([]);
+  await releaseCase(tx);
+  assert.equal(inserts(tx)[0].deliveryMethod, null);
+});
+
+test("a shop lab order leaves the delivery method unset (no guessed carrier)", () => {
+  const body = source.slice(source.indexOf("export async function createShopLabOrder"), source.indexOf("function tileCondition"));
+  assert.doesNotMatch(body, /deliveryMethod/);
+});
+
 test("remake plans from the original's workflow with no requested date", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(START);

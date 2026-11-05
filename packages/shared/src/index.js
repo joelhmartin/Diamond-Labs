@@ -21,6 +21,8 @@ export * from "./constants/user-roles.js";
 // Utils
 export * from "./utils/permissions.js";
 export * from "./utils/validation.js";
+export * from "./dates/iso-days.js";
+export * from "./phone/phone.js";
 
 // Catalog
 export { canDeleteVariant, canDeleteOptionValue } from "./catalog/variant-rules.js";
@@ -35,6 +37,8 @@ export { buildDigitalDevices, buildFormDevices, buildOrthoDevice, DEVICE_LABELS 
 export * from "./lab/lab-order-status.js";
 export * from "./lab/production-desk.js";
 export * from "./schemas/lab.schema.js";
+export * from "./lab/logistics.js";
+export * from "./schemas/logistics.schema.js";
 export * from "./schemas/lab-desk.schema.js";
 
 // Exports
@@ -56,6 +60,12 @@ export * from "./schemas/shipping.schema.js";
 // Reports (generic)
 export * from "./reports/index.js";
 
+// Notifications (generic module)
+export * from "./notifications/channels.js";
+export * from "./notifications/schemas.js";
+
+// Messaging (generic module)
+export * from "./messaging/schemas.js";
 // Business calendar (generic module; rules live in apps/api/src/modules/business-calendar)
 export * from "./business-calendar/index.js";
 

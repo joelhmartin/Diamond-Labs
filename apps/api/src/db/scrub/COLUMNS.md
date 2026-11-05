@@ -70,6 +70,15 @@ Pre-check before the transaction: every plan table and column must exist live ("
 | shipments.tracking_error | pii | NULL (carrier error text can echo the address) |
 | shipment_events.description | pii | NULL for carrier-sourced events (scan text can name a city/state); staff events keep their fixed text |
 | shipment_events.location | pii | NULL (a recipient's city) |
+| notification_recipients.address | pii | SMS: `+15005550006#<id>` (Twilio's magic test number, suffixed with the row id because `(event, channel, address)` is unique); email: `recipient+<id>@example.invalid` (never mailed). Staging SMS is redirected to `STAGING_SMS_TO` anyway |
+| notification_recipients.label | pii | NULL (staff-typed name for the number or mailbox) |
+| notification_deliveries.target_masked | pii | NULL (a masked phone or email, still partly identifying) |
+| notification_deliveries.reason | pii | NULL (provider error text can echo an address) |
+| message_threads.subject | phi | NULL (a sealed, user-typed subject; can name a patient) |
+| messages.body | phi | `[scrubbed]` (NOT NULL; sealed free text, can name a patient) |
+| pickups.notes | phi | NULL (sealed, practice-typed pickup notes; can name a patient) |
+| pickups.cancel_reason | phi | NULL (sealed, typed cancel reason; can name a patient) |
+| pickups.address | pii | the shipments.ship_to placeholder address (a ship-to snapshot with the doctor's name and phone); NULL stays NULL |
 
 ## Tables emptied (DELETE all rows)
 
@@ -90,6 +99,9 @@ Pre-check before the transaction: every plan table and column must exist live ("
 - rx_code_overrides: only rows whose map_key is a KNOWN catalog-map key (from the DEVICE/MODIFICATION/ATTRIBUTE/LAB_SERVICE/GUARD/ORTHO tables, `known-map-keys.js`) are kept; every other row is DELETED. The key prefixes (`mod:`, `attr:`, `primary:`) are shared by stable slugs and by doctor-typed literals (`mod:<literal>`), so shape cannot tell them apart; this is the "not in the known set" fallback. Consequence: a real lab override on a key the tables no longer emit is also dropped. `note` and the rest of each kept row (except `seazona_name`, re-derived) are lab-staff mapping data.
 - intakes apart from the columns above: id, channel, status, parser key, promoted record type/id, who/when. Non-identifying.
 - lab_departments, and lab_orders / lab_order_lines / lab_order_events apart from the columns above: ids, source reference (rx case or shop order id, no patient data copied), status, dates, rush, remake links, assignee, version, codes, quantities, event types and from/to values. Non-identifying once the free text is gone.
+- notifications (in-app rows): every column, `title` included. Titles are built only from a notification's validated `data` (short identifiers such as order numbers, never free text or a patient name; `modules/notifications/data-guard.js`). notification_preferences: every column. notification_recipients and notification_deliveries apart from the columns above (event, channel, status, record ids, dates).
+- pickups apart from the columns above: ids, number, party key, window dates, time preference, box count, status, scheduled date, assignee, source, version and dates.
+- message_participants: every column (per-user read state and archive dates). message_threads and messages apart from the columns above (record ids, party keys, sides, counts, dates, author ids).
 - adjustment_reasons, lab_order_line_materials, lab_orders.remake_reason_id, lab_orders.merged_into_order_id (production desk): the lab's reason labels and percents; materials and lot numbers name products, not people (spec ruling); a merged order points at its primary by id. Non-identifying.
 - tag_definitions, record_tags, record_stars (record-tags module): admin-typed label vocabulary, ids and timestamps only. Non-identifying.
 - shipments apart from the columns above (carrier, service, carrier tracking numbers, status, cents, parcel, the lab's own ship-from, dates); shipment_events status and dates; lab_orders.shipment_id and invoice_lines.shipment_id; invoices and invoice_lines apart from the columns above (numbers, status, dates, cents, codes, quantities, price sources); invoice_payments money columns, ids, sources and `paid_on`; autopay_attempts (allocations are invoice id/number/amount), orders money columns and transaction ids, order_items, catalog and product tables, memberships, app_theme, calendars and calendar_holidays (business hours, holidays, capacity numbers), workflows, workflow_stages, workflow_assignments and workflow_plans (stage templates, subject ids, plan dates and stage targets).

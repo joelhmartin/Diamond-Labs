@@ -14,6 +14,7 @@ import { uploadCaseFile, deleteStoredFile, getSignedReadUrl } from "../services/
 import { encryptRxPhi, decryptRxPhi } from "../services/rx/phi-crypto.js";
 import * as auditService from "../services/audit.service.js";
 import { sendRxSubmissionReceived } from "../services/email.service.js";
+import { notify } from "../services/notify-seam.js";
 
 // ─── Upload guards ────────────────────────────────────────────────────────────
 // Per-file size limit (75 MB — intraoral STL / 3D-scan files are large) is shared: MAX_FILE_SIZE_BYTES from @my-app/shared.
@@ -262,6 +263,8 @@ export default async function rxRoutes(fastify) {
       metadata: { caseNumber, fileCount: uploadedFiles.length },
       ipAddress: request.ip,
     });
+    // The lab's alert (in-app + its SMS list); after the commit, and it never throws.
+    await notify(db, { event: "lab.order_received", recordType: "rx_case", recordId: caseId, audience: { kinds: ["staff"] }, data: { caseNumber, caseId } });
     return reply.code(201).send({ data: { id: caseId, caseNumber, status: SUBMISSION_STATUS } });
   });
 
@@ -545,6 +548,9 @@ export default async function rxRoutes(fastify) {
       unmappedCount: summariseLines(lines).unmappedCount,
       caseUrl: `${env.APP_URL}/admin/rx-cases/${caseId}`,
     });
+    // The lab's in-app + SMS alert (lab.order_received). The email above stays
+    // as it is (a different audience: the review-queue mailbox). Never throws.
+    await notify(db, { event: "lab.order_received", recordType: "rx_case", recordId: caseId, audience: { kinds: ["staff"] }, data: { caseNumber, caseId } });
 
     return reply.code(201).send({ data: { id: caseId, caseNumber, status: SUBMISSION_STATUS } });
   });

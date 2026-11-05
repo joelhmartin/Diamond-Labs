@@ -379,3 +379,82 @@ test("a bulk action with choices shows a select and passes the picked value to r
   assert.deepEqual(run.mock.calls[0][0].map((r) => r.id), ["r1"]);
   assert.equal(run.mock.calls[0][1], "b");
 });
+
+// ── groupBy ─────────────────────────────────────────────────────────────────
+
+const DAY_ROWS = [
+  { id: "a", name: "Alpha", day: "Mon" }, { id: "b", name: "Bravo", day: "Mon" },
+  { id: "c", name: "Charlie", day: "Tue" }, { id: "d", name: "Delta", day: "Tue" }, { id: "e", name: "Echo", day: "Wed" },
+];
+const DAY_COLUMNS = [
+  { id: "name", header: "Name", cell: (r) => r.name },
+  { id: "day", header: "Day", cell: (r) => r.day },
+];
+const byDay = { key: (r) => r.day, header: (key, rows) => `${key} · ${rows.length} stops` };
+
+function GroupHarness({ tableOptions = {}, ...props }) {
+  const table = useDataTable({ mode: "client", rows: DAY_ROWS, ...tableOptions });
+  return <DataTable table={table} columns={DAY_COLUMNS} groupBy={byDay} {...props} />;
+}
+
+test("groupBy renders one header row per group with colSpan = column count", () => {
+  mount(<GroupHarness />);
+  const headers = bodyRows().filter((tr) => tr.hasAttribute("data-group"));
+  assert.deepEqual(headers.map((tr) => tr.textContent), ["Mon · 2 stops", "Tue · 2 stops", "Wed · 1 stops"]);
+  // Two columns plus the selection column.
+  for (const tr of headers) assert.equal(tr.querySelector("td").getAttribute("colspan"), "3");
+  assert.equal(bodyRows().length, 8);
+  // Data rows follow their header.
+  assert.equal(bodyRows()[1].textContent, "AlphaMon");
+});
+
+test("group checkbox selects that group's rows only", () => {
+  mount(<GroupHarness />);
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select group Tue" }));
+  assert.equal(isSelected("Charlie"), true);
+  assert.equal(isSelected("Delta"), true);
+  assert.equal(isSelected("Alpha"), false);
+  assert.equal(isSelected("Echo"), false);
+  assert.ok(screen.getByText("2 selected"));
+  assert.equal(screen.getByRole("checkbox", { name: "Select group Tue" }).checked, true);
+  // Clicking it again clears just that group.
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select group Mon" }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "Select group Tue" }));
+  assert.equal(isSelected("Charlie"), false);
+  assert.equal(isSelected("Alpha"), true);
+});
+
+test("groupBy paging counts data rows only, and the group header repeats on the next page", () => {
+  mount(<GroupHarness tableOptions={{ initialPageSize: 3 }} />);
+  assert.equal(bodyRows().filter((tr) => !tr.hasAttribute("data-group")).length, 3);
+  assert.ok(screen.getByText(/1–3 of 5/));
+  fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+  const headers = bodyRows().filter((tr) => tr.hasAttribute("data-group")).map((tr) => tr.textContent);
+  assert.deepEqual(headers, ["Tue · 1 stops", "Wed · 1 stops"]);
+});
+
+test("highlightRowId marks that row (aria-current) and scrolls it into view once", () => {
+  const scrolled = [];
+  const orig = window.HTMLElement.prototype.scrollIntoView;
+  window.HTMLElement.prototype.scrollIntoView = function scrollIntoView() { scrolled.push(this.textContent); };
+  try {
+    const { rerender } = mount(<Harness highlightRowId="r3" />);
+    const current = bodyRows().filter((tr) => tr.getAttribute("aria-current") === "true");
+    assert.equal(current.length, 1);
+    assert.match(current[0].textContent, /Row 03/);
+    assert.equal(scrolled.length, 1);
+    rerender(<MemoryRouter><ToastProvider><Harness highlightRowId="r3" /></ToastProvider></MemoryRouter>);
+    assert.equal(scrolled.length, 1, "not scrolled again on a re-render");
+  } finally {
+    window.HTMLElement.prototype.scrollIntoView = orig;
+  }
+  cleanup();
+  mount(<Harness />);
+  assert.equal(bodyRows().filter((tr) => tr.hasAttribute("aria-current")).length, 0);
+});
+
+test("groupBy works with paginated={false}", () => {
+  mount(<GroupHarness paginated={false} tableOptions={{ initialPageSize: 1000 }} />);
+  assert.equal(screen.queryByRole("button", { name: "Next page" }), null);
+  assert.equal(bodyRows().filter((tr) => tr.hasAttribute("data-group")).length, 3);
+});

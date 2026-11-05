@@ -20,6 +20,7 @@
     "db:import-catalog": "node --env-file=.env src/db/import-catalog.js",
     "db:sync-products": "node --env-file=.env src/db/sync-seazona-products.js",
     "test": "vitest run",
+    "sms:smoke": "node --env-file=.env scripts/sms-smoke.js",
     "lint": "echo 'lint placeholder'",
     "db:seed-rx-overrides": "node --env-file=.env src/db/seed-rx-overrides.js",
     "db:migrate-rx-override-keys": "node --env-file=.env src/db/migrate-rx-override-keys.js",

@@ -39,6 +39,8 @@ import { AdminPriceListsPage } from "./pages/app/AdminPriceListsPage.jsx";
 import { AdminPriceListEditorPage } from "./pages/app/AdminPriceListEditorPage.jsx";
 import { AdminAutoPayPage } from "./pages/app/AdminAutoPayPage.jsx";
 import { AdminJobsPage } from "./pages/app/AdminJobsPage.jsx";
+import { AdminLabAlertsPage } from "./pages/app/AdminLabAlertsPage.jsx";
+import { NotificationsPage } from "./pages/app/NotificationsPage.jsx";
 import { AdminOrdersPage } from "./pages/app/AdminOrdersPage.jsx";
 import { AdminDepartmentsPage } from "./pages/app/AdminDepartmentsPage.jsx";
 import { AdminAdjustmentReasonsPage } from "./pages/app/AdminAdjustmentReasonsPage.jsx";
@@ -55,6 +57,14 @@ import { RequireAdmin } from "./guards/RequireAdmin.jsx";
 import { RequireStaff } from "./guards/RequireStaff.jsx";
 import { LabBoardPage } from "./pages/lab/LabBoardPage.jsx";
 import { LabOrderDetailPage } from "./pages/lab/LabOrderDetailPage.jsx";
+import { LabMessagesPage } from "./pages/lab/LabMessagesPage.jsx";
+import { LabThreadPage } from "./pages/lab/LabThreadPage.jsx";
+import { MessagesPage } from "./pages/doctor/MessagesPage.jsx";
+import { PickupsPage } from "./pages/doctor/PickupsPage.jsx";
+import { LabPickupsPage } from "./pages/lab/LabPickupsPage.jsx";
+import { DeliveriesPage } from "./pages/lab/DeliveriesPage.jsx";
+import { DeliveryRoutePrintPage } from "./pages/lab/DeliveryRoutePrintPage.jsx";
+import { ThreadPage } from "./pages/doctor/ThreadPage.jsx";
 import { OrdersCalendarPage } from "./pages/lab/OrdersCalendarPage.jsx";
 import { AdminSchedulingPage } from "./pages/app/AdminSchedulingPage.jsx";
 import { AdminLabelsPage } from "./pages/app/AdminLabelsPage.jsx";
@@ -235,6 +245,7 @@ function AppRoutes() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/members" element={<MembersPage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
         <Route element={<RequireAdmin />}>
           <Route path="/admin" element={<Navigate to="/admin/invoices" replace />} />
           <Route path="/admin/products" element={<AdminCatalogPage />} />
@@ -252,6 +263,7 @@ function AppRoutes() {
           <Route path="/admin/users/:userId/pricing" element={<AdminClientPricingPage />} />
           <Route path="/admin/autopay" element={<AdminAutoPayPage />} />
           <Route path="/admin/jobs" element={<AdminJobsPage />} />
+          <Route path="/admin/notifications" element={<AdminLabAlertsPage />} />
           <Route path="/admin/rx-mapping" element={<AdminRxMappingPage />} />
           <Route path="/admin/scheduling" element={<AdminSchedulingPage />} />
           <Route path="/admin/labels" element={<AdminLabelsPage />} />
@@ -262,6 +274,10 @@ function AppRoutes() {
           <Route path="/lab/intake" element={<IntakePage />} />
           <Route path="/lab/orders/new" element={<NewLabOrderPage />} />
           <Route path="/lab/orders/:id" element={<LabOrderDetailPage />} />
+          <Route path="/lab/messages" element={<LabMessagesPage />} />
+          <Route path="/lab/messages/:id" element={<LabThreadPage />} />
+          <Route path="/lab/pickups" element={<LabPickupsPage />} />
+          <Route path="/lab/deliveries" element={<DeliveriesPage />} />
           <Route path="/admin/shipments" element={<ShipmentsPage />} />
           <Route path="/admin/rx-cases" element={<AdminRxCasesPage />} />
           <Route path="/admin/rx-cases/:id" element={<AdminRxCaseDetailPage />} />
@@ -272,9 +288,10 @@ function AppRoutes() {
         </Route>
       </Route>
 
-      {/* Label print page: staff only, no app shell (prints on a 4×6 page) */}
+      {/* Print pages: staff only, no app shell (a 4×6 label; the letter-size route sheet) */}
       <Route element={<RequireStaff />}>
         <Route path="/lab/shipments/:id/print" element={<ShipmentLabelPrintPage />} />
+        <Route path="/lab/deliveries/print" element={<DeliveryRoutePrintPage />} />
       </Route>
 
       {/* Protected doctor routes */}
@@ -285,7 +302,11 @@ function AppRoutes() {
           <Route path="payments" element={<PaymentsPage />} />
           <Route path="saved-cards" element={<SavedCardsPage />} />
           <Route path="autopay" element={<AutoPayPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
           <Route path="cases" element={<MyCasesPage />} />
+          <Route path="messages" element={<MessagesPage />} />
+          <Route path="messages/:id" element={<ThreadPage />} />
+          <Route path="pickups" element={<PickupsPage />} />
         </Route>
       </Route>
 
