@@ -20,7 +20,12 @@ export function createSmsAdapters({ config, fetchImpl = globalThis.fetch }) {
   return new Map(SMS_PROVIDER_IDS.map((id) => [id, FACTORIES[id]({ config, fetchImpl })]));
 }
 
-const suppressed = (error) => ({ ok: false, suppressed: true, error });
+/**
+ * Nothing was attempted. `reason` is machine-readable: "unconfigured" (no
+ * provider, or its credentials are missing) or "suppressed" (the staging rule
+ * with no redirect number). `error` is the human sentence.
+ */
+const suppressed = (reason, error) => ({ ok: false, suppressed: true, reason, error });
 
 export function createSmsRegistry({ config, fetchImpl = globalThis.fetch }) {
   const adapters = createSmsAdapters({ config, fetchImpl });
@@ -33,13 +38,13 @@ export function createSmsRegistry({ config, fetchImpl = globalThis.fetch }) {
 
   async function send({ to, body }) {
     const state = status();
-    if (!state.ok) return suppressed(state.reason);
+    if (!state.ok) return suppressed("unconfigured", state.reason);
     const target = normalizePhone(to);
     if (!target) return { ok: false, error: "Not a valid phone number" };
     let text = String(body ?? "");
     let dest = target;
     if (config.staging) {
-      if (!config.stagingTo) return suppressed("Staging: STAGING_SMS_TO is not set, text not sent");
+      if (!config.stagingTo) return suppressed("suppressed", "Staging: STAGING_SMS_TO is not set, text not sent");
       text = `[STAGING → ${maskPhone(target)}] ${text}`;
       dest = config.stagingTo;
     }

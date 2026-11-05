@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { createNotifier } from "./notifier.js";
 import { defineNotificationEvent, clearEvents } from "./registry.js";
 import { createFakeStore } from "./fake-store.js";
+import { createSmsRegistry } from "../sms/sms-registry.js";
+import { smsConfig } from "../sms/sms-config.js";
 
 const DB = { root: true };
 const USERS = [
@@ -380,4 +382,23 @@ test("notify with null or missing args resolves to zeros", async () => {
   const { notifier } = setup();
   assert.deepEqual(await notifier.notify(DB, null), { inApp: 0, sent: 0, skipped: 0, failed: 0 });
   assert.deepEqual(await notifier.notify(DB), { inApp: 0, sent: 0, skipped: 0, failed: 0 });
+});
+
+test("the real sms registry: provider off is skipped, staging without a redirect is suppressed, neither alerts", async () => {
+  const smsRecipients = [{ id: "r1", event: "thing.happened", channel: "sms", address: "+15125551234", label: "x", active: true }];
+  const cases = [
+    [{ SMS_PROVIDER: "off" }, "skipped:unconfigured"],
+    [{ SMS_PROVIDER: "twilio" }, "skipped:unconfigured"],
+    [{ SMS_PROVIDER: "log", APP_ENV: "staging" }, "suppressed:suppressed"],
+  ];
+  for (const [env, expected] of cases) {
+    const registry = createSmsRegistry({ config: smsConfig(env), fetchImpl: async () => { throw new Error("no network"); } });
+    const { notifier, store, logs } = setup({ recipients: smsRecipients, sms: registry.send });
+    const r = await notifier.notify(DB, args({ audience: { userIds: [] } }));
+    assert.equal(r.failed, 0, JSON.stringify(env));
+    assert.equal(r.skipped, 1);
+    const sms = store.state.deliveries.filter((d) => d.channel === "sms");
+    assert.deepEqual(sms.map((d) => `${d.status}:${d.reason}`), [expected]);
+    assert.equal(logs.filter((l) => l.includes("[NOTIFY][SEND_FAILED]")).length, 0);
+  }
 });

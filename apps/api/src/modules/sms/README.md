@@ -10,12 +10,13 @@ knows nothing about the app: callers pass `{ to, body }`.
 ```js
 import { smsRegistry } from "./modules/sms/sms-registry.js";
 const result = await smsRegistry().send({ to: "(555) 123-4567", body: "Hello" });
-// { ok, providerId?, error?, suppressed? }  never throws
+// { ok, providerId?, error?, suppressed?, reason? }  never throws
 smsRegistry().status(); // { provider, ok, reason? }
 ```
 
-`suppressed: true` means nothing was attempted (provider off, credentials
-missing, or staging without a redirect number).
+`suppressed: true` means nothing was attempted. `reason` says why:
+`"unconfigured"` (provider off or credentials missing) or `"suppressed"`
+(staging without a redirect number).
 
 ### Adapter contract
 

@@ -19,6 +19,7 @@ test("provider off → send returns { ok:false, suppressed:true }", async () => 
   const r = await reg.send({ to: "+15551234567", body: "x" });
   assert.equal(r.ok, false);
   assert.equal(r.suppressed, true);
+  assert.equal(r.reason, "unconfigured");
   assert.equal(calls.length, 0);
   assert.equal(reg.status().ok, false);
   assert.equal(reg.status().provider, "off");
@@ -50,6 +51,7 @@ test("staging redirects to STAGING_SMS_TO and suppresses when unset", async () =
   const r = await unset.send({ to: "+15551231234", body: "hello" });
   assert.equal(r.ok, false);
   assert.equal(r.suppressed, true);
+  assert.equal(r.reason, "suppressed");
   assert.equal(calls.length, 1, "nothing more was sent");
 });
 
