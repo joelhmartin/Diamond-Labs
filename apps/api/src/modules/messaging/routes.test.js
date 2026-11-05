@@ -6,6 +6,7 @@ process.env.PHI_ENCRYPTION_KEY ||= "a".repeat(64);
 const { messagingRoutes } = await import("./routes.js");
 const { createMessaging } = await import("./messaging.service.js");
 const { createFakeStore } = await import("./fake-store.js");
+const { MESSAGE_FILES_MAX, MESSAGE_FILE_MAX_BYTES } = await import("@my-app/shared");
 
 // The routes take every collaborator as an option, so a recording stand-in for
 // fastify shows each registration's guards, and its handler runs on fakes.
@@ -147,26 +148,39 @@ function memoryFiles() {
 }
 
 // A multipart request as @fastify/multipart presents it: an async iterator of
-// field and file parts. `drained` lists file parts whose stream was consumed.
+// field and file parts. `buffered` lists file parts read with toBuffer(),
+// `drained` those skipped with file.resume(); `limits` is what parts() was
+// asked to enforce. A part with `tooLarge` trips the parser's size limit;
+// `throwAfter: code` makes the iterator throw that parser error after the part.
 function multipart(parts) {
+  const buffered = [];
   const drained = [];
+  const limits = [];
+  const parserError = (code) => Object.assign(new Error(code), { code });
   const request = {
     isMultipart: () => true,
     body: undefined,
-    async *parts() {
+    async *parts(opts) {
+      limits.push(opts?.limits);
       for (const p of parts) {
         if (p.file) {
           yield {
             type: "file", fieldname: p.field, filename: p.file, mimetype: "application/pdf",
-            toBuffer: async () => { drained.push(p.field); return Buffer.from(p.content ?? "abc"); },
+            file: { resume: () => { drained.push(p.field); } },
+            toBuffer: async () => {
+              buffered.push(p.field);
+              if (p.tooLarge) throw parserError("FST_REQ_FILE_TOO_LARGE");
+              return Buffer.from(p.content ?? "abc");
+            },
           };
         } else yield { type: "field", fieldname: p.field, value: p.value };
+        if (p.throwAfter) throw parserError(p.throwAfter);
       }
     },
   };
-  return { request, drained };
+  return { request, buffered, drained, limits };
 }
-const file = (name, field = "files") => ({ field, file: name });
+const file = (name, field = "files", extra = {}) => ({ field, file: name, ...extra });
 
 test("multipart post drains unknown parts and rejects a 6th file", async () => {
   const files = memoryFiles();
@@ -178,13 +192,41 @@ test("multipart post drains unknown parts and rejects a 6th file", async () => {
   assert.equal(posted.status, 201);
   assert.equal(posted.body.data.body, "See scan");
   assert.deepEqual(posted.body.data.attachments.map((a) => a.fileName), ["a.pdf", "b.pdf"]);
-  assert.ok(ok.drained.includes("other"), "an unknown file part is drained, not attached");
+  assert.deepEqual(ok.drained, ["other"], "an unknown file part is drained with resume()");
+  assert.deepEqual(ok.buffered, ["files", "files"], "only kept parts are buffered");
+  assert.deepEqual(ok.limits, [{ fileSize: MESSAGE_FILE_MAX_BYTES, files: MESSAGE_FILES_MAX + 1 }], "the parser enforces the limits");
 
   const six = multipart([{ field: "body", value: "Too many" }, ...Array.from({ length: 6 }, (_, i) => file(`${i}.pdf`))]);
   const refused = await call("POST", "/messages/threads/:id/messages", { ...six.request, user: party, params: { id: t.id } });
   assert.equal(refused.status, 400);
   assert.equal(refused.body.error.code, "INVALID");
   assert.equal(files.rows.length, 2, "nothing from the refused post was stored");
+  assert.equal(six.buffered.length, MESSAGE_FILES_MAX, "the extra file is drained, not buffered");
+  assert.deepEqual(six.drained, ["files"]);
+});
+
+test("multipart: an oversize file is 400 and nothing is stored, whether it is read or drained", async () => {
+  const files = memoryFiles();
+  const { call } = await setup({ files });
+  const t = (await call("POST", "/messages/threads", { user: party, body: { body: "Hello" } })).body.data;
+  const big = multipart([{ field: "body", value: "Big" }, file("a.pdf"), file("huge.pdf", "files", { tooLarge: true })]);
+  const r = await call("POST", "/messages/threads/:id/messages", { ...big.request, user: party, params: { id: t.id } });
+  assert.equal(r.status, 400);
+  assert.match(r.body.error.message, /at most \d+ MB/);
+  assert.equal(files.rows.length, 0);
+
+  // A drained part over the limit surfaces from the parser's iterator.
+  const drainedBig = multipart([{ field: "body", value: "Big" }, file("junk.bin", "other", { throwAfter: "FST_REQ_FILE_TOO_LARGE" })]);
+  const r2 = await call("POST", "/messages/threads/:id/messages", { ...drainedBig.request, user: party, params: { id: t.id } });
+  assert.equal(r2.status, 400);
+  assert.match(r2.body.error.message, /at most \d+ MB/);
+
+  // Past the parser's file-count limit: the count message, not a 500.
+  const flood = multipart([{ field: "body", value: "Flood" }, file("a.pdf", "files", { throwAfter: "FST_FILES_LIMIT" })]);
+  const r3 = await call("POST", "/messages/threads/:id/messages", { ...flood.request, user: party, params: { id: t.id } });
+  assert.equal(r3.status, 400);
+  assert.match(r3.body.error.message, new RegExp(`at most ${MESSAGE_FILES_MAX} files`));
+  assert.equal(files.rows.length, 0);
 });
 
 test("multipart create takes fields and files; a bad field is 422", async () => {

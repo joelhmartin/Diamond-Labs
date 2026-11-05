@@ -382,3 +382,16 @@ test("a failed post leaves no uploaded objects", async () => {
   assert.deepEqual(other.removed, ["f1"]);
   assert.equal(other.rows.length, 0);
 });
+
+test("a failing remove during the cleanup is logged (name and count only) and the original error surfaces", async () => {
+  const files = fakeFiles();
+  files.remove = async () => { throw new TypeError("bucket gone: secret-name.pdf"); };
+  const logs = [];
+  const { messaging, store } = setup({ files, log: { error: (m) => logs.push(m), warn: (m) => logs.push(m) } });
+  const t = await messaging.createThread(partyA, { body: "one" });
+  store.recordPost = async () => { throw new Error("db down"); };
+  await assert.rejects(messaging.post(partyA, t.id, { body: "two", files: [upload("secret-name.pdf")] }), /db down/);
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /could not remove 1 attachment\(s\) of failed message \S+: TypeError$/);
+  assert.ok(!logs[0].includes("secret-name"), "no file name in the log");
+});
