@@ -4,6 +4,7 @@ import { test, vi } from "vitest";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fakeLock } from "../test/fake-lock.js";
+import { derivedExportBytes } from "./payments-export.js";
 
 // The step modules are stubbed: this file tests what main() hands them (the lock, the injected ledger sum,
 // the target db, the flags) and what it prints, with no database, no Seazona and no env file (Ruling Q1).
@@ -90,6 +91,14 @@ test("balances reads a stored export by --file-id, and refuses a missing or wron
   await assert.rejects(r.run(["balances", "--balances", "per-client", "--file-id", "f9", "--target", "rehearsal"]), /No per-client export stored with id f9/);
   await assert.rejects(r.run(["balances", "--balances", "per-invoice", "--target", "rehearsal"]), /needs --file/);
   await assert.rejects(r.run(["balances", "--balances", "per-invoice", "--file", "x", "--file-id", "f9", "--target", "rehearsal"]), /not both/);
+});
+
+test("balances per-invoice also takes balances derived from the Payments export (payments_derived), never per-client", async () => {
+  const r = rig();
+  r.stored.set("d1", { kind: "payments_derived", bytes: derivedExportBytes([{ key: "1001", cents: 0 }, { key: "1002", cents: 2500 }]) });
+  assert.equal(await r.run(["balances", "--balances", "per-invoice", "--file-id", "d1", "--target", "rehearsal"]), 0);
+  assert.equal(last()[1].fileId, "d1");
+  await assert.rejects(r.run(["balances", "--balances", "per-client", "--file-id", "d1", "--target", "rehearsal"]), /No per-client export stored with id d1/);
 });
 
 test("a live clients run on production prints the write-freeze reminder; rehearsal and other steps do not", async () => {

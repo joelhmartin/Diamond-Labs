@@ -40,6 +40,19 @@ export const EXPORT_KINDS = {
   },
 };
 
+/**
+ * Stored import_files kinds that read as a balance export of each shape. A
+ * `payments_derived` file is the per-invoice open-balance table derived from
+ * the lab's Payments export (payment-match.js; written by derivedExportBytes
+ * in this same HTML shape), so every per-invoice consumer reads it with
+ * readExport unchanged.
+ */
+export const BALANCE_FILE_KINDS = {
+  invoice: ["balances_invoice", "payments_derived"],
+  client: ["balances_client"],
+};
+export const isBalanceFile = (stored, kind) => Boolean(stored) && (BALANCE_FILE_KINDS[kind] ?? []).includes(stored.kind);
+
 export const EXPORT_PROBLEM_KINDS = {
   noKey: "export-row-no-key",
   badBalance: "export-row-bad-balance",
@@ -49,7 +62,7 @@ export const EXPORT_PROBLEM_KINDS = {
 
 const FOOTER_LABELS = new Set(["total", "totals", "grand total"]);
 /** A footer row: its key cell (or, when that is blank, its first non-empty cell) is a total label. */
-const isFooterLabel = (row, keyAt) => FOOTER_LABELS.has(fold(row[keyAt] || row.find(Boolean) || ""));
+export const isFooterLabel = (row, keyAt) => FOOTER_LABELS.has(fold(row[keyAt] || row.find(Boolean) || ""));
 
 const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
 
@@ -122,23 +135,36 @@ export function parseColumnsFlag(value) {
   return out;
 }
 
-const fold = (s) => String(s).toLowerCase().replace(/[^a-z0-9#]+/g, " ").trim();
+export const fold = (s) => String(s).toLowerCase().replace(/[^a-z0-9#]+/g, " ").trim();
 
-function findHeader(rows, aliases) {
+/**
+ * The first row (of the first 15) holding every `aliases` column; `optional`
+ * columns are mapped when present and never block. → { index, at } or null.
+ * Two cells answering to one name is refused (pass --columns to choose).
+ */
+export function findHeader(rows, aliases, optional = {}) {
+  const locate = (i, name, names) => {
+    const wanted = names.map(fold);
+    const hits = rows[i].flatMap((c, idx) => (wanted.includes(fold(c)) ? [idx] : []));
+    if (hits.length > 1) {
+      const found = hits.map((idx) => `"${rows[i][idx]}"`).join(", ");
+      throw new ImportRefusal(`More than one column could be the ${name} column (${found}). Pass --columns ${name}="Header" to choose one.`);
+    }
+    return hits.length ? hits[0] : null;
+  };
   for (let i = 0; i < Math.min(rows.length, 15); i++) {
-    const cells = rows[i].map(fold);
     const at = {};
     for (const [name, names] of Object.entries(aliases)) {
-      const wanted = names.map(fold);
-      const hits = cells.flatMap((c, idx) => (wanted.includes(c) ? [idx] : []));
-      if (hits.length === 0) break;
-      if (hits.length > 1) {
-        const found = hits.map((idx) => `"${rows[i][idx]}"`).join(", ");
-        throw new ImportRefusal(`More than one column could be the ${name} column (${found}). Pass --columns ${name}="Header" to choose one.`);
-      }
-      at[name] = hits[0];
+      const idx = locate(i, name, names);
+      if (idx == null) break;
+      at[name] = idx;
     }
-    if (Object.keys(at).length === Object.keys(aliases).length) return { index: i, at };
+    if (Object.keys(at).length !== Object.keys(aliases).length) continue;
+    for (const [name, names] of Object.entries(optional)) {
+      const idx = locate(i, name, names);
+      if (idx != null) at[name] = idx;
+    }
+    return { index: i, at };
   }
   return null;
 }
@@ -153,7 +179,7 @@ const accountKey = (t) => {
 };
 
 /** Group per-row problems by kind into the shared { kind, count, seazonaIds, lines } shape. */
-function groupProblems(found) {
+export function groupProblems(found) {
   const byKind = new Map();
   for (const { kind, line, id } of found) {
     if (!byKind.has(kind)) byKind.set(kind, { kind, count: 0, seazonaIds: [], lines: [] });

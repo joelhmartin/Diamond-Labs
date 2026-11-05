@@ -8,6 +8,7 @@ import { fakeLock } from "../test/fake-lock.js";
 
 const { main } = await import("./parity-cli.js");
 const { ImportRefusal } = await import("./import-errors.js");
+const { derivedExportBytes } = await import("./payments-export.js");
 
 const fixture = (n) => readFileSync(new URL(`../../test-fixtures/seazona/${n}`, import.meta.url));
 
@@ -55,6 +56,13 @@ test("with a stored export its rows and problems join the report", async () => {
   assert.deepEqual(report.exportProblems.map((p) => [p.kind, p.lines]), [["export-row-bad-balance", [6]]]);
   assert.ok(report.differences.includes("balance export problems"));
   assert.ok(!/Example|Sample/.test(JSON.stringify(report)));
+});
+
+test("a payments_derived file is a per-invoice export to parity", async () => {
+  const r = rig({ files: { d1: { kind: "payments_derived", bytes: derivedExportBytes([{ key: "1001", cents: 2500 }]) } } });
+  await r.run(["--target", "rehearsal", "--balances", "per-invoice", "--file-id", "d1"]);
+  assert.equal(r.out.reports[0].balances.exportTotalCents, 2500);
+  await assert.rejects(r.run(["--target", "rehearsal", "--balances", "per-client", "--file-id", "d1"]), /No per-client export stored/);
 });
 
 test("refusals: Cloud Run, a bad --balances, a missing or wrong-kind file, stray export flags", async () => {

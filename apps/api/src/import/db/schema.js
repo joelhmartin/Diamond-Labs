@@ -46,7 +46,8 @@ export const fetchRuns = pgTable("fetch_runs", {
 
 export const importFiles = pgTable("import_files", {
   id: varchar("id", { length: 128 }).primaryKey(),
-  // balances_invoice | balances_client
+  // balances_invoice | balances_client | payments_export (raw lab Payments export)
+  // | payments_derived (per-invoice open balances derived from it; read as balances_invoice)
   kind: varchar("kind", { length: 30 }).notNull(),
   sha256: varchar("sha256", { length: 64 }).notNull(),
   // encryptField(base64 of the uploaded bytes)

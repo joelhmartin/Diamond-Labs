@@ -32,7 +32,7 @@ import { parseArgs, intFlag } from "./cli-args.js";
 import { ImportRefusal } from "./import-errors.js";
 import { assertNotCloudRun } from "./targets.js";
 import { openTargetSession } from "./cli-session.js";
-import { readExport, parseColumnsFlag } from "./export-table.js";
+import { readExport, parseColumnsFlag, isBalanceFile } from "./export-table.js";
 import { loadClients } from "./load-clients.js";
 import { loadInvoices } from "./load-invoices.js";
 import { loadBalances } from "./load-balances.js";
@@ -91,7 +91,7 @@ async function parsedExport({ raw, flags, opts, deps }) {
   }
   if (!fileId) throw new ImportRefusal("balances needs --file <export.xls> (first time) or --file-id <id>.");
   const stored = await raw.readFile(fileId);
-  if (!stored || stored.kind !== `balances_${kind}`) throw new ImportRefusal(`No ${opts.mode} export stored with id ${fileId}.`);
+  if (!isBalanceFile(stored, kind)) throw new ImportRefusal(`No ${opts.mode} export stored with id ${fileId}.`);
   const parsed = readExport(stored.bytes, { kind, columns: opts.columns });
   if (parsed.problems.length) deps.print(["Balance export problems (row numbers and keys only):", ...problemLines(parsed.problems)]);
   return { parsed, fileId };

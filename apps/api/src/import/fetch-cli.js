@@ -13,6 +13,10 @@
  *   pnpm --filter @my-app/api import:fetch <invoices|orders> --detail --resume <runId> [--live [--approved <n>]]
  *   pnpm --filter @my-app/api import:fetch export --balances per-invoice|per-client --file <export.xls> [--columns …]
  *     (seals a portal balance export into the import DB, prints its id and the parser's problems; no Seazona call)
+ *   pnpm --filter @my-app/api import:fetch payments-match --file <payments.xls> [--file <more.xls> …] [--columns …]
+ *        [--unclear open|review] [--review-out <path>] [--live [--accept-export-problems]]
+ *     (derives per-invoice open balances from the lab's Payments exports; --live seals them as a
+ *      payments_derived file for `import:load balances --balances per-invoice`; no Seazona call)
  *
  *   pnpm --filter @my-app/api import:fetch <invoices|orders|…> --mark-stale <runId>
  *     (marks a run left "running" by a crash or Ctrl-C as failed so a new live run may start)
@@ -35,22 +39,30 @@
  * This file loads without DATABASE_URL / JWT_SECRET: seazona.service.js (which
  * needs them, through config/env.js) is imported only when a live run starts.
  */
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import * as importSchema from "./db/schema.js";
 import { parseArgs, intFlag, listFlag } from "./cli-args.js";
 import { ImportRefusal } from "./import-errors.js";
 import { assertNotCloudRun, resolveImportDb, connect } from "./targets.js";
 import { assertImportKey } from "./key-check.js";
 import { rawStore } from "./raw-store.js";
-import { readExport, parseColumnsFlag } from "./export-table.js";
+import { readExport, parseColumnsFlag, isBalanceFile } from "./export-table.js";
 import { SUMMARY_ENTITIES, DETAIL_ENTITIES, APPROVAL_THRESHOLD, REQUESTS_PER_MINUTE, detailFilterProblem, selectDetailIds, normalizeCappedTimestamp } from "./fetch-plan.js";
 import { runSummaryCommand, runDetailCommand, createPacer } from "./seazona-fetch.js";
 import { makeFetchLock } from "./fetch-lock.js";
 import { printLines, printReport, runIfMain } from "./report.js";
+import { runPaymentsMatch, PAYMENTS_MATCH_FLAGS } from "./payments-match-command.js";
 
 const FLAGS = {
-  allowed: ["live", "detail", "ids", "since", "open", "open-balance", "file-id", "columns", "refetch", "resume", "approved", "file", "balances", "mark-stale", "accept-capped-timestamp"],
-  booleans: ["live", "detail", "open", "open-balance", "refetch"],
+  allowed: ["live", "detail", "ids", "since", "open", "open-balance", "file-id", "columns", "refetch", "resume", "approved", "file", "balances", "mark-stale", "accept-capped-timestamp", "unclear", "review-out", "accept-export-problems"],
+  booleans: ["live", "detail", "open", "open-balance", "refetch", "accept-export-problems"],
+  repeatable: ["file"],
+};
+
+/** Subcommands that read files instead of calling Seazona: the only flags each accepts. */
+const FILE_COMMANDS = {
+  export: ["balances", "file", "columns"],
+  "payments-match": PAYMENTS_MATCH_FLAGS,
 };
 
 const EXPORTS = {
@@ -66,6 +78,8 @@ const defaultDeps = {
   print: printLines,
   printReport,
   readFile,
+  writeFile,
+  now: () => new Date(),
   async openStore(env) {
     const resolved = resolveImportDb(env);
     const importDb = connect(resolved, importSchema);
@@ -100,8 +114,8 @@ function lazySeazona(load) {
 /** `import:fetch export`: parse, then seal a portal balance export into the import DB. No Seazona call. */
 async function storeExport(flags, store, deps) {
   const spec = EXPORTS[flags.balances];
-  if (!spec || !flags.file) throw new ImportRefusal("Usage: import:fetch export --balances per-invoice|per-client --file <export.xls> [--columns name=Header,…]");
-  const bytes = await deps.readFile(flags.file);
+  if (!spec || flags.file?.length !== 1) throw new ImportRefusal("Usage: import:fetch export --balances per-invoice|per-client --file <export.xls> [--columns name=Header,…] (one file)");
+  const bytes = await deps.readFile(flags.file[0]);
   const { rows, problems, exportTotalCents } = readExport(bytes, { kind: spec.parseKind, columns: flags.columns ? parseColumnsFlag(flags.columns) : {} });
   const id = await store.saveFile({ kind: spec.fileKind, bytes });
   deps.print([
@@ -117,7 +131,7 @@ async function storeExport(flags, store, deps) {
 async function openInvoiceNumbers(flags, store, deps) {
   if (!flags["file-id"]) throw new ImportRefusal("--open-balance needs --file-id (store the export first: import:fetch export --balances per-invoice --file <path>).");
   const file = await store.readFile(flags["file-id"]);
-  if (!file || file.kind !== EXPORTS["per-invoice"].fileKind) throw new ImportRefusal(`No per-invoice export with id ${flags["file-id"]}.`);
+  if (!isBalanceFile(file, "invoice")) throw new ImportRefusal(`No per-invoice export with id ${flags["file-id"]}.`);
   const { rows, problems } = readExport(file.bytes, { kind: "invoice", columns: flags.columns ? parseColumnsFlag(flags.columns) : {} });
   const bad = problems.reduce((n, p) => n + p.count, 0);
   if (bad) deps.print([`Warning: ${bad} row(s) of that export could not be read (run import:fetch export again to list them); invoices on those rows are not selected.`]);
@@ -184,18 +198,21 @@ function outcomeLines(mode, out) {
 }
 
 function checkShape(name, entity, flags, positional) {
-  if (name === "export") {
-    const stray = FETCH_ONLY_FLAGS.filter((f) => flags[f] !== undefined);
-    if (stray.length) throw new ImportRefusal(`export takes only --balances, --file and --columns (not --${stray.join(", --")}).`);
+  if (FILE_COMMANDS[name]) {
+    const stray = Object.keys(flags).filter((f) => !FILE_COMMANDS[name].includes(f));
+    if (stray.length) throw new ImportRefusal(`${name} takes only --${FILE_COMMANDS[name].join(", --")} (not --${stray.join(", --")}).`);
+  } else if (entity) {
+    const stray = ["balances", "file", "unclear", "review-out", "accept-export-problems"].filter((f) => flags[f] !== undefined);
+    if (stray.length) throw new ImportRefusal(`--${stray.join(", --")} belongs to export or payments-match, not a Seazona fetch.`);
   }
-  if ((!entity && name !== "export") || positional.length !== 1) {
-    throw new ImportRefusal(`Usage: import:fetch <${Object.keys(SUMMARY_ENTITIES).join("|")}|export> [--detail <filter>] [--live]`);
+  if ((!entity && !FILE_COMMANDS[name]) || positional.length !== 1) {
+    throw new ImportRefusal(`Usage: import:fetch <${Object.keys(SUMMARY_ENTITIES).join("|")}|${Object.keys(FILE_COMMANDS).join("|")}> [--detail <filter>] [--live]`);
   }
   if (flags.detail && !DETAIL_ENTITIES[name]) throw new ImportRefusal(`${name} has no detail fetch (invoices and orders do).`);
   if (flags["accept-capped-timestamp"] !== undefined && (name !== "invoices" || flags.detail)) {
     throw new ImportRefusal("--accept-capped-timestamp applies only to the invoices summary fetch (parity checks invoice numbers for gaps; orders have no such check).");
   }
-  if (!flags.detail && FILTER_FLAGS.concat("resume").some((f) => flags[f] !== undefined) && name !== "export") {
+  if (!flags.detail && FILTER_FLAGS.concat("resume").some((f) => flags[f] !== undefined) && !FILE_COMMANDS[name]) {
     throw new ImportRefusal("That flag belongs to --detail.");
   }
 }
@@ -236,6 +253,7 @@ export async function main(argv, env = process.env, overrides = {}) {
   const { store, close, tryLock, assertHeld = () => {} } = await deps.openStore(env);
   try {
     if (name === "export") return await storeExport(flags, store, deps);
+    if (name === "payments-match") return await runPaymentsMatch(flags, store, deps);
     const storeEntity = flags.detail ? DETAIL_ENTITIES[name] : entity;
     if (flags["mark-stale"]) return await markStale(store, [entity, DETAIL_ENTITIES[name]], flags, deps, tryLock);
     const live = flags.live === true;
