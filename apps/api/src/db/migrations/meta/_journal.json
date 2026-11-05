@@ -246,6 +246,13 @@
       "when": 1793904201703,
       "tag": "0034_orange_spirit",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793904703412,
+      "tag": "0035_mysterious_blacklash",
+      "breakpoints": true
     }
   ]
 }
