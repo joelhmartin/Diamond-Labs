@@ -142,6 +142,8 @@ export function createRegistry({ defaultRoles = [], featuredTitle = "Featured" }
     listDashboards: (actor) =>
       [...dashboards.values()].filter((d) => canView(actor, d)).map(metaOf),
 
+    /** Every registered report key (listed or not), e.g. for a host's favorites store. */
+    reportKeys: () => [...reports.keys()],
     getReport: (key) => reports.get(key),
     getDashboard: (key) => dashboards.get(key),
     getMetric: (key) => metrics.get(key),

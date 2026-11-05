@@ -5,15 +5,15 @@ import { db } from "../config/database.js";
 import * as auditService from "../services/audit.service.js";
 import { createRegistry } from "../modules/reports/registry.js";
 import { createReportRoutes } from "../modules/reports/routes.js";
-import { createMemoryFavoritesStore } from "../modules/reports/favorites.service.js";
+import { createRecordStarsFavoritesStore } from "../services/report-favorites.js";
 import { registerLabReports } from "../services/lab/reports/index.js";
 
 /** The app's report registry; later tasks and benches import it. */
 export const reportRegistry = createRegistry({ defaultRoles: STAFF_ROLES, featuredTitle: "Lab favorites" });
 registerLabReports(reportRegistry);
 
-// In-memory for now; at rebase this is re-pointed at the record-tags module's starsFor/setStar (recordType "report").
-const favorites = createMemoryFavoritesStore();
+// Favorites persist as record-tags stars (record type "report", record id = the report key).
+const favorites = createRecordStarsFavoritesStore({ keys: () => reportRegistry.reportKeys() });
 
 const audit = (request, action, targetId, metadata) =>
   auditService.logSafe({
