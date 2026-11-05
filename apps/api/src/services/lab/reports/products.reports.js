@@ -5,7 +5,7 @@
  * its detail count bench lines (no money) and are staff. Lines are matched to
  * the catalog by variant, falling back to their code (lab-metrics catalogJoins).
  */
-import { sql } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import {
   invoices, invoiceLines, labOrders, labOrderLines, productVariants, productFamilies, users, doctorProfiles,
 } from "../../../db/schema/index.js";
@@ -113,6 +113,23 @@ const units = {
   },
 };
 
+/**
+ * Each line's invoice: the newest non-void invoice line billed for it (a
+ * reissue replaces a voided one), as Map(lineId → { invoiceId, invoiceNumber }).
+ * Looked up for one page of lines only: as a lateral join inside the page query
+ * it ran for every line in the range before the page was cut (1.5 s at 21k orders).
+ */
+async function invoicesForLines(tx, lineIds) {
+  if (!lineIds.length) return new Map();
+  const rows = await rowsOf(tx, sql`
+    select distinct on (${invoiceLines.labOrderLineId}) ${invoiceLines.labOrderLineId} as "lineId",
+      ${invoices.id} as "invoiceId", ${invoices.invoiceNumber} as "invoiceNumber"
+    from ${invoiceLines} join ${invoices} on ${invoices.id} = ${invoiceLines.invoiceId}
+    where ${inArray(invoiceLines.labOrderLineId, lineIds)} and ${invoices.status} <> 'void'
+    order by ${invoiceLines.labOrderLineId}, ${invoices.createdAt} desc, ${invoices.id} desc`);
+  return new Map(rows.map((r) => [r.lineId, { invoiceId: r.invoiceId, invoiceNumber: r.invoiceNumber }]));
+}
+
 const unitsDetail = {
   key: "products.units-detail", group: GROUP, title: "Units Sold Detail", paging: "server",
   description: "Every product line on lab orders received in the range, with its order and invoice.",
@@ -137,23 +154,18 @@ const unitsDetail = {
       code: labOrderLines.code, product: labOrderLines.name, qty: labOrderLines.qty,
     };
     const [count] = await rowsOf(tx, sql`select count(*) as "total" ${from} ${where}`);
-    // The line's invoice: the newest non-void invoice line billed for it (a reissue replaces a voided one).
     const raw = await rowsOf(tx, sql`
       select ${labOrderLines.id} as "lineId", ${labOrders.id} as "labOrderId", ${labOrders.orderNumber} as "orderNumber",
         ${labDayText(labOrders.receivedAt)} as "receivedDay", ${clientName} as "client", ${labOrderLines.code} as "code",
-        ${labOrderLines.name} as "product", ${labOrderLines.qty} as "qty", inv.id as "invoiceId", inv.invoice_number as "invoiceNumber"
+        ${labOrderLines.name} as "product", ${labOrderLines.qty} as "qty"
       ${from}
-      left join lateral (
-        select ${invoices.id} as id, ${invoices.invoiceNumber} as invoice_number
-        from ${invoiceLines} join ${invoices} on ${invoices.id} = ${invoiceLines.invoiceId}
-        where ${invoiceLines.labOrderLineId} = ${labOrderLines.id} and ${invoices.status} <> 'void'
-        order by ${invoices.createdAt} desc, ${invoices.id} desc limit 1
-      ) inv on true
       ${where}
       ${orderAndPage(ctx?.page, sorts, { id: "received", desc: true }, labOrderLines.id)}`);
+    const billed = await invoicesForLines(tx, raw.map((r) => r.lineId));
     const rows = raw.map((r) => ({
       lineId: r.lineId, labOrderId: r.labOrderId, orderNumber: r.orderNumber, received: r.receivedDay, client: r.client ?? null,
-      code: r.code ?? null, product: r.product, qty: num(r.qty), invoiceId: r.invoiceId ?? null, invoiceNumber: r.invoiceNumber ?? null,
+      code: r.code ?? null, product: r.product, qty: num(r.qty),
+      invoiceId: billed.get(r.lineId)?.invoiceId ?? null, invoiceNumber: billed.get(r.lineId)?.invoiceNumber ?? null,
     }));
     return { rows, total: num(count?.total) };
   },

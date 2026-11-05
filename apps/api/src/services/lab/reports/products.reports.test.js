@@ -69,12 +69,17 @@ test("price list is catalog variants with base price, active only by default", a
 test("units sold detail is server-paged, ordered with a line-id tiebreaker, and never selects patient data", async () => {
   const tx = fakeTx({ executes: [
     [{ total: "120" }],
-    [{ lineId: "l1", labOrderId: "o1", orderNumber: 50001, receivedDay: "2026-10-02", client: "One Dental", code: "2608", product: "Olmos Night", qty: "2", invoiceId: "i1", invoiceNumber: 7001 }],
+    [
+      { lineId: "l1", labOrderId: "o1", orderNumber: 50001, receivedDay: "2026-10-02", client: "One Dental", code: "2608", product: "Olmos Night", qty: "2" },
+      { lineId: "l2", labOrderId: "o2", orderNumber: 50002, receivedDay: "2026-10-03", client: "Two Dental", code: "2608", product: "Olmos Night", qty: "1" },
+    ],
+    [{ lineId: "l1", invoiceId: "i1", invoiceNumber: 7001 }],
   ] });
   const out = await report("products.units-detail").run(tx, { range: range("2026-10-01", "2026-10-31") }, null, page({ limit: 25, offset: 50, sort: { id: "qty", desc: true } }));
   assert.equal(out.total, 120);
   assert.deepEqual(out.rows[0], { lineId: "l1", labOrderId: "o1", orderNumber: 50001, received: "2026-10-02", client: "One Dental", code: "2608", product: "Olmos Night", qty: 2, invoiceId: "i1", invoiceNumber: 7001 });
-  const [count, rows] = executedSql(tx);
+  assert.equal(out.rows[1].invoiceId, null, "a line not billed yet has no invoice");
+  const [count, rows, billed] = executedSql(tx);
   for (const q of [count, rows]) {
     assert.match(q.text, /lab_order_lines\.note_only = false/);
     assert.match(q.text, /lab_orders\.status <> 'cancelled'/);
@@ -82,6 +87,13 @@ test("units sold detail is server-paged, ordered with a line-id tiebreaker, and 
   }
   assert.match(rows.text, /order by lab_order_lines\.qty desc nulls last, lab_order_lines\.id desc limit \$\d+ offset \$\d+/);
   assert.ok(rows.params.includes(25) && rows.params.includes(50));
+  // Found on real Postgres (bench): an invoice lookup inside the page query ran for every line in the
+  // range before the page was cut. It runs for the page's lines only, newest non-void invoice first.
+  assert.doesNotMatch(rows.text, /lateral|invoice_lines/);
+  assert.match(billed.text, /invoice_lines\.lab_order_line_id in \(\$\d+, \$\d+\)/);
+  assert.deepEqual(billed.params.slice(0, 2), ["l1", "l2"]);
+  assert.match(billed.text, /invoices\.status <> 'void'/);
+  assert.match(billed.text, /distinct on \(invoice_lines\.lab_order_line_id\)[\s\S]*order by invoice_lines\.lab_order_line_id, invoices\.created_at desc, invoices\.id desc/);
   const cols = Object.fromEntries(report("products.units-detail").columns.map((c) => [c.id, c]));
   assert.equal(cols.orderNumber.link, "/lab/orders/{labOrderId}");
   // Staff can run this report; the invoice page is admin only, so the number is plain text.

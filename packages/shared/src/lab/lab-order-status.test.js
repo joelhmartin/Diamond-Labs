@@ -68,6 +68,23 @@ test("the lab's today is computed in the lab's timezone", () => {
   assert.equal(isoDateIn("America/Chicago", new Date("2026-10-08T03:00:00Z")), "2026-10-07");
 });
 
+test("isoDateIn builds one formatter per zone, not one per call", () => {
+  // Found by the reports bench: statements call this per ledger row, and a new
+  // Intl.DateTimeFormat per call made the 21k-row statements summary take 1.6 s.
+  const Real = Intl.DateTimeFormat;
+  let built = 0;
+  Intl.DateTimeFormat = function (...args) { built += 1; return new Real(...args); };
+  try {
+    const days = Array.from({ length: 50 }, (_, i) => isoDateIn("Pacific/Auckland", new Date(Date.UTC(2026, 0, 1, i))));
+    assert.equal(days[0], "2026-01-01");
+    assert.equal(days[11], "2026-01-02"); // 11:00 UTC = midnight in Auckland (UTC+13)
+    assert.equal(isoDateIn("UTC", new Date("2026-10-08T03:00:00Z")), "2026-10-08");
+    assert.ok(built <= 2, `built ${built} formatters`);
+  } finally {
+    Intl.DateTimeFormat = Real;
+  }
+});
+
 test("doctors see production in plain words", () => {
   assert.equal(doctorStatusFor({ caseStatus: "released", labOrderStatus: "received" }), "Received");
   for (const s of ["in_production", "quality_check", "ready_to_ship"]) {
