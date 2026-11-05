@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import gsap from "gsap";
 import { prefersReducedMotion } from "../../lib/reducedMotion";
+import { HeroStage } from "./HeroStage";
 
 /* Hero intro: staggered rise of [data-hero-anim] children. Does nothing under
    reduced motion. Returns the gsap context so the caller can revert it. */
@@ -18,14 +19,14 @@ export function playHeroIntro(root) {
   }, root);
 }
 
-/* Shared interior-page hero. Two variants, both dark from the top edge so the
-   white nav stays legible:
-     image   — navy base, left-weighted scrim over a photo, min-h-[60dvh],
-               content anchored bottom-left.
-     compact — solid navy, short, left-aligned.
+/* Shared interior-page hero, on the home hero's backdrop so every page opens
+   the same way. Dark from the top edge so the white nav stays legible.
+     product — transparent appliance cut-out, right of the text at lg+ and below
+               it on smaller screens.
+     image   — full-bleed photo under a left-weighted scrim, for real lab photos.
    Content is only hidden from inside the effect (gsap.from), so with
    prefers-reduced-motion — or before JS runs — it is fully visible. */
-export function PageHero({ variant = "compact", title, titleAccent, intro, image, imageAlt = "", children }) {
+export function PageHero({ variant = "compact", title, titleAccent, intro, image, imageAlt = "", product, productAlt = "", children }) {
   const ref = useRef(null);
   const isImage = variant === "image";
 
@@ -39,8 +40,9 @@ export function PageHero({ variant = "compact", title, titleAccent, intro, image
       ref={ref}
       className={`relative overflow-hidden bg-navy section-pad ${
         isImage ? "min-h-[60dvh] flex items-end pt-36 pb-12 md:pb-16" : "pt-36 pb-16"
-      }`}
+      } ${product ? "lg:min-h-[640px] lg:flex lg:items-center" : ""}`}
     >
+      {!isImage && <HeroStage />}
       {isImage && image && (
         <>
           <img src={image} alt={imageAlt} className="absolute inset-0 h-full w-full object-cover" />
@@ -49,7 +51,7 @@ export function PageHero({ variant = "compact", title, titleAccent, intro, image
         </>
       )}
       <div className="relative z-10 w-full max-w-6xl mx-auto">
-        <div className="max-w-3xl">
+        <div className={product ? "lg:max-w-[52%]" : "max-w-3xl"}>
           <h1 data-hero-anim className="text-on-dark">
             <span className="block font-heading font-bold text-4xl md:text-6xl tracking-tight leading-[1.02]">
               {title}
@@ -71,6 +73,16 @@ export function PageHero({ variant = "compact", title, titleAccent, intro, image
             </div>
           )}
         </div>
+        {product && (
+          <div className="mt-10 lg:mt-0 lg:absolute lg:right-0 lg:top-1/2 lg:-translate-y-1/2 lg:w-[46%] pointer-events-none">
+            <img
+              data-hero-anim
+              src={product}
+              alt={productAlt}
+              className="block w-[80%] max-w-[420px] mx-auto lg:w-full lg:max-w-none h-auto object-contain drop-shadow-[0_30px_50px_rgba(0,20,60,0.45)]"
+            />
+          </div>
+        )}
       </div>
     </section>
   );

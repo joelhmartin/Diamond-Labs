@@ -129,32 +129,6 @@ function CertifiedLabs() {
   );
 }
 
-function DrOlmosFeature() {
-  return (
-    <Reveal className="section-pad py-16 md:py-20">
-      <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_2fr] lg:grid-cols-[minmax(0,1fr)_3fr] gap-8 items-center">
-        <img
-          src="/images/dr-olmos.jpg"
-          alt="Dr. Steven Olmos"
-          className="w-full max-w-[16rem] sm:max-w-none rounded-full object-cover aspect-square"
-          width="900"
-          height="900"
-          loading="lazy"
-        />
-        <div className="max-w-xl">
-          <p className="text-navy/70 text-lg leading-relaxed">
-            We work with Dr. Steven Olmos, creator of the Olmos Series appliances and founder of TMJ &amp; Sleep
-            Therapy Centres International.
-          </p>
-          <Link to="/about/dr-olmos" className={`mt-4 ${textLink}`}>
-            About Dr. Olmos <ArrowRight size={16} />
-          </Link>
-        </div>
-      </div>
-    </Reveal>
-  );
-}
-
 export function AboutPage() {
   return (
     <>
@@ -170,7 +144,6 @@ export function AboutPage() {
       <Values />
       <ImagingTechnology />
       <CertifiedLabs />
-      <DrOlmosFeature />
       <CtaBand
         title="Work with the lab"
         intro="Ask about an appliance, a case in progress or setting up an account."

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { playOnView } from "../../lib/playOnView";
+import { HeroStage } from "../../components/marketing/HeroStage";
 import { CtaBand } from "../../components/marketing/CtaBand.jsx";
 import LottiePlayer from "../../components/ui/LottiePlayer";
 import {
@@ -49,18 +50,7 @@ function Hero() {
       ref={heroRef}
       className="relative min-h-[100dvh] flex items-end overflow-hidden section-pad"
     >
-      {/* Background stage */}
-      <div className="absolute inset-0 bg-gradient-to-br from-navy to-navy-dark overflow-hidden">
-        {/* Animated Diamond SVGs / Divs */}
-        <div className="absolute top-[-10%] left-[-5%] w-[40vw] h-[40vw] bg-brand-500/20 opacity-30 animate-float-1 mix-blend-screen" />
-        <div className="absolute top-[20%] right-[-10%] w-[50vw] h-[50vw] bg-brand-400/20 opacity-40 animate-float-2 mix-blend-screen" style={{ animationDelay: "-1s" }} />
-        <div className="absolute bottom-[-15%] left-[20%] w-[45vw] h-[45vw] bg-brand-500/15 opacity-20 animate-float-3 mix-blend-screen" style={{ animationDelay: "-2s" }} />
-        <div className="absolute top-[40%] left-[60%] w-[25vw] h-[25vw] bg-brand-300/20 opacity-30 animate-float-1 mix-blend-screen" style={{ animationDelay: "-1.5s" }} />
-
-        {/* Gradient overlays for readability */}
-        <div className="absolute inset-0 bg-gradient-to-r from-navy/60 via-navy/30 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-t from-navy/80 via-transparent to-transparent" />
-      </div>
+      <HeroStage />
 
       {/* Content */}
       <div className="relative z-10 pt-44 pb-12 md:pt-48 md:pb-16 lg:pt-36 lg:pb-24 w-full max-w-6xl mx-auto">

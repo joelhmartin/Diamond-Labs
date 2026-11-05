@@ -1,9 +1,10 @@
-import { Archive, Gauge, Layers } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Archive, ArrowRight, Gauge, Layers } from "lucide-react";
 import { PageHero } from "../../components/marketing/PageHero";
 import { SectionHeading } from "../../components/marketing/SectionHeading";
 import { CtaBand } from "../../components/marketing/CtaBand";
 import { Reveal } from "../../components/marketing/Reveal";
-import { DefinitionGrid } from "../../components/marketing/DefinitionGrid";
+import { HeroStage } from "../../components/marketing/HeroStage";
 
 const PIPELINE = [
   {
@@ -56,25 +57,32 @@ const ADVANTAGES = [
   },
 ];
 
+const APPLIANCES = [
+  { name: "Diamond Digital Sleep Orthotic", short: "DDSO", image: "/images/ddso-post-iso.webp", to: "/services/sleep" },
+  { name: "Olmos Neuromuscular Device", short: "OND", image: "/images/ond-overview.webp", to: "/services/tmd" },
+  { name: "Olmos Neuromuscular Positioner", short: "ONP", image: "/images/onp-nylon4.webp", to: "/services/tmd" },
+];
+
 function Pipeline() {
   return (
-    <Reveal className="section-pad py-20 md:py-24">
-      <div className="max-w-6xl mx-auto">
-        <SectionHeading title="Every digital case follows the same six stages" />
-        <ol className="mt-10 max-w-3xl divide-y divide-navy/15 border-y border-navy/15">
+    <Reveal className="relative overflow-hidden section-pad py-24 md:py-32 bg-navy">
+      <HeroStage />
+      <div className="relative z-10 max-w-6xl mx-auto">
+        <h2 className="max-w-3xl font-heading font-bold text-3xl md:text-5xl tracking-tight text-on-dark">
+          Every digital case follows the same six stages
+        </h2>
+        <ol className="mt-12 grid md:grid-cols-2 lg:grid-cols-3 gap-5">
           {PIPELINE.map((s, i) => (
-            <li key={s.title} className="flex gap-5 md:gap-8 py-6">
-              <span
-                aria-hidden="true"
-                className="font-heading font-bold text-3xl md:text-4xl text-brand-700 w-10 md:w-14 flex-shrink-0 leading-none"
-              >
+            <li
+              key={s.title}
+              className="flex flex-col rounded-[2rem] bg-white/[0.07] border border-white/10 backdrop-blur-sm p-7"
+            >
+              <span aria-hidden="true" className="font-drama italic text-6xl leading-none text-brand-400">
                 {i + 1}
               </span>
-              <div>
-                <h3 className="font-heading font-bold text-xl tracking-tight text-navy">{s.title}</h3>
-                <p className="mt-2 text-navy/70 leading-relaxed">{s.body}</p>
-                <p className="mt-2 text-sm text-navy/70">{s.detail}</p>
-              </div>
+              <h3 className="mt-5 font-heading font-bold text-xl tracking-tight text-on-dark">{s.title}</h3>
+              <p className="mt-3 text-on-dark/75 leading-relaxed">{s.body}</p>
+              <p className="mt-auto pt-5 text-sm text-on-dark/60">{s.detail}</p>
             </li>
           ))}
         </ol>
@@ -85,10 +93,61 @@ function Pipeline() {
 
 function Advantages() {
   return (
-    <Reveal className="section-pad py-20 md:py-24 bg-surface-100">
+    <Reveal className="section-pad py-24 md:py-32">
+      <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+        <figure>
+          <img
+            src="/images/ddso-kit.webp"
+            alt="A finished DDSO appliance with its case, cleaning kit and patient instructions"
+            className="w-full rounded-[2.5rem] object-cover shadow-xl shadow-navy/15"
+          />
+          <figcaption className="mt-4 text-sm text-navy/70">
+            Appliances ship with a care kit and insertion instructions.
+          </figcaption>
+        </figure>
+        <div>
+          <SectionHeading title="What you gain from an end-to-end digital pipeline" />
+          <ul className="mt-10 space-y-8">
+            {ADVANTAGES.map(({ Icon, title, body }) => (
+              <li key={title} className="flex gap-5">
+                <span className="flex-shrink-0 grid place-items-center w-12 h-12 rounded-2xl bg-brand-100 text-brand-700">
+                  <Icon size={22} aria-hidden="true" />
+                </span>
+                <div>
+                  <h3 className="font-heading font-bold text-lg tracking-tight text-navy">{title}</h3>
+                  <p className="mt-2 text-navy/70 leading-relaxed">{body}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </Reveal>
+  );
+}
+
+function Appliances() {
+  return (
+    <Reveal className="section-pad pb-8">
       <div className="max-w-6xl mx-auto">
-        <SectionHeading title="What you gain from an end-to-end digital pipeline" />
-        <DefinitionGrid items={ADVANTAGES.map((a) => ({ term: a.title, body: a.body, Icon: a.Icon }))} />
+        <SectionHeading title="Appliances we make this way" />
+        <ul className="mt-10 grid md:grid-cols-3 gap-5">
+          {APPLIANCES.map((a) => (
+            <li key={a.short}>
+              <Link
+                to={a.to}
+                className="group flex flex-col h-full rounded-[2rem] bg-white border border-surface-300/60 shadow-sm p-7 hover:shadow-xl hover:shadow-navy/10 transition-shadow duration-300"
+              >
+                <img src={a.image} alt={a.name} className="h-44 w-full object-contain transition-transform duration-500 group-hover:scale-105" />
+                <span className="mt-6 font-heading font-bold text-xl tracking-tight text-navy">{a.short}</span>
+                <span className="mt-1 flex items-center justify-between gap-3 text-navy/70 text-sm">
+                  {a.name}
+                  <ArrowRight size={16} className="text-brand-700 flex-shrink-0 group-hover:translate-x-1 transition-transform" />
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
       </div>
     </Reveal>
   );
@@ -98,20 +157,22 @@ export function DigitalWorkflowPage() {
   return (
     <>
       <PageHero
-        variant="image"
         title="Scan to ship"
         titleAccent="in 10 business days."
         intro="A fully digital fabrication pipeline. Digital cases follow the same six stages, and printed appliances are archived for reprint."
-        image="/images/ddso-full.webp"
-        imageAlt="A 3D-printed DDSO sleep appliance on a stainless steel bench in the Diamond lab"
+        product="/images/ddso-isometric.webp"
+        productAlt="A DDSO sleep appliance on a blue printed dental model"
       />
       <Pipeline />
       <Advantages />
+      <Appliances />
       <CtaBand
         title="Send a case"
         intro="Approved doctors send scans through the Rx form in the account portal, and we'll confirm receipt within one business day."
         primary={{ label: "Submit Digital Rx", to: "/submit-case" }}
         secondary={{ label: "Rx instructions", to: "/resources/rx-instructions" }}
+        product="/images/ddso-post-iso.webp"
+        productAlt="A DDSO sleep appliance"
       />
     </>
   );
