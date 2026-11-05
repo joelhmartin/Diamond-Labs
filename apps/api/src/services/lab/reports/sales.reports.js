@@ -39,7 +39,7 @@ const comparison = {
 
 const summary = {
   key: "sales.summary", group: GROUP, roles: ADMIN, featured: true, title: "Sales Summary",
-  description: "Gross, discounts, net sales, tax, shipping and total for the range and the period before it. Net is the sales figure.",
+  description: "Gross, discounts, net sales, tax, shipping and total for the range and the period it compares with: the same period one back for month, quarter or year to date, last month, last year and last 12 months; the equal-length period just before for other ranges. Net is the sales figure.",
   params: [RANGE],
   columns: [
     { id: "period", label: "Period", type: "text" }, { id: "from", label: "From", type: "date" }, { id: "to", label: "To", type: "date" },

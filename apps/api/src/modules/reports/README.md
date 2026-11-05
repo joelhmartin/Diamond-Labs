@@ -62,7 +62,12 @@ index leaves it out of every section.
 `paramsSchema(def).parse(query, { now, tz })` coerces query strings, applies
 defaults and rejects bad values. Each `dateRange` comes back as
 `{ from, to, previous }`, resolved on the calendar day in `tz` (the app's
-timezone, not UTC). Custom ranges are checked for `from <= to` and `maxDays`.
+timezone, not UTC); both ends are inclusive. `previous` is the period to
+compare with: for `mtd`, `qtd`, `ytd`, `lastMonth`, `lastYear` and `last12m`
+the matching calendar period one back (days clamped to the month's length),
+for the rolling presets and custom ranges the equal-length window just
+before. `resolvePreset(preset, day)` gives the same `{ from, to, previous }`
+for a known day. Custom ranges are checked for `from <= to` and `maxDays`.
 
 `activityHealth({ recent, baseline, lastAt, asOf }, { inactiveDays, declining, stable })`
 returns `{ band: "healthy" | "stable" | "declining" | "inactive", trend, isNew }`.

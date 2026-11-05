@@ -7,7 +7,7 @@ import { resolveDashboard, createDashboardCache } from "../../../modules/reports
 import { fakeTx, fakeDb } from "../../../test/fake-tx.js";
 import { executedSql } from "../../../test/sql-text.js";
 import { registerLabReports } from "./index.js";
-import { LAB_METRICS, sameDayLastYear, monthToDateBefore, reportHref } from "./dashboards.js";
+import { LAB_METRICS, reportHref } from "./dashboards.js";
 
 const boss = { id: "u1", role: "admin" };
 const lab = { id: "u2", role: "lab" };
@@ -56,8 +56,6 @@ test("dashboards: Pulse first, Insights and Sales admin only; every tile resolve
 });
 
 test("sales.ytd previous is the same day-of-year last year", async () => {
-  assert.equal(sameDayLastYear("2026-11-05"), "2025-11-05");
-  assert.equal(sameDayLastYear("2028-02-29"), "2027-02-28");
   const tx = fakeTx({ executes: [[{ cents: "500000" }], [{ cents: "400000" }]] });
   const out = await metric("sales.ytd").run(tx, {}, boss, ctx());
   assert.equal(out.value, 500000);
@@ -74,14 +72,19 @@ test("sales.ytd previous is the same day-of-year last year", async () => {
 });
 
 test("sales.mtd is dollars with the invoice count as detail; previous is the same days last month", async () => {
-  assert.deepEqual(monthToDateBefore("2026-11-05"), { from: "2026-10-01", to: "2026-10-05" });
-  assert.deepEqual(monthToDateBefore("2026-03-31"), { from: "2026-02-01", to: "2026-02-28" });
   const tx = fakeTx({ executes: [[{ day: "2026-11-02", cents: "1000", invoices: "2" }, { day: "2026-11-04", cents: "500", invoices: "1" }], [{ cents: "900" }]] });
   const out = await metric("sales.mtd").run(tx, {}, boss, ctx());
   assert.deepEqual(out, {
     value: 1500, previous: 900, format: "money", href: "/reports/sales.daily?p.range=mtd",
     detail: [{ id: "invoices", label: "invoices", value: 3 }],
   });
+  const [days, before] = executedSql(tx);
+  assert.ok(days.params.includes("2026-11-01") && days.params.includes("2026-11-05"));
+  assert.ok(before.params.includes("2026-10-01") && before.params.includes("2026-10-05"));
+  // Month-end clamp: Mar 31 compares with Feb 1..Feb 28.
+  const clamp = fakeTx({ executes: [[], [{ cents: "1" }]] });
+  await metric("sales.mtd").run(clamp, {}, boss, ctx({ today: "2026-03-31" }));
+  assert.ok(executedSql(clamp)[1].params.includes("2026-02-28"));
 });
 
 test("insights.active-clients value excludes inactive, and the data carries declining and inactive counts", async () => {

@@ -14,7 +14,7 @@
  * actor.id. Each metric returns `{ value, previous, format, href, detail? }`;
  * `detail` is a list of `{ id, label, value }` counts shown under the value.
  */
-import { addDays } from "@my-app/shared";
+import { addDays, resolvePreset } from "@my-app/shared";
 import { CLIENT_LINK, ORDER_LINK, labToday, salesByDay, salesCents } from "./lab-metrics.js";
 import {
   atRiskOrders, boardDayCounts, dueByDay, openUnitsByCategory, ordersByDay, shippedByDay, statusBadge, turnaroundAverage, turnaroundByWeek, weekStart,
@@ -36,21 +36,6 @@ export function reportHref(key, params = {}) {
 }
 
 const stat = (value, { previous = null, format = "int", href, detail } = {}) => ({ value, previous, format, href, ...(detail ? { detail } : {}) });
-
-/** The same month and day a year earlier; Feb 29 becomes Feb 28. */
-export function sameDayLastYear(day) {
-  const [y, m, d] = day.split("-");
-  return `${Number(y) - 1}-${m}-${m === "02" && d === "29" ? "28" : d}`;
-}
-
-/** Last month's days 1..today's day (capped at that month's last day). */
-export function monthToDateBefore(day) {
-  const first = `${day.slice(0, 7)}-01`;
-  const lastOfPrev = addDays(first, -1);
-  const from = `${lastOfPrev.slice(0, 7)}-01`;
-  const sameDay = `${lastOfPrev.slice(0, 7)}-${day.slice(8)}`;
-  return { from, to: sameDay < lastOfPrev ? sameDay : lastOfPrev };
-}
 
 const asOfOf = (ctx) => ctx?.now ?? new Date();
 
@@ -107,13 +92,12 @@ const SALES_METRICS = [
     },
   },
   {
-    // Previous = Jan 1 .. the same month/day last year.
+    // The ytd preset: previous = Jan 1 .. the same day last year (resolvePreset, as the report pickers compare).
     key: "sales.ytd", roles: ADMIN,
     async run(tx, _params, _actor, ctx) {
-      const today = labToday(ctx);
-      const lastYear = sameDayLastYear(today);
-      const value = await salesCents(tx, { from: `${today.slice(0, 4)}-01-01`, to: today });
-      const previous = await salesCents(tx, { from: `${lastYear.slice(0, 4)}-01-01`, to: lastYear });
+      const ytd = resolvePreset("ytd", labToday(ctx));
+      const value = await salesCents(tx, ytd);
+      const previous = await salesCents(tx, ytd.previous);
       return stat(value, { previous, format: "money", href: reportHref("sales.comparison") });
     },
   },
@@ -121,9 +105,9 @@ const SALES_METRICS = [
     // $ month to date, with its invoice count (one invoice per order) as detail. Previous = the same days last month.
     key: "sales.mtd", roles: ADMIN,
     async run(tx, _params, _actor, ctx) {
-      const today = labToday(ctx);
-      const days = await salesByDay(tx, { from: `${today.slice(0, 7)}-01`, to: today });
-      const previous = await salesCents(tx, monthToDateBefore(today));
+      const mtd = resolvePreset("mtd", labToday(ctx));
+      const days = await salesByDay(tx, mtd);
+      const previous = await salesCents(tx, mtd.previous);
       return stat(sumOf(days, "cents"), {
         previous, format: "money", href: reportHref("sales.daily", { range: "mtd" }),
         detail: [{ id: "invoices", label: "invoices", value: sumOf(days, "invoices") }],

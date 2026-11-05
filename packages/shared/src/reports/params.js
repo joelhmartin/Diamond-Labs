@@ -81,23 +81,64 @@ function presetRange(preset, today) {
   }
 }
 
-/**
- * Resolve a preset name or custom { from, to } into inclusive "YYYY-MM-DD"
- * ends plus the equal-length period immediately before (`previous`).
- */
-export function resolveDateRange(value, now, tz = "UTC", { maxDays } = {}) {
-  let from;
-  let to;
-  if (typeof value === "string") {
-    const r = presetRange(value, localDay(now, tz));
-    if (!r) throw new Error(`Unknown date preset "${value}"`);
-    [from, to] = r;
-  } else {
-    const problem = checkCustomRange(value, { maxDays });
-    if (problem) throw new Error(problem);
-    ({ from, to } = value);
-  }
+/** The same day `n` months earlier, clamped to that month's length (Mar 31 − 1 month = Feb 28; Feb 29 − 12 = Feb 28). */
+function monthsBack(iso, n) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const lastDay = Number(ymd(y, m - n + 1, 0).slice(8));
+  return ymd(y, m - n, Math.min(d, lastDay));
+}
+
+/** The equal-length window immediately before inclusive from..to. */
+function windowBefore(from, to) {
   const len = toNum(to) - toNum(from) + 1;
   const prevTo = addDays(from, -1);
-  return { from, to, previous: { from: addDays(prevTo, -(len - 1)), to: prevTo } };
+  return { from: addDays(prevTo, -(len - 1)), to: prevTo };
+}
+
+/**
+ * The comparison period for a preset. Calendar presets compare with the
+ * matching calendar period one period back; rolling presets with the
+ * equal-length window immediately before.
+ *   mtd        the same days of the prior month (day clamped to its length)
+ *   qtd        the same days into the prior quarter (clamped)
+ *   ytd        the same days last year (Feb 29 -> Feb 28)
+ *   lastMonth  the whole month before; lastYear the year before
+ *   last12m    the 12 whole months before the window
+ */
+function previousFor(preset, today, from, to) {
+  const [y, m] = today.split("-").map(Number);
+  switch (preset) {
+    case "mtd": return { from: ymd(y, m - 1, 1), to: monthsBack(today, 1) };
+    case "qtd": return { from: monthsBack(from, 3), to: monthsBack(today, 3) };
+    case "ytd": return { from: ymd(y - 1, 1, 1), to: monthsBack(today, 12) };
+    case "lastMonth": return { from: ymd(y, m - 2, 1), to: addDays(ymd(y, m - 1, 1), -1) };
+    case "lastYear": return { from: ymd(y - 2, 1, 1), to: ymd(y - 2, 12, 31) };
+    case "last12m": return { from: ymd(y, m - 23, 1), to: addDays(from, -1) };
+    default: return windowBefore(from, to); // today, yesterday, last7, last30
+  }
+}
+
+/** A preset on a given day ("YYYY-MM-DD"): `{ from, to, previous }`, or null for an unknown preset. */
+export function resolvePreset(preset, today) {
+  const r = presetRange(preset, today);
+  if (!r) return null;
+  const [from, to] = r;
+  return { from, to, previous: previousFor(preset, today, from, to) };
+}
+
+/**
+ * Resolve a preset name or custom { from, to } into inclusive "YYYY-MM-DD"
+ * ends plus the period to compare with (`previous`): for a calendar preset the
+ * matching calendar period one period back (previousFor), for a rolling preset
+ * or a custom range the equal-length window immediately before.
+ */
+export function resolveDateRange(value, now, tz = "UTC", { maxDays } = {}) {
+  if (typeof value === "string") {
+    const r = resolvePreset(value, localDay(now, tz));
+    if (!r) throw new Error(`Unknown date preset "${value}"`);
+    return r;
+  }
+  const problem = checkCustomRange(value, { maxDays });
+  if (problem) throw new Error(problem);
+  return { from: value.from, to: value.to, previous: windowBefore(value.from, value.to) };
 }
