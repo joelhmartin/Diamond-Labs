@@ -6,7 +6,8 @@ import { prefersReducedMotion } from "../../lib/reducedMotion";
 /* Fade-and-rise once when `el` scrolls into view. Skipped entirely under
    reduced motion. Returns a cleanup function. Content is only hidden from
    inside this function (never in markup), and playOnView uses a live
-   IntersectionObserver so it still reveals after route changes or fast scrolls. */
+   IntersectionObserver so it still reveals after route changes or fast scrolls.
+   threshold 0 so a section taller than the viewport still reveals once it touches it. */
 export function revealOnView(el) {
   if (!el || prefersReducedMotion()) return () => {};
   let stop;
@@ -16,7 +17,7 @@ export function revealOnView(el) {
       { y: 40, opacity: 0 },
       { y: 0, opacity: 1, duration: 0.8, ease: "power3.out", paused: true }
     );
-    stop = playOnView(el, tween);
+    stop = playOnView(el, tween, { threshold: 0 });
   }, el);
   return () => {
     stop?.();

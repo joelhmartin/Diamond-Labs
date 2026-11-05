@@ -61,10 +61,6 @@ const SOCIALS = [
   { icon: Youtube, href: "https://youtube.com/@diamondorthotic", label: "YouTube" },
 ];
 
-/* Pages that open on a light section (no dark hero behind the nav) — the nav
-   stays in its frosted/navy-text state on these even at the top. */
-const HEROLESS_ROUTES = ["/services/tmd", "/services/sleep"];
-
 /* ─── Desktop nav item (with optional dropdown) ─── */
 function NavItem({ link, scrolled, isActive }) {
   const [open, setOpen] = useState(false);
@@ -357,10 +353,7 @@ export function Navbar() {
   const mobileMenuRef = useRef(null);
 
   const [hasScrolled, setHasScrolled] = useState(false);
-  const isHeroless = HEROLESS_ROUTES.some(
-    (p) => location.pathname === p || location.pathname.startsWith(p + "/")
-  );
-  const scrolled = hasScrolled || isHeroless;
+  const scrolled = hasScrolled;
 
   useEffect(() => {
     const onScroll = () => setHasScrolled(window.scrollY > 80);
