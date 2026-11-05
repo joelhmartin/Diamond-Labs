@@ -1,5 +1,7 @@
 import { canRemake, allowedNextStatuses, reasonRequiredFor, isTerminalLabStatus, isOverdue, LAB_STATUS_LABELS } from "@my-app/shared";
 import { canRelease } from "../rx/case-gates.js";
+// lab-scheduling.js imports parseDueDate back from here; both only call each other's functions at run time.
+import { scheduleFlags } from "./lab-scheduling.js";
 
 /**
  * Pure rules for lab orders: numbering, and turning a released Rx case, a
@@ -265,8 +267,10 @@ export function summariseLabLines(lines) {
  * One card on the production board. Built from an allow-list: hold reasons
  * and lab notes (encrypted on the row) never reach the list endpoint.
  */
-export function presentBoardCard(row, lines = [], todayIso) {
+export function presentBoardCard(row, lines = [], todayIso, { plan = null, calendar = undefined } = {}) {
   const o = row.order;
+  // An order with no saved plan (legacy, pre-scheduling) is never "behind", but is still at risk by its due date.
+  const { behind, atRisk } = scheduleFlags(o, plan, todayIso, calendar);
   return {
     id: o.id,
     orderNumber: o.orderNumber,
@@ -289,6 +293,9 @@ export function presentBoardCard(row, lines = [], todayIso) {
     assigneeUserId: o.assigneeUserId ?? null,
     assigneeInitials: initialsFor(row.assigneeName),
     overdue: isOverdue(o.dueDate, o.status, todayIso),
+    behind,
+    atRisk,
+    workflowName: plan?.workflowName ?? null,
     receivedAt: o.receivedAt,
   };
 }

@@ -20,6 +20,9 @@ export const LAB_BOARD_COLUMNS = [
   "received", "in_production", "quality_check", "ready_to_ship", "on_hold", "shipped",
 ];
 
+/** The production board's schedule tiles; each is also a `tile` filter on the order list. */
+export const LAB_BOARD_TILES = ["past_due", "due_today", "due_tomorrow", "on_hold", "at_risk"];
+
 export const TERMINAL_LAB_STATUSES = ["shipped", "cancelled"];
 export const REASON_REQUIRED_STATUSES = ["on_hold", "cancelled"];
 

@@ -1,5 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
+import { LAB_BOARD_TILES } from "../lab/lab-order-status.js";
 import {
   labStatusChangeSchema, labFieldChangeSchema, labRemakeSchema, labOrderListQuerySchema,
   labDepartmentUpdateSchema, rxReleaseSchema, userRoleChangeSchema, labWorkflowChangeSchema, labSchedulePreviewQuerySchema,
@@ -43,6 +44,14 @@ test("board query strings become typed filters", () => {
   assert.deepEqual(q, { rush: true, includeClosed: false, dueBefore: "2026-10-10", q: "RX" });
   assert.deepEqual(labOrderListQuerySchema.parse({}), { rush: false, includeClosed: false });
   assert.equal(labOrderListQuerySchema.safeParse({ status: "nope" }).success, false);
+});
+
+test("tile must be one of LAB_BOARD_TILES, and dueOn a real date", () => {
+  assert.deepEqual(LAB_BOARD_TILES, ["past_due", "due_today", "due_tomorrow", "on_hold", "at_risk"]);
+  for (const tile of LAB_BOARD_TILES) assert.equal(labOrderListQuerySchema.parse({ tile }).tile, tile);
+  assert.equal(labOrderListQuerySchema.safeParse({ tile: "overdue" }).success, false);
+  assert.equal(labOrderListQuerySchema.parse({ dueOn: "2026-11-12" }).dueOn, "2026-11-12");
+  assert.equal(labOrderListQuerySchema.safeParse({ dueOn: "11/12/2026" }).success, false);
 });
 
 test("a department update must change something", () => {

@@ -5,7 +5,7 @@ import { DEFAULT_CALENDAR, businessDaysBetween } from "../../modules/business-ca
 import { getCalendar } from "../../modules/business-calendar/service.js";
 import { behindSchedule } from "../../modules/workflows/index.js";
 import { createWorkflowsService } from "../../modules/workflows/service.js";
-import { parseDueDate } from "./lab-order-rules.js";
+import { LabOrderError, parseDueDate } from "./lab-order-rules.js";
 
 /**
  * Lab glue for the generic business-calendar and workflows modules: which
@@ -75,6 +75,21 @@ export async function saveSchedule(tx, labOrderId, plan) {
 /** The saved plan of one lab order, or null. `exec` is a db or a transaction. */
 export async function scheduleOf(exec, labOrderId) {
   return (await createWorkflowsService(exec).plansFor(LAB_RECORD_TYPE, [labOrderId])).get(labOrderId) ?? null;
+}
+
+/** Saved plans for many lab orders at once: Map<orderId, plan>. */
+export function schedulesOf(exec, labOrderIds) {
+  return createWorkflowsService(exec).plansFor(LAB_RECORD_TYPE, labOrderIds);
+}
+
+/**
+ * A staff-chosen workflow must be active. Inactive templates still resolve
+ * for remakes of orders already planned on them (workflows service), but
+ * cannot be picked for an existing order. An unknown key is left to the planner.
+ */
+export async function assertWorkflowActive(tx, workflowKey) {
+  const template = await createWorkflowsService(tx).getWorkflow(workflowKey);
+  if (template && template.active === false) throw new LabOrderError("INVALID", "That workflow is inactive.");
 }
 
 /**

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { id, isoDate, pageQueryShape } from "./common.schema.js";
-import { LAB_ORDER_STATUSES, LAB_ORDER_SOURCES } from "../lab/lab-order-status.js";
+import { LAB_ORDER_STATUSES, LAB_ORDER_SOURCES, LAB_BOARD_TILES } from "../lab/lab-order-status.js";
 import { ROLE_CHANGE_CHOICES } from "../constants/user-roles.js";
 import { workflowPreviewSchema } from "../workflows/workflow.schema.js";
 
@@ -41,6 +41,8 @@ export const labOrderListQuerySchema = z.object({
   assigneeUserId: id.optional(),
   rush: flag,
   dueBefore: isoDate.optional(),
+  dueOn: isoDate.optional(),
+  tile: z.enum(LAB_BOARD_TILES).optional(),
   q: z.string().trim().max(100).optional(),
   includeClosed: flag,
   ...pageQueryShape,

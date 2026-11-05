@@ -7,6 +7,7 @@ import { calendarRoutes, calendarErrorReply } from "../modules/business-calendar
 import { workflowRoutes, workflowErrorReply } from "../modules/workflows/routes.js";
 import * as labOrdersService from "../services/lab/lab-orders.service.js";
 import { defaultDueAt, LAB_MILESTONES } from "../services/lab/lab-scheduling.js";
+import { boardTiles, labLoadCounts } from "../services/lab/lab-schedule-queries.js";
 import { STAFF } from "./lab.routes.js";
 import { run, audit, labRouteErrorReply } from "./lab-route-helpers.js";
 
@@ -21,13 +22,17 @@ const mapError = (err) => labRouteErrorReply(err) ?? workflowErrorReply(err) ?? 
 
 export default async function labSchedulingRoutes(fastify) {
   await fastify.register(calendarRoutes, {
-    db, readGuard: STAFF, writeGuard: ADMIN,
+    db, readGuard: STAFF, writeGuard: ADMIN, loadCounts: labLoadCounts,
     onAudit: (request, action, targetId, metadata) => audit(request, action, targetId, metadata, "calendar"),
   });
   await fastify.register(workflowRoutes, {
     db, readGuard: STAFF, writeGuard: ADMIN, milestones: LAB_MILESTONES,
     onAudit: (request, action, targetId, metadata) => audit(request, action, targetId, metadata, "workflow"),
   });
+
+  // The production board's schedule tiles: counts over every open order.
+  fastify.get("/lab/schedule/tiles", { preHandler: STAFF }, (_request, reply) =>
+    run(reply, () => boardTiles(db), 200, mapError));
 
   // A dry run of the due-date rules for staff order entry (piece 6): nothing is written.
   fastify.get("/lab/schedule/preview", { preHandler: [...STAFF, validateQuery(labSchedulePreviewQuerySchema)] }, (request, reply) =>

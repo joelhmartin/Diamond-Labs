@@ -316,7 +316,7 @@ const openRow = {
 test("changeWorkflow replans from receivedAt, patches the due date, logs a workflow event and saves the plan", async () => {
   const w7 = wf("7d-1-device", 7);
   const tx = fakeTx({
-    selects: [[openRow], [planRow()], [CAL_ROW], [], [w7], stages(w7)],
+    selects: [[openRow], [w7], stages(w7), [planRow()], [CAL_ROW], [], [w7], stages(w7)], // order, the active check, then the replan
     updates: [[{ ...openRow, version: 4, dueDate: "2026-11-11" }]],
   });
   const out = await mod.changeWorkflow("lo-1", { workflowKey: "7d-1-device", keepDueDate: false, expectedVersion: 3, byUserId: "u1" }, fakeDb(tx));
@@ -335,7 +335,7 @@ test("changeWorkflow replans from receivedAt, patches the due date, logs a workf
 test("changeWorkflow with keepDueDate plans in reverse from the current due date", async () => {
   const w7 = wf("7d-1-device", 7);
   const tx = fakeTx({
-    selects: [[openRow], [], [CAL_ROW], [], [w7], stages(w7)], // an order with no saved plan yet
+    selects: [[openRow], [w7], stages(w7), [], [CAL_ROW], [], [w7], stages(w7)], // an order with no saved plan yet
     updates: [[{ ...openRow, version: 4 }]],
   });
   await mod.changeWorkflow("lo-1", { workflowKey: "7d-1-device", keepDueDate: true, expectedVersion: 3, byUserId: "u1" }, fakeDb(tx));
@@ -344,6 +344,16 @@ test("changeWorkflow with keepDueDate plans in reverse from the current due date
   const plan = planInsert(tx);
   assert.equal(plan.direction, "reverse");
   assert.equal(plan.dueDate, "2026-11-16");
+});
+
+test("changeWorkflow refuses an inactive workflow before any write", async () => {
+  const retired = { ...wf("7d-1-device", 7), active: false };
+  const tx = fakeTx({ selects: [[openRow], [retired], stages(retired)] });
+  await assert.rejects(
+    mod.changeWorkflow("lo-1", { workflowKey: "7d-1-device", expectedVersion: 3 }, fakeDb(tx)),
+    (e) => e instanceof LabOrderError && e.code === "INVALID" && /inactive/.test(e.message),
+  );
+  assert.equal(tx.log.filter((l) => l.op === "update" || l.op === "insert").length, 0);
 });
 
 test("changeWorkflow refuses a stale version and a terminal order before any write", async () => {

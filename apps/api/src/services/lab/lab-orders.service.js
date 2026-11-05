@@ -1,6 +1,6 @@
-import { and, asc, desc, eq, gte, ilike, inArray, lte, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, lt, lte, notInArray, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { isoDateIn, isOverdue, LAB_TIMEZONE, STAFF_ROLES, caseSummary } from "@my-app/shared";
+import { isOverdue, STAFF_ROLES, TERMINAL_LAB_STATUSES, caseSummary } from "@my-app/shared";
 import { db } from "../../config/database.js";
 import { env } from "../../config/env.js";
 import {
@@ -21,8 +21,12 @@ import {
   assertFresh, planStatusChange, planFieldChange, presentBoardCard, rushFromCase,
   requestedDueDateOf, assertSchedulable, planWorkflowChange,
 } from "./lab-order-rules.js";
-import { defaultDueAt, saveSchedule, scheduleOf, replanOrder, remakeSchedule, presentSchedule } from "./lab-scheduling.js";
+import {
+  defaultDueAt, saveSchedule, scheduleOf, schedulesOf, replanOrder, remakeSchedule, presentSchedule, scheduleFlags, assertWorkflowActive,
+} from "./lab-scheduling.js";
+import { tileOrderIds, tomorrowOf } from "./lab-schedule-queries.js";
 import { getCalendar } from "../../modules/business-calendar/service.js";
+import { dateIn } from "../../modules/business-calendar/index.js";
 import {
   createDraftForLabOrder, createShopInvoice, issueForShippedLabOrder, voidForCancelledLabOrder,
 } from "../billing/invoices.service.js";
@@ -112,10 +116,24 @@ export async function createShopLabOrder(tx, { orderId, clientUserId = null, quo
   return { id: plan.labOrder.id, orderNumber };
 }
 
-function boardWhere(f, now) {
+/** What a schedule tile means in SQL; `scope` is { today, tomorrowDate, ids } (ids only for at_risk). */
+function tileCondition(tile, scope) {
+  switch (tile) {
+    case "past_due": return lt(labOrders.dueDate, scope.today);
+    case "due_today": return eq(labOrders.dueDate, scope.today);
+    case "due_tomorrow": return eq(labOrders.dueDate, scope.tomorrowDate);
+    case "on_hold": return eq(labOrders.status, "on_hold");
+    // No matching orders must mean no rows, never "no filter".
+    default: return scope.ids?.length ? inArray(labOrders.id, scope.ids) : sql`false`;
+  }
+}
+
+function boardWhere(f, now, scope = null) {
   const conds = [];
   if (f.status) {
     conds.push(eq(labOrders.status, f.status));
+  } else if (f.tile) {
+    conds.push(notInArray(labOrders.status, TERMINAL_LAB_STATUSES)); // a tile is about open work
   } else if (!f.includeClosed && !f.q) {
     // A search looks through history: the shipped window only keeps the board tidy.
     const since = new Date(now.getTime() - SHIPPED_VISIBLE_DAYS * 86_400_000);
@@ -129,6 +147,8 @@ function boardWhere(f, now) {
   if (f.assigneeUserId) conds.push(eq(labOrders.assigneeUserId, f.assigneeUserId));
   if (f.rush) conds.push(eq(labOrders.rush, true));
   if (f.dueBefore) conds.push(lte(labOrders.dueDate, f.dueBefore));
+  if (f.dueOn) conds.push(eq(labOrders.dueDate, f.dueOn));
+  if (f.tile) conds.push(tileCondition(f.tile, scope));
   if (f.q) {
     // Order number, case number, practice, client and shop order number.
     // Patient names are encrypted and deliberately not searchable here.
@@ -163,7 +183,13 @@ export function listOrder(f) {
  */
 export async function listLabOrders(filters = {}, now = new Date(), database = db) {
   const page = pageOf(filters);
-  const where = boardWhere(filters, now);
+  // "Today" is the lab calendar's own day, for the tiles, the flags and the cards' overdue mark.
+  const calendar = await getCalendar(database);
+  const today = dateIn(calendar.timezone, now);
+  const scope = filters.tile
+    ? { today, tomorrowDate: tomorrowOf(today, calendar), ids: await tileOrderIds(database, filters.tile, now, calendar) }
+    : null;
+  const where = boardWhere(filters, now, scope);
   const rowsQuery = database
     .select({
       order: labOrders,
@@ -198,8 +224,8 @@ export async function listLabOrders(filters = {}, now = new Date(), database = d
     if (!byOrder.has(l.labOrderId)) byOrder.set(l.labOrderId, []);
     byOrder.get(l.labOrderId).push(l);
   }
-  const today = isoDateIn(LAB_TIMEZONE, now);
-  const cards = rows.map((r) => presentBoardCard(r, byOrder.get(r.order.id) ?? [], today));
+  const plans = await schedulesOf(database, ids);
+  const cards = rows.map((r) => presentBoardCard(r, byOrder.get(r.order.id) ?? [], today, { plan: plans.get(r.order.id) ?? null, calendar }));
   return page ? { orders: cards, total } : { orders: cards, truncated: rows.length >= LIST_LIMIT };
 }
 
@@ -294,7 +320,7 @@ export async function getLabOrderDetail(id, now = new Date()) {
 
   const shipment = order.shipmentId ? ((await shipmentSummaries([order.shipmentId])).get(order.shipmentId) ?? null) : null;
   const [plan, calendar] = await Promise.all([scheduleOf(db, id), getCalendar(db)]);
-  const today = isoDateIn(LAB_TIMEZONE, now);
+  const today = dateIn(calendar.timezone, now);
 
   const { legacyPatient: _openedPatient, ...orderFields } = order; // surfaced once, under `legacy`
   return {
@@ -307,6 +333,8 @@ export async function getLabOrderDetail(id, now = new Date()) {
       overdue: isOverdue(order.dueDate, order.status, today),
     },
     schedule: presentSchedule(plan, order, today, calendar),
+    // Also set for an order with no saved plan (due-date rule only), so the page can still show At risk.
+    scheduleFlags: scheduleFlags(order, plan, today, calendar),
     lines,
     events: eventRows.map(({ event, byName }) => ({ ...openEvent(event), byName: byName ?? null })),
     rxCase,
@@ -470,6 +498,7 @@ export function remakeOrder(id, { reason, expectedVersion, byUserId = null }, da
 export function changeWorkflow(id, { workflowKey, keepDueDate = false, expectedVersion, byUserId = null }, database = db) {
   return mutate(id, expectedVersion, async (order, tx) => {
     assertSchedulable(order);
+    await assertWorkflowActive(tx, workflowKey);
     const { fromKey, plan } = await replanOrder(tx, order, { workflowKey, keepDueDate });
     return {
       ...planWorkflowChange(order, { fromKey, plan, byUserId, now: new Date() }),

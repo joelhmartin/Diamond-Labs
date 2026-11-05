@@ -321,6 +321,25 @@ test("unlinking a voided shipment clears only that shipment", () => {
   assert.equal(planShipmentUnlink({ ...labelled, shipmentId: "other" }, ship, { now }), null);
 });
 
+test("presentBoardCard carries behind and atRisk; legacy orders without a plan are never behind", () => {
+  const row = (over) => ({ order: { ...order, source: "rx_case", receivedAt: now, status: "in_production", dueDate: "2026-11-30", ...over }, caseNumber: "RX-1", practiceName: "Lee Dental" });
+  const plan = {
+    workflowKey: "10d", workflowName: "10-day Printed", direction: "forward",
+    stages: [{ key: "qc", label: "Quality check", milestone: "quality_check", targetAt: "2026-11-05" }],
+  };
+  const withPlan = presentBoardCard(row({}), [], "2026-11-06", { plan });
+  assert.deepEqual([withPlan.behind, withPlan.atRisk, withPlan.workflowName], [true, true, "10-day Printed"]);
+
+  const onTrack = presentBoardCard(row({}), [], "2026-11-02", { plan });
+  assert.deepEqual([onTrack.behind, onTrack.atRisk], [false, false]);
+
+  // No plan: never behind, but a due date two business days out (or past) still puts it at risk.
+  const legacy = presentBoardCard(row({ status: "received", dueDate: "2026-11-05" }), [], "2026-11-06", { calendar: undefined });
+  assert.deepEqual([legacy.behind, legacy.atRisk, legacy.workflowName], [false, true, null]);
+  assert.equal(presentBoardCard(row({ dueDate: "2026-12-30" }), [], "2026-11-06").atRisk, false);
+  assert.equal(presentBoardCard(row({ status: "shipped", dueDate: "2026-10-01" }), [], "2026-11-06", { plan }).atRisk, false, "shipped is neither");
+});
+
 test("a board card says when its order has a label", () => {
   const row = { order: { ...order, status: "ready_to_ship", shipmentId: "sh1", source: "rx_case", receivedAt: now }, caseNumber: "RX-1", practiceName: "Lee Dental", assigneeName: null };
   assert.equal(presentBoardCard(row, [], "2026-10-07").labelled, true);
