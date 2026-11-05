@@ -5,6 +5,7 @@ import api from "../../config/api.js";
 import { ROUTES } from "../../config/routes.js";
 import { DataTable } from "../../components/ui/data-table/index.js";
 import { ConfirmButton } from "../../components/ui/ConfirmButton.jsx";
+import { SegmentedControl } from "../../components/ui/SegmentedControl.jsx";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { useDataTable } from "../../hooks/useDataTable.js";
 import { eachRow } from "../../lib/data-table/bulk.js";
@@ -13,6 +14,7 @@ import { adjustByPercent, priceDelta } from "../../lib/price-lists.js";
 import { errorText } from "../../lib/requests.js";
 import { PriceListClientsTab } from "./PriceListClientsTab.jsx";
 
+const VIEWS = [{ value: "prices", label: "Prices" }, { value: "clients", label: "Clients on this list" }];
 const INPUT = "h-9 rounded-xl border border-surface-300/60 bg-white px-3 text-sm text-navy focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10";
 const getRowId = (r) => r.variantId;
 const variantLabel = (r) => `${r.familyName} — ${r.name}`;
@@ -196,14 +198,7 @@ export function AdminPriceListEditorPage() {
         </div>
       )}
       {list?.archivedAt && <p className="rounded-xl bg-amber-50 px-4 py-2 text-sm text-amber-800">This list is archived. Its prices no longer apply to the clients still assigned to it.</p>}
-      <div role="tablist" className="flex gap-1 border-b border-surface-300/50">
-        {[{ id: "prices", label: "Prices" }, { id: "clients", label: "Clients on this list" }].map((t) => (
-          <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === t.id ? "border-brand-500 text-navy" : "border-transparent text-navy/50 hover:text-navy"}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl label="Price list view" value={tab} onChange={setTab} options={VIEWS} />
       {tab === "clients" ? <PriceListClientsTab listId={id} /> : <DataTable
         table={table}
         columns={columns}

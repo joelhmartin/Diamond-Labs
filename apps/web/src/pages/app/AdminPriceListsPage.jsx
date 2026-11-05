@@ -5,6 +5,7 @@ import api from "../../config/api.js";
 import { ROUTES } from "../../config/routes.js";
 import { DataTable } from "../../components/ui/data-table/index.js";
 import { CONTROL } from "../../components/ui/data-table/FilterControl.jsx";
+import { SegmentedControl } from "../../components/ui/SegmentedControl.jsx";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { useDataTable } from "../../hooks/useDataTable.js";
 import { errorText } from "../../lib/requests.js";
@@ -93,7 +94,7 @@ function ListsTab() {
   );
 }
 
-const TABS = [{ id: "lists", label: "Lists" }, { id: "same", label: "Same pricing" }];
+const VIEWS = [{ value: "lists", label: "Lists" }, { value: "same", label: "Same pricing" }];
 
 export function AdminPriceListsPage() {
   const [tab, setTab] = useState("lists");
@@ -103,14 +104,7 @@ export function AdminPriceListsPage() {
         <h1 className="font-heading text-3xl font-bold tracking-tight text-navy">Price lists</h1>
         <p className="mt-1 text-sm text-navy/50">Named price sets assigned to clients. A client's own price beats a list; earlier lists beat later ones.</p>
       </div>
-      <div role="tablist" className="flex gap-1 border-b border-surface-300/50">
-        {TABS.map((t) => (
-          <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => setTab(t.id)}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab === t.id ? "border-brand-500 text-navy" : "border-transparent text-navy/50 hover:text-navy"}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <SegmentedControl label="Price lists view" value={tab} onChange={setTab} options={VIEWS} />
       {tab === "lists" ? <ListsTab /> : <SamePricingTab />}
     </div>
   );

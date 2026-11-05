@@ -8,7 +8,7 @@ import { DoctorPaymentDrawer } from "../../components/admin/DoctorPaymentDrawer.
 import { useToast } from "../../components/ui/Toast.jsx";
 import { AssignPriceListModal } from "../../components/admin/AssignPriceListModal.jsx";
 import { CopyPricesModal } from "../../components/admin/CopyPricesModal.jsx";
-import { DataTable, summarizeResult } from "../../components/ui/data-table/index.js";
+import { DataTable, resultToast } from "../../components/ui/data-table/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
 import { errorText } from "../../lib/requests.js";
 
@@ -207,18 +207,14 @@ export function AdminUsersPage() {
     addToast({ message: `Sent ${sent}/${requested} ${plural(kind)}`, type: sent < requested ? "warning" : "success" });
     table.selection.clear();
   };
-  const assignDone = (result) => {
-    const failed = result.failed?.length ?? 0;
-    addToast({ message: summarizeResult(result), type: failed === 0 ? "success" : result.ok ? "warning" : "error", duration: failed ? 8000 : 4000 });
-    setAssignIds(null);
+  // A bulk modal finished: toast its { ok, failed } like BulkBar does, close it, clear the selection.
+  const modalDone = (close) => (result) => {
+    addToast(resultToast(result));
+    close(null);
     table.selection.clear();
   };
-  const copyDone = (result) => {
-    const failed = result.failed?.length ?? 0;
-    addToast({ message: summarizeResult(result), type: failed === 0 ? "success" : result.ok ? "warning" : "error", duration: failed ? 8000 : 4000 });
-    setCopyIds(null);
-    table.selection.clear();
-  };
+  const assignDone = modalDone(setAssignIds);
+  const copyDone = modalDone(setCopyIds);
   const n = table.selection.count;
   const bulkActions = [
     { id: "invite", label: "Send invitations", confirmLabel: `Click again to send ${n} ${plural("invitation")}`, icon: <Send size={12} />, run: bulkSend("invitation") },

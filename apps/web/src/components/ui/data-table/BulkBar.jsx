@@ -19,6 +19,16 @@ export function summarizeResult({ ok = 0, failed = [] }) {
   return `${ok} done, ${failed.length} failed: ${named}${more}`;
 }
 
+/** A bulk `{ ok, failed }` result → useToast options: success, partial (warning) or nothing done (error). */
+export function resultToast(result) {
+  const failedCount = result.failed?.length ?? 0;
+  return {
+    message: summarizeResult(result),
+    type: failedCount === 0 ? "success" : result.ok ? "warning" : "error",
+    duration: failedCount ? 8000 : 4000,
+  };
+}
+
 /**
  * Replaces the toolbar while rows are selected: count, actions, Export CSV, Clear.
  * A bulk action is `{ id, label, run(rows), icon?, tone?, confirmLabel?, disabled?(rows) }`;
@@ -39,14 +49,7 @@ export function BulkBar({ table, columns, bulkActions = [], exportable, exportFi
     setBusy(action.id);
     try {
       const result = await action.run(selectedRows, valueOf(action));
-      if (result && typeof result === "object") {
-        const failedCount = result.failed?.length ?? 0;
-        addToast({
-          message: summarizeResult(result),
-          type: failedCount === 0 ? "success" : result.ok ? "warning" : "error",
-          duration: failedCount ? 8000 : 4000,
-        });
-      }
+      if (result && typeof result === "object") addToast(resultToast(result));
     } catch (err) {
       addToast({ message: errorText(err), type: "error" });
     } finally {

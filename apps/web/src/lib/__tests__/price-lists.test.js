@@ -8,6 +8,8 @@ test("adjustByPercent rounds half away from zero to the cent", () => {
   assert.equal(adjustByPercent(1001, 50), 1502); // 1501.5 rounds up
   assert.equal(adjustByPercent(1000, -100), 0);
   assert.equal(adjustByPercent(1000, -150), 0); // never negative
+  assert.equal(adjustByPercent(1000, 0.1), 1001);
+  assert.equal(adjustByPercent(999, 0), 999);
 });
 
 test("sourceChip names the origin of an effective price", () => {

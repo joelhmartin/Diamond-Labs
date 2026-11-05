@@ -66,7 +66,10 @@ test("adjust by percent shows a preview and sends rounded prices", async () => {
 test("the Clients on this list tab shows the assigned clients", async () => {
   mount();
   await screen.findByText("Crown");
-  fireEvent.click(screen.getByRole("tab", { name: "Clients on this list" }));
+  // The view switch is the shared SegmentedControl (a pressed-button group), not a one-off tab strip.
+  assert.equal(screen.getByRole("group", { name: "Price list view" }).querySelectorAll("[aria-pressed]").length, 2);
+  fireEvent.click(screen.getByRole("button", { name: "Clients on this list" }));
+  assert.equal(screen.getByRole("button", { name: "Clients on this list" }).getAttribute("aria-pressed"), "true");
   assert.ok(await screen.findByText("Ana Ruiz"));
   assert.ok(screen.getByText("Ruiz Dental"));
 });
