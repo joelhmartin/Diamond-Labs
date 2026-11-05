@@ -52,3 +52,4 @@ export * from "./business-calendar/index.js";
 
 // Workflows (generic module; rules live in apps/api/src/modules/workflows)
 export * from "./workflows/index.js";
+export * from "./barcode-lookup/schemas.js";

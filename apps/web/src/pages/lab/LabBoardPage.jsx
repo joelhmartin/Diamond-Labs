@@ -11,6 +11,7 @@ import { errorText, isStale } from "../../lib/requests.js";
 import { BoardCard } from "../../components/lab/BoardCard.jsx";
 import { BoardTableView } from "../../components/lab/BoardTableView.jsx";
 import { BoardTiles } from "../../components/lab/BoardTiles.jsx";
+import { ScanBox } from "../../modules/barcode-lookup/index.js";
 import { SegmentedControl } from "../../components/ui/SegmentedControl.jsx";
 import { INPUT_BASE } from "../../components/lab/form-styles.js";
 
@@ -172,6 +173,7 @@ export function LabBoardPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <ScanBox lookupPath="/lab/lookup" placeholder="Scan order, invoice or pan…" autoFocus />
           {labelledWaiting > 0 && (
             <ConfirmButton
               onConfirm={markAllShipped}
