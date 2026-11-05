@@ -21,7 +21,7 @@
 import { sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
-  CARRIERS, LAB_STATUS_LABELS, LAB_TIMEZONE, TERMINAL_LAB_STATUSES, addDays, daysBetween, isoDateIn,
+  CARRIERS, LAB_STATUS_LABELS, LAB_TIMEZONE, TERMINAL_LAB_STATUSES, addDays, daysBetween, daysInRange, isoDateIn,
 } from "@my-app/shared";
 import { labOrders, labOrderLines, labDepartments, users, shipments, productFamilies } from "../../../db/schema/index.js";
 import { catalogJoins, clientName, isLiveOrder, labDay, labDayBetween, labDayText, num, rowsOf, turnaroundDaysSql } from "./lab-metrics.js";
@@ -98,7 +98,7 @@ export function turnaroundDays(order, calendar) {
   if (!order?.shippedAt || !order.receivedAt || order.status === "cancelled") return null;
   const from = labDayOf(order.receivedAt);
   const to = labDayOf(order.shippedAt);
-  return to < from ? 0 : daysBetween(from, to).length - 1;
+  return to < from ? 0 : daysBetween(from, to);
 }
 
 /** Shipped (not cancelled) on a lab day in the range: the orders a turnaround figure averages. */
@@ -183,7 +183,7 @@ export async function dueByDay(db, range) {
     where ${isOpenOrder} and ${labOrders.dueDate} between ${range.from}::date and ${range.to}::date
     group by 1 order by 1`);
   const byDay = new Map(raw.map((r) => [String(r.day), r]));
-  return daysBetween(range.from, range.to).map((day) => ({ day, orders: num(byDay.get(day)?.orders), rush: num(byDay.get(day)?.rush) }));
+  return daysInRange(range.from, range.to).map((day) => ({ day, orders: num(byDay.get(day)?.orders), rush: num(byDay.get(day)?.rush) }));
 }
 
 /** Orders received per lab day, every day in the range: [{ day, orders, rush, remakes, units }]. Cancelled orders do not count. */
@@ -196,7 +196,7 @@ export async function ordersByDay(db, range) {
     where ${isLiveOrder} and ${labDayBetween(labOrders.receivedAt, range)}
     group by 1 order by 1`);
   const byDay = new Map(raw.map((r) => [String(r.day), r]));
-  return daysBetween(range.from, range.to).map((day) => {
+  return daysInRange(range.from, range.to).map((day) => {
     const r = byDay.get(day) ?? {};
     return { day, orders: num(r.orders), rush: num(r.rush), remakes: num(r.remakes), units: num(r.units) };
   });
@@ -219,7 +219,7 @@ export async function shippedByDay(db, range) {
     where ${labOrders.status} = 'shipped' and ${labDayBetween(labOrders.shippedAt, range)}
     group by 1 order by 1`);
   const byDay = new Map(raw.map((r) => [String(r.day), r]));
-  return daysBetween(range.from, range.to).map((day) => {
+  return daysInRange(range.from, range.to).map((day) => {
     const r = byDay.get(day) ?? {};
     const carriers = Object.fromEntries(CARRIERS.map((c) => [c, num(r[c])]));
     return { day, orders: num(r.orders), shipments: num(r.shipments), ...carriers, noShipment: num(r.noShipment) };

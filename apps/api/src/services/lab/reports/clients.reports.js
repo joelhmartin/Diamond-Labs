@@ -218,7 +218,7 @@ const inactive = {
       order by max(${labOrders.receivedAt}) desc, ${users.id}`);
     const rows = raw.map((r) => ({
       clientUserId: r.clientUserId, client: r.client, accountNumber: r.accountNumber ?? null, lastOrder: r.lastDay,
-      daysSince: daysBetween(r.lastDay, today).length - 1, lifetimeSales: num(r.lifetime),
+      daysSince: daysBetween(r.lastDay, today), lifetimeSales: num(r.lifetime),
     }));
     return { rows, summary: { client: "Total", lifetimeSales: sumOf(rows, "lifetimeSales") } };
   },

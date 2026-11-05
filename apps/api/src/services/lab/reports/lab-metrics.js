@@ -11,7 +11,7 @@
  */
 import { sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { LAB_TIMEZONE, OPENING_BALANCE_PREFIX, daysBetween, isoDateIn, monthsBetween } from "@my-app/shared";
+import { LAB_TIMEZONE, OPENING_BALANCE_PREFIX, daysInRange, isoDateIn, monthsBetween } from "@my-app/shared";
 import { invoices, invoiceLines, users, doctorProfiles, labOrders, productVariants, productFamilies } from "../../../db/schema/index.js";
 import { afterLabDay, labDay, labDayBetween, labDayText, labMonthText } from "../../../lib/lab-day-sql.js";
 import { ledgerRowDay, ledgerRowDayBetween } from "../../billing/ledger.service.js";
@@ -137,7 +137,7 @@ export async function salesByDay(db, { from, to }) {
     select ${labDayText(invoices.issuedAt)} as "day", sum(${invoices.subtotalCents}) as "cents", count(*) as "invoices"
     from ${invoices} where ${salesWhere({ from, to })} group by 1 order by 1`);
   const byDay = new Map(rows.map((r) => [String(r.day), r]));
-  return daysBetween(from, to).map((day) => ({ day, cents: num(byDay.get(day)?.cents), invoices: num(byDay.get(day)?.invoices) }));
+  return daysInRange(from, to).map((day) => ({ day, cents: num(byDay.get(day)?.cents), invoices: num(byDay.get(day)?.invoices) }));
 }
 
 /** Sales per lab-local month ("YYYY-MM"), every month the range touches (zeros filled). */

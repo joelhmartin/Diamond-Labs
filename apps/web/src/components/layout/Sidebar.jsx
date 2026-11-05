@@ -56,10 +56,10 @@ const staffItems = [
   { label: "New order",  to: ROUTES.LAB_ORDER_NEW,  icon: FilePlus },
   { label: "Rx Cases",   to: ROUTES.ADMIN_RX_CASES, icon: ClipboardCheck },
   { label: "Shipments",  to: ROUTES.ADMIN_SHIPMENTS, icon: Truck },
-  { label: "Reports",    to: ROUTES.REPORTS,         icon: BarChart3 },
   { label: "Messages",   to: ROUTES.LAB_MESSAGES,    icon: MessageSquare, badge: <MessagesBadge className="ml-auto" /> },
   { label: "Pickups",    to: ROUTES.LAB_PICKUPS,     icon: PackageOpen },
   { label: "Deliveries", to: ROUTES.LAB_DELIVERIES,  icon: Route },
+  { label: "Reports",    to: ROUTES.REPORTS,         icon: BarChart3 },
 ];
 
 const adminItems = [

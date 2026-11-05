@@ -6,7 +6,7 @@
  * the Rx form, or a free-text note.
  */
 import { sql } from "drizzle-orm";
-import { CARRIERS, CARRIER_LABELS, SHIPMENT_STATUS_LABELS, daysBetween } from "@my-app/shared";
+import { CARRIERS, CARRIER_LABELS, SHIPMENT_STATUS_LABELS, daysBetween, daysInRange } from "@my-app/shared";
 import { labOrders, rxCases, rxCaseFiles, shipments } from "../../../db/schema/index.js";
 import {
   ORDER_LINK, clientName, isLiveOrder, labDayBetween, labDayText, labToday, num, orderAndPage, rowsOf,
@@ -55,7 +55,7 @@ const caseSubmission = {
       const unknown = num(r.unknown);
       return { day, digital, physical, unknown, total: digital + physical + unknown, digitalShare: share(digital, digital + physical) };
     };
-    const rows = daysBetween(range.from, range.to).map((day) => shaped(day, byDay.get(day)));
+    const rows = daysInRange(range.from, range.to).map((day) => shaped(day, byDay.get(day)));
     const totals = sums(rows, ["digital", "physical", "unknown"]);
     return { rows, summary: { ...shaped("Total", totals) } };
   },
@@ -156,7 +156,7 @@ const tbdOrders = {
       order by ${labOrders.receivedAt}, ${labOrders.id}`);
     const rows = raw.map((r) => ({
       labOrderId: r.labOrderId, orderNumber: r.orderNumber, client: r.client ?? null, status: statusBadge(r.status),
-      received: r.receivedDay, daysOpen: r.receivedDay ? Math.max(0, daysBetween(r.receivedDay, today).length - 1) : null,
+      received: r.receivedDay, daysOpen: r.receivedDay ? Math.max(0, daysBetween(r.receivedDay, today)) : null,
       department: r.department, assignee: r.assignee, rush: r.rush ? "Rush" : "",
     }));
     return { rows };

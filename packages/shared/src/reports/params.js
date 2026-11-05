@@ -31,7 +31,7 @@ export const addDays = (iso, n) => fromNum(toNum(iso) + n);
 const ymd = (y, m, d) => fromNum(Date.UTC(y, m - 1, d) / DAY_MS);
 
 /** Every "YYYY-MM-DD" from `from` to `to`, inclusive (empty when from > to). For zero-filling day buckets. */
-export function daysBetween(from, to) {
+export function daysInRange(from, to) {
   const out = [];
   for (let n = toNum(from), end = toNum(to); n <= end; n += 1) out.push(fromNum(n));
   return out;
