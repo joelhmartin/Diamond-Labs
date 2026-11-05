@@ -120,6 +120,21 @@ test("an imported negative adjustment line is not a discount, and pre-cutover ra
   assert.doesNotMatch(executedSql(adj)[0].text, /price_source/);
 });
 
+test("receivables and the default statement month follow the run clock, not the wall clock", async () => {
+  const ctx = { now: new Date("2026-03-04T17:00:00Z"), today: "2026-03-04" };
+  const due = [{ id: "i1", clientUserId: "doc1", status: "issued", totalCents: 5000, dueDate: "2026-03-01", paid: "0" }];
+  const bal = await report("accounting.account-balance").run(fakeTx({ selects: [due, clients] }), {}, null, ctx);
+  assert.equal(bal.notice, "As of 2026-03-04.");
+  assert.equal(bal.rows[0].pastDue, 5000);
+  const aging = await report("accounting.aging-summary").run(fakeTx({ selects: [due, clients] }), {}, null, ctx);
+  assert.equal(aging.notice, "As of 2026-03-04.");
+  assert.equal(aging.rows[0].d1_30, 5000);
+  const stmt = await report("accounting.statements-summary").run(fakeTx({ selects: [[], [], []] }), {}, null, ctx);
+  assert.match(stmt.notice, /February 2026/);
+  const jan = await report("accounting.statements-summary").run(fakeTx({ selects: [[], [], []] }), {}, null, { today: "2026-01-10" });
+  assert.match(jan.notice, /December 2025/);
+});
+
 test("statements summary loads activity only through the month's last day", () => {
   const src = readFileSync(fileURLToPath(new URL("./accounting.reports.js", import.meta.url)), "utf8");
   assert.match(src, /loadStatementActivity\(null, tx, \{ through: bounds\.endIso \}\)/);

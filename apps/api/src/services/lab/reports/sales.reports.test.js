@@ -24,6 +24,13 @@ test("sales comparison returns 12 months × 3 years with zeros filled", async ()
   assert.equal(report("sales.comparison").chart.type, "groupedBar");
 });
 
+test("sales comparison defaults to the run clock's lab year", async () => {
+  const tx = fakeTx({ executes: [[]] });
+  const out = await report("sales.comparison").run(tx, {}, null, { now: new Date("2023-06-01T17:00:00Z"), today: "2023-06-01" });
+  assert.match(out.notice, /2021, 2022 and 2023/);
+  assert.ok(executedSql(tx)[0].params.includes("2021-01-01"));
+});
+
 test("sales summary reports gross, discount, net, tax and shipping for the range and the period before", async () => {
   const tx = fakeTx({ executes: [
     [{ net: "8500", discount: "-1500", tax: "700", shipping: "1200", total: "10400", invoices: "3" }],

@@ -43,8 +43,8 @@ const accountBalance = {
     clientCol, { id: "accountNumber", label: "Account", type: "text" }, { id: "openInvoices", label: "Open invoices", type: "int" },
     money("pastDue", "Past due"), money("balance", "Balance"), { id: "oldestDue", label: "Oldest due", type: "date" },
   ],
-  async run(tx) {
-    const ar = await listReceivables({}, tx);
+  async run(tx, _params, _actor, ctx) {
+    const ar = await listReceivables({}, tx, { today: labToday(ctx) });
     const rows = ar.rows.map((r) => ({
       clientUserId: r.clientUserId, client: clientLabel(r), accountNumber: r.accountNumber, openInvoices: r.openInvoices,
       pastDue: r.pastDueCents, balance: r.balanceCents, oldestDue: r.oldestDueDate,
@@ -58,8 +58,8 @@ const agingSummary = {
   description: "Open balances per client by days past due, with totals.",
   params: [{ name: "pastDueOnly", label: "Past due only", type: "toggle", default: false }],
   columns: [clientCol, { id: "accountNumber", label: "Account", type: "text" }, ...AGING_COLUMNS, money("balance", "Total")],
-  async run(tx, params) {
-    const ar = await listReceivables({ pastDueOnly: Boolean(params?.pastDueOnly) }, tx);
+  async run(tx, params, _actor, ctx) {
+    const ar = await listReceivables({ pastDueOnly: Boolean(params?.pastDueOnly) }, tx, { today: labToday(ctx) });
     const rows = ar.rows.map((r) => ({ clientUserId: r.clientUserId, client: clientLabel(r), accountNumber: r.accountNumber, ...r.buckets, balance: r.balanceCents }));
     return { rows, summary: { ...ar.totals.buckets, balance: ar.totals.balanceCents }, notice: `As of ${ar.asOf}.` };
   },
@@ -276,9 +276,9 @@ const paymentsReceived = {
   },
 };
 
-/** Last month in the lab's calendar, as any day in it. */
-function lastMonthDay() {
-  const [y, m] = labToday().split("-").map(Number);
+/** The month before the run's lab day, as any day in it. */
+function lastMonthDay(ctx) {
+  const [y, m] = labToday(ctx).split("-").map(Number);
   return m === 1 ? `${y - 1}-12-01` : `${y}-${String(m - 1).padStart(2, "0")}-01`;
 }
 
@@ -312,8 +312,8 @@ const statementsSummary = {
     clientCol, { id: "accountNumber", label: "Account", type: "text" }, money("opening", "Opening"), money("invoiced", "Invoiced"),
     money("paid", "Paid"), money("closing", "Closing"),
   ],
-  async run(tx, params) {
-    const bounds = monthBounds((params?.month ?? lastMonthDay()).slice(0, 7));
+  async run(tx, params, _actor, ctx) {
+    const bounds = monthBounds((params?.month ?? lastMonthDay(ctx)).slice(0, 7));
     const activity = await loadStatementActivity(null, tx, { through: bounds.endIso });
     const per = summarizeStatements(activity, bounds);
     const names = await loadClientNames([...per.keys()], tx);

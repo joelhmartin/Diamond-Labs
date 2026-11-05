@@ -103,12 +103,14 @@ export async function statementPdfFor(clientUserId, month, { clientUserIds } = {
  * (deriveBalance, summed in SQL by openReceivableInvoices), aged and grouped per client (clientUserId). Grouping by
  * practice where seazonaClientId is shared is deferred to piece 5's practice
  * entity: every row action (invoice filter, statement PDF, statement email)
- * is per user today. Spec correction 6.
+ * is per user today. Spec correction 6. `today` ("YYYY-MM-DD", default the
+ * lab's today now) lets a report age against its run clock; it is a separate
+ * argument so a route passing its query object can never set it.
  */
-export async function listReceivables({ pastDueOnly = false } = {}, database = db) {
+export async function listReceivables({ pastDueOnly = false } = {}, database = db, { today } = {}) {
   const open = await openReceivableInvoices(database);
   const clients = await loadClientNames(open.map((i) => i.clientUserId), database);
-  return buildReceivables(open, clients, isoDateIn(LAB_TIMEZONE, new Date()), { pastDueOnly });
+  return buildReceivables(open, clients, today ?? isoDateIn(LAB_TIMEZONE, new Date()), { pastDueOnly });
 }
 
 /**

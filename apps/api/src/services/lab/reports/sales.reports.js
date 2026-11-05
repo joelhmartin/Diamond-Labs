@@ -4,10 +4,10 @@
  * invoices' subtotal by lab-local issue day.
  */
 import { sql } from "drizzle-orm";
-import { INVOICE_KINDS, INVOICE_KIND_LABELS, LAB_TIMEZONE, isoDateIn } from "@my-app/shared";
+import { INVOICE_KINDS, INVOICE_KIND_LABELS } from "@my-app/shared";
 import { invoices, invoiceLines, productFamilies, users, doctorProfiles } from "../../../db/schema/index.js";
 import {
-  CLIENT_LINK, catalogJoins, clientName, coverageNotice, discountNotices, labDayText, num, orderAndPage, rowsOf, salesBreakdown, salesByDay, salesByMonth, salesWhere,
+  CLIENT_LINK, catalogJoins, clientName, coverageNotice, discountNotices, labDayText, labToday, num, orderAndPage, rowsOf, salesBreakdown, salesByDay, salesByMonth, salesWhere,
 } from "./lab-metrics.js";
 import { dependentReport } from "./dependent.js";
 
@@ -30,8 +30,8 @@ const comparison = {
     type: "groupedBar", x: "month",
     series: [{ field: "y2", label: "Two years before" }, { field: "y1", label: "Year before" }, { field: "y0", label: "Selected year" }],
   },
-  async run(tx, params) {
-    const year = Number.isInteger(params?.year) ? params.year : Number(isoDateIn(LAB_TIMEZONE, new Date()).slice(0, 4));
+  async run(tx, params, _actor, ctx) {
+    const year = Number.isInteger(params?.year) ? params.year : Number(labToday(ctx).slice(0, 4));
     const byMonth = new Map((await salesByMonth(tx, { from: `${year - 2}-01-01`, to: `${year}-12-31` })).map((m) => [m.month, m.cents]));
     const cents = (y, i) => byMonth.get(`${y}-${String(i + 1).padStart(2, "0")}`) ?? 0;
     const rows = MONTHS.map((month, i) => ({ month, y2: cents(year - 2, i), y1: cents(year - 1, i), y0: cents(year, i) }));
