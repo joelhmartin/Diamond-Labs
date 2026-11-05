@@ -124,3 +124,10 @@ test("deliveryRange defaults to today (CT) through six days later and refuses a 
   assert.throws(() => deliveryRange({ from: "2026-11-09", to: "2026-11-01" }, "2026-11-05"), (e) => e.code === "INVALID");
   assert.throws(() => deliveryRange({ from: "2026-01-01", to: "2026-12-31" }, "2026-11-05"), (e) => e.code === "INVALID");
 });
+
+test("deliveryRange allows exactly 62 days and refuses 63, across a month and a leap day", () => {
+  assert.deepEqual(deliveryRange({ from: "2026-11-01", to: "2027-01-02" }, "2026-11-05"), { from: "2026-11-01", to: "2027-01-02" });
+  assert.throws(() => deliveryRange({ from: "2026-11-01", to: "2027-01-03" }, "2026-11-05"), (e) => e.code === "INVALID" && /62 days/.test(e.message));
+  assert.deepEqual(deliveryRange({ from: "2028-01-15", to: "2028-03-17" }, "2028-01-15").to, "2028-03-17");
+  assert.throws(() => deliveryRange({ from: "2028-01-15", to: "2028-03-18" }, "2028-01-15"), (e) => e.code === "INVALID");
+});

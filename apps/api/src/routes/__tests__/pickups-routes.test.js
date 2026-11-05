@@ -56,6 +56,22 @@ test("the deliveries route sheet is staff-only, validates its range and reads st
   assert.doesNotMatch(body, /audit\(/);
 });
 
+test("GET /lab/deliveries answers an impossible calendar date with 422 before any query runs", async () => {
+  const { validateQuery } = await import("../../middleware/validate.js");
+  const { labDeliveriesQuerySchema } = await import("@my-app/shared");
+  const check = validateQuery(labDeliveriesQuerySchema);
+  for (const query of [{ from: "2026-13-01" }, { to: "2026-02-30" }]) {
+    let status = null;
+    const reply = { code(c) { status = c; return this; }, send() { return this; } };
+    await check({ query }, reply);
+    assert.equal(status, 422, JSON.stringify(query));
+  }
+  let status = null;
+  const request = { query: { from: "2026-11-05", to: "2027-01-06" } };
+  await check(request, { code(c) { status = c; return this; }, send() { return this; } });
+  assert.equal(status, null, "a real date passes to the handler (the span rule is deliveryRange's)");
+});
+
 test("the routes are registered under /api/v1", () => {
   assert.match(index, /routes\/pickups\.routes\.js.*\{ prefix: "\/api\/v1" \}/);
 });

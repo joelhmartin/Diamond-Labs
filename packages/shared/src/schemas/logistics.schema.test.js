@@ -10,6 +10,12 @@ test("the deliveries query takes an optional from/to date and nothing else", () 
   assert.deepEqual(labDeliveriesQuerySchema.parse({ from: "2026-11-05", to: "2026-11-11" }), { from: "2026-11-05", to: "2026-11-11" });
   assert.equal(labDeliveriesQuerySchema.safeParse({ from: "11/05/2026" }).success, false);
   assert.equal(labDeliveriesQuerySchema.safeParse({ from: "2026-11-05", extra: 1 }).success, false);
+  for (const bad of ["2026-13-01", "2026-02-30", "2027-02-29", "2026-00-10"]) {
+    assert.equal(labDeliveriesQuerySchema.safeParse({ from: bad }).success, false, `from ${bad}`);
+    assert.equal(labDeliveriesQuerySchema.safeParse({ to: bad }).success, false, `to ${bad}`);
+    assert.equal(labPickupListQuerySchema.safeParse({ from: bad }).success, false, `pickups from ${bad}`);
+  }
+  assert.equal(labDeliveriesQuerySchema.safeParse({ from: "2028-02-29" }).success, true, "a leap day is real");
 });
 
 const req = { earliestDate: "2026-11-09", latestDate: "2026-11-10", timePreference: "am", boxCount: 2 };
