@@ -10,6 +10,11 @@ const READMES = {
   workflows: "./workflows/README.md",
   exports: "./exports/README.md",
   "exports (web)": "../../../web/src/modules/exports/README.md",
+  notifications: "./notifications/README.md",
+  messaging: "./messaging/README.md",
+  sms: "./sms/README.md",
+  "notifications (web)": "../../../web/src/modules/notifications/README.md",
+  "messaging (web)": "../../../web/src/modules/messaging/README.md",
 };
 
 for (const [mod, rel] of Object.entries(READMES)) {

@@ -1,7 +1,11 @@
 # notifications (web module)
 
+## Purpose
+
 The browser side of `apps/api/src/modules/notifications`. It knows nothing about
 the host app's domain: the host supplies the page chrome, copy, routes and time zone.
+
+## Public interface
 
 | Export | What it is |
 |---|---|
@@ -15,3 +19,29 @@ the host app's domain: the host supplies the page chrome, copy, routes and time 
 
 `api.js` wraps the routes; `phone.js` mirrors the server's phone rule so a bad
 number is rejected before a request is made. Tests mock `config/api.js`.
+
+## Configuration
+
+None of its own. Everything that varies comes in as props (`to`, `timeZone`,
+`intervalMs`, `events`, `eventLabels`). The text provider and email settings
+live on the server (`apps/api/src/modules/sms`, the notifications module).
+
+## Data model
+
+None in the browser. It reads and writes the server's `notifications`,
+`notification_preferences`, `notification_recipients` and
+`notification_deliveries` tables through the routes in `api.js`; the only
+client state is the polled unread count.
+
+## Wiring it into another app
+
+1. Wire the server module first (see "Wiring it into another app" in
+   `apps/api/src/modules/notifications/README.md`).
+2. Copy this directory. It depends on the app's `config/api.js` client, the
+   shared `DataTable` + `useDataTable` (and `lib/data-table`), `ConfirmButton`, `lib/requests.js` and the toast.
+3. Put `NotificationBell` in the page chrome with `to` pointing at the alerts
+   page. This repo does it in `components/layout/Topbar.jsx` (staff) and
+   `components/layout/DoctorShell.jsx` (outside users).
+4. Mount `AlertCenter` and `PreferencesPanel` on one page (here
+   `pages/app/NotificationsPage.jsx`) and the admin pieces (`RecipientsPanel`,
+   `DeliveriesTable`, `fetchEvents`) on an admin page.

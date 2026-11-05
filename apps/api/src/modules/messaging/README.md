@@ -1,5 +1,7 @@
 # messaging (generic module)
 
+## Purpose
+
 Conversations between the **host** (the organisation running the app: its
 staff) and one outside **party** (an organisation or person the host app
 names with a party key). A thread can be about a **record**
@@ -153,5 +155,18 @@ The host app builds the service once at boot with its own collaborators
 (party keys, record resolvers, labels, search, an `onMessage` that emits its
 alert) and registers `messagingRoutes` with its `authenticate`, a `guard` and
 `listParties`. In this repo that wiring lives in `services/app-modules.js`,
-with the collaborators in its glue file next to the other notification glue.
-The web inbox is still to come.
+with the collaborators in its glue file next to the other notification glue
+(`services/app-modules.js` imports it, so its import list is the map).
+The browser side is `apps/web/src/modules/messaging`; see its README.
+
+Steps for a new host:
+
+1. Re-export `messageThreads`, `messageParticipants` and `messages` from
+   `modules/messaging/schema.js` in the app's Drizzle schema index and
+   generate a migration.
+2. Build the service with `createMessaging({ db, ...collaborators })`
+   (party keys for a user, record resolvers and labels, search, `onMessage`).
+3. Register `messagingRoutes` under the API prefix with `authenticate`, a
+   `guard` and `listParties`.
+4. Mount the web screens (`InboxTable`, `ThreadView`, `RecordThreads`,
+   `MessagesBadge`) on pages the host owns.

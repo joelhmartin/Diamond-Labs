@@ -1,5 +1,7 @@
 # notifications (generic module)
 
+## Purpose
+
 Tells people that something happened: an in-app alert (the bell), an email,
 and a text to a fixed per-event list of numbers. It knows nothing about the
 host app's domain. It speaks of **events** (registered keys), **records**
