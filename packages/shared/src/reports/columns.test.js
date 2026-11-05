@@ -1,6 +1,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { COLUMN_TYPES, formatCell, csvValue } from "./columns.js";
+import { csvField } from "../exports/csv.js";
 
 test("formatCell money and pct", () => {
   assert.equal(formatCell({ type: "money" }, 123450), "$1,234.50");
@@ -41,7 +42,19 @@ test("csvValue gives plain money and numbers", () => {
   assert.equal(csvValue({ type: "money" }, -1250), "-12.50");
   assert.equal(csvValue({ type: "int" }, 7), 7);
   assert.equal(csvValue({ type: "text" }, null), "");
-  assert.equal(csvValue({ type: "pct" }, 0.074), "7.4%");
+});
+
+test("csvValue writes pct as a percent figure and duration_days as days, both plain numbers", () => {
+  assert.equal(csvValue({ type: "pct" }, 0.074), "7.4");
+  assert.equal(csvValue({ type: "pct" }, -0.05), "-5.0");
+  assert.equal(csvValue({ type: "pct" }, 0), "0.0");
+  assert.equal(csvValue({ type: "pct" }, "x"), "");
+  assert.equal(csvValue({ type: "duration_days" }, 3), "3");
+  assert.equal(csvValue({ type: "duration_days" }, 3.25), "3.3");
+  assert.equal(csvValue({ type: "duration_days" }, -1.5), "-1.5");
+  // The shared encoder leaves them alone: no ' formula prefix on negatives.
+  assert.equal(csvField(csvValue({ type: "pct" }, -0.05)), "-5.0");
+  assert.equal(csvField(csvValue({ type: "duration_days" }, -1.5)), "-1.5");
 });
 
 test("datetime and date cells reuse one formatter per zone and read the same", () => {

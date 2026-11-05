@@ -76,12 +76,25 @@ export function formatCell(column, value) {
   }
 }
 
-/** CSV cell value: money as plain "1234.50", ints as numbers, the rest as displayed. */
+/** A finite number with one decimal ("-5.0"), or as-is when `keepInteger` and whole ("3"); "" when not a number. */
+const oneDecimal = (n, keepInteger) => (!Number.isFinite(n) ? "" : keepInteger && Number.isInteger(n) ? String(n) : n.toFixed(1));
+
+/**
+ * CSV cell value. Numeric types are written as plain numbers a spreadsheet can
+ * sum, so the shared encoder never prefixes them (negatives included):
+ *   money          dollars, "1234.50"
+ *   int            7
+ *   pct            the percent figure, one decimal, no "%": 0.074 -> "7.4", -0.05 -> "-5.0"
+ *   duration_days  the number of days, no " d": 3 -> "3", 3.25 -> "3.3"
+ * Everything else is written as displayed. Column headers are unchanged.
+ */
 export function csvValue(column, value) {
   if (isNil(value)) return "";
-  if (column.type === "money") {
-    return plainMoney(value);
+  switch (column.type) {
+    case "money": return plainMoney(value);
+    case "int": return Number(value);
+    case "pct": return oneDecimal(Number(value) * 100, false);
+    case "duration_days": return oneDecimal(Number(value), true);
+    default: return formatCell(column, value);
   }
-  if (column.type === "int") return Number(value);
-  return formatCell(column, value);
 }
