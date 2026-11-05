@@ -52,13 +52,15 @@ Full cinematic landing experience:
 
 ## Global Design Rules (Apply to Every Page)
 
-- **Noise texture overlay** — SVG `<feTurbulence>` filter at 0.04 opacity globally. No flat digital gradients.
-- **Rounded everything** — `border-radius: 2rem` to `3rem` on all cards and containers. No sharp corners.
+- **Noise texture overlay** — rendered once by `MarketingLayout` (SVG `<feTurbulence>`, about 0.05 opacity, see `.noise-overlay`). Pages do not add their own.
+- **Rounded containers** — `border-radius: 2rem` to `3rem` on cards, panels and images. Lists, tables and spec rows are not cards; do not wrap them.
 - **Navbar** — Fixed, pill-shaped, centered. Transparent at hero top, morphs to frosted glass (`backdrop-blur-xl`) on scroll. Contains logo text, page links, CTA button.
-- **Footer** — Dark background, `border-radius: 4rem 4rem 0 0`. Brand name, nav columns, legal links. "System Operational" pulsing green status dot in monospace.
-- **Full-width sliders** — At least one per interior page. Fullscreen-width, no visible overflow. Smooth transitions (CSS or GSAP). Touch + drag enabled. Custom arrows, no default browser UI.
-- **Sticky sections** — Use GSAP ScrollTrigger `pin: true` for at least one section per page. Make the scroll feel earned.
-- **Scroll-triggered animations** — Every major section animates in. Stagger cards. Fade-up text. Nothing is static on arrival.
+- **Footer** — Dark background, `border-radius: 4rem 4rem 0 0`. Brand name, nav columns (sentence-case headings), legal links. No status indicator.
+- **Colour roles** — `navy` for dark sections and heroes; `accent-500` for the primary action; `brand-500` on navy only; `brand-700` for links and accent text on light backgrounds; supporting text on light at least `navy/70`. No off-palette decoration.
+- **Type** — Plus Jakarta Sans throughout. Cormorant italic only on the second line of a page hero H1; section H2s are plain. IBM Plex Mono only for technical values (phone numbers, file formats), never as an all-caps tracked label.
+- **Shared components** — marketing pages use `PageHero`, `SectionHeading`, `CtaBand`, `StatRow` and `Reveal` from `components/marketing/`. Do not build per-page versions of a hero, CTA band or stat row.
+- **Motion** — one hero intro and one quiet reveal per section (`Reveal`); no per-card stagger or decorative floating. Everything is skipped under `prefers-reduced-motion`.
+- **Sliders and pinned sections** — use them where the content calls for it (a gallery, a true sequence), not as a per-page quota. Sliders are full-width, touch-enabled, with custom arrows.
 - **Button micro-interactions** — `scale(1.03)` hover with spring easing. Overflow-hidden with sliding background span. No flat hover color swaps.
 
 ---

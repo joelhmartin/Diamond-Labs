@@ -119,7 +119,7 @@ function Network() {
           <p className="mt-4 text-on-dark/70 text-lg leading-relaxed">
             The network Dr. Olmos founded spans the US, Canada, Australia and four additional countries. Each
             centre is dedicated to the diagnosis and treatment of craniofacial pain and sleep-disordered
-            breathing. Diamond Orthotic Laboratory is the fabrication arm of that network.
+            breathing.
           </p>
         </div>
         <div className="mt-10">

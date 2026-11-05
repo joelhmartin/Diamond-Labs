@@ -58,7 +58,7 @@ function Standard() {
     <Reveal className="section-pad py-20 md:py-24">
       <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-14">
         <div className="lg:col-span-2">
-          <SectionHeading title="Integrating form with function" />
+          <SectionHeading title="How certification works" />
         </div>
         <div className="lg:col-span-3 space-y-5 text-navy/70 leading-relaxed">
           <p>
@@ -84,9 +84,13 @@ function Standard() {
   );
 }
 
+/* Fixed column template so location, website and phone line up in every row.
+   Cells stay in the DOM when empty so the columns never shift. */
+const ROW_GRID = "md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.8fr)]";
+
 function LabRow({ lab }) {
   return (
-    <li className="grid grid-cols-1 md:grid-cols-[1.4fr_1fr_1fr_auto] gap-x-6 gap-y-1 py-4 items-baseline">
+    <li className={`grid grid-cols-1 ${ROW_GRID} gap-x-6 gap-y-1 py-4 md:items-baseline`}>
       <span className="font-heading font-bold text-navy">{lab.name}</span>
       <span className="text-sm text-navy/70">{lab.locator}</span>
       <span className="text-sm">
@@ -102,7 +106,7 @@ function LabRow({ lab }) {
           </a>
         )}
       </span>
-      <span className="text-sm font-mono text-navy/70">{lab.phone}</span>
+      <span className="text-sm font-mono text-navy/70 md:text-right">{lab.phone}</span>
     </li>
   );
 }
@@ -111,7 +115,7 @@ function Directory() {
   return (
     <Reveal className="section-pad py-20 md:py-24 bg-surface-100">
       <div className="max-w-6xl mx-auto">
-        <SectionHeading title="Labs that stand ready to service your appliance needs" />
+        <SectionHeading title="Find a certified lab" />
         <div className="mt-10 space-y-10">
           {REGIONS.map((r) => (
             <div key={r.label}>
@@ -133,9 +137,6 @@ export function CertifiedLabsPage() {
   return (
     <>
       <PageHero
-        variant="image"
-        image="/images/ond-overview.webp"
-        imageAlt="A Diamond-made nylon orthotic appliance"
         title="Certified laboratories"
         intro="Laboratories in the US, Canada and Australia are certified to make these appliances."
       />

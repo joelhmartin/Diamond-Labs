@@ -62,7 +62,7 @@ export function Footer() {
           <div className="md:col-span-8 grid grid-cols-2 sm:grid-cols-3 gap-8">
             {Object.entries(FOOTER_NAV).map(([title, links]) => (
               <div key={title}>
-                <h4 className="font-heading font-semibold text-on-dark/30 text-xs uppercase tracking-widest mb-4">
+                <h4 className="font-heading font-semibold text-on-dark/70 text-sm mb-4">
                   {title}
                 </h4>
                 <ul className="space-y-2.5">

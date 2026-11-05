@@ -53,7 +53,6 @@ const STATS = [
   { value: String(GROUPS.reduce((n, g) => n + g.people.length, 0)), label: "People on the team" },
   { value: String(byLabel("Dental technicians").length), label: "Dental technicians" },
   { value: String(byLabel("Digital engineering").length), label: "Digital engineers" },
-  { value: "1", label: "Lab, in La Mesa, California" },
 ];
 
 function Group({ label, people }) {

@@ -59,8 +59,8 @@ function Intro() {
             training for every level of a dentist&apos;s practice.
           </p>
           <p>
-            All education is directed by Dr. Steven R. Olmos, whose commitment to helping patients overcome sleep
-            breathing disorders, craniofacial pain, and TMD has made him world-renowned. His system for triage,
+            All education is directed by Dr. Steven R. Olmos, who has focused on helping patients overcome sleep
+            breathing disorders, craniofacial pain, and TMD. His system for triage,
             diagnosis, and treatment is noted for providing successful treatment results, and is the driving force
             behind{" "}
             <Link to="/resources/certified-labs" className="text-brand-700 font-semibold hover:underline">

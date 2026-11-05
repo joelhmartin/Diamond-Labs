@@ -61,7 +61,7 @@ export function CtaBand({ eyebrow, title, titleAccent, intro, primary, secondary
           )}
         </h2>
         {intro && (
-          <p data-cta-anim className="mt-6 text-navy/50 text-lg max-w-xl mx-auto leading-relaxed">
+          <p data-cta-anim className="mt-6 text-navy/70 text-lg max-w-xl mx-auto leading-relaxed">
             {intro}
           </p>
         )}

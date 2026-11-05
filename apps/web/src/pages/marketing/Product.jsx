@@ -79,7 +79,7 @@ export function ProductPage() {
         variant="compact"
         title="Precision appliances for"
         titleAccent="every protocol."
-        intro="TMD orthotics and sleep appliances, 3D printed in nylon to the prescription on your Rx."
+        intro="TMD orthotics and sleep appliances, made to the prescription on your Rx."
       />
       <ProductTabs />
       <CatalogSection />

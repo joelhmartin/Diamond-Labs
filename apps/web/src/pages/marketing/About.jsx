@@ -136,7 +136,7 @@ function DrOlmosFeature() {
         <img
           src="/images/dr-olmos.jpg"
           alt="Dr. Steven Olmos"
-          className="w-full max-w-[16rem] sm:max-w-none rounded-3xl object-cover aspect-square"
+          className="w-full max-w-[16rem] sm:max-w-none rounded-full object-cover aspect-square"
           width="900"
           height="900"
           loading="lazy"
