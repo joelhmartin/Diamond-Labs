@@ -348,6 +348,16 @@ test("a board card says when its order has a label", () => {
   assert.equal(presentBoardCard({ ...row, order: { ...row.order, shipmentId: null } }, [], "2026-10-07").shipmentId, null);
 });
 
+test("a staff order's board card has no reference and never shows its patient", () => {
+  const card = presentBoardCard({
+    order: { id: "lo", orderNumber: 100050, source: "staff", sourceId: "lo", status: "received", version: 1, patientName: "Jane Roe" },
+    clientName: "Dr. Example", shopOrderNumber: "DOL-STRAY",
+  }, [], "2026-11-06");
+  assert.equal(card.reference, null);
+  assert.equal(card.practice, "Dr. Example");
+  assert.ok(!JSON.stringify(card).includes("Jane Roe"));
+});
+
 test("a labelled order already shipped gets the normal refusal, not 'void the label'", () => {
   assert.throws(() => planStatusChange({ ...labelled, status: "shipped" }, "on_hold", { reason: "x", now }), (e) => isCode("INVALID_TRANSITION")(e) && !/void the label/.test(e.message));
 });

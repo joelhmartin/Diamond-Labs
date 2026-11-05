@@ -31,8 +31,8 @@ function patientInitials(row) {
   }
 }
 
-/** A legacy invoice's patient initials (its sealed legacy_patient); null when none or unreadable. */
-function legacyInitials(sealed) {
+/** Initials from a sealed patient field (a legacy invoice's legacy_patient, a staff order's patient_name); null when none or unreadable. */
+function sealedInitials(sealed) {
   if (!sealed) return null;
   try {
     return initialsFor(decryptField(sealed));
@@ -131,7 +131,7 @@ export async function listClientInvoices(clientUserIds, { includeDrafts = false 
   const rows = await database
     .select({
       invoice: invoices, labOrderNumber: labOrders.orderNumber, caseNumber: rxCases.caseNumber,
-      patientFirst: rxCases.patientFirst, patientLast: rxCases.patientLast,
+      patientFirst: rxCases.patientFirst, patientLast: rxCases.patientLast, staffPatient: labOrders.patientName,
     })
     .from(invoices)
     .leftJoin(labOrders, eq(labOrders.id, invoices.labOrderId))
@@ -142,7 +142,7 @@ export async function listClientInvoices(clientUserIds, { includeDrafts = false 
   const out = balanced.map((inv, i) => ({
     id: inv.id, invoiceNumber: inv.invoiceNumber, kind: inv.kind, status: inv.status,
     labOrderNumber: rows[i].labOrderNumber ?? null, caseNumber: rows[i].caseNumber ?? null,
-    patientInitials: patientInitials(rows[i]) ?? legacyInitials(rows[i].invoice.legacyPatient),
+    patientInitials: patientInitials(rows[i]) ?? sealedInitials(rows[i].staffPatient) ?? sealedInitials(rows[i].invoice.legacyPatient),
     issuedAt: inv.issuedAt, dueDate: inv.dueDate,
     totalCents: inv.totalCents, paidCents: inv.paidCents, balanceCents: inv.balanceCents,
   }));
@@ -153,12 +153,16 @@ async function labOrderBlock(labOrderId, database) {
   const [lo] = await database
     .select({
       id: labOrders.id, orderNumber: labOrders.orderNumber, source: labOrders.source, sourceId: labOrders.sourceId,
-      status: labOrders.status, isRemake: labOrders.isRemake,
+      status: labOrders.status, isRemake: labOrders.isRemake, patientName: labOrders.patientName,
     })
     .from(labOrders)
     .where(eq(labOrders.id, labOrderId));
   if (!lo) return null;
-  const { sourceId, ...rest } = lo;
+  const { sourceId, patientName: sealedPatient, ...rest } = lo;
+  if (lo.source === "staff") {
+    // A staff-entered order carries its own patient (sealed patient_name); there is no case or shop order.
+    return { ...rest, caseNumber: null, patientName: sealedPatient ? decryptField(sealedPatient) : null, shopOrderNumber: null };
+  }
   if (lo.source === "rx_case") {
     const [c] = await database
       .select({ caseNumber: rxCases.caseNumber, patientFirst: rxCases.patientFirst, patientLast: rxCases.patientLast })
