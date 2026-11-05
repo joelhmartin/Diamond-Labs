@@ -4,6 +4,7 @@ import { CatalogSection } from "../../components/marketing/CatalogSection";
 import { PageHero } from "../../components/marketing/PageHero";
 import { CtaBand } from "../../components/marketing/CtaBand";
 import { Reveal } from "../../components/marketing/Reveal";
+import LottiePlayer from "../../components/ui/LottiePlayer";
 
 const TABS = [
   { key: "ddsoAnt", label: "DDSO — Anterior", sub: "Sleep Appliance" },
@@ -61,11 +62,15 @@ export function ProductPage() {
     <>
       <PageHero
         variant="compact"
-        title="Precision appliances for"
-        titleAccent="every protocol."
+        title="Precision appliances"
+        titleAccent="for every protocol."
         intro="TMD orthotics and sleep appliances, made to the prescription on your Rx."
-        product="/images/ddso-post-stacked.webp"
-        productAlt="Posterior DDSO sleep appliance, upper and lower trays with a blue adjustment band"
+        media={
+          <LottiePlayer
+            src="/animations/hero-lottie.json"
+            className="w-full max-w-[420px] lg:max-w-none mx-auto aspect-[750/680]"
+          />
+        }
       />
       <ProductCatalog
         tabs={TABS}
