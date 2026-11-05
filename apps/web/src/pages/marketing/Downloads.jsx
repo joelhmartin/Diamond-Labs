@@ -1,6 +1,7 @@
 import { Download, FileText } from "lucide-react";
 import { PageHero } from "../../components/marketing/PageHero";
 import { Reveal } from "../../components/marketing/Reveal";
+import { CtaBand } from "../../components/marketing/CtaBand";
 
 const downloads = [
   {
@@ -26,31 +27,52 @@ const downloads = [
 export function DownloadsPage() {
   return (
     <div>
-      <PageHero title="Downloads" intro="Instructions, brochures and publications from Diamond Orthotic Laboratory." />
+      <PageHero
+        title="Downloads"
+        titleAccent="to keep on hand."
+        intro="Instructions, brochures and publications from Diamond Orthotic Laboratory."
+        product="/images/ddso-post-stacked.webp"
+        productAlt="Two DDSO sleep appliances stacked"
+      />
 
-      <Reveal className="section-pad py-16 md:py-20">
+      <Reveal className="section-pad py-16 md:py-24">
         <div className="max-w-6xl mx-auto">
-        <ul className="max-w-3xl divide-y divide-navy/15 border-y border-navy/15">
-          {downloads.map((item) => (
-            <li key={item.filename}>
-              <a
-                href={`/downloads/${item.filename}`}
-                download
-                className="group flex items-center gap-4 py-5 hover:bg-surface-100 transition-colors"
-              >
-                <FileText size={20} className="flex-shrink-0 text-brand-700" />
-                <span className="flex-1 min-w-0">
-                  <span className="block font-semibold text-navy">{item.title}</span>
-                  <span className="block mt-0.5 text-sm text-navy/70">{item.description}</span>
-                </span>
-                <span className="flex-shrink-0 font-mono text-xs text-navy/70">PDF, {item.year}</span>
-                <Download size={16} className="flex-shrink-0 text-brand-700 group-hover:translate-y-0.5 transition-transform" />
-              </a>
-            </li>
-          ))}
-        </ul>
+          <ul className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {downloads.map((item) => (
+              <li key={item.filename}>
+                <a
+                  href={`/downloads/${item.filename}`}
+                  download
+                  className="group flex flex-col h-full rounded-[2rem] bg-white border border-surface-300/60 shadow-sm p-7 hover:shadow-xl hover:shadow-navy/10 hover:-translate-y-1 transition-all duration-300"
+                >
+                  <span className="relative grid place-items-center w-20 h-24 rounded-2xl bg-navy text-on-dark shadow-lg shadow-navy/20">
+                    <FileText size={30} className="text-brand-400" aria-hidden="true" />
+                    <span className="absolute bottom-2 font-mono text-[11px] font-semibold tracking-widest">PDF</span>
+                  </span>
+                  <span className="mt-6 font-heading font-bold text-xl tracking-tight text-navy">{item.title}</span>
+                  <span className="mt-2 text-navy/70 leading-relaxed">{item.description}</span>
+                  <span className="mt-auto pt-6 flex items-center justify-between gap-3">
+                    <span className="font-mono text-xs text-navy/70">PDF, {item.year}</span>
+                    <span className="inline-flex items-center gap-2 font-semibold text-brand-700">
+                      Download
+                      <Download size={16} aria-hidden="true" className="group-hover:translate-y-0.5 transition-transform" />
+                    </span>
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
         </div>
       </Reveal>
+
+      <CtaBand
+        title="Need more than a PDF?"
+        intro="See how to send a case, or watch the technique videos."
+        primary={{ to: "/resources/rx-instructions", label: "Rx instructions" }}
+        secondary={{ to: "/resources/videos", label: "Instructional videos" }}
+        product="/images/onp-bioflex-new.webp"
+        productAlt="An Olmos Neuromuscular Positioner appliance"
+      />
     </div>
   );
 }

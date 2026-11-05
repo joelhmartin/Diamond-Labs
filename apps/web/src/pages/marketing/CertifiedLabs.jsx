@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, MapPin, Phone } from "lucide-react";
 import { PageHero } from "../../components/marketing/PageHero";
 import { SectionHeading } from "../../components/marketing/SectionHeading";
 import { CtaBand } from "../../components/marketing/CtaBand";
@@ -53,6 +53,31 @@ const REGIONS = [
   },
 ];
 
+function MapFeature() {
+  return (
+    <section className="section-pad relative z-10 -mt-10 md:-mt-16">
+      <div className="max-w-6xl mx-auto rounded-[2.5rem] md:rounded-[3rem] bg-white border border-surface-300/60 shadow-2xl shadow-navy/15 p-5 md:p-10">
+        <img
+          src="/images/certified-labs-map.png"
+          alt="World map with markers across the United States, Canada and Australia, where the certified laboratories are located"
+          className="w-full h-auto rounded-[1.5rem]"
+        />
+        <ul className="mt-6 flex flex-wrap gap-3">
+          {REGIONS.map((r) => (
+            <li
+              key={r.label}
+              className="inline-flex items-center gap-2 rounded-full bg-brand-100 text-brand-700 px-4 py-2 text-sm font-semibold"
+            >
+              <MapPin size={16} aria-hidden="true" />
+              {r.label}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
 function Standard() {
   return (
     <Reveal className="section-pad py-20 md:py-24">
@@ -83,51 +108,54 @@ function Standard() {
   );
 }
 
-/* Fixed column template so location, website and phone line up in every row.
-   Cells stay in the DOM when empty so the columns never shift. */
-const ROW_GRID = "md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.8fr)]";
-
-function LabRow({ lab }) {
+function LabCard({ lab }) {
   return (
-    <li className={`grid grid-cols-1 ${ROW_GRID} gap-x-6 gap-y-1 py-4 md:items-baseline`}>
-      <span className="font-heading font-bold text-navy">{lab.name}</span>
-      <span className="text-sm text-navy/70">{lab.locator}</span>
-      <span className="text-sm">
+    <li className="flex flex-col rounded-[2rem] bg-white/[0.07] border border-white/10 backdrop-blur-sm p-7 hover:bg-white/10 transition-colors duration-300">
+      <h4 className="font-heading font-bold text-xl tracking-tight text-on-dark">{lab.name}</h4>
+      <p className="mt-1 flex items-center gap-1.5 text-sm text-on-dark/70">
+        <MapPin size={14} aria-hidden="true" />
+        {lab.locator}
+      </p>
+      <div className="mt-auto pt-6 space-y-2 text-sm">
         {lab.href && (
           <a
             href={lab.href}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 font-medium text-brand-700 hover:underline"
+            className="flex items-center gap-2 font-medium text-brand-300 hover:underline"
           >
+            <ExternalLink size={14} aria-hidden="true" />
             {lab.display}
-            <ExternalLink size={12} />
           </a>
         )}
-      </span>
-      <span className="text-sm font-mono text-navy/70 md:text-right">
         {lab.phone && (
-          <a href={`tel:+1${lab.phone.replace(/\D/g, "")}`} className="hover:underline hover:text-navy">
+          <a
+            href={`tel:+1${lab.phone.replace(/\D/g, "")}`}
+            className="flex items-center gap-2 font-mono text-on-dark/85 hover:underline"
+          >
+            <Phone size={14} aria-hidden="true" />
             {lab.phone}
           </a>
         )}
-      </span>
+      </div>
     </li>
   );
 }
 
 function Directory() {
   return (
-    <Reveal className="section-pad py-20 md:py-24 bg-surface-100">
+    <Reveal className="section-pad py-20 md:py-28 bg-navy">
       <div className="max-w-6xl mx-auto">
-        <SectionHeading title="Find a certified lab" />
-        <div className="mt-10 space-y-10">
+        <h2 className="font-heading font-bold text-3xl md:text-5xl tracking-tight text-on-dark">
+          Find a <span className="font-drama italic text-brand-500">certified lab</span>
+        </h2>
+        <div className="mt-12 space-y-12">
           {REGIONS.map((r) => (
             <div key={r.label}>
-              <h3 className="font-heading font-bold text-xl text-navy">{r.label}</h3>
-              <ul className="mt-3 divide-y divide-navy/15 border-y border-navy/15">
+              <h3 className="font-heading font-bold text-xl text-brand-300">{r.label}</h3>
+              <ul className="mt-4 grid md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {r.labs.map((lab) => (
-                  <LabRow key={lab.name} lab={lab} />
+                  <LabCard key={lab.name} lab={lab} />
                 ))}
               </ul>
             </div>
@@ -143,8 +171,12 @@ export function CertifiedLabsPage() {
     <>
       <PageHero
         title="Certified laboratories"
+        titleAccent="in three countries."
         intro="Laboratories in the US, Canada and Australia are certified to fabricate Olmos Series appliances."
+        product="/images/ddso-ant-angle.webp"
+        productAlt="A DDSO sleep appliance"
       />
+      <MapFeature />
       <Standard />
       <Directory />
       <CtaBand
@@ -152,6 +184,8 @@ export function CertifiedLabsPage() {
         intro="Call Diamond Orthotic Lab directly for training on taking quality impressions or performing simple orthotic repairs and relines. Save your practice time and money."
         primary={{ href: "tel:+16197246400", label: "Call 619.724.6400" }}
         secondary={{ to: "/contact", label: "Contact form" }}
+        product="/images/onp-clear.webp"
+        productAlt="An Olmos Neuromuscular Positioner appliance"
       />
     </>
   );
