@@ -1,3 +1,4 @@
+import { organizationSettingsSchema } from "@my-app/shared";
 import { and, asc, eq, inArray, ilike, ne, sql } from "drizzle-orm";
 import { db as appDb } from "../../config/database.js";
 import { createId } from "../../lib/id.js";
@@ -5,6 +6,14 @@ import { organizations, organizationAccounts, organizationAdmins } from "./schem
 import { OrganizationError, resolveScope } from "./rules.js";
 
 const DEFAULT_SETTINGS = { combinedStatement: false };
+
+/** Validate settings with the shared schema so a direct service caller can't store unknown keys. */
+function parseSettings(settings, { partial = false } = {}) {
+  const schema = partial ? organizationSettingsSchema.partial().strict() : organizationSettingsSchema;
+  const result = schema.safeParse(settings ?? {});
+  if (!result.success) throw new OrganizationError("INVALID", "Invalid settings.");
+  return result.data;
+}
 const normalizeName = (n) => String(n ?? "").trim().replace(/\s+/g, " ");
 const escapeLike = (s) => s.replace(/[\\%_]/g, "\\$&");
 const isUniqueViolation = (err) => err?.code === "23505";
@@ -68,8 +77,9 @@ export function createOrganizationsService({ audit } = {}) {
   async function createOrganization({ name, settings, byUserId }, database = appDb) {
     const clean = normalizeName(name);
     if (!clean) throw new OrganizationError("INVALID", "Name is required.");
+    const parsed = parseSettings(settings);
     await assertNameFree(database, clean);
-    const row = { id: createId(), name: clean, settings: { ...DEFAULT_SETTINGS, ...(settings ?? {}) }, status: "active" };
+    const row = { id: createId(), name: clean, settings: { ...DEFAULT_SETTINGS, ...parsed }, status: "active" };
     try {
       await database.insert(organizations).values(row);
     } catch (err) {
@@ -81,6 +91,7 @@ export function createOrganizationsService({ audit } = {}) {
   }
 
   async function updateOrganization(id, patch, byUserId, database = appDb) {
+    const patchSettings = patch.settings === undefined ? undefined : parseSettings(patch.settings, { partial: true });
     const current = await requireOrganization(database, id);
     const set = {};
     if (patch.name !== undefined) {
@@ -89,7 +100,7 @@ export function createOrganizationsService({ audit } = {}) {
       await assertNameFree(database, clean, id);
       set.name = clean;
     }
-    if (patch.settings !== undefined) set.settings = { ...DEFAULT_SETTINGS, ...(current.settings ?? {}), ...patch.settings };
+    if (patchSettings !== undefined) set.settings = { ...DEFAULT_SETTINGS, ...(current.settings ?? {}), ...patchSettings };
     if (patch.status !== undefined) set.status = patch.status;
     try {
       await database.update(organizations).set({ ...set, updatedAt: new Date() }).where(eq(organizations.id, id));
@@ -114,12 +125,19 @@ export function createOrganizationsService({ audit } = {}) {
       .from(organizationAccounts).where(inArray(organizationAccounts.accountId, ids));
     const takenBy = new Map(taken.map((t) => [t.accountId, t.organizationId]));
     const alreadyInOther = ids.filter((i) => takenBy.has(i) && takenBy.get(i) !== orgId);
-    const added = ids.filter((i) => !takenBy.has(i));
-    if (added.length) {
-      await database.insert(organizationAccounts)
-        .values(added.map((accountId) => ({ organizationId: orgId, accountId, addedBy: byUserId ?? null })))
-        .onConflictDoNothing();
-      record(byUserId, "organization.accounts_added", orgId, { accountIds: added });
+    const toInsert = ids.filter((i) => !takenBy.has(i));
+    let added = [];
+    if (toInsert.length) {
+      // A concurrent request may claim an account between the select above and this insert;
+      // trust only the rows the insert actually returned.
+      const inserted = await database.insert(organizationAccounts)
+        .values(toInsert.map((accountId) => ({ organizationId: orgId, accountId, addedBy: byUserId ?? null })))
+        .onConflictDoNothing()
+        .returning({ accountId: organizationAccounts.accountId });
+      const insertedIds = new Set(inserted.map((r) => r.accountId));
+      added = toInsert.filter((i) => insertedIds.has(i));
+      alreadyInOther.push(...toInsert.filter((i) => !insertedIds.has(i)));
+      if (added.length) record(byUserId, "organization.accounts_added", orgId, { accountIds: added });
     }
     return { added, alreadyInOther };
   }
@@ -172,13 +190,12 @@ export function createOrganizationsService({ audit } = {}) {
   /**
    * The `resolveScope` result for a user. Always read live, never cached.
    * Glue callbacks: `loadMemberships(userId)` → `[{ accountId, role, status, accountActive }]`;
-   * `isEligibleAccount(accountId)` → boolean (the host's rule for which accounts count; it also
-   * covers the account being active for organization-granted accounts).
+   * `eligibleAccounts(accountIds)` → `Promise<Set<accountId>>`, called once per resolution for every
+   * candidate account (membership and organization alike). The set means active AND eligible by the
+   * host's rules, so organization-granted accounts are passed to `resolveScope` with `accountActive: true`.
    */
-  async function scopeForUser(userId, { loadMemberships, isEligibleAccount }, database = appDb) {
+  async function scopeForUser(userId, { loadMemberships, eligibleAccounts }, database = appDb) {
     const rawMemberships = await loadMemberships(userId);
-    const memberships = [];
-    for (const m of rawMemberships) memberships.push({ ...m, accountEligible: await isEligibleAccount(m.accountId) });
 
     const adminOf = await database
       .select({ organizationId: organizationAdmins.organizationId, status: organizationAdmins.status, organizationActive: sql`${organizations.status} = 'active'` })
@@ -186,16 +203,16 @@ export function createOrganizationsService({ audit } = {}) {
       .innerJoin(organizations, eq(organizations.id, organizationAdmins.organizationId))
       .where(and(eq(organizationAdmins.userId, userId), eq(organizationAdmins.status, "active")));
 
-    let orgAccounts = [];
-    if (adminOf.length) {
-      const rows = await database
+    const orgRows = adminOf.length
+      ? await database
         .select({ organizationId: organizationAccounts.organizationId, accountId: organizationAccounts.accountId })
         .from(organizationAccounts)
-        .where(inArray(organizationAccounts.organizationId, adminOf.map((g) => g.organizationId)));
-      for (const r of rows) {
-        orgAccounts.push({ ...r, accountActive: true, accountEligible: await isEligibleAccount(r.accountId) });
-      }
-    }
+        .where(inArray(organizationAccounts.organizationId, adminOf.map((g) => g.organizationId)))
+      : [];
+    const candidates = [...new Set([...rawMemberships.map((m) => m.accountId), ...orgRows.map((r) => r.accountId)])];
+    const eligible = candidates.length ? await eligibleAccounts(candidates) : new Set();
+    const memberships = rawMemberships.map((m) => ({ ...m, accountEligible: eligible.has(m.accountId) }));
+    const orgAccounts = orgRows.map((r) => ({ ...r, accountActive: true, accountEligible: eligible.has(r.accountId) }));
     return resolveScope({ memberships, adminOf, orgAccounts });
   }
 

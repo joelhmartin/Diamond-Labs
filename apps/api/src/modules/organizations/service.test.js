@@ -10,6 +10,19 @@ function build() {
   return { svc, audits };
 }
 const ORG = { id: "o1", name: "North Group", settings: { combinedStatement: false }, status: "active" };
+// Replace tx.insert with one that records values and resolves `.returning()` via returnFn(values).
+function stubInsert(tx, returnFn = (vals) => vals.map((v) => ({ accountId: v.accountId }))) {
+  tx.insert = () => {
+    const entry = { op: "insert" };
+    tx.log.push(entry);
+    const b = {
+      values: (v) => { entry.values = v; return b; },
+      onConflictDoNothing: () => b,
+      returning: async () => returnFn(entry.values),
+    };
+    return b;
+  };
+}
 const inserts = (tx) => tx.log.filter((e) => e.op === "insert");
 
 test("createOrganization writes the row and audits ids only", async () => {
@@ -55,11 +68,21 @@ test("updateOrganization of an unknown id is NOT_FOUND", async () => {
 
 test("addAccounts refuses an account already in another organization", async () => {
   const tx = fakeTx({ selects: [[ORG], [{ organizationId: "o2", accountId: "a2" }]] });
+  stubInsert(tx);
   const { svc, audits } = build();
   const out = await svc.addAccounts("o1", ["a1", "a2"], { byUserId: "u1", exists: async (ids) => new Set(ids) }, tx);
   assert.deepEqual(out, { added: ["a1"], alreadyInOther: ["a2"] });
   const [ins] = inserts(tx);
   assert.deepEqual(ins.values.map((v) => v.accountId), ["a1"]);
+  assert.deepEqual(audits[0].metadata, { accountIds: ["a1"] });
+});
+
+test("addAccounts reports an account claimed concurrently as alreadyInOther and audits only inserted ids", async () => {
+  const tx = fakeTx({ selects: [[ORG], []] });
+  stubInsert(tx, () => [{ accountId: "a1" }]); // a2 lost the race: the insert returned fewer rows than sent
+  const { svc, audits } = build();
+  const out = await svc.addAccounts("o1", ["a1", "a2"], { byUserId: "u1", exists: async (ids) => new Set(ids) }, tx);
+  assert.deepEqual(out, { added: ["a1"], alreadyInOther: ["a2"] });
   assert.deepEqual(audits[0].metadata, { accountIds: ["a1"] });
 });
 
@@ -144,10 +167,13 @@ test("scopeForUser combines glue memberships with organization admin grants", as
     ],
   });
   const { svc } = build();
+  const eligibleCalls = [];
   const scope = await svc.scopeForUser("u1", {
     loadMemberships: async () => [{ accountId: "a1", role: "viewer", status: "active", accountActive: true }],
-    isEligibleAccount: async (id) => id !== "a3",
+    eligibleAccounts: async (ids) => { eligibleCalls.push(ids); return new Set(ids.filter((id) => id !== "a3")); },
   }, tx);
+  assert.equal(eligibleCalls.length, 1, "one eligibility lookup per scope resolution");
+  assert.deepEqual([...eligibleCalls[0]].sort(), ["a1", "a2", "a3"]);
   assert.deepEqual(scope.accountIds, ["a1", "a2"]);
   assert.equal(scope.roles.get("a1"), "viewer");
   assert.equal(scope.via.get("a2"), "org-admin");
@@ -156,9 +182,23 @@ test("scopeForUser combines glue memberships with organization admin grants", as
 test("a user with no admin grants never queries organization accounts", async () => {
   const tx = fakeTx({ selects: [[]] });
   const { svc } = build();
-  const scope = await svc.scopeForUser("u1", { loadMemberships: async () => [], isEligibleAccount: async () => true }, tx);
+  const scope = await svc.scopeForUser("u1", { loadMemberships: async () => [], eligibleAccounts: async (ids) => new Set(ids) }, tx);
   assert.deepEqual(scope.accountIds, []);
   assert.equal(tx.log.filter((e) => e.op === "select").length, 1);
+});
+
+test("createOrganization refuses unknown settings keys from a direct caller", async () => {
+  const tx = fakeTx({ selects: [[]] });
+  const { svc } = build();
+  await assert.rejects(() => svc.createOrganization({ name: "X", settings: { bogus: true }, byUserId: "u1" }, tx), (e) => e.code === "INVALID");
+  assert.equal(inserts(tx).length, 0);
+});
+
+test("updateOrganization refuses unknown settings keys from a direct caller", async () => {
+  const tx = fakeTx({ selects: [[ORG]] });
+  const { svc } = build();
+  await assert.rejects(() => svc.updateOrganization("o1", { settings: { bogus: 1 } }, "u1", tx), (e) => e.code === "INVALID");
+  assert.equal(tx.log.filter((e) => e.op === "update").length, 0);
 });
 
 test("listOrganizations returns rows and the total", async () => {
