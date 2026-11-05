@@ -40,13 +40,13 @@ export const NAV_LINKS = [
     children: [
       { label: "Submit Digital Rx", to: "/submit-case" },
       { label: "Rx Instructions", to: "/resources/rx-instructions" },
-      { label: "Download Forms", to: "/resources/downloads" },
+      { label: "Downloads", to: "/resources/downloads" },
     ],
   },
   {
     label: "Resources",
     children: [
-      { label: "New Client Account Form", to: "/resources/new-client" },
+      { label: "Apply for an account", to: ROUTES.REGISTER_DOCTOR },
       { label: "Instructional Videos", to: "/resources/videos" },
       { label: "Our Centres / Certified Labs", to: "/resources/certified-labs" },
       { label: "Courses", to: "/resources/courses" },
@@ -170,7 +170,7 @@ function MobileNavGroup({ link, isActive, onNavigate }) {
               key={child.to + child.label}
               to={child.to}
               onClick={onNavigate}
-              className="block px-4 py-2 rounded-xl text-sm text-navy/50 hover:text-brand-500 hover:bg-brand-500/5 transition-colors"
+              className="block px-4 py-2 rounded-xl text-sm text-navy/70 hover:text-navy hover:bg-brand-500/5 transition-colors"
             >
               {child.label}
             </Link>
@@ -210,7 +210,7 @@ function MobileAccount({ onNavigate }) {
         <div className="font-heading font-semibold text-sm text-navy truncate">
           {user?.name || "Account"}
         </div>
-        <div className="text-[11px] text-navy/40 truncate">
+        <div className="text-[11px] text-navy/70 truncate">
           {user?.email}
         </div>
       </div>
@@ -302,7 +302,7 @@ function AccountButton({ scrolled }) {
                 {user?.name || "Account"}
               </div>
               {user?.email && (
-                <div className="text-[11px] text-navy/40 truncate">
+                <div className="text-[11px] text-navy/70 truncate">
                   {user.email}
                 </div>
               )}
@@ -515,7 +515,7 @@ export function Navbar() {
                   href={s.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-navy/30 hover:text-brand-500 transition-colors"
+                  className="text-navy/70 hover:text-brand-700 transition-colors"
                   aria-label={s.label}
                 >
                   <s.icon size={16} />

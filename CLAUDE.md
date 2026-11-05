@@ -1,52 +1,8 @@
-# Cinematic Multi-Page Website Builder
+# Diamond Orthotic Laboratory marketing site
 
-## Role
-You are a world-class Senior Creative Technologist and Lead Frontend Engineer. You build high-fidelity, cinematic websites. Every site is a digital instrument — every scroll intentional, every animation weighted and professional. No generic AI aesthetics. No lazy design.
+The marketing pages (`apps/web/src/pages/marketing/`, `components/marketing/`) follow the design rules below. The design intent is in `docs/superpowers/specs/2026-11-05-marketing-design-consistency-design.md`.
 
----
-
-## Before You Build — Ask These Questions (all in one call)
-
-1. **Brand name + one-line purpose** — e.g. "Nura Health — precision longevity medicine powered by biological data"
-2. **Aesthetic direction** — Single-select:
-   - **Organic Tech** — Lab meets luxury magazine. Moss, clay, cream. Cormorant Garamond drama.
-   - **Midnight Luxe** — Private members' club meets watchmaker's atelier. Obsidian, champagne, ivory. Playfair Display drama.
-   - **Brutalist Signal** — Control room for the future. Paper, signal red, black. Raw information density.
-   - **Vapor Clinic** — Genome lab inside a Tokyo nightclub. Deep void, plasma purple, bioluminescence. Instrument Serif drama.
-3. **3 value propositions** — Brief phrases. These drive section content throughout the site.
-4. **Primary CTA** — What should visitors do? e.g. "Book a consultation", "Join the waitlist"
-5. **Product name + what it is** — e.g. "The Apex Chair — an ergonomic carbon fiber office chair". This drives the Product page.
-
----
-
-## Pages to Build
-
-### 1. Home
-Full cinematic landing experience:
-- **Hero** — 100dvh, full-bleed Unsplash image (matching aesthetic mood), heavy gradient overlay. Content anchored bottom-left. Massive headline with font-size contrast between sans and serif. GSAP stagger fade-up on load.
-- **Features** — 3 interactive micro-UI cards from value props. Make them feel like live software, not static marketing. Include animations inside the cards (typewriter text feeds, animated grids, cycling state cards, etc.).
-- **Philosophy / Manifesto** — Dark full-width section. Two contrasting statements with a parallax texture image behind them. Animate text in on scroll.
-- **Sticky Stacking Protocol** — 3 full-screen panels that stack on scroll using GSAP ScrollTrigger pin. Each panel has a unique SVG/canvas animation (rotating geometry, scanning laser grid, pulsing EKG waveform). Derive content from brand purpose.
-- **Pricing or CTA** — Three-tier cards, or single large CTA if pricing doesn't fit. Middle tier pops.
-
-### 2. About Us
-- **Hero** — Fullscreen image with overlaid headline. Different image than home.
-- **Mission Statement** — Large editorial pull-quote with serif drama font.
-- **Team or Values section** — Cards or horizontal scroll strip with staggered scroll reveals.
-- **Full-width slider** — Auto-advancing, touch-swipeable image or content carousel, full viewport width, custom prev/next arrows. No default browser scrollbars.
-- **Timeline or Stats bar** — Horizontal scroll or sticky pinned section showing brand milestones or key numbers.
-
-### 3. Product Page
-- **Product Viewer** — Large primary image display (70% of viewport). Below or beside it: thumbnail strip with 4–6 small images the user can click to swap the main view. Smooth crossfade transition between images. Active thumbnail gets accent-colored ring.
-- **Product Details** — Name, tagline, key specs in a grid. Pull from the product info provided.
-- **Feature Highlights** — 3 callout items derived from value props, displayed as icon + label + short copy in a horizontal row.
-- **Full-width slider** — A second image slider showing the product in context/lifestyle shots. Full-bleed, autoplay, pause on hover.
-- **CTA block** — Sticky bottom bar on mobile, inline on desktop. Primary action button.
-
-### 4. Contact
-- **Split layout** — Left: brand info, location, social links, a subtle animated map pin or geometric motif. Right: a clean, minimal contact form (Name, Email, Message, Submit).
-- **Form interaction** — Input fields animate their label to float on focus. Submit button has a loading state and success state.
-- **Full-width section** — A large ambient image or gradient below the form as a visual buffer before the footer.
+The original "cinematic multi-page builder" brief that this site started from (aesthetic presets, per-page section lists, Unsplash imagery, live-software cards, required sliders, pull-quotes, stat bars) is superseded by the Global Design Rules for this site. Do not build from it.
 
 ---
 
@@ -59,9 +15,13 @@ Full cinematic landing experience:
 - **Colour roles** — `navy` for dark sections and heroes; `accent-500` for the primary action; `brand-500` on navy only; `brand-700` for links and accent text on light backgrounds; supporting text on light at least `navy/70`. No off-palette decoration.
 - **Type** — Plus Jakarta Sans throughout. Cormorant italic only on the second line of a page hero H1; section H2s are plain. IBM Plex Mono only for technical values (phone numbers, file formats), never as an all-caps tracked label.
 - **Shared components** — marketing pages use `PageHero`, `SectionHeading`, `CtaBand`, `StatRow` and `Reveal` from `components/marketing/`. Do not build per-page versions of a hero, CTA band or stat row.
-- **Motion** — one hero intro and one quiet reveal per section (`Reveal`); no per-card stagger or decorative floating. Everything is skipped under `prefers-reduced-motion`.
+- **Motion** — one hero intro and one quiet reveal per section (`Reveal`); no per-card stagger or decorative floating. `PageHero`, `Reveal`, `CtaBand` and `ProductCatalog` skip their animation under `prefers-reduced-motion` (via `lib/reducedMotion`). Home's own animation and the product viewer's image crossfade do not yet; new motion must use the guard.
 - **Sliders and pinned sections** — use them where the content calls for it (a gallery, a true sequence), not as a per-page quota. Sliders are full-width, touch-enabled, with custom arrows.
 - **Button micro-interactions** — `scale(1.03)` hover with spring easing. Overflow-hidden with sliding background span. No flat hover color swaps.
+- **Olmos policy** — Product names stay (Olmos Series, Day, Night, Orthotic, Neuromuscular Device/Positioner), as does Dr. Olmos on his own page, Courses and Certified Labs. Lab positioning built on his name ("Olmos-Method", "Olmos Protocol", "built around the Olmos Series") is not used; describe the work directly.
+- **Labels** — sentence case; no tracked all-caps eyebrows above headings that already say it.
+- **Copy** — plain and factual: no superlatives ("only", "premier", "gold standard", "global authority"), no invented figures, and no clinical claim that cannot be traced to the lab. Material and process claims name the cases they cover (digital cases, printed appliances); the site also sells acrylic and thermoform.
+- **Contact details** — phone and email are always `tel:` / `mailto:` links. Cases are sent by approved doctors through the Rx form in the account portal; others call the lab.
 
 ---
 
@@ -69,22 +29,10 @@ Full cinematic landing experience:
 
 - **Stack:** React + Vite, Tailwind CSS, GSAP 3 (ScrollTrigger, Observer), Lucide React icons
 - **Routing:** React Router v6 — full SPA with `<Link>` navigation, no page reloads
-- **Fonts:** Google Fonts via `<link>`. Chosen by aesthetic preset.
-- **Images:** Real Unsplash URLs matched to aesthetic mood. No placeholders.
+- **Fonts:** Plus Jakarta Sans (body and headings), Cormorant italic (hero accent line), IBM Plex Mono (technical values)
+- **Images:** The lab's own appliance photos in `apps/web/public/images`. No stock that does not depict the lab's work.
 - **Responsive:** Mobile-first. Hero font scales. Cards stack. Navbar collapses to hamburger.
 - **Animation pattern:** All GSAP inside `gsap.context()` + `useEffect`. Cleanup with `ctx.revert()`. Easing: `power3.out` for entrances, `power2.inOut` for morphs.
-
----
-
-## Build Sequence
-
-1. Map preset → full design token set (palette, fonts, mood keywords, identity)
-2. Generate all copy from brand inputs (headlines, card labels, manifesto statements, product specs)
-3. Select Unsplash images matching preset mood for hero, about, product, sliders
-4. Build in this order: shared layout (Navbar + Footer) → Home → Product → About → Contact
-5. Wire all routes, all animations, all interactions before considering it done
-
-**Directive:** Build a digital instrument, not a website. Every scroll should feel intentional. Every animation should feel weighted. Eradicate all generic AI patterns.
 
 ---
 

@@ -75,12 +75,10 @@ export function TeamPage() {
   return (
     <>
       <PageHero
-        variant="image"
+        variant="compact"
         title="Meet the"
         titleAccent="Diamond team."
         intro="Dental technicians, digital engineers and clinical specialists. Every case passes through their hands."
-        image="/images/ddso-full.webp"
-        imageAlt="A blue and white orthotic appliance on a stainless steel bench in the Diamond lab, with an articulator beside it"
       />
       <Reveal className="section-pad py-16 md:py-20">
         <div className="max-w-6xl mx-auto">

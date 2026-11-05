@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Lock, Clock, Package, Send } from "lucide-react";
+import { Send } from "lucide-react";
 import { useAuthStore } from "../../stores/auth.store.js";
 import { ROUTES } from "../../config/routes.js";
 import { PageHero } from "../../components/marketing/PageHero";
@@ -12,6 +12,20 @@ import { PageHero } from "../../components/marketing/PageHero";
    form, rather than promising a working wizard.
    ════════════════════════════════════════════════════════════════ */
 
+const PHONE = (
+  <a href="tel:+16197246400" className="font-mono font-semibold text-brand-700 hover:underline">
+    619.724.6400
+  </a>
+);
+const EMAIL = (
+  <a href="mailto:info@diamondorthotic.com" className="font-semibold text-brand-700 hover:underline">
+    info@diamondorthotic.com
+  </a>
+);
+
+const primaryBtn =
+  "btn-magnetic inline-flex items-center gap-2 px-8 py-3.5 rounded-full text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 transition-colors";
+
 export function CaseSubmissionPage() {
   const isApprovedDoctor = useAuthStore((s) => s.isApprovedDoctor());
 
@@ -19,102 +33,62 @@ export function CaseSubmissionPage() {
     <div>
       <PageHero
         title="Submit a new case"
-        intro="HIPAA-compliant digital submission for every Diamond-fabricated device. Pick the device, configure it, upload your scans and records, sign. We begin fabrication within one business day."
+        intro="Approved doctors send cases through the Rx form in the account portal. Everyone else can call the lab at 619.724.6400."
       />
 
       <section className="section-pad py-16 md:py-20">
-        <div className="max-w-2xl mx-auto">
-
-          {/* CTA card */}
-          <div className="bg-white rounded-[2rem] border border-surface-300/50 shadow-xl shadow-navy/5 overflow-hidden">
-            <div className="p-8 md:p-12 text-center">
-              <div className="w-16 h-16 rounded-2xl bg-brand-500/10 flex items-center justify-center mx-auto mb-6">
-                <Lock size={28} className="text-brand-700" />
-              </div>
-
-              {isApprovedDoctor ? (
-                <>
-                  <h2 className="font-heading font-bold text-2xl text-navy">
-                    Online Submission — Coming Soon
-                  </h2>
-                  <p className="mt-3 text-sm text-navy/70 max-w-md mx-auto leading-relaxed">
-                    Submitting a new case from the website isn&apos;t available
-                    right now while we rebuild this page. We&apos;re still
-                    accepting prescriptions — call 619.724.6400 or email
-                    info@diamondorthotic.com and we&apos;ll get your case
-                    started. Signed in on the portal? The Rx form there is up
-                    and working.
-                  </p>
-                  <div className="mt-8 flex items-center justify-center">
-                    <Link
-                      to={ROUTES.RX_CHOOSER}
-                      className="btn-magnetic inline-flex items-center gap-2 px-8 py-3.5 rounded-full text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 transition-colors"
-                    >
-                      <span className="relative z-10 flex items-center gap-2">
-                        <Send size={15} /> Open the Portal Rx Form
-                      </span>
-                    </Link>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <h2 className="font-heading font-bold text-2xl text-navy">
-                    Doctors Only
-                  </h2>
-                  <p className="mt-3 text-sm text-navy/70 max-w-md mx-auto leading-relaxed">
-                    Online case submission from the website is temporarily
-                    unavailable. Approved Diamond Labs partner doctors can
-                    still submit through the Rx form in their account portal
-                    — or call 619.724.6400 / email info@diamondorthotic.com
-                    and we&apos;ll take it from there.
-                  </p>
-
-                  <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-                    <Link
-                      to={ROUTES.LOGIN}
-                      state={{ from: { pathname: ROUTES.RX_CHOOSER } }}
-                      className="btn-magnetic inline-flex items-center gap-2 px-8 py-3.5 rounded-full text-sm font-semibold bg-accent-500 text-white hover:bg-accent-600 transition-colors"
-                    >
-                      <span className="relative z-10 flex items-center gap-2">
-                        <Send size={15} /> Sign In to Submit a Case
-                      </span>
-                    </Link>
-                    <Link
-                      to={ROUTES.REGISTER_DOCTOR}
-                      className="inline-flex items-center gap-2 px-6 py-3.5 rounded-full text-sm font-medium border border-surface-300/50 text-navy/70 hover:text-navy hover:border-brand-500/30 transition-all"
-                    >
-                      Apply for a doctor account
-                    </Link>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Feature strip */}
-            <div className="border-t border-surface-300/30 px-8 py-5 bg-surface-50/50 grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
-              {[
-                { icon: Clock, label: "< 2 week turnaround" },
-                { icon: Package, label: "Ships nationwide" },
-                { icon: Lock, label: "HIPAA compliant" },
-              ].map(({ icon: Icon, label }) => (
-                <div
-                  key={label}
-                  className="flex items-center justify-center gap-2 text-xs text-navy/70"
-                >
-                  <Icon size={14} />
-                  <span>{label}</span>
+        <div className="max-w-6xl mx-auto">
+          <div className="max-w-2xl">
+            {isApprovedDoctor ? (
+              <>
+                <h2 className="font-heading font-bold text-2xl md:text-3xl tracking-tight text-navy">
+                  Send a case from your portal
+                </h2>
+                <p className="mt-3 text-navy/70 leading-relaxed">
+                  Submitting a case from the public website isn&apos;t available. Your account portal has the Rx form
+                  for every Diamond device. Questions about a case? Call {PHONE} or email {EMAIL}.
+                </p>
+                <div className="mt-8">
+                  <Link to={ROUTES.RX_CHOOSER} className={primaryBtn}>
+                    <span className="relative z-10 flex items-center gap-2">
+                      <Send size={15} /> Open the portal Rx form
+                    </span>
+                  </Link>
                 </div>
-              ))}
-            </div>
-          </div>
+              </>
+            ) : (
+              <>
+                <h2 className="font-heading font-bold text-2xl md:text-3xl tracking-tight text-navy">
+                  Approved doctors only
+                </h2>
+                <p className="mt-3 text-navy/70 leading-relaxed">
+                  Submitting a case from the public website isn&apos;t available. Approved Diamond partner doctors
+                  send cases through the Rx form in their account portal. Everyone else can call {PHONE} or email{" "}
+                  {EMAIL} and we&apos;ll take it from there.
+                </p>
+                <div className="mt-8 flex flex-col sm:flex-row sm:items-center gap-4">
+                  <Link to={ROUTES.LOGIN} state={{ from: { pathname: ROUTES.RX_CHOOSER } }} className={primaryBtn}>
+                    <span className="relative z-10 flex items-center gap-2">
+                      <Send size={15} /> Sign in to submit a case
+                    </span>
+                  </Link>
+                  <Link
+                    to={ROUTES.REGISTER_DOCTOR}
+                    className="inline-flex items-center gap-2 px-6 py-3.5 rounded-full text-sm font-medium border border-navy/20 text-navy/70 hover:text-navy hover:border-navy/40 transition-colors"
+                  >
+                    Apply for a doctor account
+                  </Link>
+                </div>
+                <p className="mt-6 text-sm text-navy/70 leading-relaxed">
+                  Already an approved doctor? Sign in above and the link takes you straight to the Rx form.
+                </p>
+              </>
+            )}
 
-          {/* Secondary explanation — only relevant for unauthenticated visitors */}
-          {!isApprovedDoctor && (
-            <p className="mt-6 text-center text-sm text-navy/70 max-w-sm mx-auto leading-relaxed">
-              Already an approved doctor? Sign in above — the link will take you
-              straight to the Rx form.
+            <p className="mt-10 pt-6 border-t border-navy/15 text-sm text-navy/70">
+              Turnaround under 2 weeks. Ships nationwide. HIPAA compliant.
             </p>
-          )}
+          </div>
         </div>
       </section>
     </div>

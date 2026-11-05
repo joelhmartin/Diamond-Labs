@@ -63,7 +63,7 @@ function Hero() {
       </div>
 
       {/* Content */}
-      <div className="relative z-10 pt-44 pb-12 md:pt-48 md:pb-16 lg:pt-0 lg:pb-24 w-full max-w-6xl mx-auto">
+      <div className="relative z-10 pt-44 pb-12 md:pt-48 md:pb-16 lg:pt-36 lg:pb-24 w-full max-w-6xl mx-auto">
         <div className="max-w-3xl">
         <div data-hero-anim className="mb-4">
           <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/10 text-on-dark/70 font-mono text-xs font-semibold tracking-wider shadow-sm">
@@ -626,7 +626,7 @@ function Philosophy() {
   const stats = [
     { value: "19", label: "Lab Team Members" },
     { value: "<2wk", label: "Turnaround" },
-    { value: "FDA", label: "510(k) Cleared" },
+    { value: "FDA", label: "510(k) Sleep Appliances" },
     { value: "3", label: "Countries With Certified Labs" },
   ];
 
@@ -679,8 +679,9 @@ function Philosophy() {
           <div data-phil className="mt-10 md:mt-14 max-w-xl">
             <p className="text-on-dark/40 text-sm md:text-base font-medium leading-relaxed">
               Every orthotic we fabricate follows a documented clinical protocol
-              — digitally designed, SLS-printed to sub-millimeter tolerance,
-              and quality-checked before it leaves our lab.
+              and is quality-checked before it leaves our lab. Digital cases
+              are designed in CAD, and printed appliances are SLS-printed to
+              sub-millimeter tolerance.
             </p>
           </div>
 

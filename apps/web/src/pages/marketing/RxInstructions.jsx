@@ -4,29 +4,29 @@ import { PageHero } from "../../components/marketing/PageHero";
 import { SectionHeading } from "../../components/marketing/SectionHeading";
 import { CtaBand } from "../../components/marketing/CtaBand";
 import { Reveal } from "../../components/marketing/Reveal";
+import { DefinitionGrid } from "../../components/marketing/DefinitionGrid";
 
 const PATHWAYS = [
   {
     title: "Digital Rx (fastest)",
-    lead: "Upload intraoral scans and Rx details directly through our HIPAA-compliant portal.",
+    lead: "Approved doctors send intraoral scans and Rx details through the Rx form in the account portal.",
     bullets: [
       "STL or native scanner files accepted",
       "Automatic case-number assignment",
       "Confirmation within one business day",
     ],
-    ctaLabel: "Submit Digital Rx",
+    ctaLabel: "Open the Rx form",
     ctaTo: "/submit-case",
   },
   {
-    title: "Download and fax",
-    lead: "Print the standard Rx form, complete by hand, and include with your shipment.",
+    title: "Paper Rx",
+    lead: "Call the lab for a paper Rx.",
     bullets: [
-      "Olmos Orthotic Rx (PDF)",
-      "Sleep Appliance Rx (PDF)",
+      "Complete by hand",
       "Include with physical models or impressions",
     ],
-    ctaLabel: "View Downloads",
-    ctaTo: "/resources/downloads",
+    ctaLabel: "Call 619.724.6400",
+    ctaHref: "tel:+16197246400",
   },
   {
     title: "Watch the demos",
@@ -53,7 +53,7 @@ const REQUIRED = [
 
 const TIPS = [
   {
-    title: "Capture the hammular notches",
+    title: "Capture the hamular notches",
     body: "Essential for D3D-Matrix mounting. If dragging occurs with Polyvinyl Siloxane, retake around posterior retention landmarks (ball clasps, thermoforming, rigid acrylic).",
   },
   {
@@ -83,10 +83,17 @@ function Pathways() {
                   <li key={b}>{b}</li>
                 ))}
               </ul>
-              <Link to={p.ctaTo} className="inline-flex items-center gap-2 font-semibold text-brand-700 hover:underline">
-                {p.ctaLabel}
-                <ArrowRight size={14} />
-              </Link>
+              {p.ctaHref ? (
+                <a href={p.ctaHref} className="inline-flex items-center gap-2 font-semibold text-brand-700 hover:underline">
+                  {p.ctaLabel}
+                  <ArrowRight size={14} />
+                </a>
+              ) : (
+                <Link to={p.ctaTo} className="inline-flex items-center gap-2 font-semibold text-brand-700 hover:underline">
+                  {p.ctaLabel}
+                  <ArrowRight size={14} />
+                </Link>
+              )}
             </li>
           ))}
         </ul>
@@ -120,14 +127,7 @@ function Tips() {
     <Reveal className="section-pad py-20 md:py-24">
       <div className="max-w-6xl mx-auto">
         <SectionHeading title="Small details that save the case" />
-        <dl className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-x-8 gap-y-8">
-          {TIPS.map((t) => (
-            <div key={t.title} className="border-t border-navy/15 pt-5">
-              <dt className="font-heading font-bold text-lg text-navy">{t.title}</dt>
-              <dd className="mt-2 text-navy/70 text-sm leading-relaxed">{t.body}</dd>
-            </div>
-          ))}
-        </dl>
+        <DefinitionGrid items={TIPS.map((t) => ({ term: t.title, body: t.body }))} />
       </div>
     </Reveal>
   );
@@ -137,12 +137,10 @@ export function RxInstructionsPage() {
   return (
     <>
       <PageHero
-        variant="image"
-        image="/images/od-pmt-dark1.webp"
-        imageAlt="A 3D-printed Diamond orthotic on its model"
+        variant="compact"
         title="How to send us"
         titleAccent="a case."
-        intro="Three ways to send a case. Digital submission is fastest. Paper forms and video walk-throughs are available if you'd prefer."
+        intro="Approved doctors send cases digitally through the account portal, which is fastest. For a paper Rx, call the lab. Video walk-throughs cover impressions and bite registration."
       />
       <Pathways />
       <Required />
@@ -151,7 +149,7 @@ export function RxInstructionsPage() {
         title="Unsure about a case? Call the lab first."
         intro="Our technicians can walk you through impression technique, appliance selection, or device-specific requirements before you submit."
         primary={{ href: "tel:+16197246400", label: "Call 619.724.6400" }}
-        secondary={{ to: "/resources/downloads", label: "Download PDF forms" }}
+        secondary={{ to: "/resources/videos", label: "Instructional videos" }}
       />
     </>
   );

@@ -62,9 +62,8 @@ function Standard() {
         </div>
         <div className="lg:col-span-3 space-y-5 text-navy/70 leading-relaxed">
           <p>
-            TMJ &amp; Sleep Certified Labs share a commitment to excellence. Each lab has given their assurance that
-            products made to the clinical protocol will meet the consistent high quality we all expect and demand for
-            our patients.
+            Each TMJ &amp; Sleep Certified Lab has given its assurance that products made to the clinical protocol will
+            meet a consistent quality standard.
           </p>
           <p>
             Continued training in the clinical protocol is provided to each certified laboratory and its technicians.
@@ -106,7 +105,13 @@ function LabRow({ lab }) {
           </a>
         )}
       </span>
-      <span className="text-sm font-mono text-navy/70 md:text-right">{lab.phone}</span>
+      <span className="text-sm font-mono text-navy/70 md:text-right">
+        {lab.phone && (
+          <a href={`tel:+1${lab.phone.replace(/\D/g, "")}`} className="hover:underline hover:text-navy">
+            {lab.phone}
+          </a>
+        )}
+      </span>
     </li>
   );
 }
@@ -138,7 +143,7 @@ export function CertifiedLabsPage() {
     <>
       <PageHero
         title="Certified laboratories"
-        intro="Laboratories in the US, Canada and Australia are certified to make these appliances."
+        intro="Laboratories in the US, Canada and Australia are certified to fabricate Olmos Series appliances."
       />
       <Standard />
       <Directory />

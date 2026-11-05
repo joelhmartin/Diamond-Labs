@@ -74,13 +74,11 @@ export function SleepPage() {
         titleAccent="engineered."
         intro="The Diamond Digital Sleep Orthotic (DDSO) is a custom CAD/CAM device for snoring and mild-to-moderate OSA in adults. FDA 510(k) cleared, fully digital."
       />
-      <div className="[&>section]:!pt-12 md:[&>section]:!pt-14">
-        <ProductCatalog tabs={SLEEP_TABS} />
-      </div>
+      <ProductCatalog tabs={SLEEP_TABS} spacing="pt-12 md:pt-14 pb-12 md:pb-16" />
       <CoreFeatures />
       <CtaBand
-        title="Start a DDSO case through the Digital Rx form"
-        intro="All DDSO devices are Rx-only. Upload scans and Rx details through the HIPAA-compliant submission portal."
+        title="Start a DDSO case through the portal Rx form"
+        intro="All DDSO devices are Rx-only. Approved doctors send scans and Rx details through the Rx form in the account portal."
         primary={{ label: "Submit Digital Rx", to: "/submit-case" }}
         secondary={{ label: "Talk to the lab", to: "/contact" }}
       />

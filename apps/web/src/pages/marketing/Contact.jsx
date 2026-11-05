@@ -15,6 +15,7 @@ import {
 import { CONTACT_SUBJECTS } from "@my-app/shared";
 import { PageHero } from "../../components/marketing/PageHero";
 import { Reveal } from "../../components/marketing/Reveal";
+import { SectionHeading } from "../../components/marketing/SectionHeading";
 
 const SOCIALS = [
   { icon: Facebook, href: "https://facebook.com/diamondorthotic", label: "Facebook" },
@@ -39,6 +40,10 @@ export async function postContactMessage(formData) {
 function ContactForm() {
   const [formState, setFormState] = useState("idle");
   const [focused, setFocused] = useState({});
+  // Fields holding text keep their label floated, so autofilled values never sit under it.
+  const [filled, setFilled] = useState({});
+  const floated = (name) => focused[name] || filled[name];
+  const trackValue = (e) => setFilled((prev) => ({ ...prev, [e.target.name]: e.target.value !== "" }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -48,6 +53,7 @@ function ContactForm() {
       await postContactMessage(new FormData(form));
       form.reset();
       setFocused({});
+      setFilled({});
       setFormState("success");
       setTimeout(() => setFormState("idle"), 4000);
     } catch {
@@ -68,8 +74,9 @@ function ContactForm() {
         {fields.map((field) => (
           <div key={field.name} className="relative">
             <label
+              htmlFor={`contact-${field.name}`}
               className={`absolute left-4 transition-all duration-300 pointer-events-none ${
-                focused[field.name]
+                floated(field.name)
                   ? "top-2 text-[10px] text-brand-700 font-semibold"
                   : "top-4 text-sm text-navy/70"
               }`}
@@ -77,11 +84,13 @@ function ContactForm() {
               {field.label}
             </label>
             <input
+              id={`contact-${field.name}`}
               type={field.type}
               name={field.name}
               required={field.required}
               maxLength={field.maxLength}
               className="w-full pt-6 pb-2 px-4 rounded-2xl bg-surface-100 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-700 focus:ring-2 focus:ring-brand-700/15 transition-all duration-300"
+              onChange={trackValue}
               onFocus={() =>
                 setFocused((prev) => ({ ...prev, [field.name]: true }))
               }
@@ -97,8 +106,9 @@ function ContactForm() {
 
       <div className="relative">
         <label
+          htmlFor="contact-subject"
           className={`absolute left-4 transition-all duration-300 pointer-events-none ${
-            focused.subject
+            floated("subject")
               ? "top-2 text-[10px] text-brand-700 font-semibold"
               : "top-4 text-sm text-navy/70"
           }`}
@@ -106,7 +116,9 @@ function ContactForm() {
           Subject
         </label>
         <select
+          id="contact-subject"
           name="subject"
+          onChange={trackValue}
           className="w-full pt-6 pb-2 px-4 rounded-2xl bg-surface-100 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-700 focus:ring-2 focus:ring-brand-700/15 transition-all duration-300 appearance-none cursor-pointer"
           onFocus={() =>
             setFocused((prev) => ({ ...prev, subject: true }))
@@ -127,8 +139,9 @@ function ContactForm() {
 
       <div className="relative">
         <label
+          htmlFor="contact-message"
           className={`absolute left-4 transition-all duration-300 pointer-events-none ${
-            focused.message
+            floated("message")
               ? "top-2 text-[10px] text-brand-700 font-semibold"
               : "top-4 text-sm text-navy/70"
           }`}
@@ -136,7 +149,9 @@ function ContactForm() {
           Message
         </label>
         <textarea
+          id="contact-message"
           name="message"
+          onChange={trackValue}
           required
           maxLength={5000}
           rows={4}
@@ -171,6 +186,10 @@ function ContactForm() {
           .
         </p>
       )}
+
+      <p role="status" className="sr-only">
+        {formState === "success" ? "Message sent." : ""}
+      </p>
 
       <button
         type="submit"
@@ -207,17 +226,15 @@ function ContactForm() {
 /* ─── CONTACT INFO ─── */
 function ContactInfo() {
   const items = [
-    { icon: Mail, label: "Email", value: "info@diamondorthotic.com" },
-    { icon: Phone, label: "Phone", value: "619.724.6400", mono: true },
+    { icon: Mail, label: "Email", value: "info@diamondorthotic.com", href: "mailto:info@diamondorthotic.com" },
+    { icon: Phone, label: "Phone", value: "619.724.6400", mono: true, href: "tel:+16197246400" },
     { icon: MapPin, label: "Location", value: "La Mesa, California" },
     { icon: Clock, label: "Hours", value: "Mon–Fri, 8:00 AM – 5:00 PM PST" },
   ];
 
   return (
     <div>
-      <h2 className="font-heading font-bold text-2xl md:text-3xl tracking-tight">
-        Get in touch.
-      </h2>
+      <SectionHeading title="Get in touch" />
       <p className="mt-3 text-navy/70 text-sm leading-relaxed max-w-sm">
         Whether you have questions about our products, need help with case
         submission, or want to learn about our digital workflow — we&apos;re
@@ -232,7 +249,15 @@ function ContactInfo() {
             </div>
             <div>
               <span className="text-xs text-navy/70">{item.label}</span>
-              <p className={`text-sm font-medium text-navy ${item.mono ? "font-mono" : ""}`}>{item.value}</p>
+              <p className={`text-sm font-medium text-navy ${item.mono ? "font-mono" : ""}`}>
+                {item.href ? (
+                  <a href={item.href} className="hover:underline">
+                    {item.value}
+                  </a>
+                ) : (
+                  item.value
+                )}
+              </p>
             </div>
           </div>
         ))}

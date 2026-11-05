@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { ArrowUpRight, Facebook, Instagram, Linkedin, Youtube } from "lucide-react";
+import { ROUTES } from "../../config/routes.js";
 
 const SOCIALS = [
   { icon: Facebook, href: "https://facebook.com/diamondorthotic", label: "Facebook" },
@@ -22,7 +23,7 @@ const FOOTER_NAV = {
   Resources: [
     { label: "Case Submission", to: "/submit-case" },
     { label: "Digital Workflow", to: "/services/digital-workflow" },
-    { label: "New Client Account", to: "/resources/new-client" },
+    { label: "Apply for an account", to: ROUTES.REGISTER_DOCTOR },
   ],
 };
 
@@ -37,9 +38,14 @@ export function Footer() {
             <h3 className="font-heading font-bold text-on-dark text-xl tracking-tight">
               Diamond Orthotic Laboratory
             </h3>
-            <p className="mt-3 text-on-dark/50 text-sm leading-relaxed max-w-xs">
+            <p className="mt-3 text-on-dark/60 text-sm leading-relaxed max-w-xs">
               A digital orthotic laboratory in La Mesa, California, making TMD
               orthotics and sleep appliances for dentists.
+            </p>
+            <p className="mt-3 text-sm">
+              <a href="tel:+16197246400" className="font-mono text-on-dark/70 hover:text-on-dark transition-colors">
+                619.724.6400
+              </a>
             </p>
             {/* Social links */}
             <div className="mt-6 flex items-center gap-3">
@@ -49,7 +55,7 @@ export function Footer() {
                   href={s.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-on-dark/30 hover:text-on-dark hover:bg-white/10 transition-all duration-300"
+                  className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-on-dark/60 hover:text-on-dark hover:bg-white/10 transition-all duration-300"
                   aria-label={s.label}
                 >
                   <s.icon size={14} />
@@ -88,18 +94,18 @@ export function Footer() {
 
         {/* Bottom bar */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-8">
-          <p className="text-on-dark/30 text-xs">
+          <p className="text-on-dark/60 text-xs">
             &copy; {new Date().getFullYear()} Diamond Orthotic Laboratory. All rights
             reserved.
           </p>
-          <div className="flex items-center gap-6 text-on-dark/30 text-xs">
-            <span className="hover:text-on-dark/60 transition-colors cursor-pointer">
+          <div className="flex items-center gap-6 text-on-dark/60 text-xs">
+            <span>
               Privacy Policy
             </span>
-            <span className="hover:text-on-dark/60 transition-colors cursor-pointer">
+            <span>
               Terms of Service
             </span>
-            <span className="hover:text-on-dark/60 transition-colors cursor-pointer">
+            <span>
               FDA Compliance
             </span>
           </div>

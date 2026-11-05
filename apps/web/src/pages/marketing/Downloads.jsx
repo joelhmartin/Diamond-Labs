@@ -26,10 +26,11 @@ const downloads = [
 export function DownloadsPage() {
   return (
     <div>
-      <PageHero title="Downloads" intro="Forms, brochures, and publications from Diamond Orthotic Laboratory." />
+      <PageHero title="Downloads" intro="Instructions, brochures and publications from Diamond Orthotic Laboratory." />
 
       <Reveal className="section-pad py-16 md:py-20">
-        <ul className="max-w-3xl mx-auto divide-y divide-navy/15 border-y border-navy/15">
+        <div className="max-w-6xl mx-auto">
+        <ul className="max-w-3xl divide-y divide-navy/15 border-y border-navy/15">
           {downloads.map((item) => (
             <li key={item.filename}>
               <a
@@ -48,6 +49,7 @@ export function DownloadsPage() {
             </li>
           ))}
         </ul>
+        </div>
       </Reveal>
     </div>
   );

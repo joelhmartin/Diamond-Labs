@@ -64,8 +64,8 @@ The palette is the committed default in `apps/web/src/index.css` (commit `274ab4
 
 **Page hero: one component, two variants.**
 
-- `image`: navy base with a left-weighted scrim over a photo. `min-h-[60dvh]`, content anchored bottom-left. Used on About, Team, Digital Workflow, Certified Labs, Courses, Contact, Rx Instructions.
-- `compact`: solid navy, `pt-36 pb-16`, left-aligned. Used on Products, TMD, Sleep, Submit Case, Downloads, Videos, New Client, Dr. Olmos.
+- `image`: navy base with a left-weighted scrim over a photo. `min-h-[60dvh]`, content anchored bottom-left. Used on About, Digital Workflow and Contact, where the photo is sharp and not reused.
+- `compact`: solid navy, `pt-36 pb-16`, left-aligned. Used on Products, TMD, Sleep, Submit Case, Downloads, Videos, New Client, Dr. Olmos, Certified Labs, Team, Courses and Rx Instructions (the last three had soft or duplicated photos).
 - Both are dark from the top edge, so the white nav is always legible. This fixes Team and Products and makes `HEROLESS_ROUTES` removable.
 - The grey fade (`hero-gradient`) is no longer used by these pages. `Checkout` still uses the class, so the CSS stays.
 

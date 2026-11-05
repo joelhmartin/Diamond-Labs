@@ -10,6 +10,7 @@ export function ProductViewer({
   ctaLabel = "Request Information",
   onCta = null,
   registered = true,
+  headingAs: Heading = "h2",
 }) {
   const [activeIdx, setActiveIdx] = useState(0);
   const mainRef = useRef(null);
@@ -53,11 +54,9 @@ export function ProductViewer({
               className="w-full h-full object-contain p-8"
             />
           ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center text-navy/20">
+            <div className="w-full h-full flex flex-col items-center justify-center text-navy/70">
               <ImageIcon size={40} />
-              <span className="mt-3 text-xs font-mono uppercase tracking-widest">
-                Image pending
-              </span>
+              <span className="mt-3 text-sm">Image pending</span>
             </div>
           )}
           <div className="absolute top-4 left-4 flex items-center gap-2">
@@ -74,7 +73,7 @@ export function ProductViewer({
             )}
           </div>
           {activeItem.is3D && (
-            <div className="absolute bottom-4 right-4 text-[10px] font-mono text-white/30 pointer-events-none">
+            <div className="absolute bottom-4 right-4 text-xs text-navy/70 pointer-events-none">
               drag to rotate · scroll to zoom
             </div>
           )}
@@ -84,6 +83,9 @@ export function ProductViewer({
           {product.images.map((img, i) => (
             <button
               key={i}
+              type="button"
+              aria-label={img.label}
+              aria-pressed={i === activeIdx}
               onClick={() => handleThumbClick(i)}
               className={`flex-shrink-0 w-16 h-16 md:w-20 md:h-20 rounded-xl overflow-hidden border-2 transition-all duration-300 ${
                 i === activeIdx
@@ -111,16 +113,14 @@ export function ProductViewer({
 
       {/* Details */}
       <div className="lg:col-span-6">
-        <div className="font-heading font-bold text-3xl md:text-4xl tracking-tight">
+        <Heading className="font-heading font-bold text-3xl md:text-4xl tracking-tight text-navy">
           {product.name}
-          {registered && (
-            <span className="font-drama italic text-brand-500">®</span>
-          )}
-        </div>
-        <div className="mt-1 font-heading text-sm text-navy/50">
+          {registered && <sup className="ml-0.5 text-base font-semibold text-navy/70">®</sup>}
+        </Heading>
+        <div className="mt-1 font-heading text-sm text-navy/70">
           {product.fullName}
         </div>
-        <p className="mt-4 text-navy/60 text-sm leading-relaxed">
+        <p className="mt-4 text-navy/70 text-sm leading-relaxed">
           {product.tagline}
         </p>
 
@@ -130,10 +130,10 @@ export function ProductViewer({
               key={i}
               className="flex items-center justify-between py-2 border-b border-surface-300/30"
             >
-              <span className="text-xs font-mono text-navy/40 uppercase">
+              <span className="text-sm text-navy/70">
                 {spec.label}
               </span>
-              <span className="text-sm font-medium text-navy/80">
+              <span className="text-sm font-medium text-navy">
                 {spec.value}
               </span>
             </div>

@@ -231,15 +231,13 @@ export function TmdPage() {
         titleAccent="not splints."
         intro="The Olmos Series is designed to correct skeletal, muscular, tendon, and ligament asymmetries — restoring function and reducing symptoms rather than simply protecting teeth."
       />
-      <div className="[&>section]:!pt-12 md:[&>section]:!pt-14">
-        <ProductCatalog tabs={TMD_TABS} />
-      </div>
+      <ProductCatalog tabs={TMD_TABS} spacing="pt-12 md:pt-14 pb-12 md:pb-16" />
       <Definition />
       <DayOrthotics />
       <NightOrthotics />
       <Symptoms />
       <CtaBand
-        title="Start a case through the Digital Rx form"
+        title="Start a case through the portal Rx form"
         intro="All Olmos TMD orthotics are Rx-only. Appliance selection is driven by comprehensive diagnosis. Unsure which variant fits? We'll help you decide."
         primary={{ label: "Submit Digital Rx", to: "/submit-case" }}
         secondary={{ label: "Talk to the lab", to: "/contact" }}

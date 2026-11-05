@@ -65,7 +65,7 @@ function ImagingTechnology() {
       <div className="max-w-6xl mx-auto">
         <SectionHeading
           title="3D imaging technology"
-          intro="Every Diamond appliance begins as a high-resolution digital model, captured intraorally, articulated in CAD and checked surface by surface before it is printed in nylon."
+          intro="Digital cases begin as a high-resolution model, captured intraorally, articulated in CAD and checked surface by surface before fabrication. Printed appliances are made in nylon."
         />
         <Link to="/services/digital-workflow" className={`mt-6 ${textLink}`}>
           See the digital workflow <ArrowRight size={16} />
