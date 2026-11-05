@@ -19,6 +19,7 @@ import {
   Building2,
   Landmark,
   Truck,
+  Download,
 } from "lucide-react";
 import { brand } from "../../config/brand.js";
 import { isStaffRole } from "@my-app/shared";
@@ -43,6 +44,7 @@ const adminItems = [
   { label: "Invoices",   to: ROUTES.ADMIN_INVOICES,    icon: FileText },
   { label: "Receivables", to: ROUTES.ADMIN_RECEIVABLES, icon: Landmark },
   { label: "Payments",   to: ROUTES.ADMIN_PAYMENTS,    icon: CreditCard },
+  { label: "Exports",    to: ROUTES.ADMIN_EXPORTS,     icon: Download },
   { label: "AutoPay",    to: ROUTES.ADMIN_AUTOPAY,     icon: Repeat },
   { label: "Jobs",       to: ROUTES.ADMIN_JOBS,        icon: Clock },
   { label: "Orders",     to: ROUTES.ADMIN_ORDERS,      icon: ClipboardList },

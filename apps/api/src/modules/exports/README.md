@@ -16,8 +16,8 @@ import { createExportRegistry, csvFormat, createExportsRoutes, runExport, previe
 
 - `createExportRegistry()` returns `{ defineSource(def), defineFormat(def), source(key), format(key), list() }`.
   Defining a duplicate key throws. `list()` returns
-  `[{ key, label, params, fields, formats: [formatKey] }]`, where `formats`
-  holds only the formats whose `supports(source)` accepts that source.
+  `[{ key, label, params, fields, formats: [{ key, label, extension }] }]`,
+  where `formats` holds only the formats whose `supports(source)` accepts that source.
 - **Source contract**
 
   ```

@@ -18,14 +18,14 @@ export function createExportRegistry() {
     defineFormat: (def) => define(formats, "format", def),
     source: (key) => sources.get(key),
     format: (key) => formats.get(key),
-    /** Every source with the keys of the formats that accept it. */
+    /** Every source with the formats that accept it, as { key, label, extension }. */
     list: () =>
       [...sources.values()].map((s) => ({
         key: s.key,
         label: s.label,
         params: s.params ?? [],
         fields: s.fields,
-        formats: [...formats.values()].filter((f) => f.supports(s)).map((f) => f.key),
+        formats: [...formats.values()].filter((f) => f.supports(s)).map((f) => ({ key: f.key, label: f.label, extension: f.extension })),
       })),
   };
 }

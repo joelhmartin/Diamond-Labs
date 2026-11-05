@@ -5,6 +5,7 @@
  */
 
 import { csvRow, CSV_EOL } from "@my-app/shared";
+import { saveBlob } from "../download.js";
 
 export function toCsv(rows, columns) {
   const cols = columns.filter((c) => c.export !== false);
@@ -21,13 +22,5 @@ function cellValue(column, row) {
 
 export function downloadCsv(filename, csv) {
   // The BOM makes Excel read the file as UTF-8 (accented names).
-  const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  saveBlob(filename, new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
 }

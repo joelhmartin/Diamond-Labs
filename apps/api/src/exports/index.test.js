@@ -7,7 +7,7 @@ vi.mock("../services/audit.service.js", () => ({ logSafe: (e) => logged.push(e) 
 const { appExports, auditExportDownload } = await import("./index.js");
 
 test("the app registry offers the invoice source as csv", () => {
-  assert.deepEqual(appExports.list().map((s) => [s.key, s.formats]), [["invoices", ["csv"]]]);
+  assert.deepEqual(appExports.list().map((s) => [s.key, s.formats]), [["invoices", [{ key: "csv", label: "CSV", extension: "csv" }]]]);
 });
 
 test("a download is audited with ids, counts and params only", () => {

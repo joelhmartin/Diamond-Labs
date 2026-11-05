@@ -32,6 +32,7 @@ import { AdminInvoicesPage } from "./pages/app/AdminInvoicesPage.jsx";
 import { AdminInvoiceDetailPage } from "./pages/app/AdminInvoiceDetailPage.jsx";
 import { AdminReceivablesPage } from "./pages/app/AdminReceivablesPage.jsx";
 import { AdminPaymentsPage } from "./pages/app/AdminPaymentsPage.jsx";
+import { AdminExportsPage } from "./pages/app/AdminExportsPage.jsx";
 import { AdminUsersPage } from "./pages/app/AdminUsersPage.jsx";
 import { AdminClientPricingPage } from "./pages/app/AdminClientPricingPage.jsx";
 import { AdminAutoPayPage } from "./pages/app/AdminAutoPayPage.jsx";
@@ -230,6 +231,7 @@ function AppRoutes() {
           <Route path="/admin/invoices/:id" element={<AdminInvoiceDetailPage />} />
           <Route path="/admin/receivables" element={<AdminReceivablesPage />} />
           <Route path="/admin/payments" element={<AdminPaymentsPage />} />
+          <Route path="/admin/exports" element={<AdminExportsPage />} />
           <Route path="/admin/orders" element={<AdminOrdersPage />} />
           <Route path="/admin/lab/departments" element={<AdminDepartmentsPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />

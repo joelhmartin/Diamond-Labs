@@ -24,7 +24,7 @@ test("list() shows only formats whose supports() accepts the source", () => {
   r.defineSource(source("sales"));
   r.defineSource(source("stock"));
   const list = r.list();
-  assert.deepEqual(list.map((s) => [s.key, s.formats]), [["sales", ["csv", "iif"]], ["stock", ["csv"]]]);
+  assert.deepEqual(list.map((s) => [s.key, s.formats]), [["sales", [{ key: "csv", label: "csv", extension: "csv" }, { key: "iif", label: "iif", extension: "iif" }]], ["stock", [{ key: "csv", label: "csv", extension: "csv" }]]]);
   assert.deepEqual(Object.keys(list[0]).sort(), ["fields", "formats", "key", "label", "params"]);
 });
 

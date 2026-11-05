@@ -47,7 +47,7 @@ test("list route returns the registry listing", async () => {
   const res = await build().inject({ url: "/admin/exports" });
   const { data } = res.json();
   assert.equal(data[0].key, "sales");
-  assert.deepEqual(data[0].formats, ["csv"]);
+  assert.deepEqual(data[0].formats, [{ key: "csv", label: "CSV", extension: "csv" }]);
 });
 
 test("preview pages by limit/offset and keeps them out of the params", async () => {
