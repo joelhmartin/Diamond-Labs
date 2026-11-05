@@ -186,14 +186,34 @@ failure is 422, a `NotificationInputError` 400 (409 for a duplicate).
 
 ## Wiring it into another app
 
-1. Register the app's events once at boot (`defineNotificationEvent`; make it
-   idempotent with `getEvent(key)` so a second boot doesn't throw).
-2. Write `resolveAudience(db, audience)` for the app's users and kinds.
-3. `configureNotifications(createNotifier({ db, resolveAudience, channels, appUrl, orgName, log }))`
-   in every process that emits (the API server and any job runner).
-4. Register `notificationRoutes` with the app's `authenticate`, admin guard
-   and `kindOf`.
-5. Emit through the app's seam after commits.
+Worked example: `services/app-modules.js` (boot) and the glue file it imports
+for events, audience kinds and the resolver. Its import list is the map.
 
-This app does all of it in `services/app-modules.js`, with its event list and
-resolver in a glue file it imports from there.
+1. **Schema.** Re-export `notifications`, `notificationPreferences`,
+   `notificationRecipients` and `notificationDeliveries` from
+   `modules/notifications/schema.js` in the app's `db/schema/index.js`, then
+   run `pnpm db:generate` (never hand-write the migration).
+2. **Scrub plan.** Classify all four tables and every column in the app's
+   redaction plan (`db/scrub/plan.js`) and its `COLUMNS.md`; the plan test
+   fails on an unclassified column. Recipient addresses and numbers are PII.
+3. **Events.** Register each event once at boot with
+   `defineNotificationEvent({ key, label, kinds, defaults, sms, title, link, email? })`.
+   Guard with `getEvent(key)` so a second boot does not throw. Titles and
+   links are built only from `data` (numbers, dates, ids), never free text or
+   a person's name. Add a new event by appending one definition to the glue
+   file's list.
+4. **Audience.** Supply `resolveAudience(db, audience)` returning
+   `[{ id, email, kind }]`, and a `kindOf(user)` that maps a user to one of the
+   app's audience kinds.
+5. **Configure.** Call
+   `configureNotifications(createNotifier({ db, resolveAudience, channels, appUrl, orgName, log }))`
+   in every process that emits (the API server and the job runner both call
+   `configureAppModules` here). `channels.email` is the app's mail sender and
+   `channels.sms` is the sms module's registry.
+6. **Routes.** Register `notificationRoutes` under the API prefix with the
+   notifier, `authenticate`, an admin guard, `kindOf` and (optionally)
+   `channelStatus`, after the configure call.
+7. **Emit.** App code calls the app's seam (`services/notify-seam.js`) after
+   the transaction commits, with the root `db`. The seam never throws.
+8. **Guard it.** Add a test that scans the app's emitters for `event:` keys and
+   asserts each is registered (here `notify-callers.test.js` beside the glue file).

@@ -35,13 +35,19 @@ client state is the polled unread count.
 
 ## Wiring it into another app
 
+Worked example: the layout and page files named below.
+
 1. Wire the server module first (see "Wiring it into another app" in
-   `apps/api/src/modules/notifications/README.md`).
+   `apps/api/src/modules/notifications/README.md`). The browser client calls
+   it under the app's API base path (`/api/v1`, set in `config/api.js`).
 2. Copy this directory. It depends on the app's `config/api.js` client, the
-   shared `DataTable` + `useDataTable` (and `lib/data-table`), `ConfirmButton`, `lib/requests.js` and the toast.
-3. Put `NotificationBell` in the page chrome with `to` pointing at the alerts
-   page. This repo does it in `components/layout/Topbar.jsx` (staff) and
+   shared `DataTable` and `useDataTable` (and `lib/data-table`),
+   `ConfirmButton`, `lib/requests.js` and the toast.
+3. Mount `NotificationBell` in the page chrome with `to` set to the alerts
+   page. Here: `components/layout/Topbar.jsx` (staff) and
    `components/layout/DoctorShell.jsx` (outside users).
 4. Mount `AlertCenter` and `PreferencesPanel` on one page (here
-   `pages/app/NotificationsPage.jsx`) and the admin pieces (`RecipientsPanel`,
-   `DeliveriesTable`, `fetchEvents`) on an admin page.
+   `pages/app/NotificationsPage.jsx`) and the admin pieces
+   (`RecipientsPanel`, `DeliveriesTable`, `fetchEvents`) on an admin page.
+   Offer `RecipientsPanel` only the events whose `sms` flag is true.
+5. Pass the app's `timeZone` to every component that shows a time.

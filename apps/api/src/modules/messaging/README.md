@@ -178,24 +178,33 @@ reports `total: 0`.
 
 ## Wiring it into another app
 
-The host app builds the service once at boot with its own collaborators
-(party keys, record resolvers, labels, search, an `onMessage` that emits its
-alert) and registers `messagingRoutes` with its `authenticate`, a `guard` and
-`listParties`. In this repo that wiring lives in `services/app-modules.js`,
-with the collaborators in its glue file next to the other notification glue
-(`services/app-modules.js` imports it, so its import list is the map).
-The browser side is `apps/web/src/modules/messaging`; see its README.
+Worked example: `services/app-modules.js` (boot and routes), which imports the
+messaging glue file next to the notification glue. Its import list is the map.
 
-Steps for a new host:
-
-1. Re-export `messageThreads`, `messageParticipants` and `messages` from
-   `modules/messaging/schema.js` in the app's Drizzle schema index and
-   generate a migration.
-2. Build the service with `createMessaging({ db, ...collaborators })`
-   (party keys for a user, record resolvers and labels, search, `onMessage`,
-   and `files` if messages carry attachments; this repo's glue file builds
-   one over `modules/record-files`).
-3. Register `messagingRoutes` under the API prefix with `authenticate`, a
-   `guard`, `listParties` and (optionally) `onAttachmentRead`.
-4. Mount the web screens (`InboxTable`, `ThreadView`, `RecordThreads`,
-   `MessagesBadge`) on pages the host owns.
+1. **Schema.** Re-export `messageThreads`, `messageParticipants` and
+   `messages` from `modules/messaging/schema.js` in the app's
+   `db/schema/index.js` and run `pnpm db:generate`.
+2. **Scrub plan.** Classify the three tables and every column in the app's
+   redaction plan and `COLUMNS.md`. Subjects and bodies are sealed text: scrub
+   them, never keep them.
+3. **Glue functions.** Supply to `createMessaging({ db, ... })`:
+   `isHost(user)`, `partyKeysFor(user)`, `defaultPartyKey(user)`, `records`
+   (one `resolve` and optional `labels` per record type; `null` hides a record
+   from that user), optional `describeParty`, `describeUsers` and `search`, and
+   `onMessage`.
+4. **Alerts.** `onMessage(evt)` runs after each post commits. Have it emit
+   `message.received` through the notifications seam (audience: the other
+   side, excluding the author; `data` carries ids and short labels only), and
+   register that event with the notifications module.
+5. **Attachments (optional).** Pass a `files` collaborator
+   (`attach`, `listFor`, `find`, `signedUrl`, `remove`) to accept files. This
+   repo builds one over the `record-files` module: files are stored under one
+   record type for messages (record id = the message id), `find` answers `null`
+   for a file of any other record type so a download can never sign another
+   record's file, and `remove` undoes a failed post. Without `files` the routes
+   refuse uploads and posts stay JSON. Pass `onAttachmentRead` to the routes to
+   audit each issued download link (ids only).
+6. **Routes.** Register `messagingRoutes` under the API prefix with the
+   service, `authenticate`, a `guard`, `listParties` and `onAttachmentRead`,
+   after boot has built the service.
+7. **Web.** Mount the screens as described in `apps/web/src/modules/messaging/README.md`.

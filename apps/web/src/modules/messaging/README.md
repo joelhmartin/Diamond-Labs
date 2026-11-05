@@ -38,13 +38,23 @@ event after a write so badges refresh.
 
 ## Wiring it into another app
 
+Worked example: the layout and page files named below.
+
 1. Wire the server module first (see "Wiring it into another app" in
-   `apps/api/src/modules/messaging/README.md`).
+   `apps/api/src/modules/messaging/README.md`). The browser client calls it
+   under the app's API base path (`/api/v1`, set in `config/api.js`), and
+   attachments need the server's `files` collaborator (here built over
+   `record-files`).
 2. Copy this directory. It depends on the app's `config/api.js` client, the
-   shared `DataTable` + `useDataTable` (and `lib/data-table`), `Modal`, `SegmentedControl`, `ConfirmButton`, `useDebouncedValue`, `lib/requests.js`, the toast, and the `record-files` web module (`FileDrop`, `checkFiles`, `fileSizeLabel`).
-3. Put `MessagesBadge` next to the inbox link in the nav. This repo does it in
-   `components/layout/Sidebar.jsx` (staff) and
-   `components/layout/DoctorShell.jsx` (outside users).
+   shared `DataTable` and `useDataTable` (and `lib/data-table`), `Modal`,
+   `SegmentedControl`, `ConfirmButton`, `useDebouncedValue`, `lib/requests.js`,
+   the toast, and the `record-files` web module (`FileDrop`, `checkFiles`,
+   `fileSizeLabel`).
+3. Mount `MessagesBadge` next to the inbox link in the nav. Here:
+   `components/layout/Sidebar.jsx` (staff) and `components/layout/DoctorShell.jsx`
+   (outside users).
 4. Add an inbox page (`InboxTable` with `threadPath`, `folders`, `side`) and a
-   thread page (`ThreadView`), and drop `RecordThreads` on any record's detail
-   page; `pages/app/AdminRxCaseDetailPage.jsx` is the worked example.
+   thread page (`ThreadView`). `threadPath(id)` returns the route of the
+   thread page (a notification's link should point at the same route).
+5. Drop `RecordThreads` on any record's detail page;
+   `pages/app/AdminRxCaseDetailPage.jsx` is the worked example.

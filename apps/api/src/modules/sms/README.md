@@ -68,11 +68,18 @@ text it sends in `notification_deliveries`, with the number masked).
 
 ## Wiring it into another app
 
-1. Copy this directory and add the `SMS_PROVIDER` / Twilio / `STAGING_SMS_TO`
-   variables to the app's env loader (here `config/env.js` builds `smsConfig`).
-2. Call `smsRegistry()` wherever a text is sent and treat the result as
-   advisory: it never throws, and `suppressed` means nothing was attempted.
-3. To let the notifications module send texts, pass the registry as its `sms`
-   channel when building the notifier. This repo does that in
-   `services/app-modules.js` (`createNotifier({ ..., channels })`), which is
-   the worked example.
+Worked example: `services/app-modules.js`.
+
+1. **Env.** Add `SMS_PROVIDER`, the Twilio credentials, `TWILIO_FROM` or
+   `TWILIO_MESSAGING_SERVICE_SID`, and `STAGING_SMS_TO` to the app's env
+   loader (here `config/env.js` builds `smsConfig`). Secrets belong in the
+   secret manager, never the repo.
+2. **Send.** Call `smsRegistry()` wherever a text is sent and treat the result
+   as advisory: it never throws, and `suppressed` means nothing was attempted.
+3. **Notifications.** Pass the registry as the `sms` channel when building the
+   notifier (`createNotifier({ ..., channels: { sms: smsRegistry() } })`).
+4. **Status.** Expose `smsRegistry().status()` to admins (here through
+   `channelStatus` on the notification routes) so a provider that is off is visible.
+5. **Smoke.** Add a script that calls the registry (`scripts/sms-smoke.js`,
+   run as `sms:smoke`) and run it with test credentials before going live.
+6. **Scrub plan.** The module has no tables, so nothing to classify.
