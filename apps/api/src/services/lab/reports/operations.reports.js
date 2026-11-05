@@ -1,20 +1,20 @@
 /**
- * Operations (10). Staff (the registry default). Five run now; Daily Tasks and
- * Production Tasks wait for piece 7's workflows, Pan Numbers for piece 6, Pick
- * Ups and Deliveries for piece 8 (registered with `requires`, dependent.js).
- * Orders are lab orders; days are lab-local; no report selects a patient,
- * the Rx form, or a free-text note.
+ * Operations (10). Staff (the registry default). Daily Tasks, Production
+ * Tasks, Pan Numbers, Pick Ups and Deliveries read the later pieces' desk
+ * data (operations-desk.reports.js). Orders are lab orders; days are
+ * lab-local; no report selects a patient, the Rx form, or a free-text note.
  */
 import { sql } from "drizzle-orm";
 import { CARRIERS, CARRIER_LABELS, SHIPMENT_STATUS_LABELS, daysBetween, daysInRange } from "@my-app/shared";
-import { labOrders, rxCases, rxCaseFiles, shipments } from "../../../db/schema/index.js";
+import { labOrders, rxCases, rxCaseFiles, shipments, intakes } from "../../../db/schema/index.js";
+import { LAB_ORDER_RECORD_TYPE } from "../lab-tags.js";
 import {
   ORDER_LINK, clientName, isLiveOrder, labDayBetween, labDayText, labToday, num, orderAndPage, rowsOf,
 } from "./lab-metrics.js";
 import {
   assigneeName, departmentName, isOpenOrder, orderJoins, ordersByDay, shippedByDay, statusBadge,
 } from "./order-metrics.js";
-import { dependentReport } from "./dependent.js";
+import { OPERATIONS_DESK_REPORTS } from "./operations-desk.reports.js";
 import { int, share, sumOf, sums } from "./report-helpers.js";
 
 const GROUP = "operations";
@@ -23,12 +23,23 @@ const ORDER_COL = { id: "orderNumber", label: "Order #", type: "text", link: ORD
 
 // ── Case Submission ──────────────────────────────────────────────────────
 
-/** The case came in digitally: a records method was chosen, or a scan file was uploaded. */
-const hasDigitalRecords = sql`(coalesce(${rxCases.recordsMethod}, '') <> '' or exists (select 1 from ${rxCaseFiles} where ${rxCaseFiles.caseId} = ${rxCases.id} and ${rxCaseFiles.kind} = 'scan'))`;
+/**
+ * The case came in digitally: its Rx case names a records method or has a scan
+ * file, or (piece 6) a scanner-export drop was turned into the order (an
+ * intake promoted onto it).
+ */
+const fromScannerExport = sql`exists (select 1 from ${intakes} where ${intakes.promotedRecordType} = ${LAB_ORDER_RECORD_TYPE} and ${intakes.promotedRecordId} = ${labOrders.id})`;
+const hasDigitalRecords = sql`(coalesce(${rxCases.recordsMethod}, '') <> '' or exists (select 1 from ${rxCaseFiles} where ${rxCaseFiles.caseId} = ${rxCases.id} and ${rxCaseFiles.kind} = 'scan') or ${fromScannerExport})`;
+/**
+ * The case came in physically: an Rx case with no digital records, or (piece 6)
+ * staff recorded items enclosed with it. Only whether the enclosures column is
+ * set is read (an empty list is stored as null); the sealed list is never selected.
+ */
+const hasPhysicalItems = sql`(${rxCases.id} is not null or ${labOrders.enclosures} is not null)`;
 
 const caseSubmission = {
   key: "operations.case-submission", group: GROUP, featured: true, title: "Case Submission",
-  description: "Cases received per day, digital (a records method or a scan file) vs. physical. Shop and imported orders have no Rx case, so they count as unknown. Remakes and cancelled orders are not counted.",
+  description: "Cases received per day, digital (a records method, a scan file or a scanner-export drop turned into the order) vs. physical (an Rx case with no digital records, or items recorded as enclosed). Orders with neither (shop and imported orders) count as unknown. Remakes and cancelled orders are not counted.",
   params: [RANGE],
   columns: [
     { id: "day", label: "Day", type: "date" }, int("digital", "Digital"), int("physical", "Physical"), int("unknown", "Unknown"),
@@ -41,9 +52,9 @@ const caseSubmission = {
   async run(tx, { range }) {
     const raw = await rowsOf(tx, sql`
       select ${labDayText(labOrders.receivedAt)} as "day",
-        count(*) filter (where ${rxCases.id} is not null and ${hasDigitalRecords}) as "digital",
-        count(*) filter (where ${rxCases.id} is not null and not ${hasDigitalRecords}) as "physical",
-        count(*) filter (where ${rxCases.id} is null) as "unknown"
+        count(*) filter (where ${hasDigitalRecords}) as "digital",
+        count(*) filter (where not ${hasDigitalRecords} and ${hasPhysicalItems}) as "physical",
+        count(*) filter (where not ${hasDigitalRecords} and not ${hasPhysicalItems}) as "unknown"
       from ${labOrders}
       left join ${rxCases} on ${labOrders.source} = 'rx_case' and ${rxCases.id} = ${labOrders.sourceId}
       where ${isLiveOrder} and ${labOrders.isRemake} = false and ${labDayBetween(labOrders.receivedAt, range)}
@@ -163,57 +174,7 @@ const tbdOrders = {
   },
 };
 
-// ── Dependent (Task 10 fills these in) ───────────────────────────────────
-
-const STAGE_COLS = [
-  ORDER_COL, { id: "client", label: "Client", type: "text" }, { id: "stage", label: "Stage", type: "text" },
-  { id: "department", label: "Department", type: "text" }, { id: "assignee", label: "Assigned to", type: "text" },
-  { id: "target", label: "Stage target", type: "date" }, { id: "dueDate", label: "Due", type: "date" },
-];
-
-const dependents = [
-  dependentReport({
-    key: "operations.daily-tasks", group: GROUP, title: "Daily Tasks", requires: ["workflows"],
-    description: "Workflow stage targets falling on a day, with the order, stage, department and who it is assigned to.",
-    params: [{ name: "day", label: "Day (blank = today)", type: "date" }],
-    columns: STAGE_COLS,
-  }),
-  dependentReport({
-    key: "operations.production-tasks", group: GROUP, title: "Production Tasks", requires: ["workflows"],
-    description: "Open orders by their current workflow stage against the stage's target date, latest first.",
-    params: [],
-    columns: [...STAGE_COLS, int("daysBehind", "Days behind")],
-  }),
-  dependentReport({
-    key: "operations.pan-numbers", group: GROUP, title: "Pan Numbers", requires: ["pan-numbers"],
-    description: "Orders with their pan number, status and due date.",
-    params: [{ name: "openOnly", label: "Open orders only", type: "toggle", default: true }],
-    columns: [
-      { id: "pan", label: "Pan", type: "text" }, ORDER_COL, { id: "client", label: "Client", type: "text" },
-      { id: "status", label: "Status", type: "badge" }, { id: "dueDate", label: "Due", type: "date" },
-    ],
-  }),
-  dependentReport({
-    key: "operations.pickups", group: GROUP, title: "Pick Ups", requires: ["pickups"],
-    description: "Pickups by date and status.",
-    params: [RANGE],
-    columns: [
-      { id: "day", label: "Day", type: "date" }, { id: "client", label: "Client", type: "text" },
-      { id: "status", label: "Status", type: "badge" }, int("orders", "Orders"),
-    ],
-  }),
-  dependentReport({
-    key: "operations.deliveries", group: GROUP, title: "Deliveries", requires: ["deliveries"],
-    description: "Local delivery routes by date: each stop, its client and status.",
-    params: [RANGE],
-    columns: [
-      { id: "day", label: "Day", type: "date" }, { id: "route", label: "Route", type: "text" }, int("stop", "Stop"),
-      { id: "client", label: "Client", type: "text" }, { id: "status", label: "Status", type: "badge" }, int("orders", "Orders"),
-    ],
-  }),
-];
-
-export const OPERATIONS_REPORTS = [caseSubmission, dailyOrders, dailyShipments, shipping, tbdOrders, ...dependents];
+export const OPERATIONS_REPORTS = [caseSubmission, dailyOrders, dailyShipments, shipping, tbdOrders, ...OPERATIONS_DESK_REPORTS];
 
 export function registerOperationsReports(registry) {
   for (const def of OPERATIONS_REPORTS) registry.defineReport(def);

@@ -11,6 +11,7 @@
  */
 import { isoDateIn, LAB_TIMEZONE, LEGACY_LINE_DESCRIPTION, OPENING_BALANCE_PREFIX, addDays } from "@my-app/shared";
 import * as schema from "../src/db/schema/index.js";
+import { addPieceRows, enableBenchCapacity, PIECE_TABLES } from "./reports-bench-seed-pieces.js";
 
 /** The sizes the bench promises (spec "Performance"). */
 export const SEED_PLAN = Object.freeze({
@@ -352,9 +353,8 @@ export function seedPlan({ now = new Date(), seed = 20261105 } = {}) {
   const invoices = buildInvoices(r, built.orders, who.clients, now);
   const invoiceLines = buildLines(r, invoices, cat.productVariants);
   const payments = buildPayments(r, invoices, now);
-  return {
-    ...who, ...cat, ...built, shipments, orderEvents, invoices, invoiceLines, payments,
-  };
+  const base = { ...who, ...cat, ...built, shipments, orderEvents, invoices, invoiceLines, payments };
+  return { ...base, ...addPieceRows(r, base, now) };
 }
 
 /** Plan key → drizzle table, in insert order (doctor_profiles, accounts and memberships reference users). */
@@ -365,6 +365,7 @@ const TABLES = [
   ["rxCases", schema.rxCases], ["rxCaseFiles", schema.rxCaseFiles], ["orders", schema.labOrders],
   ["orderLines", schema.labOrderLines], ["orderEvents", schema.labOrderEvents], ["shipments", schema.shipments],
   ["invoices", schema.invoices], ["invoiceLines", schema.invoiceLines], ["payments", schema.invoicePayments],
+  ...PIECE_TABLES,
 ];
 const BATCH = 1000;
 
@@ -376,5 +377,6 @@ export async function seedDatabase(db, plan) {
     for (let i = 0; i < rows.length; i += BATCH) await db.insert(table).values(rows.slice(i, i + BATCH));
     counts[key] = rows.length;
   }
+  await enableBenchCapacity(db);
   return counts;
 }

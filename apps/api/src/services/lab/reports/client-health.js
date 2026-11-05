@@ -13,7 +13,7 @@ import { sql } from "drizzle-orm";
 import { LAB_TIMEZONE, addDays, isoDateIn } from "@my-app/shared";
 import { labOrders, users, doctorProfiles } from "../../../db/schema/index.js";
 import { activityHealth } from "../../../modules/reports/health.js";
-import { clientName, isClient, isLiveOrder, labDayBetween, labDayText, num, rowsOf, salesByClient, turnaroundDaysSql } from "./lab-metrics.js";
+import { clientName, isClient, isLiveOrder, labCalendar, labDayBetween, labDayText, num, rowsOf, salesByClient, turnaroundDaysSql } from "./lab-metrics.js";
 
 export const HEALTH_THRESHOLDS = { inactiveDays: 90, declining: 0.5, stable: 0.85 };
 
@@ -49,15 +49,16 @@ const dayStart = (iso) => (iso == null ? null : new Date(`${iso}T00:00:00Z`));
  *   avgTurnaroundDays, monthly: number[6], lastOrderAt, lastOrderDay }.
  * One grouped query over lab_orders plus one grouped sales query.
  */
-export async function clientHealthRows(db, { asOf }) {
+export async function clientHealthRows(db, { asOf, calendar = null }) {
   const w = healthWindows(asOf);
+  const cal = calendar ?? (await labCalendar(db));
   const monthly = w.monthly.map((m, i) => sql`count(*) filter (where ${received(m)}) as ${sql.identifier(`m${i}`)}`);
   const raw = await rowsOf(db, sql`
     select ${users.id} as "clientUserId", ${clientName} as "client",
       count(*) filter (where ${received(w.recent)}) as "recent",
       count(*) filter (where ${received(w.baseline)}) as "base",
       ${sql.join(monthly, sql`, `)},
-      avg(${turnaroundDaysSql}) filter (where ${labDayBetween(labOrders.shippedAt, w.recent)}) as "turnaround",
+      avg(${turnaroundDaysSql(cal)}) filter (where ${labDayBetween(labOrders.shippedAt, w.recent)}) as "turnaround",
       max(${labOrders.receivedAt}) as "lastOrderAt", ${labDayText(sql`max(${labOrders.receivedAt})`)} as "lastOrderDay"
     from ${labOrders}
     join ${users} on ${users.id} = ${labOrders.clientUserId} and ${isClient}

@@ -3,74 +3,91 @@ import assert from "node:assert/strict";
 import { isOverdue, TERMINAL_LAB_STATUSES, LAB_ORDER_STATUSES } from "@my-app/shared";
 import { fakeTx } from "../../../test/fake-tx.js";
 import { executedSql, renderSql, sqlText } from "../../../test/sql-text.js";
+import { toCalendar } from "../../../modules/business-calendar/index.js";
+import { boardTiles, tileOrderIds } from "../lab-schedule-queries.js";
 import {
-  atRiskOrders, atRiskSql, boardDayCounts, dueByDay, dueSoonSql, isOpenOrder, ordersByDay, openUnitsByCategory, pastDueSql, shippedByDay, turnaroundDays,
+  atRiskOrders, boardDayCounts, dueByDay, dueSoonSql, isOpenOrder, ordersByDay, openUnitsByCategory, pastDueSql, shippedByDay, turnaroundDays,
   turnaroundAverage, turnaroundByWeek, weekStart,
 } from "./order-metrics.js";
 
 const PHI = /legacy_patient|patient_|form_data|notes|hold_reason|lab_notes|source_label|\bnote\b/;
 const range = (from, to) => ({ from, to });
 
-test("boardDayCounts agrees with isOverdue: an on-hold past-due order is past due (and on hold)", async () => {
-  // The shared rule: only terminal statuses are exempt, so on hold past its date is overdue (the board shows it red).
+// Piece 7's board fixture: Friday 2026-11-06, 9am in Chicago; Sat/Sun closed, so "tomorrow" is Monday 11-09.
+const NOW = new Date("2026-11-06T15:00:00Z");
+const CAL_ROW = { key: "default", timezone: "America/Chicago", leadDays: 0, closedWeekdays: [0, 6], capacityBasis: "none", capacityByWeekday: {} };
+const open = (id, status, dueDate, heldFrom = null) => ({ id, status, heldFrom, dueDate });
+const LATE_PLAN = {
+  recordType: "lab_order", recordId: "g", workflowKey: "10d", workflowName: "10d", startDate: "2026-10-26", dueDate: "2026-11-30", direction: "forward",
+  stages: [{ key: "qc", label: "Quality check", milestone: "quality_check", targetAt: "2026-11-05" }],
+};
+const OPEN_ORDERS = [
+  open("a", "in_production", "2026-11-05"), open("b", "received", "2026-11-06"), open("c", "received", "2026-11-09"),
+  open("d", "in_production", "2026-11-30"), open("e", "on_hold", "2026-11-30", "in_production"), open("f", "quality_check", "2026-11-06"),
+  open("g", "in_production", "2026-11-30"), open("h", "on_hold", "2026-11-05", "received"),
+];
+/** The selects one boardTiles / tileOrderIds call reads: calendar row, holidays, open orders, plans. */
+const boardSelects = () => [[CAL_ROW], [], OPEN_ORDERS, [LATE_PLAN]];
+
+test("boardDayCounts equals piece 7's tile counts for the same fixture", async () => {
+  const ours = await boardDayCounts(fakeTx({ selects: boardSelects() }), NOW);
+  const { today, tomorrowDate, ...theirs } = await boardTiles(fakeTx({ selects: boardSelects() }), NOW);
+  assert.deepEqual(ours, theirs);
+  assert.deepEqual(ours, { pastDue: 2, dueToday: 2, dueTomorrow: 1, onHold: 2, atRisk: 5 });
+  assert.equal(tomorrowDate, "2026-11-09", "tomorrow is the next open business day");
+  // An on-hold order past its due date is past due (and on hold), as the shared isOverdue says.
+  assert.equal(isOverdue("2026-11-05", "on_hold", today), true);
+});
+
+test("the at-risk list is piece 7's at-risk ids, and its total is the At risk tile's count", async () => {
+  const ids = await tileOrderIds(fakeTx({ selects: boardSelects() }), "at_risk", NOW);
+  assert.deepEqual(ids, ["a", "b", "c", "g", "h"]);
+  const detail = ids.map((id, i) => ({ id, orderNumber: 50000 + i, client: "One Dental", status: "received", dueDate: "2026-11-06", rush: i === 0 }));
+  const tx = fakeTx({ selects: boardSelects(), executes: [detail.slice(0, 3)] });
+  const out = await atRiskOrders(tx, NOW, 3);
+  const { atRisk } = await boardDayCounts(fakeTx({ selects: boardSelects() }), NOW);
+  assert.equal(out.total, atRisk, "list total and tile agree");
+  assert.equal(out.truncated, true);
+  assert.deepEqual(out.rows.map((r) => r.id), ["a", "b", "c"]);
+  assert.equal(out.rows[0].rush, true);
+  const [{ text, params }] = executedSql(tx);
+  assert.match(text, /where lab_orders\.id in \(\$1, \$2, \$3, \$4, \$5\)/);
+  assert.deepEqual(params.slice(0, 5), ids);
+  assert.match(text, /order by lab_orders\.due_date nulls last, lab_orders\.rush desc, lab_orders\.order_number/);
+  assert.doesNotMatch(text, PHI);
+  // Nothing at risk: no detail query at all.
+  const none = fakeTx({ selects: [[CAL_ROW], [], [open("d", "in_production", "2026-11-30")], []] });
+  assert.deepEqual(await atRiskOrders(none, NOW), { rows: [], total: 0, truncated: false });
+  assert.equal(executedSql(none).length, 0);
+});
+
+test("past due is the SQL twin of isOverdue; due soon is piece 7's business-day window without the past due", () => {
   assert.equal(isOverdue("2026-10-30", "on_hold", "2026-11-01"), true);
   assert.equal(isOverdue("2026-10-30", "shipped", "2026-11-01"), false);
-  assert.equal(isOverdue("2026-11-01", "received", "2026-11-01"), false);
-
-  // The SQL twin excludes exactly the terminal statuses and compares the due date with today, strictly.
   const pd = sqlText(pastDueSql("2026-11-01"));
   assert.match(pd, /lab_orders\.status not in \('shipped', 'cancelled'\) and lab_orders\.due_date < \$1::date/);
   assert.deepEqual(TERMINAL_LAB_STATUSES, ["shipped", "cancelled"]);
-  assert.doesNotMatch(pd, /on_hold/);
-  // ...and every non-terminal status, on hold included, is "open".
   for (const s of LAB_ORDER_STATUSES) assert.equal(sqlText(isOpenOrder).includes(`'${s}'`), TERMINAL_LAB_STATUSES.includes(s), s);
-
-  const tx = fakeTx({ executes: [[{ pastDue: "3", dueToday: "2", dueTomorrow: "1", onHold: "4", atRisk: "5" }]] });
-  const out = await boardDayCounts(tx, "2026-11-01");
-  assert.deepEqual(out, { pastDue: 3, dueToday: 2, dueTomorrow: 1, onHold: 4, atRisk: 5 });
-  const [{ text, params }] = executedSql(tx);
-  assert.equal((text.match(/count\(\*\) filter \(where/g) || []).length, 5, "one query, five FILTER clauses");
-  assert.match(text, /filter \(where lab_orders\.status = 'on_hold'\) as onHold/);
-  assert.match(text, /where lab_orders\.status not in \('shipped', 'cancelled'\)$/);
-  // Lab days: today, tomorrow, and the at-risk horizon today + 2.
-  for (const d of ["2026-11-01", "2026-11-02", "2026-11-03"]) assert.ok(params.includes(d), `missing ${d}`);
+  // Friday with the weekend closed: today, Monday and Tuesday are due soon; the cutoff is Wednesday.
+  const cal = toCalendar(CAL_ROW, []);
+  const { text, params } = renderSql(dueSoonSql("2026-11-06", cal));
+  assert.equal(text, "lab_orders.due_date >= $1::date and lab_orders.due_date < $2::date");
+  assert.deepEqual(params, ["2026-11-06", "2026-11-11"]);
+  // A holiday on Monday pushes the cutoff a day.
+  assert.deepEqual(renderSql(dueSoonSql("2026-11-06", toCalendar(CAL_ROW, ["2026-11-09"]))).params, ["2026-11-06", "2026-11-12"]);
 });
 
-test("at risk is received or in production and due today through today+2; on hold is never at risk", () => {
-  const { text, params } = renderSql(atRiskSql("2026-11-01"));
-  assert.match(text, /lab_orders\.status in \('received', 'in_production'\) and lab_orders\.due_date between \$1::date and \$2::date/);
-  assert.deepEqual(params, ["2026-11-01", "2026-11-03"]);
-  assert.doesNotMatch(text, /on_hold/);
-  // The same window as Technician Workload's "due soon".
-  assert.equal(sqlText(dueSoonSql("2026-11-01")), "lab_orders.due_date between $1::date and $2::date");
-});
-
-test("a past-due in-production order is past due, not at risk", () => {
-  // Due Oct 30, today Nov 1: below at risk's lower bound (today), inside past due (< today).
-  const due = "2026-10-30";
-  const [low, high] = renderSql(atRiskSql("2026-11-01")).params;
-  assert.equal(due >= low && due <= high, false, "not in the at-risk window");
-  assert.equal(isOverdue(due, "in_production", "2026-11-01"), true, "past due by the shared rule");
-  assert.match(sqlText(pastDueSql("2026-11-01")), /due_date < \$1::date/);
-});
-
-test("atRiskOrders lists soonest due first and never selects notes or patients", async () => {
-  const tx = fakeTx({ executes: [[{ id: "o1", orderNumber: 50001, client: "One Dental", status: "in_production", dueDate: "2026-11-02", rush: true }]] });
-  const out = await atRiskOrders(tx, "2026-11-01", 10);
-  assert.deepEqual(out, { rows: [{ id: "o1", orderNumber: 50001, client: "One Dental", status: "in_production", dueDate: "2026-11-02", rush: true }], truncated: false });
-  const [{ text, params }] = executedSql(tx);
-  assert.match(text, /order by lab_orders\.due_date, lab_orders\.rush desc, lab_orders\.order_number\s+limit \$\d+/);
-  assert.ok(params.includes(11), "reads one past the limit to know whether more exist");
-  assert.doesNotMatch(text, PHI);
-});
-
-test("turnaroundDays: lab-local calendar days; null when unshipped or cancelled", () => {
-  // Received Oct 1 (Chicago), shipped 03:00 UTC Oct 5 = Oct 4 in Chicago: 3 days, not 4.
+test("turnaroundDays: business days between lab-local days; calendar days with no calendar; null when unshipped or cancelled", () => {
   assert.equal(turnaroundDays({ status: "shipped", receivedAt: "2026-10-01T15:00:00Z", shippedAt: "2026-10-05T03:00:00Z" }), 3);
   assert.equal(turnaroundDays({ status: "shipped", receivedAt: "2026-10-01T15:00:00Z", shippedAt: "2026-10-01T20:00:00Z" }), 0);
   assert.equal(turnaroundDays({ status: "in_production", receivedAt: "2026-10-01T15:00:00Z", shippedAt: null }), null);
   assert.equal(turnaroundDays({ status: "cancelled", receivedAt: "2026-10-01T15:00:00Z", shippedAt: "2026-10-03T15:00:00Z" }), null);
-  assert.throws(() => turnaroundDays({}, { open: [] }), /business calendar/);
+  // Thu Oct 1 -> Mon Oct 5 (Chicago days) with the weekend closed: Fri + Mon = 2; a Friday holiday makes it 1.
+  const cal = toCalendar(CAL_ROW, []);
+  const order = { status: "shipped", receivedAt: "2026-10-01T15:00:00Z", shippedAt: "2026-10-05T20:00:00Z" };
+  assert.equal(turnaroundDays(order), 4);
+  assert.equal(turnaroundDays(order, cal), 2);
+  assert.equal(turnaroundDays(order, toCalendar(CAL_ROW, ["2026-10-02"])), 1);
 });
 
 test("ordersByDay buckets live orders by lab-local received day and fills empty days", async () => {
@@ -124,7 +141,14 @@ test("turnaround average and weekly trend use the clamped received -> shipped la
   assert.deepEqual(await turnaroundAverage(tx, range("2026-09-07", "2026-10-06")), { orders: 0, avgDays: null });
   const [{ text }] = executedSql(tx);
   assert.match(text, /lab_orders\.status = 'shipped' and lab_orders\.shipped_at is not null/);
+  // No calendar row: every day is open, so business days are plain lab-day arithmetic.
   assert.match(text, /avg\(greatest\(0, \(lab_orders\.shipped_at at time zone 'America\/Chicago'\)::date - \(lab_orders\.received_at at time zone 'America\/Chicago'\)::date\)\)/);
+  // With the weekend closed and a holiday, the average counts open days only (the SQL twin of turnaroundDays).
+  const biz = fakeTx({ selects: [[CAL_ROW], [{ id: "h1", date: "2026-11-26", label: "Thanksgiving" }]], executes: [[{ orders: "1", avgDays: "2" }]] });
+  await turnaroundAverage(biz, range("2026-11-01", "2026-11-30"));
+  const [{ text: bt }] = executedSql(biz);
+  assert.match(bt, /generate_series\(\(\(lab_orders\.received_at at time zone 'America\/Chicago'\)::date \+ 1\)::timestamp, \(\(lab_orders\.shipped_at at time zone 'America\/Chicago'\)::date\)::timestamp, interval '1 day'\)/);
+  assert.match(bt, /extract\(dow from g\.d\)::int not in \(0, 6\) and g\.d::date not in \('2026-11-26'\)/);
 
   assert.equal(weekStart("2026-11-05"), "2026-11-02"); // a Thursday -> its Monday
   assert.equal(weekStart("2026-11-02"), "2026-11-02");

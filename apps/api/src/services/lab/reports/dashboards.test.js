@@ -122,10 +122,19 @@ test("insights.orders-30 compares with the prior 30 days; avg turnaround uses th
   assert.match(a.text, /lab_orders\.status = 'shipped'/);
 });
 
-test("board metrics read boardDayCounts and link to their report with params", async () => {
-  const tx = fakeTx({ executes: [[{ pastDue: "3", dueToday: "2", dueTomorrow: "1", onHold: "4", atRisk: "5" }]] });
-  const out = await metric("ops.past-due").run(tx, {}, lab, ctx());
-  assert.deepEqual(out, { value: 3, previous: null, format: "int", href: "/reports/departments.monitoring-boards" });
+// Piece 7's board reads: calendar row, holidays, open orders, plans (lab-schedule-queries boardTiles).
+const CAL_ROW = { key: "default", timezone: "America/Chicago", leadDays: 0, closedWeekdays: [0, 6], capacityBasis: "none", capacityByWeekday: {} };
+const open = (id, status, dueDate) => ({ id, status, heldFrom: null, dueDate });
+const boardSelects = (orders) => [[CAL_ROW], [], orders, []];
+
+test("board metrics read boardDayCounts (piece 7's board as of ctx.now) and link to their report with params", async () => {
+  // Thursday 11-05: two past due, one due today, Friday is tomorrow.
+  const orders = [open("a", "received", "2026-11-03"), open("b", "in_production", "2026-11-04"), open("c", "received", "2026-11-05"), open("d", "received", "2026-11-06")];
+  const out = await metric("ops.past-due").run(fakeTx({ selects: boardSelects(orders) }), {}, lab, ctx());
+  assert.deepEqual(out, { value: 2, previous: null, format: "int", href: "/reports/departments.monitoring-boards" });
+  assert.equal((await metric("ops.due-tomorrow").run(fakeTx({ selects: boardSelects(orders) }), {}, lab, ctx())).value, 1);
+  // At risk: due within 2 business days (past due included) and not yet in QC.
+  assert.equal((await metric("ops.at-risk").run(fakeTx({ selects: boardSelects(orders) }), {}, lab, ctx())).value, 4);
   const today = fakeTx({ executes: [[{ day: "2026-11-05", orders: "7" }]] });
   const n = await metric("ops.new-today").run(today, {}, lab, ctx());
   assert.equal(n.value, 7);
@@ -133,20 +142,23 @@ test("board metrics read boardDayCounts and link to their report with params", a
   assert.equal(reportHref("sales.daily", { range: "2026-01-01..2026-02-01" }), "/reports/sales.daily?p.range=2026-01-01..2026-02-01");
 });
 
-test("the at-risk list says when it is cut at 50, with the board's count", async () => {
+test("the at-risk list says when it is cut at 50, with the At risk tile's count", async () => {
   const def = registry().getReport("ops.at-risk-orders");
   const order = (i) => ({ id: `o${i}`, orderNumber: 50000 + i, client: "c", status: "received", dueDate: "2026-11-06", rush: false });
-  const many = fakeTx({ executes: [Array.from({ length: 51 }, (_, i) => order(i)), [{ pastDue: "0", dueToday: "0", dueTomorrow: "0", onHold: "0", atRisk: "73" }]] });
+  const atRisk = Array.from({ length: 73 }, (_, i) => open(`o${i}`, "received", "2026-11-06"));
+  const many = fakeTx({ selects: boardSelects(atRisk), executes: [Array.from({ length: 50 }, (_, i) => order(i))] });
   const cut = await def.run(many, {}, lab, ctx());
   assert.equal(cut.rows.length, 50);
   assert.equal(cut.total, 73);
   assert.equal(cut.truncated, true);
+  const tile = await metric("ops.at-risk").run(fakeTx({ selects: boardSelects(atRisk) }), {}, lab, ctx());
+  assert.equal(tile.value, cut.total, "the tile and the list count the same orders");
+  assert.equal(executedSql(many).length, 1, "one detail query; the total is the id list, not a second count");
 
-  const few = fakeTx({ executes: [[order(1), order(2)]] });
+  const few = fakeTx({ selects: boardSelects([open("o1", "received", "2026-11-06"), open("o2", "received", "2026-11-06")]), executes: [[order(1), order(2)]] });
   const all = await def.run(few, {}, lab, ctx());
   assert.equal(all.rows.length, 2);
   assert.equal(all.truncated, undefined);
-  assert.equal(executedSql(few).length, 1, "no count query when nothing was cut");
 });
 
 function addDaysIso(iso, n) {

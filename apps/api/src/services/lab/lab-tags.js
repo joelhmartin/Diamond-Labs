@@ -1,6 +1,6 @@
-import { inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../config/database.js";
-import { labOrders, labOrderEvents } from "../../db/schema/index.js";
+import { labOrders, labOrderEvents, users } from "../../db/schema/index.js";
 import { sealEvent } from "./lab-order-crypto.js";
 
 /**
@@ -9,6 +9,21 @@ import { sealEvent } from "./lab-order-crypto.js";
  * order's labels change. Used by the desk routes and by staff order entry.
  */
 export const LAB_ORDER_RECORD_TYPE = "lab_order";
+
+/**
+ * A client's sales rep, as a record-tags record type: each tag in this
+ * vocabulary names a rep, and tagging a client (a doctor user's id) with one
+ * assigns them (Sales By Rep reads it). Its own vocabulary, so rep names never
+ * mix with any other client label. Admins define the reps; staff apply them.
+ */
+export const CLIENT_REP_RECORD_TYPE = "client_rep";
+
+/** The ids (of `ids`) that are clients (doctor users). */
+export async function clientIdsThatExist(ids, database = db) {
+  if (!ids.length) return new Set();
+  const rows = await database.select({ id: users.id }).from(users).where(and(inArray(users.id, ids), eq(users.role, "doctor")));
+  return new Set(rows.map((r) => r.id));
+}
 
 /** The ids (of `ids`) that are lab orders. Pass the transaction to see an order created in it. */
 export async function labOrderIdsThatExist(ids, database = db) {

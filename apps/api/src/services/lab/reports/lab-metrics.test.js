@@ -90,6 +90,14 @@ test("beforeCoverage is the one coverage condition (unset = imported history is 
   assert.equal(coverageNotice({ from: "2026-11-01" }, undefined), null, "product coverage stays quiet until cutover is recorded");
 });
 
-test("turnaroundDaysSql never goes below zero, like turnaroundDays()", () => {
-  assert.match(sqlText(turnaroundDaysSql), /^greatest\(0, /);
+test("turnaroundDaysSql never goes below zero, like turnaroundDays(); with closed days it counts open days only", () => {
+  assert.match(sqlText(turnaroundDaysSql(undefined)), /^greatest\(0, /);
+  assert.match(sqlText(turnaroundDaysSql({ closedWeekdays: [], holidays: new Set() })), /^greatest\(0, /);
+  // Business days in (received, shipped]: an empty series (shipped on or before the received day) counts 0.
+  const text = sqlText(turnaroundDaysSql({ closedWeekdays: [0, 6], holidays: new Set(["2026-12-25"]) }));
+  assert.match(text, /^\(select count\(\*\)::int from generate_series\(/);
+  assert.match(text, /extract\(dow from g\.d\)::int not in \(0, 6\) and g\.d::date not in \('2026-12-25'\)/);
+  // Only digits and ISO days are ever written as literals.
+  const odd = sqlText(turnaroundDaysSql({ closedWeekdays: ["0); drop table x;--", 9], holidays: new Set(["nope'"]) }));
+  assert.match(odd, /^greatest\(0, /);
 });

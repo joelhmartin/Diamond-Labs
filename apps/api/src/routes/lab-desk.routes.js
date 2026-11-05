@@ -12,7 +12,9 @@ import { recordTagRoutes, tagErrorReply } from "../modules/record-tags/index.js"
 import { intakeRoutes } from "../modules/upload-intake/index.js";
 import { workflowErrorReply } from "../modules/workflows/routes.js";
 import { labLookups } from "../services/lab/lab-lookups.js";
-import { LAB_ORDER_RECORD_TYPE, labOrderIdsThatExist, onLabOrderTagsChanged } from "../services/lab/lab-tags.js";
+import {
+  CLIENT_REP_RECORD_TYPE, LAB_ORDER_RECORD_TYPE, clientIdsThatExist, labOrderIdsThatExist, onLabOrderTagsChanged,
+} from "../services/lab/lab-tags.js";
 import { INTAKE_RECORD_TYPE, intakeIdsThatExistForFiles, notifyIntakesCreated, withDroppedBy } from "../services/lab/lab-intake.js";
 import { listFamilies } from "../services/catalog.service.js";
 import * as staffOrders from "../services/lab/staff-orders.service.js";
@@ -68,8 +70,10 @@ export default async function labDeskRoutes(fastify) {
   });
 
   // /tags/lab_order/... (staff) and /admin/tags/lab_order/... (admin). Labels never bump the order's version.
+  // /tags/client_rep/...: a client's sales rep (Sales By Rep); admins define the reps.
   await fastify.register(recordTagRoutes, {
-    recordTypes: { [LAB_ORDER_RECORD_TYPE]: { exists: (ids) => labOrderIdsThatExist(ids), onChange: onLabOrderTagsChanged } },
+    recordTypes: { [LAB_ORDER_RECORD_TYPE]: { exists: (ids) => labOrderIdsThatExist(ids), onChange: onLabOrderTagsChanged },
+      [CLIENT_REP_RECORD_TYPE]: { exists: (ids) => clientIdsThatExist(ids) } },
     staffGuard: STAFF,
     adminGuard: [authenticate, requireAdmin],
     audit: (request, action, targetId, metadata) => audit(request, action, targetId, metadata, "tag_definition"),

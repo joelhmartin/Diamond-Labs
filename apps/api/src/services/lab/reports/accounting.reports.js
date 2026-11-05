@@ -9,7 +9,7 @@ import {
   AGING_BUCKETS, CREDIT_SOURCE, INVOICE_KIND_LABELS, INVOICE_STATUS_LABELS, LEGACY_SETTLEMENT_SOURCE,
   PAYMENT_SOURCE_LABELS, invoiceStatusLabel,
 } from "@my-app/shared";
-import { invoices, invoiceLines, invoicePayments } from "../../../db/schema/index.js";
+import { invoices, invoiceLines, invoicePayments, adjustmentReasons } from "../../../db/schema/index.js";
 import { listReceivables, loadStatementActivity, loadClientNames } from "../../billing/statements.service.js";
 import { statementEvents, monthBounds } from "../../billing/statement-model.js";
 import { deriveBalance } from "../../billing/invoice-rules.js";
@@ -83,19 +83,40 @@ const adjustments = {
   },
 };
 
+/**
+ * A discount line's reason (piece 6's adjustment reason list): the discount or
+ * both-kind reason whose label the line's description is, or starts with
+ * ("<label> — <text>", invoice-rules planDiscountLine). The longest label wins.
+ */
+const discountReason = sql`
+  left join lateral (
+    select ${adjustmentReasons.label} as label from ${adjustmentReasons}
+    where ${adjustmentReasons.appliesTo} in ('discount', 'both')
+      and (lower(${invoiceLines.description}) = lower(${adjustmentReasons.label})
+        or starts_with(lower(${invoiceLines.description}), lower(${adjustmentReasons.label}) || ' — '))
+    order by length(${adjustmentReasons.label}) desc limit 1
+  ) reason on true`;
+/** A discount typed without a reason from the list. */
+export const OTHER_REASON = "Other";
+
 const discounts = {
   key: "accounting.discounts", group: GROUP, roles: ADMIN, title: "Discounts",
-  description: "Negative adjustment lines on issued invoices, by issue day.",
+  description: "Negative adjustment lines on issued invoices, by issue day, with the reason picked from the lab's reason list (Other when typed by hand).",
   params: [RANGE],
-  columns: [{ id: "day", label: "Date", type: "date" }, invoiceCol, clientCol, { id: "description", label: "Description", type: "text" }, money("amount", "Amount")],
+  columns: [
+    { id: "day", label: "Date", type: "date" }, invoiceCol, clientCol, { id: "reason", label: "Reason", type: "text" },
+    { id: "description", label: "Description", type: "text" }, money("amount", "Amount"),
+  ],
   async run(tx, { range }) {
     const raw = await rowsOf(tx, sql`
       select ${labDayText(invoices.issuedAt)} as "day", ${invoices.id} as "invoiceId", ${invoices.invoiceNumber} as "invoiceNumber",
-        ${invoices.clientUserId} as "clientUserId", ${clientName} as "client", ${invoiceLines.description} as "description", ${invoiceLines.lineCents} as "amount"
+        ${invoices.clientUserId} as "clientUserId", ${clientName} as "client", reason.label as "reason",
+        ${invoiceLines.description} as "description", ${invoiceLines.lineCents} as "amount"
       from ${invoiceLines} join ${invoices} on ${invoices.id} = ${invoiceLines.invoiceId} ${optionalClientJoin(invoices.clientUserId)}
+      ${discountReason}
       where ${isDiscountLine} and ${salesWhere(range)}
       order by 1, ${invoices.invoiceNumber}, ${invoiceLines.position}`);
-    const rows = raw.map((r) => ({ ...r, invoiceNumber: invoiceNo(r.invoiceNumber), amount: num(r.amount) }));
+    const rows = raw.map((r) => ({ ...r, reason: r.reason ?? OTHER_REASON, invoiceNumber: invoiceNo(r.invoiceNumber), amount: num(r.amount) }));
     return { rows, summary: { amount: sumOf(rows, "amount") }, notice: discountNotices(range) };
   },
 };

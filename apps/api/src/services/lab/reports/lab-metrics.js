@@ -15,6 +15,7 @@ import { LAB_TIMEZONE, OPENING_BALANCE_PREFIX, daysInRange, isoDateIn, monthsBet
 import { invoices, invoiceLines, users, doctorProfiles, labOrders, productVariants, productFamilies } from "../../../db/schema/index.js";
 import { afterLabDay, labDay, labDayBetween, labDayText, labMonthText } from "../../../lib/lab-day-sql.js";
 import { ledgerRowDay, ledgerRowDayBetween } from "../../billing/ledger.service.js";
+import { getCalendar } from "../../../modules/business-calendar/service.js";
 
 // The lab-day SQL helpers live in lib/lab-day-sql.js (billing uses them too); re-exported for the report glue.
 export { afterLabDay, labDay, labDayBetween, labDayText, labMonthText };
@@ -46,13 +47,35 @@ export const isClient = sql`${users.role} = 'doctor'`;
 /** The lab order counts (spec: cancelled orders are excluded unless a report says otherwise). */
 export const isLiveOrder = sql`${labOrders.status} <> 'cancelled'`;
 
+/** The lab's business calendar (piece 7 getCalendar), read in the report's own transaction. */
+export const labCalendar = (db) => getCalendar(db);
+
+const WEEKDAY_RE = /^[0-6]$/;
+const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 /**
- * Turnaround in calendar days, received → shipped, between the two lab-local
- * days (spec "Turnaround"). THE turnaround expression: Task 7's
- * `turnaroundDays(order, calendar?)` and any report averaging turnaround use
- * this; piece 7 swaps business days in here.
+ * Open days in (fromDay, toDay] for two SQL date expressions: the SQL twin of
+ * piece 7's `businessDaysBetween`, never below 0. Closed weekdays and holidays
+ * come from `calendar` and are written as literals (validated digits and
+ * dates, never user input). A calendar with neither is plain day arithmetic.
  */
-export const turnaroundDaysSql = sql`greatest(0, ${labDay(labOrders.shippedAt)} - ${labDay(labOrders.receivedAt)})`;
+export function businessDaysSql(fromDay, toDay, calendar) {
+  const closed = [...new Set((calendar?.closedWeekdays ?? []).map(String))].filter((d) => WEEKDAY_RE.test(d));
+  const holidays = [...(calendar?.holidays ?? [])].filter((d) => ISO_DAY_RE.test(d));
+  if (!closed.length && !holidays.length) return sql`greatest(0, ${toDay} - ${fromDay})`;
+  const open = [];
+  if (closed.length) open.push(sql.raw(`extract(dow from g.d)::int not in (${closed.join(", ")})`));
+  if (holidays.length) open.push(sql.raw(`g.d::date not in (${holidays.map((d) => `'${d}'`).join(", ")})`));
+  return sql`(select count(*)::int from generate_series((${fromDay} + 1)::timestamp, (${toDay})::timestamp, interval '1 day') as g(d) where ${sql.join(open, sql` and `)})`;
+}
+
+/**
+ * Turnaround in business days (piece 7's calendar), received → shipped,
+ * between the two lab-local days (spec "Turnaround"). THE turnaround
+ * expression: `turnaroundDays(order, calendar)` is its JS twin and every
+ * report averaging turnaround uses this. Pass the calendar from `labCalendar`.
+ */
+export const turnaroundDaysSql = (calendar) => businessDaysSql(labDay(labOrders.receivedAt), labDay(labOrders.shippedAt), calendar);
 
 /** A line's catalog variant when it names only a code (imported lines). See `catalogJoins`. */
 export const byCode = alias(productVariants, "by_code");

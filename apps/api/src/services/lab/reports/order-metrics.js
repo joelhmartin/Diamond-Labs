@@ -9,22 +9,31 @@
  *                 open and due before today. An on-hold order past its due date
  *                 IS past due (isOverdue only exempts terminal statuses; the
  *                 board shows it red), and it is also counted as on hold.
- * - At risk     = interim rule until piece 7's board tiles (Task 10 re-points
- *                 `boardDayCounts` there): open, not on hold, still received or
- *                 in production, and due today through today + 2 inclusive, so
- *                 never already past due (a late order is past due, not at
- *                 risk). The same window as Technician Workload's "due soon".
- * - Turnaround  = calendar days received → shipped (lab-metrics turnaroundDaysSql).
+ * - Board counts and at risk = piece 7's board (lab-schedule-queries
+ *                 boardTiles / tileOrderIds): at risk is behind its workflow
+ *                 plan, or due within AT_RISK_BUSINESS_DAYS business days (past
+ *                 due included) and not yet in quality check; "tomorrow" is the
+ *                 next open business day. `boardDayCounts` and `atRiskOrders`
+ *                 both read it, so the tiles and the list always agree.
+ * - Due soon    = due from today up to piece 7's at-risk cutoff (the same
+ *                 business-day window), not already past due (Technician Workload).
+ * - Turnaround  = business days received -> shipped (lab-metrics turnaroundDaysSql).
  *
- * "today" is always the lab-local day the caller passes (the runner's ctx.today).
+ * "today" is the lab-local day the caller passes (the runner's ctx.today). The
+ * board functions take `now` (a Date) and read the day in the calendar's zone, as the board does.
  */
-import { sql } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
-  CARRIERS, LAB_STATUS_LABELS, LAB_TIMEZONE, TERMINAL_LAB_STATUSES, addDays, daysBetween, daysInRange, isoDateIn,
+  CARRIERS, LAB_STATUS_LABELS, LAB_TIMEZONE, TERMINAL_LAB_STATUSES, addDays, daysInRange, isoDateIn,
 } from "@my-app/shared";
 import { labOrders, labOrderLines, labDepartments, users, shipments, productFamilies } from "../../../db/schema/index.js";
-import { catalogJoins, clientName, isLiveOrder, labDay, labDayBetween, labDayText, num, rowsOf, turnaroundDaysSql } from "./lab-metrics.js";
+import { DEFAULT_CALENDAR, businessDaysBetween } from "../../../modules/business-calendar/index.js";
+import { boardTiles, tileOrderIds } from "../lab-schedule-queries.js";
+import { atRiskCutoff } from "../lab-schedule-flags.js";
+import {
+  catalogJoins, clientName, isLiveOrder, labCalendar, labDay, labDayBetween, labDayText, num, rowsOf, turnaroundDaysSql,
+} from "./lab-metrics.js";
 import { optionalClientJoin, uncategorizedSql } from "./report-helpers.js";
 
 // ── SQL building blocks ──────────────────────────────────────────────────
@@ -35,11 +44,6 @@ const literalList = (words) => {
   return sql.raw(words.map((w) => `'${w}'`).join(", "));
 };
 
-/** The statuses at-risk applies to (interim rule). */
-export const AT_RISK_STATUSES = Object.freeze(["received", "in_production"]);
-/** At risk = due within this many calendar days of today (interim rule). */
-export const AT_RISK_DAYS = 2;
-
 /** Open: not shipped and not cancelled (isTerminalLabStatus). */
 export const isOpenOrder = sql`${labOrders.status} not in (${literalList(TERMINAL_LAB_STATUSES)})`;
 export const isOnHold = sql`${labOrders.status} = 'on_hold'`;
@@ -47,10 +51,13 @@ export const isOnHold = sql`${labOrders.status} = 'on_hold'`;
 export const pastDueSql = (today) => sql`${isOpenOrder} and ${labOrders.dueDate} < ${today}::date`;
 /** Open and due on `day`. */
 export const dueOnSql = (day) => sql`${isOpenOrder} and ${labOrders.dueDate} = ${day}::date`;
-/** Due today through today + AT_RISK_DAYS inclusive (at risk's window; Technician Workload's "due soon"). */
-export const dueSoonSql = (today) => sql`${labOrders.dueDate} between ${today}::date and ${addDays(today, AT_RISK_DAYS)}::date`;
-/** The interim at-risk rule (see header). */
-export const atRiskSql = (today) => sql`${labOrders.status} in (${literalList(AT_RISK_STATUSES)}) and ${dueSoonSql(today)}`;
+/**
+ * Due from `today` up to (not including) piece 7's at-risk cutoff for that day
+ * (`atRiskCutoff`: AT_RISK_BUSINESS_DAYS open days ahead), so "due soon" is
+ * the business-day window of the board's at-risk rule, minus the past due.
+ */
+export const dueSoonSql = (today, calendar) =>
+  sql`${labOrders.dueDate} >= ${today}::date and ${labOrders.dueDate} < ${atRiskCutoff(today, calendar ?? DEFAULT_CALENDAR)}::date`;
 
 /** The person an order is assigned to (a second users join). */
 export const assignee = alias(users, "assignee");
@@ -88,17 +95,17 @@ export const statusBadge = (s) => (s ? { value: s, label: LAB_STATUS_LABELS[s] ?
 const labDayOf = (v) => (v == null ? null : isoDateIn(LAB_TIMEZONE, new Date(v)));
 
 /**
- * Turnaround of one order in days, received → shipped, between lab-local days;
- * null when it has not shipped or was cancelled. The JS twin of
- * lab-metrics `turnaroundDaysSql` (reports average that in SQL).
- * `calendar`: business days arrive with piece 7 (Task 10, addBusinessDays/isOpen).
+ * Turnaround of one order in business days (piece 7's businessDaysBetween:
+ * open days after the received day up to the shipped day), between lab-local
+ * days; null when it has not shipped or was cancelled. The JS twin of
+ * lab-metrics `turnaroundDaysSql(calendar)` (reports average that in SQL).
+ * With no calendar every day is open (plain calendar days).
  */
-export function turnaroundDays(order, calendar) {
-  if (calendar !== undefined) throw new Error("Business-day turnaround needs the business calendar (piece 7)");
+export function turnaroundDays(order, calendar = DEFAULT_CALENDAR) {
   if (!order?.shippedAt || !order.receivedAt || order.status === "cancelled") return null;
   const from = labDayOf(order.receivedAt);
   const to = labDayOf(order.shippedAt);
-  return to < from ? 0 : daysBetween(from, to);
+  return to <= from ? 0 : businessDaysBetween(from, to, calendar ?? DEFAULT_CALENDAR);
 }
 
 /** Shipped (not cancelled) on a lab day in the range: the orders a turnaround figure averages. */
@@ -107,9 +114,10 @@ export const shippedInSql = (range) => sql`${labOrders.status} = 'shipped' and $
 const avgOrNull = (v) => (v == null ? null : Number(v));
 
 /** Average turnaround (turnaroundDaysSql) of orders shipped in the range: { orders, avgDays | null }. */
-export async function turnaroundAverage(db, range) {
+export async function turnaroundAverage(db, range, calendar = null) {
+  const cal = calendar ?? (await labCalendar(db));
   const [r = {}] = await rowsOf(db, sql`
-    select count(*) as "orders", avg(${turnaroundDaysSql}) as "avgDays" from ${labOrders} where ${shippedInSql(range)}`);
+    select count(*) as "orders", avg(${turnaroundDaysSql(cal)}) as "avgDays" from ${labOrders} where ${shippedInSql(range)}`);
   return { orders: num(r.orders), avgDays: avgOrNull(r.avgDays) };
 }
 
@@ -120,9 +128,10 @@ export function weekStart(day) {
 }
 
 /** Average turnaround per week shipped (Monday start), every week the range touches: [{ week, orders, avgDays | null }]. */
-export async function turnaroundByWeek(db, range) {
+export async function turnaroundByWeek(db, range, calendar = null) {
+  const cal = calendar ?? (await labCalendar(db));
   const raw = await rowsOf(db, sql`
-    select to_char(date_trunc('week', ${labDay(labOrders.shippedAt)}), 'YYYY-MM-DD') as "week", count(*) as "orders", avg(${turnaroundDaysSql}) as "avgDays"
+    select to_char(date_trunc('week', ${labDay(labOrders.shippedAt)}), 'YYYY-MM-DD') as "week", count(*) as "orders", avg(${turnaroundDaysSql(cal)}) as "avgDays"
     from ${labOrders} where ${shippedInSql(range)}
     group by 1 order by 1`);
   const byWeek = new Map(raw.map((r) => [String(r.week), r]));
@@ -131,46 +140,41 @@ export async function turnaroundByWeek(db, range) {
   return weeks.map((week) => ({ week, orders: num(byWeek.get(week)?.orders), avgDays: avgOrNull(byWeek.get(week)?.avgDays) }));
 }
 
-// ── Board day counts (the seam piece 7 replaces) ─────────────────────────
+// ── Board day counts (piece 7's board) ───────────────────────────────────
 
 /**
- * { pastDue, dueToday, dueTomorrow, onHold, atRisk } for the lab day `today`,
- * one query over open orders. Task 10 re-points this at piece 7's board tiles.
+ * { pastDue, dueToday, dueTomorrow, onHold, atRisk } as of `now` (a Date):
+ * piece 7's boardTiles over the report's transaction, so a dashboard tile and
+ * the production board never disagree.
  */
-export async function boardDayCounts(db, today) {
-  const [r = {}] = await rowsOf(db, sql`
-    select
-      count(*) filter (where ${pastDueSql(today)}) as "pastDue",
-      count(*) filter (where ${labOrders.dueDate} = ${today}::date) as "dueToday",
-      count(*) filter (where ${labOrders.dueDate} = ${addDays(today, 1)}::date) as "dueTomorrow",
-      count(*) filter (where ${isOnHold}) as "onHold",
-      count(*) filter (where ${atRiskSql(today)}) as "atRisk"
-    from ${labOrders}
-    where ${isOpenOrder}`);
-  return { pastDue: num(r.pastDue), dueToday: num(r.dueToday), dueTomorrow: num(r.dueTomorrow), onHold: num(r.onHold), atRisk: num(r.atRisk) };
+export async function boardDayCounts(db, now = new Date()) {
+  const { pastDue, dueToday, dueTomorrow, onHold, atRisk } = await boardTiles(db, now);
+  return { pastDue, dueToday, dueTomorrow, onHold, atRisk };
 }
 
 /** How many at-risk orders the list shows. */
 export const AT_RISK_LIST_LIMIT = 50;
 
 /**
- * The at-risk orders, soonest due first, at most `limit`:
- * { rows: [{ id, orderNumber, client, status, dueDate, rush }], truncated }.
- * One row past the limit is read so `truncated` says whether more exist.
+ * The at-risk orders as of `now` (piece 7's tileOrderIds(db, "at_risk")), soonest
+ * due first, at most `limit`: { rows: [{ id, orderNumber, client, status, dueDate, rush }],
+ * total, truncated }. `total` counts the same ids the At risk tile counts.
  */
-export async function atRiskOrders(db, today, limit = AT_RISK_LIST_LIMIT) {
+export async function atRiskOrders(db, now = new Date(), limit = AT_RISK_LIST_LIMIT) {
+  const ids = (await tileOrderIds(db, "at_risk", now)) ?? [];
+  if (!ids.length) return { rows: [], total: 0, truncated: false };
   const raw = await rowsOf(db, sql`
     select ${labOrders.id} as "id", ${labOrders.orderNumber} as "orderNumber", ${clientName} as "client",
       ${labOrders.status} as "status", to_char(${labOrders.dueDate}, 'YYYY-MM-DD') as "dueDate", ${labOrders.rush} as "rush"
     from ${labOrders}
     ${optionalClientJoin(labOrders.clientUserId)}
-    where ${isOpenOrder} and ${atRiskSql(today)}
-    order by ${labOrders.dueDate}, ${labOrders.rush} desc, ${labOrders.orderNumber}
-    limit ${limit + 1}`);
-  const rows = raw.slice(0, limit).map((r) => ({
+    where ${inArray(labOrders.id, ids)}
+    order by ${labOrders.dueDate} nulls last, ${labOrders.rush} desc, ${labOrders.orderNumber}
+    limit ${limit}`);
+  const rows = raw.map((r) => ({
     id: r.id, orderNumber: r.orderNumber, client: r.client ?? null, status: r.status, dueDate: r.dueDate ?? null, rush: Boolean(r.rush),
   }));
-  return { rows, truncated: raw.length > limit };
+  return { rows, total: ids.length, truncated: ids.length > limit };
 }
 
 // ── Per-day series ───────────────────────────────────────────────────────

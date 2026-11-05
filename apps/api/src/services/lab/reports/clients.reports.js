@@ -1,6 +1,6 @@
 /**
- * Clients (9). Same Pricing waits for piece 10's price lists (registered with
- * `requires`, dependent.js). Clients are doctor users; orders are non-cancelled lab orders by lab-local received day;
+ * Clients (9). Same Pricing is piece 10's same-pricing query
+ * (sameClientPricingGroups, run in the report's transaction). Clients are doctor users; orders are non-cancelled lab orders by lab-local received day;
  * sales are the one sales rule in lab-metrics.js. Every report is admin only
  * except the two lists, which carry no money and are staff.
  */
@@ -11,7 +11,7 @@ import {
   CLIENT_LINK, ORDER_LINK, afterLabDay, clientName, isClient, isLiveOrder, isSale, labDayBetween, labDayText, labToday, num, rowsOf, salesWhere,
 } from "./lab-metrics.js";
 import { HEALTH_BANDS, clientHealthRows, healthCounts } from "./client-health.js";
-import { dependentReport } from "./dependent.js";
+import { sameClientPricingGroups } from "../../same-pricing.service.js";
 import { ADMIN, clientsOnlyJoin, money, share, sumOf } from "./report-helpers.js";
 
 const GROUP = "clients";
@@ -284,15 +284,31 @@ const noRecentSales = {
   },
 };
 
-const samePricing = dependentReport({
+/** A group's price set in words: its lists, its own client prices, or the base prices. */
+function priceSetLabel(g) {
+  if (g.signature === "base") return "Base prices";
+  const lists = g.lists.length ? g.lists.join(", ") : null;
+  if (lists && g.overrideCount) return `${lists} + client prices`;
+  return lists ?? "Client prices";
+}
+
+const samePricing = {
   key: "clients.same-pricing", group: GROUP, roles: ADMIN, title: "Same Pricing", requires: ["price-lists"],
-  description: "Clients grouped by an identical set of prices (the same price list or the same client prices).",
-  params: [],
+  description: "Approved clients grouped by an identical set of effective prices (the same price lists and client prices give the same result), largest group first.",
+  params: [{ name: "includeSingles", label: "Include clients with unique pricing", type: "toggle", default: false }],
   columns: [
     { id: "priceSet", label: "Price set", type: "text" }, { id: "clients", label: "Clients", type: "int" },
-    { id: "clientNames", label: "Client names", type: "text", sortable: false }, { id: "items", label: "Priced items", type: "int" },
+    { id: "clientNames", label: "Client names", type: "text", sortable: false }, { id: "overrides", label: "Client prices", type: "int" },
   ],
-});
+  async run(tx, params) {
+    const { groups } = await sameClientPricingGroups(tx, { includeSingles: Boolean(params?.includeSingles) });
+    const rows = groups.map((g) => ({
+      priceSet: priceSetLabel(g), clients: g.size,
+      clientNames: g.clients.map((c) => c.practice || c.name).join(", "), overrides: g.overrideCount,
+    }));
+    return { rows, summary: { priceSet: "Total", clients: sumOf(rows, "clients"), overrides: sumOf(rows, "overrides") } };
+  },
+};
 
 export const CLIENT_REPORTS = [health, list, doctors, top, bottomClients, inactive, newOrders, noRecentSales, samePricing];
 

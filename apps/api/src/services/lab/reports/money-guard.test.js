@@ -30,12 +30,31 @@ function labRegistry() {
 const moneyColumns = (def) =>
   (def.columns || []).filter((c) => c.type === "money").map((c) => `${def.key}/${c.id}`).filter((id) => !ALLOWED_MONEY_COLUMNS.has(id));
 
-test("no report a lab user can see (stubs included) has a money column, except the allowlist", () => {
+/** The reports that need a later piece's data: part of the check now that they run. */
+const DEPENDENT_STAFF = [
+  "planning.calendar", "planning.tasks-schedule", "planning.assigned-tasks", "planning.assigned-tasks-summary", "departments.tasks",
+  "departments.tasks-summary", "operations.daily-tasks", "operations.production-tasks", "operations.pan-numbers", "operations.pickups",
+  "operations.deliveries", "products.materials",
+];
+
+test("no report a lab user can see (the dependent ones included) has a money column, except the allowlist", () => {
   const registry = labRegistry();
   const visible = registry.listReports(lab);
-  assert.ok(visible.some((r) => !r.available), "stub (requires) reports are part of the check");
+  const keys = new Set(visible.map((r) => r.key));
+  for (const k of DEPENDENT_STAFF) assert.ok(keys.has(k), `${k} is visible to lab and checked`);
+  assert.ok(!keys.has("sales.by-rep") && !keys.has("clients.same-pricing"), "the money / pricing dependents are admin only");
   assert.ok(visible.some((r) => r.key === "operations.shipping"), "the allowlisted report is still visible to lab");
   assert.deepEqual(visible.flatMap(moneyColumns), []);
+});
+
+test("the live activity feed run as a lab actor has no payment entry, even with a payment row on offer", async () => {
+  const registry = labRegistry();
+  const payment = { id: "p1", cents: "12550", at: new Date("2026-11-05T16:00:00Z"), invoiceId: "inv1", labOrderId: "lo1", orderNumber: 1041, client: "Acme Dental" };
+  const tx = fakeTx({ executes: [[], [], [payment]] });
+  const out = await registry.getReport("ops.activity-feed").run(tx, {}, lab, ctx);
+  assert.equal(out.rows.filter((r) => r.kind === "payment").length, 0);
+  assert.ok(out.rows.every((r) => !/\$|payment/i.test(r.text)), "no money in the feed's text");
+  assert.equal(tx.log.filter((e) => e.op === "execute").length, 2, "the payments query is never run for lab");
 });
 
 test("no metric a lab user can see returns a money figure", async () => {

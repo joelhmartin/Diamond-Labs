@@ -2,14 +2,19 @@
  * Report param lookups (the `lookup` param type's `source`). Each returns at
  * most 20 `{ value, label }` matches for the typed text, and `label(db, value)`
  * names a value that arrived without a pick (a shared link). Roles are set per
- * lookup: `client` names every doctor, so it is admin-only like the money
- * reports that use it; the rest expose no money and keep the staff default.
+ * lookup: `client` names every doctor and `priceList` names the pricing
+ * templates, so both are admin-only like the money reports that use them; the
+ * rest expose no money and keep the staff default. `tag` is a lab-order label
+ * (piece 6 record-tags, record type "lab_order").
  */
 import { and, asc, eq, ilike, inArray, isNotNull, or } from "drizzle-orm";
 import { STAFF_ROLES } from "@my-app/shared";
-import { users, doctorProfiles, productVariants, productFamilies, labDepartments } from "../../../db/schema/index.js";
+import {
+  users, doctorProfiles, productVariants, productFamilies, labDepartments, tagDefinitions, priceLists,
+} from "../../../db/schema/index.js";
 import { containsPattern } from "../../../lib/list-query.js";
 import { listAssignableStaff } from "../lab-orders.service.js";
+import { LAB_ORDER_RECORD_TYPE } from "../lab-tags.js";
 import { clientName } from "./lab-metrics.js";
 
 export const LOOKUP_LIMIT = 20;
@@ -20,6 +25,9 @@ export const lookupTerm = (q) => String(q ?? "").trim().slice(0, 100);
 const firstLabel = (rows) => rows[0]?.label ?? null;
 
 const variantLabel = (v) => (v.code ? `${v.code} · ${v.name}` : v.name);
+
+/** A name with "(inactive)" / "(archived)" when it no longer applies. */
+const withState = (name, off, word) => (off ? `${name} (${word})` : name);
 
 export const LAB_LOOKUPS = [
   {
@@ -92,6 +100,34 @@ export const LAB_LOOKUPS = [
     async label(db, value) {
       // Any staff member, active or not (a report can name someone who has since left), never a doctor.
       return firstLabel(await db.select({ label: users.name }).from(users).where(and(eq(users.id, value), inArray(users.role, STAFF_ROLES))).limit(1));
+    },
+  },
+  {
+    key: "tag",
+    async search(db, q) {
+      const term = lookupTerm(q);
+      const rows = await db.select({ value: tagDefinitions.id, label: tagDefinitions.label, active: tagDefinitions.active }).from(tagDefinitions)
+        .where(and(eq(tagDefinitions.recordType, LAB_ORDER_RECORD_TYPE), term ? ilike(tagDefinitions.label, containsPattern(term)) : undefined))
+        .orderBy(asc(tagDefinitions.position), asc(tagDefinitions.label)).limit(LOOKUP_LIMIT);
+      return rows.map((t) => ({ value: t.value, label: withState(t.label, !t.active, "inactive") }));
+    },
+    async label(db, value) {
+      return firstLabel(await db.select({ label: tagDefinitions.label }).from(tagDefinitions)
+        .where(and(eq(tagDefinitions.id, value), eq(tagDefinitions.recordType, LAB_ORDER_RECORD_TYPE))).limit(1));
+    },
+  },
+  {
+    key: "priceList",
+    roles: ["admin"],
+    async search(db, q) {
+      const term = lookupTerm(q);
+      const rows = await db.select({ value: priceLists.id, name: priceLists.name, archivedAt: priceLists.archivedAt }).from(priceLists)
+        .where(term ? ilike(priceLists.name, containsPattern(term)) : undefined)
+        .orderBy(asc(priceLists.name), asc(priceLists.id)).limit(LOOKUP_LIMIT);
+      return rows.map((l) => ({ value: l.value, label: withState(l.name, l.archivedAt, "archived") }));
+    },
+    async label(db, value) {
+      return firstLabel(await db.select({ label: priceLists.name }).from(priceLists).where(eq(priceLists.id, value)).limit(1));
     },
   },
 ];

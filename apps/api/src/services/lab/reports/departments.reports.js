@@ -1,7 +1,8 @@
 /**
  * Departments (8). Staff. Departments are the lab's own rooms/benches
- * (lab_departments); an order with none is its own "No department" row. Six
- * run now; Dept Tasks and Dept Tasks Summary wait for piece 7's workflows.
+ * (lab_departments); an order with none is its own "No department" row. Dept
+ * Tasks and Dept Tasks Summary read piece 7's workflow stage targets
+ * (stage-targets.js), by the order's department.
  * Department moves are lab_order_events of type department (from/to hold
  * department ids); the event note is never read.
  */
@@ -10,13 +11,13 @@ import { alias } from "drizzle-orm/pg-core";
 import { LAB_ORDER_STATUSES, LAB_STATUS_LABELS, LAB_TIMEZONE, TERMINAL_LAB_STATUSES } from "@my-app/shared";
 import { labOrders, labOrderEvents, labOrderLines, labDepartments, users, productFamilies } from "../../../db/schema/index.js";
 import {
-  ORDER_LINK, catalogJoins, clientName, isLiveOrder, labDayBetween, labDayText, labToday, num, rowsOf,
+  ORDER_LINK, catalogJoins, clientName, isLiveOrder, labCalendar, labDayBetween, labDayText, labToday, num, rowsOf,
 } from "./lab-metrics.js";
 import {
   NO_DEPARTMENT, assigneeName, byDepartment, departmentJoin, departmentName, departmentOrder, isOnHold, isOpenOrder, orderJoins,
   pastDueSql, statusBadge, unitsJoin,
 } from "./order-metrics.js";
-import { dependentReport } from "./dependent.js";
+import { byName, countTargets, plannedOrders, stageTargets, taskRow } from "./stage-targets.js";
 import { int, sumOf, sums, uncategorizedSql } from "./report-helpers.js";
 
 const GROUP = "departments";
@@ -202,27 +203,42 @@ const deptUnits = {
   },
 };
 
-// ── Dependent (Task 10 fills these in) ───────────────────────────────────
+// ── Dept Tasks / Dept Tasks Summary (piece 7) ────────────────────────────
 
-const dependents = [
-  dependentReport({
-    key: "departments.tasks", group: GROUP, title: "Dept Tasks", requires: ["workflows"],
-    description: "Workflow stage targets falling in the range, grouped by department and stage.",
-    params: [RANGE, DEPARTMENT],
-    columns: [
-      DEPT_COL, { id: "stage", label: "Stage", type: "text" }, { id: "orderNumber", label: "Order #", type: "text", link: ORDER_LINK },
-      { id: "target", label: "Stage target", type: "date" }, { id: "assignee", label: "Assigned to", type: "text" },
-    ],
-  }),
-  dependentReport({
-    key: "departments.tasks-summary", group: GROUP, title: "Dept Tasks Summary", requires: ["workflows"],
-    description: "Counts of workflow stage targets per department: due in the range and behind.",
-    params: [RANGE],
-    columns: [DEPT_COL, int("due", "Due"), int("done", "Done"), int("behind", "Behind")],
-  }),
-];
+const RANGE_TASKS = { ...RANGE, default: "last7" };
 
-export const DEPARTMENT_REPORTS = [monitoringBoards, deptOrders, deptCompleted, deptMoved, deptSummary, deptUnits, ...dependents];
+const deptTasks = {
+  key: "departments.tasks", group: GROUP, title: "Dept Tasks", requires: ["workflows"],
+  description: "Workflow stage targets falling in the range, by the order's department and the stage, with whether each is done or behind.",
+  params: [RANGE_TASKS, DEPARTMENT],
+  columns: [
+    DEPT_COL, { id: "stage", label: "Stage", type: "text" }, { id: "orderNumber", label: "Order #", type: "text", link: ORDER_LINK },
+    { id: "target", label: "Stage target", type: "date" }, { id: "state", label: "Done?", type: "badge" },
+    { id: "assignee", label: "Assigned to", type: "text" }, { id: "status", label: "Order status", type: "badge" },
+  ],
+  async run(tx, { range, department }, _actor, ctx) {
+    const targets = stageTargets(await plannedOrders(tx, { range, department }), labToday(ctx), await labCalendar(tx), range);
+    const rows = targets
+      .sort((a, b) => byName("department", "departmentId")(a, b) || a.position - b.position || a.target.localeCompare(b.target) || a.orderNumber - b.orderNumber)
+      .map(taskRow);
+    return { rows };
+  },
+};
+
+const deptTasksSummary = {
+  key: "departments.tasks-summary", group: GROUP, title: "Dept Tasks Summary", requires: ["workflows"],
+  description: "Workflow stage targets in the range per department (the order's): due, done and behind.",
+  params: [RANGE_TASKS],
+  columns: [DEPT_COL, int("due", "Due"), int("done", "Done"), int("behind", "Behind")],
+  async run(tx, { range }, _actor, ctx) {
+    const targets = stageTargets(await plannedOrders(tx, { range }), labToday(ctx), await labCalendar(tx), range);
+    const rows = countTargets(targets, (t) => t.departmentId ?? "", (t) => ({ departmentId: t.departmentId, department: t.department }))
+      .sort(byName("department", "departmentId"));
+    return { rows, summary: { department: "Total", ...sums(rows, ["due", "done", "behind"]) } };
+  },
+};
+
+export const DEPARTMENT_REPORTS = [monitoringBoards, deptOrders, deptCompleted, deptMoved, deptSummary, deptUnits, deptTasks, deptTasksSummary];
 
 export function registerDepartmentReports(registry) {
   for (const def of DEPARTMENT_REPORTS) registry.defineReport(def);

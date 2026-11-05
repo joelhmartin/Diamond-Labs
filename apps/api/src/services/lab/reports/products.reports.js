@@ -1,18 +1,18 @@
 /**
- * Products & Services (5). Materials Used waits for piece 6's materials and
- * lots (registered with `requires`, dependent.js).
+ * Products & Services (5). Materials Used lists piece 6's materials and lot
+ * numbers (no money, so staff). Price List can show one of piece 10's named
+ * price lists beside the base price.
  * Price List and Products Sold show money and are admin only; Units Sold and
  * its detail count bench lines (no money) and are staff. Lines are matched to
  * the catalog by variant, falling back to their code (lab-metrics catalogJoins).
  */
 import { inArray, sql } from "drizzle-orm";
 import {
-  invoices, invoiceLines, labOrders, labOrderLines, productVariants, productFamilies,
+  invoices, invoiceLines, labOrders, labOrderLines, labOrderLineMaterials, productVariants, productFamilies, priceLists, priceListItems,
 } from "../../../db/schema/index.js";
 import {
   ORDER_LINK, byCode, catalogJoins, clientName, coverageNotice, isLiveOrder, labDayBetween, labDayText, num, orderAndPage, rowsOf, salesWhere,
 } from "./lab-metrics.js";
-import { dependentReport } from "./dependent.js";
 import { ADMIN, optionalClientJoin, share, sumOf } from "./report-helpers.js";
 
 const GROUP = "products";
@@ -24,27 +24,41 @@ const unitLinesWhere = (range) =>
 
 const priceList = {
   key: "products.price-list", group: GROUP, roles: ADMIN, title: "Price List",
-  description: "Every catalog item with its base price (before client pricing). Unpriced items show no price.",
-  params: [{ name: "includeInactive", label: "Include inactive items", type: "toggle", default: false }],
+  description: "Every catalog item with its base price (before client pricing) and, when a price list is picked, that list's price. Unpriced items show no price.",
+  params: [
+    { name: "priceList", label: "Price list", type: "lookup", source: "priceList" },
+    { name: "includeInactive", label: "Include inactive items", type: "toggle", default: false },
+  ],
   columns: [
     { id: "family", label: "Product", type: "text" }, { id: "category", label: "Category", type: "text" },
     { id: "variant", label: "Item", type: "text" }, { id: "code", label: "Code", type: "text" },
-    { id: "basePrice", label: "Base price", type: "money" }, { id: "active", label: "Active", type: "text" },
+    { id: "basePrice", label: "Base price", type: "money" }, { id: "listPrice", label: "List price", type: "money" },
+    { id: "active", label: "Active", type: "text" },
   ],
   async run(tx, params) {
     const active = params?.includeInactive ? sql`true` : sql`${productVariants.active} = true and ${productFamilies.active} = true`;
+    const listId = params?.priceList || null;
+    const listJoin = listId
+      ? sql`left join ${priceListItems} on ${priceListItems.priceListId} = ${listId} and ${priceListItems.variantId} = ${productVariants.id}`
+      : sql``;
     const raw = await rowsOf(tx, sql`
       select ${productFamilies.name} as "family", ${productFamilies.category} as "category", ${productVariants.name} as "variant",
         ${productVariants.code} as "code", ${productVariants.basePriceCents} as "basePriceCents",
+        ${listId ? sql`${priceListItems.priceCents}` : sql`null`} as "listPriceCents",
         (${productVariants.active} and ${productFamilies.active}) as "active"
       from ${productVariants} join ${productFamilies} on ${productFamilies.id} = ${productVariants.familyId}
+      ${listJoin}
       where ${active}
       order by ${productFamilies.position}, ${productFamilies.name}, ${productVariants.code} nulls last, ${productVariants.id}`);
     const rows = raw.map((r) => ({
       family: r.family, category: r.category ?? null, variant: r.variant, code: r.code ?? null,
-      basePrice: r.basePriceCents == null ? null : num(r.basePriceCents), active: r.active ? "Yes" : "No",
+      basePrice: r.basePriceCents == null ? null : num(r.basePriceCents),
+      listPrice: r.listPriceCents == null ? null : num(r.listPriceCents), active: r.active ? "Yes" : "No",
     }));
-    return { rows };
+    if (!listId) return { rows };
+    const [list] = await rowsOf(tx, sql`select ${priceLists.name} as "name", ${priceLists.archivedAt} as "archivedAt" from ${priceLists} where ${priceLists.id} = ${listId}`);
+    const named = list ? `List prices from "${list.name}"${list.archivedAt ? " (archived: it no longer applies to clients)" : ""}.` : "That price list no longer exists.";
+    return { rows, notice: `${named} Items the list does not price show no list price.` };
   },
 };
 
@@ -168,16 +182,32 @@ const unitsDetail = {
   },
 };
 
-const materials = dependentReport({
+const materials = {
   key: "products.materials", group: GROUP, title: "Materials Used", requires: ["materials"],
-  description: "Materials and lot numbers used on each product line of orders received in the range.",
+  description: "Materials and lot numbers recorded on each product line of orders received in the range (cancelled orders are not listed).",
   params: [RANGE],
   columns: [
     { id: "received", label: "Received", type: "date" }, { id: "orderNumber", label: "Order #", type: "text", link: ORDER_LINK },
     { id: "product", label: "Product", type: "text" }, { id: "material", label: "Material", type: "text" },
     { id: "lot", label: "Lot", type: "text" }, { id: "qty", label: "Qty", type: "int" },
   ],
-});
+  async run(tx, { range }) {
+    const raw = await rowsOf(tx, sql`
+      select ${labOrders.id} as "labOrderId", ${labOrders.orderNumber} as "orderNumber", ${labDayText(labOrders.receivedAt)} as "receivedDay",
+        ${labOrderLines.name} as "product", ${labOrderLines.qty} as "qty",
+        ${labOrderLineMaterials.material} as "material", ${labOrderLineMaterials.lotNumber} as "lot"
+      from ${labOrderLineMaterials}
+      join ${labOrderLines} on ${labOrderLines.id} = ${labOrderLineMaterials.labOrderLineId}
+      join ${labOrders} on ${labOrders.id} = ${labOrderLineMaterials.labOrderId}
+      where ${isLiveOrder} and ${labDayBetween(labOrders.receivedAt, range)}
+      order by ${labOrders.receivedAt}, ${labOrders.orderNumber}, ${labOrderLines.position}, ${labOrderLineMaterials.position}, ${labOrderLineMaterials.id}`);
+    const rows = raw.map((r) => ({
+      labOrderId: r.labOrderId, orderNumber: r.orderNumber, received: r.receivedDay, product: r.product,
+      material: r.material, lot: r.lot ?? null, qty: num(r.qty),
+    }));
+    return { rows };
+  },
+};
 
 export const PRODUCT_REPORTS = [priceList, sold, units, unitsDetail, materials];
 

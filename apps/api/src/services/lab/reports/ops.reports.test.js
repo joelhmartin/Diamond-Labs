@@ -48,16 +48,20 @@ test("tasks completed counts status (and hold) events per byUserId per to-status
   assert.equal(out.rows.length, 2);
 });
 
-test("case submission: digital when recordsMethod is set or a scan file exists, physical otherwise; shop and legacy orders count as unknown", async () => {
+test("case submission: digital = records method, scan file or a promoted scanner-export intake; physical = Rx case or enclosed items; else unknown", async () => {
   const tx = fakeTx({ executes: [[{ day: "2026-10-02", digital: "3", physical: "1", unknown: "2" }]] });
   const out = await report("operations.case-submission").run(tx, { range: range("2026-10-01", "2026-10-03") }, null, ctx());
   const [{ text }] = executedSql(tx);
   assert.match(text, /left join rx_cases on lab_orders\.source = 'rx_case' and rx_cases\.id = lab_orders\.source_id/);
   const digital = /coalesce\(rx_cases\.records_method, ''\) <> '' or exists \(select 1 from rx_case_files where rx_case_files\.case_id = rx_cases\.id and rx_case_files\.kind = 'scan'\)/;
   assert.match(text, digital);
-  assert.match(text, /filter \(where rx_cases\.id is not null and \(.*\)\) as digital/);
-  assert.match(text, /filter \(where rx_cases\.id is not null and not \(.*\)\) as physical/);
-  assert.match(text, /filter \(where rx_cases\.id is null\) as unknown/);
+  // Piece 6: a scanner-export drop turned into the order makes it digital.
+  assert.match(text, /or exists \(select 1 from intakes where intakes\.promoted_record_type = \$1 and intakes\.promoted_record_id = lab_orders\.id\)\)\) as digital/);
+  // Physical: an Rx case without digital records, or enclosed items (only "is set" is read, never the sealed list).
+  assert.match(text, /and \(rx_cases\.id is not null or lab_orders\.enclosures is not null\)\) as physical/);
+  assert.match(text, /and not \(rx_cases\.id is not null or lab_orders\.enclosures is not null\)\) as unknown/);
+  assert.doesNotMatch(text, /select[^(]*lab_orders\.enclosures[^)]*from/, "the sealed enclosures are never selected");
+  assert.equal(executedSql(tx)[0].params[0], "lab_order");
   assert.match(text, /lab_orders\.is_remake = false/);
   assert.match(text, /lab_orders\.received_at at time zone 'America\/Chicago'/);
   assert.doesNotMatch(text, PHI);
@@ -120,8 +124,11 @@ test("remakes report carries the history coverage notice", async () => {
   const after = await run(range("2026-12-01", "2026-12-31"), "2026-11-15");
   assert.doesNotMatch(after.notice, /imported/);
   assert.deepEqual(unset.rows[0], {
-    labOrderId: "r1", orderNumber: 50010, received: "2026-10-03", originalId: "o1", originalNumber: 49001, client: "One", status: { value: "received", label: "Received" }, assignee: "Ana",
+    labOrderId: "r1", orderNumber: 50010, received: "2026-10-03", originalId: "o1", originalNumber: 49001, client: "One", reason: "No reason given", status: { value: "received", label: "Received" }, assignee: "Ana",
   });
+  // Piece 6: the remake reason comes from the adjustment reason list.
+  const withReason = await report("productivity.remakes").run(fakeTx({ executes: [[{ ...rows[0], reason: "Fit" }], [{ orders: "1" }]] }), { range: range("2026-10-01", "2026-10-31") }, null, ctx());
+  assert.equal(withReason.rows[0].reason, "Fit");
   const cols = Object.fromEntries(report("productivity.remakes").columns.map((c) => [c.id, c]));
   assert.equal(cols.orderNumber.link, "/lab/orders/{labOrderId}");
   assert.equal(cols.originalNumber.link, "/lab/orders/{originalId}");
@@ -148,7 +155,7 @@ test("productivity orders is server-paged with status and source filters and an 
   assert.equal(out.total, 120);
   assert.deepEqual(out.rows[0], {
     labOrderId: "o1", orderNumber: 50001, received: "2026-10-02", client: "One Dental", source: { value: "rx_case", label: "Rx case" },
-    status: { value: "shipped", label: "Shipped" }, dueDate: "2026-10-09", shipped: "2026-10-08", rush: "", remake: "", units: 2,
+    status: { value: "shipped", label: "Shipped" }, dueDate: "2026-10-09", shipped: "2026-10-08", rush: "", remake: "", units: 2, tags: "",
   });
   // No filter: no status/source clause.
   const plain = fakeTx({ executes: [[{ total: "0" }], []] });
@@ -230,6 +237,7 @@ test("monthly orders pivots 12 months per client for the chosen year (default: c
 test("every report in these groups is staff, links only to the lab order page, and selects no PHI", async () => {
   for (const def of ALL) {
     assert.equal(def.roles, undefined, def.key);
-    for (const c of def.columns) if (c.link) assert.match(c.link, /^\/lab\/orders\/\{\w+\}$/, `${def.key}.${c.id}`);
+    // Lab order pages, and the Calendar report's days open piece 7's calendar page.
+    for (const c of def.columns) if (c.link) assert.match(c.link, /^\/lab\/(orders\/\{\w+\}|calendar\?view=week&anchor=\{day\})$/, `${def.key}.${c.id}`);
   }
 });

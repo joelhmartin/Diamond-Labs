@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { STAFF_ROLES } from "@my-app/shared";
 import { createRegistry } from "../../../modules/reports/registry.js";
 import { runReport, createRunSlots } from "../../../modules/reports/runner.js";
-import { registerLabReports } from "./index.js";
+import { fakeTx, fakeDb } from "../../../test/fake-tx.js";
+import { LAB_CAPABILITIES, registerLabReports } from "./index.js";
 import { AUDIT_REPORTS } from "./audit-names.js";
 import { LAB_REPORT_GROUPS } from "./groups.js";
 
@@ -16,7 +17,7 @@ function registry() {
   return r;
 }
 
-/** Task 10 lights these up by calling provideCapability; until then they are listed, not runnable. */
+/** The reports that need a later piece's data, and what each requires (index.js provides them all). */
 const DEPENDENT = {
   "planning.calendar": ["business-calendar"],
   "planning.tasks-schedule": ["workflows"],
@@ -53,29 +54,29 @@ test("every AUDIT_REPORTS title is defined exactly once in its group, and there 
   assert.deepEqual(sizes, { accounting: 9, clients: 9, departments: 8, operations: 10, planning: 7, productivity: 7, products: 5, sales: 8 });
 });
 
-test("the 14 dependent reports are registered with requires and are not runnable yet", async () => {
+test("capability provided -> report available and runs: every formerly-stub key runs on a fake tx", async () => {
   const reg = registry();
+  assert.deepEqual([...LAB_CAPABILITIES].sort(), [...new Set(Object.values(DEPENDENT).flat())].sort());
   const listed = Object.fromEntries(reg.listReports(boss).map((d) => [d.key, d]));
-  const unavailable = Object.values(listed).filter((d) => !d.available).map((d) => d.key).sort();
-  assert.deepEqual(unavailable, Object.keys(DEPENDENT).sort());
+  assert.deepEqual(Object.values(listed).filter((d) => !d.available).map((d) => d.key), [], "nothing is unavailable");
   for (const [key, needs] of Object.entries(DEPENDENT)) {
     assert.deepEqual(listed[key].requires, needs, key);
-    assert.deepEqual(listed[key].missing, needs, key);
+    assert.deepEqual(listed[key].missing, [], key);
     assert.ok(listed[key].description, `${key} description`);
-    assert.ok(listed[key].columns.length > 0, `${key} columns`);
-    await assert.rejects(
-      runReport({ registry: reg, db: {}, key, query: {}, actor: boss, slots: createRunSlots() }),
-      (err) => err.code === "UNAVAILABLE",
-      key,
-    );
+    // Through the real runner (params resolved, read-only tx): every query answers [] and the report still returns rows.
+    const out = await runReport({ registry: reg, db: fakeDb(fakeTx({ executes: [] })), key, query: {}, actor: boss, slots: createRunSlots(), tz: "America/Chicago" });
+    assert.ok(Array.isArray(out.rows), key);
   }
 });
 
-test("a stub's own run is UNAVAILABLE even if its capability were provided early", async () => {
-  const reg = registry();
-  for (const key of Object.keys(DEPENDENT)) {
-    await assert.rejects(Promise.resolve().then(() => reg.getReport(key).run({}, {}, boss, {})), (err) => err.code === "UNAVAILABLE", key);
-  }
+test("a registry without the capabilities still refuses those reports as UNAVAILABLE (the generic gate)", async () => {
+  const reg = createRegistry({ defaultRoles: STAFF_ROLES });
+  reg.defineGroup({ key: "g", title: "G" });
+  reg.defineReport({ key: "g.needs", group: "g", title: "Needs", requires: ["workflows"], columns: [{ id: "a", label: "A", type: "text" }], run: async () => ({ rows: [] }) });
+  await assert.rejects(
+    runReport({ registry: reg, db: {}, key: "g.needs", query: {}, actor: boss, slots: createRunSlots() }),
+    (err) => err.code === "UNAVAILABLE",
+  );
 });
 
 test("roles: money and pricing are admin only; operations, planning, productivity and departments are staff", () => {

@@ -5,8 +5,8 @@
  *
  * One implementation per number: every metric and tile calls the shared
  * function the matching report uses (lab-metrics, order-metrics,
- * client-health). Board counts always come from `boardDayCounts`, the seam
- * piece 7 re-points. Dashboard-only reports are `unlisted` (they are not in
+ * client-health). Board counts always come from `boardDayCounts` and the
+ * at-risk list from `atRiskOrders`, both piece 7's board (boardTiles / tileOrderIds). Dashboard-only reports are `unlisted` (they are not in
  * the 63-report index, but open by URL like any report).
  *
  * Money metrics and tiles are admin only, so a lab user's Pulse simply has no
@@ -19,6 +19,7 @@ import { CLIENT_LINK, ORDER_LINK, labToday, salesByDay, salesCents } from "./lab
 import {
   atRiskOrders, boardDayCounts, dueByDay, openUnitsByCategory, ordersByDay, shippedByDay, statusBadge, turnaroundAverage, turnaroundByWeek, weekStart,
 } from "./order-metrics.js";
+import { AT_RISK_BUSINESS_DAYS } from "../lab-schedule-flags.js";
 import { HEALTH_BANDS, clientHealthRows, healthCounts } from "./client-health.js";
 import { activityFeedReport } from "./activity-feed.js";
 import { ADMIN, int, sumOf } from "./report-helpers.js";
@@ -45,7 +46,7 @@ const asOfOf = (ctx) => ctx?.now ?? new Date();
 const boardMetric = (key, field, href) => ({
   key,
   async run(tx, _params, _actor, ctx) {
-    const counts = await boardDayCounts(tx, labToday(ctx));
+    const counts = await boardDayCounts(tx, asOfOf(ctx));
     return stat(counts[field], { href });
   },
 });
@@ -155,22 +156,20 @@ export const LAB_METRICS = [...OPS_METRICS, ...SALES_METRICS, ...INSIGHT_METRICS
 
 const atRiskList = {
   key: "ops.at-risk-orders", group: "operations", unlisted: true, title: "At-risk orders",
-  description: "Open orders still received or in production and due today through the next 2 days, soonest first.",
+  description: `Open orders at risk on the production board: behind their workflow plan, or due within ${AT_RISK_BUSINESS_DAYS} business days (past due included) and not yet in quality check. Soonest due first.`,
   params: [],
   columns: [
     { id: "orderNumber", label: "Order #", type: "text", link: ORDER_LINK }, { id: "client", label: "Client", type: "text" },
     { id: "status", label: "Status", type: "badge" }, { id: "dueDate", label: "Due", type: "date" }, { id: "rush", label: "Rush", type: "text" },
   ],
   async run(tx, _params, _actor, ctx) {
-    const today = labToday(ctx);
-    const list = await atRiskOrders(tx, today);
+    const list = await atRiskOrders(tx, asOfOf(ctx));
     const rows = list.rows.map((o) => ({
       labOrderId: o.id, orderNumber: o.orderNumber, client: o.client, status: statusBadge(o.status), dueDate: o.dueDate, rush: o.rush ? "Rush" : "",
     }));
     if (!list.truncated) return { rows };
-    // More exist: the runner marks the result cut, with the same count the At risk tile shows.
-    const { atRisk } = await boardDayCounts(tx, today);
-    return { rows, total: atRisk, truncated: true };
+    // More exist: the runner marks the result cut; total is the same id list the At risk tile counts.
+    return { rows, total: list.total, truncated: true };
   },
 };
 

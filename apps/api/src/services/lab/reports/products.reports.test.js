@@ -60,7 +60,9 @@ test("price list is catalog variants with base price, active only by default", a
   const [{ text }] = executedSql(tx);
   assert.match(text, /product_variants\.base_price_cents/);
   assert.match(text, /product_variants\.active = true and product_families\.active = true/);
-  assert.deepEqual(out.rows[0], { family: "Olmos Night", category: "Night guards", variant: "Hard", code: "2608", basePrice: 12500, active: "Yes" });
+  assert.deepEqual(out.rows[0], { family: "Olmos Night", category: "Night guards", variant: "Hard", code: "2608", basePrice: 12500, listPrice: null, active: "Yes" });
+  assert.doesNotMatch(text, /price_list_items/, "no list picked, no list join");
+  assert.equal(out.notice, undefined);
   const all = fakeTx({ executes: [[]] });
   await report("products.price-list").run(all, { includeInactive: true });
   assert.doesNotMatch(executedSql(all)[0].text, /active = true/);

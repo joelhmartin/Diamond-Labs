@@ -1,6 +1,6 @@
 /**
- * Sales (8). Sales By Rep waits for piece 6's client tags (registered with
- * `requires`, dependent.js). Admin only. Every figure is the one sales rule in lab-metrics.js: issued
+ * Sales (8). Admin only. Sales By Rep groups by each client's rep: piece 6
+ * record-tags on the client (record type "client_rep", lab-tags.js). Every figure is the one sales rule in lab-metrics.js: issued
  * invoices' subtotal by lab-local issue day.
  */
 import { sql } from "drizzle-orm";
@@ -9,7 +9,8 @@ import { invoices, invoiceLines, productFamilies, users, doctorProfiles } from "
 import {
   CLIENT_LINK, catalogJoins, clientName, coverageNotice, discountNotices, labDayText, labToday, num, orderAndPage, rowsOf, salesBreakdown, salesByDay, salesByMonth, salesWhere,
 } from "./lab-metrics.js";
-import { dependentReport } from "./dependent.js";
+import { tagsFor } from "../../../modules/record-tags/index.js";
+import { CLIENT_REP_RECORD_TYPE } from "../lab-tags.js";
 import { ADMIN, money, share, sumOf, sums, uncategorizedSql } from "./report-helpers.js";
 
 const GROUP = "sales";
@@ -172,16 +173,39 @@ const byClient = {
   },
 };
 
-const byRep = dependentReport({
+/** Sales with no client, or a client with no rep tag. */
+export const NO_REP = "No rep";
+
+const byRep = {
   key: "sales.by-rep", group: GROUP, roles: ADMIN, title: "Sales By Rep", requires: ["record-tags"],
-  description: "Sales in the range grouped by each client's rep (a tag on the client).",
+  description: `Sales in the range grouped by each client's rep (a rep tag on the client). A client with several reps counts under the first; untagged clients and sales with no client show as "${NO_REP}".`,
   params: [RANGE],
   columns: [
     { id: "rep", label: "Rep", type: "text" }, { id: "clients", label: "Clients", type: "int" }, { id: "invoices", label: "Invoices", type: "int" },
     money("sales", "Sales"), { id: "share", label: "Share", type: "pct" },
   ],
   chart: { type: "bar", x: "rep", series: [{ field: "sales", label: "Sales" }] },
-});
+  async run(tx, { range }) {
+    const perClient = await rowsOf(tx, sql`
+      select ${invoices.clientUserId} as "clientUserId", count(*) as "invoices", sum(${invoices.subtotalCents}) as "cents"
+      from ${invoices} where ${salesWhere(range)} group by 1`);
+    const reps = await tagsFor(CLIENT_REP_RECORD_TYPE, perClient.map((r) => r.clientUserId).filter(Boolean), tx);
+    const groups = new Map();
+    for (const r of perClient) {
+      const rep = (r.clientUserId && reps.get(r.clientUserId)?.[0]?.label) || NO_REP;
+      let g = groups.get(rep);
+      if (!g) groups.set(rep, (g = { rep, clients: 0, invoices: 0, sales: 0 }));
+      if (r.clientUserId) g.clients += 1;
+      g.invoices += num(r.invoices);
+      g.sales += num(r.cents);
+    }
+    const total = sumOf([...groups.values()], "sales");
+    const rows = [...groups.values()]
+      .sort((a, b) => (a.rep === NO_REP) - (b.rep === NO_REP) || b.sales - a.sales || a.rep.localeCompare(b.rep))
+      .map((g) => ({ ...g, share: share(g.sales, total) }));
+    return { rows, summary: { rep: "Total", ...sums(rows, ["clients", "invoices", "sales"]), share: total ? 1 : 0 } };
+  },
+};
 
 export const SALES_REPORTS = [comparison, summary, daily, labSales, netChart, category, byClient, byRep];
 
