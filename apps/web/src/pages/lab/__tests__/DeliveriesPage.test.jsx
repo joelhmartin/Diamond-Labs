@@ -51,6 +51,14 @@ test("date-range filter defaults today..+6 (CT)", async () => {
   assert.ok(screen.getByText("Late"));
 });
 
+test("no column sorts, so day grouping and stop numbers can't fall out of step", async () => {
+  mount();
+  await screen.findByText("Smile Dental");
+  const headers = screen.getAllByRole("columnheader");
+  assert.ok(headers.length > 3);
+  for (const th of headers) assert.equal(th.hasAttribute("aria-sort"), false, th.textContent);
+});
+
 test("bulk Mark delivered loops /status to shipped for ready orders and toasts skipped ones", async () => {
   mount();
   await screen.findByText("Smile Dental");
