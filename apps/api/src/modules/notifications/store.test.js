@@ -38,6 +38,14 @@ test("upsertInApp reports a collapse (xmax <> 0) as not inserted", async () => {
   assert.deepEqual(r, { id: "n0", inserted: false });
 });
 
+test("markReadByKey marks only the user's unread row with that collapse key", async () => {
+  const { db, calls } = recordingDb([["n1"]]);
+  assert.equal(await createDrizzleStore().markReadByKey(db, "u1", "e.x:widget:w1"), 1);
+  const sql = calls[0].sql.replace(/\s+/g, " ");
+  assert.match(sql, /^update "notifications" set "read_at" = now\(\) where \("notifications"."user_id" = \$1 and "notifications"."collapse_key" = \$2 and "notifications"."read_at" is null\)/);
+  assert.deepEqual(calls[0].params, ["u1", "e.x:widget:w1"]);
+});
+
 test("markUnread refuses when another unread row holds the same collapse key", async () => {
   const { db, calls } = recordingDb([]);
   const ok = await createDrizzleStore().markUnread(db, "u1", "n1");

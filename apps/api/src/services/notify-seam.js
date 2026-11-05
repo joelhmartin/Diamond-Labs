@@ -7,6 +7,22 @@ import { currentNotifier } from "../modules/notifications/index.js";
 
 const zero = () => ({ inApp: 0, sent: 0, skipped: 0, failed: 0 });
 
+/**
+ * A user has seen what an event was about: clear their unread alert for it
+ * (notifier.markReadFor). Same contract as notify(): never throws, 0 when no
+ * notifier is configured.
+ */
+export async function markReadFor(db, userId, { event, recordType, recordId } = {}) {
+  try {
+    const notifier = currentNotifier();
+    if (!notifier?.markReadFor) return 0;
+    return (await notifier.markReadFor(db, userId, { event, recordType, recordId })) ?? 0;
+  } catch (err) {
+    console.error(`[NOTIFY][FAILED] event=${String(event ?? "").slice(0, 80)} op=mark_read reason=${String(err?.name ?? "Error").slice(0, 80)}`);
+    return 0;
+  }
+}
+
 export async function notify(db, args) {
   let event;
   try {

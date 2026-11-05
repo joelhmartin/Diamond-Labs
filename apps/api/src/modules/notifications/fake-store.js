@@ -60,6 +60,11 @@ export function createFakeStore({ preferences = [], recipients = [] } = {}) {
       for (const n of rows) n.readAt = now();
       return rows.length;
     },
+    async markReadByKey(_db, userId, collapseKey) {
+      const rows = mine(userId).filter((n) => !n.readAt && n.collapseKey === collapseKey);
+      for (const n of rows) n.readAt = now();
+      return rows.length;
+    },
     async markUnread(_db, userId, id) {
       const row = mine(userId).find((n) => n.id === id);
       if (!row) return false;

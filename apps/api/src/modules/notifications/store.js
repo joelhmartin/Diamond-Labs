@@ -59,6 +59,12 @@ export function createDrizzleStore() {
       const rows = await db.update(notifications).set({ readAt: sql`now()` }).where(and(...conds)).returning({ id: notifications.id });
       return rows.length;
     },
+    async markReadByKey(db, userId, collapseKey) {
+      const rows = await db.update(notifications).set({ readAt: sql`now()` })
+        .where(and(eq(notifications.userId, userId), eq(notifications.collapseKey, collapseKey), isNull(notifications.readAt)))
+        .returning({ id: notifications.id });
+      return rows.length;
+    },
     // Refused (false) when another unread row already holds the collapse key:
     // the partial unique index allows only one.
     async markUnread(db, userId, id) {

@@ -149,6 +149,33 @@ test("onMessage runs after the post and a throwing onMessage does not fail the p
   assert.equal(failing.store.state.messages.length, 2);
 });
 
+test("onOpen runs after a successful getThread with ids only; a throwing onOpen does not fail the read", async () => {
+  const opened = [];
+  const { messaging } = setup({ onOpen: async (evt) => { opened.push(evt); } });
+  const t = await messaging.createThread(host, { recordType: "widget", recordId: "w1", subject: "secret subject", body: "secret body" });
+  await messaging.getThread(partyA, t.id);
+  assert.equal(opened.length, 1);
+  assert.equal(opened[0].userId, "p1");
+  assert.equal(opened[0].side, "party");
+  assert.equal(opened[0].thread.id, t.id);
+  assert.equal(opened[0].thread.recordType, "widget");
+  assert.equal(opened[0].thread.recordId, "w1");
+  assert.ok(!JSON.stringify(opened[0]).includes("secret"), "the hook never sees free text");
+  await rejectsWith(messaging.getThread(partyB, t.id), "NOT_FOUND");
+  assert.equal(opened.length, 1, "no hook for a thread the caller cannot read");
+
+  const logs = [];
+  const failing = setup({
+    onOpen: async () => { throw new Error("boom for p1@party.test"); },
+    log: { error: (m) => logs.push(m), warn: (m) => logs.push(m) },
+  });
+  const t2 = await failing.messaging.createThread(partyA, { body: "hi" });
+  const read = await failing.messaging.getThread(partyA, t2.id);
+  assert.equal(read.messages.length, 1);
+  assert.equal(logs.length, 1);
+  assert.ok(!logs[0].includes("boom"), "only the error name is logged");
+});
+
 test("complete/reopen refuse a party user; a party post reopens", async () => {
   const { messaging } = setup();
   const t = await messaging.createThread(partyA, { body: "hi" });

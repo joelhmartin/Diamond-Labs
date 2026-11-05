@@ -1,6 +1,6 @@
 import { test, afterEach } from "vitest";
 import assert from "node:assert/strict";
-import { notify } from "./notify-seam.js";
+import { markReadFor, notify } from "./notify-seam.js";
 import { configureNotifications } from "../modules/notifications/index.js";
 
 const ZERO = { inApp: 0, sent: 0, skipped: 0, failed: 0 };
@@ -32,4 +32,16 @@ test("null args never throw", async () => {
 test("it never throws, even when the notifier does", async () => {
   configureNotifications({ notify: async () => { throw new Error("boom"); } });
   assert.deepEqual(await notify({}, { event: "x.y", audience: "staff", data: {} }), ZERO);
+});
+
+test("markReadFor delegates to the notifier, resolves 0 without one and never throws", async () => {
+  const k = { event: "x.y", recordType: "widget", recordId: "w1" };
+  assert.equal(await markReadFor({}, "u1", k), 0);
+  const seen = [];
+  configureNotifications({ markReadFor: async (db, u, a) => { seen.push([db, u, a]); return 1; } });
+  const db = { root: true };
+  assert.equal(await markReadFor(db, "u1", k), 1);
+  assert.deepEqual(seen[0], [db, "u1", k]);
+  configureNotifications({ markReadFor: async () => { throw new Error("boom"); } });
+  assert.equal(await markReadFor({}, "u1", k), 0);
 });

@@ -101,6 +101,7 @@ countForUser(db, userId, { unread?, event? })
 unreadCount(db, userId)
 markRead(db, userId, { ids } | { all: true })
 markUnread(db, userId, id)     // false when another unread row holds the same key
+markReadFor(db, userId, { event, recordType, recordId })  // the user saw it: clear that alert → count
 dismiss(db, userId, id)
 getPreferences(db, { id, kind })   // → [{ event, label, channels: { in_app?, email? } }]
 setPreference(db, { id, kind }, { event, channel, enabled })   // throws NotificationInputError

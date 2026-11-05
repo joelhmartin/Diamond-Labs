@@ -24,6 +24,8 @@ const notFound = (what = "Thread") => new MessagingError("NOT_FOUND", `${what} n
  * - describeParty(db, partyKeys) → Map<key, label>; describeUsers(db, userIds) → Map<id, name>
  * - search(db, q, user) → { partyKeys?, records?: [{ recordType, recordId }] } (no search: q matches nothing)
  * - onMessage(evt): after each post commits; a throw is logged, never surfaced
+ * - onOpen(evt): after a successful getThread, { thread (ids only), userId, side };
+ *     a throw is logged (name only), never surfaced
  * - files: optional attachment storage (attachments.js; README "Files"):
  *     { attach(db, { recordId, files, byUserId }) → rows, listFor(db, messageIds) → Map<messageId, rows>,
  *       find(db, fileId) → { id, messageId } | null, signedUrl(db, fileId) → url, remove(db, fileIds) }
@@ -42,6 +44,7 @@ export function createMessaging({
   describeUsers = async () => new Map(),
   search = null,
   onMessage = null,
+  onOpen = null,
   files = null,
   limits = {},
   log = console,
@@ -146,7 +149,9 @@ export function createMessaging({
       await store.touchParticipant(rootDb, { threadId: thread.id, userId: user.id, side }, { lastReadAt: seenUpTo });
       const row = await views.threadRow(rootDb, thread, { recordLabel: resolved?.label ?? null, unread: false, archivedAt: mine?.archivedAt ?? null });
       const recordPath = resolved ? (side === SIDES.HOST ? resolved.hostPath : resolved.partyPath) ?? null : null;
-      return { thread: { ...row, recordPath }, messages: await views.messageList(rootDb, rows) };
+      const result = { thread: { ...row, recordPath }, messages: await views.messageList(rootDb, rows) };
+      await fireOnOpen({ onOpen, log, views }, thread, user.id, side);
+      return result;
     },
 
     /** Add a message (with optional `files`). → the message, opened. */
@@ -248,6 +253,16 @@ async function fireOnMessage({ onMessage, log, views }, thread, message, recordL
     });
   } catch (err) {
     log.error?.(`[messaging] onMessage failed for thread ${thread.id}: ${err?.message ?? err}`);
+  }
+}
+
+// After a read. Like onMessage, the hook sees ids only and never fails the caller.
+async function fireOnOpen({ onOpen, log, views }, thread, userId, side) {
+  if (!onOpen) return;
+  try {
+    await onOpen({ thread: views.hookThread(thread), userId, side });
+  } catch (err) {
+    log.error?.(`[messaging] onOpen failed for thread ${thread.id}: ${err?.name ?? "Error"}`);
   }
 }
 

@@ -16,6 +16,9 @@ export const clip = (s, n) => {
   return v.length > n ? v.slice(0, n) : v;
 };
 
+/** The in-app collapse key: one unread row per user per event and record. */
+export const collapseKeyFor = (event, recordType, recordId) => clip(`${event}:${recordType ?? ""}:${recordId ?? ""}`, 200);
+
 export const uniq = (xs) => [...new Set((xs ?? []).filter(Boolean))];
 
 export const clampInt = (v, min, max, dflt) => {

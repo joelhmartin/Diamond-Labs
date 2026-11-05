@@ -6,7 +6,7 @@ import { requireApprovedDoctor } from "../../middleware/require-role.js";
 import { createMessaging } from "../../modules/messaging/index.js";
 import * as recordFiles from "../../modules/record-files/index.js";
 import * as auditService from "../audit.service.js";
-import { notify as notifySeam } from "../notify-seam.js";
+import { markReadFor as markReadSeam, notify as notifySeam } from "../notify-seam.js";
 import { parsePartyKey, partyKeysFor, practiceKeyFor } from "../practice.js";
 
 /**
@@ -14,7 +14,7 @@ import { parsePartyKey, partyKeysFor, practiceKeyFor } from "../practice.js";
  * doctor's practice (services/practice.js keys) is the party. This file owns
  * the record resolvers (Rx case, lab order, pickup), the party and author
  * labels, search, the staff "New message" picker, the route guard, the
- * message.received alert and attachment storage (record-files). Boot (services/app-modules.js) wires it once.
+ * message.received alert (and clearing it on open) and attachment storage (record-files). Boot (services/app-modules.js) wires it once.
  *
  * Visibility is canActOnInvoice restated as keys (practice.js): a doctor may
  * open a record exactly when partyKeysFor(doctor) includes
@@ -198,6 +198,16 @@ export async function searchLabRecords(db, q) {
 
 const clip = (v) => (v == null || v === "" ? null : String(v).slice(0, LABEL_MAX));
 
+/** The event and record a thread's message.received alert collapses on. */
+export function messageAlertKey(thread) {
+  const hasRecord = Boolean(thread.recordType && thread.recordId);
+  return {
+    event: "message.received",
+    recordType: hasRecord ? thread.recordType : "message_thread",
+    recordId: hasRecord ? thread.recordId : thread.id,
+  };
+}
+
 /**
  * The notify() arguments for one post: the other side of the thread hears
  * about it (host post → the party; party post → staff), never the author.
@@ -205,11 +215,8 @@ const clip = (v) => (v == null || v === "" ? null : String(v).slice(0, LABEL_MAX
  * `data` is ids and labels only.
  */
 export function messageAlertArgs({ thread, authorSide, authorUserId, recordLabel }, { senderOrg = null } = {}) {
-  const hasRecord = Boolean(thread.recordType && thread.recordId);
   return {
-    event: "message.received",
-    recordType: hasRecord ? thread.recordType : "message_thread",
-    recordId: hasRecord ? thread.recordId : thread.id,
+    ...messageAlertKey(thread),
     audience: {
       ...(authorSide === "host" ? { party: thread.partyKey } : { kinds: ["staff"] }),
       excludeUserIds: [authorUserId],
@@ -238,6 +245,21 @@ export function createLabMessageAlert({ db, labName, notify = notifySeam, descri
       await notify(db, messageAlertArgs(evt, { senderOrg }));
     } catch (err) {
       log.error?.(`[messaging] message.received failed for thread ${evt.thread.id}: ${err?.name ?? "Error"}`);
+    }
+  };
+}
+
+/**
+ * The onOpen hook: the reader has seen the thread, so clear their
+ * message.received alert for it. The next reply then emails again instead of
+ * collapsing into an alert they already acted on. Never throws.
+ */
+export function createLabThreadOpened({ db, markRead = markReadSeam, log = console }) {
+  return async function labThreadOpened({ thread, userId }) {
+    try {
+      await markRead(db, userId, messageAlertKey(thread));
+    } catch (err) {
+      log.error?.(`[messaging] clearing the alert failed for thread ${thread.id}: ${err?.name ?? "Error"}`);
     }
   };
 }
@@ -306,7 +328,9 @@ export async function labMessagingGuard(request, reply) {
  * The lab's messaging service. `fileService` is record-files (tests pass a
  * stub); `overrides` reach createMessaging as-is (tests pass a fake store).
  */
-export function createLabMessaging({ db, labName, notify = notifySeam, log = console, fileService = recordFiles, overrides = {} }) {
+export function createLabMessaging({
+  db, labName, notify = notifySeam, markRead = markReadSeam, log = console, fileService = recordFiles, overrides = {},
+}) {
   return createMessaging({
     db,
     records: labRecordResolvers,
@@ -317,6 +341,7 @@ export function createLabMessaging({ db, labName, notify = notifySeam, log = con
     describeUsers: describeLabUsers,
     search: (d, q) => searchLabRecords(d, q),
     onMessage: createLabMessageAlert({ db, labName, notify, log }),
+    onOpen: createLabThreadOpened({ db, markRead, log }),
     files: createLabMessageFiles({ service: fileService }),
     log,
     ...overrides,

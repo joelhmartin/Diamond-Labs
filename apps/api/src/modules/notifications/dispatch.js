@@ -1,6 +1,6 @@
 import { assertSafeData } from "./data-guard.js";
 import { effectivePreference } from "./preferences.js";
-import { clip, safeReason, uniq, zero } from "./util.js";
+import { clip, collapseKeyFor, safeReason, uniq, zero } from "./util.js";
 
 const PRUNE_DAYS = 90;
 const PRUNE_ODDS = 0.01;
@@ -83,7 +83,7 @@ export function createDispatch({ store, events, resolveAudience, sender, log, ra
       const ctx = {
         db: use(db), event, data, recordType, recordId, counts, wroteDelivery: false,
         title: clip(event.title(data), 160),
-        collapseKey: clip(`${event.key}:${recordType ?? ""}:${recordId ?? ""}`, 200),
+        collapseKey: collapseKeyFor(event.key, recordType, recordId),
       };
       const audience = normalizeAudience(a.audience);
       await toUsers(ctx, await resolveUsers(ctx.db, audience));

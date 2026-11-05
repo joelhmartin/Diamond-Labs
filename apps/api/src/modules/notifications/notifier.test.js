@@ -402,3 +402,23 @@ test("the real sms registry: provider off is skipped, staging without a redirect
     assert.equal(logs.filter((l) => l.includes("[NOTIFY][SEND_FAILED]")).length, 0);
   }
 });
+
+test("markReadFor marks only that user's unread row for the event and record; the next notify alerts again", async () => {
+  clearEvents();
+  defineThing({ defaults: { staff: { in_app: true, email: true }, client: { in_app: true, email: true } } });
+  const { notifier, store, emails } = setup();
+  await notifier.notify(DB, args());
+  await notifier.notify(DB, args());
+  assert.equal(emails.length, 2, "one email per staff user; the second notify collapsed");
+  await notifier.notify(DB, args({ recordId: "w2" }));
+  assert.equal(await notifier.markReadFor(DB, "s1", { event: "thing.happened", recordType: "widget", recordId: "w1" }), 1);
+  const rows = (u, id) => store.state.notifications.filter((n) => n.userId === u && n.collapseKey.endsWith(`:${id}`));
+  assert.ok(rows("s1", "w1")[0].readAt, "s1's row for w1 is read");
+  assert.equal(rows("s1", "w2")[0].readAt, null, "another record stays unread");
+  assert.equal(rows("s2", "w1")[0].readAt, null, "another user stays unread");
+  assert.equal(await notifier.markReadFor(DB, "s1", { event: "thing.happened", recordType: "widget", recordId: "w1" }), 0);
+  assert.equal(await notifier.markReadFor(DB, null, { event: "thing.happened" }), 0);
+  const before = emails.length;
+  await notifier.notify(DB, args());
+  assert.deepEqual(emails.slice(before).map((e) => e.to), ["s1@host.test"], "s1 is emailed again; s2 is still collapsed");
+});

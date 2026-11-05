@@ -54,6 +54,7 @@ const messaging = createMessaging({
   describeUsers: async (db, userIds) => Map<id, name>,       // optional (author names)
   search: async (db, q, user) => ({ partyKeys, records: [{ recordType, recordId }] }),  // optional
   onMessage: async (evt) => {},          // optional, after every post commits
+  onOpen: async (evt) => {},             // optional, after every successful getThread
   files: {                               // optional attachment storage; see "Files" below
     attach: async (db, { recordId, files, byUserId }) => rows,     // recordId = the new message's id
     listFor: async (db, messageIds) => Map<messageId, rows>,
@@ -119,6 +120,9 @@ Errors are `MessagingError` with `code` `NOT_FOUND`, `FORBIDDEN` or
   called after the transaction commits, for the first message of a thread too.
   `thread` and `message` carry ids, sides, counts and dates only, never the
   subject or body. A throw is logged and the post still succeeds.
+- **onOpen:** `{ thread, userId, side }` after a successful `getThread` (the
+  same id-only `thread` shape). Use it to clear the reader's alert for the
+  thread. A throw is logged (error name only) and the read still succeeds.
 
 ### Routes
 
@@ -195,7 +199,9 @@ messaging glue file next to the notification glue. Its import list is the map.
 4. **Alerts.** `onMessage(evt)` runs after each post commits. Have it emit
    `message.received` through the notifications seam (audience: the other
    side, excluding the author; `data` carries ids and short labels only), and
-   register that event with the notifications module.
+   register that event with the notifications module. Pass `onOpen(evt)` that
+   clears the reader's unread alert for the thread (the seam's `markReadFor`,
+   same event and record as the alert), or a collapsed alert never emails again.
 5. **Attachments (optional).** Pass a `files` collaborator
    (`attach`, `listFor`, `find`, `signedUrl`, `remove`) to accept files. This
    repo builds one over the `record-files` module: files are stored under one

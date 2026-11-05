@@ -1,6 +1,6 @@
 import { PREFERENCE_CHANNELS } from "@my-app/shared";
 import { effectivePreference, isOffered } from "./preferences.js";
-import { clampInt, NotificationInputError, uniq } from "./util.js";
+import { clampInt, collapseKeyFor, NotificationInputError, uniq } from "./util.js";
 
 const listFilter = (q) => ({ unreadOnly: q.unread === true || q.unread === "true", event: q.event || undefined });
 
@@ -33,6 +33,15 @@ export function createInbox({ store, events, use }) {
     countForUser: (db, userId, q = {}) => store.countInApp(use(db), userId, listFilter(q)),
     unreadCount: (db, userId) => store.unreadCount(use(db), userId),
     markRead: (db, userId, { ids, all } = {}) => store.markRead(use(db), userId, all ? null : uniq(ids)),
+    /**
+     * The user has seen the thing an event was about (e.g. opened it): mark
+     * their unread row for that event and record read, so the next notify
+     * starts a fresh alert instead of collapsing into a stale one. → count.
+     */
+    markReadFor: async (db, userId, { event, recordType, recordId } = {}) => {
+      if (!userId || !event) return 0;
+      return store.markReadByKey(use(db), userId, collapseKeyFor(event, recordType ?? null, recordId ?? null));
+    },
     markUnread: (db, userId, id) => store.markUnread(use(db), userId, id),
     dismiss: (db, userId, id) => store.dismiss(use(db), userId, id),
     getPreferences,

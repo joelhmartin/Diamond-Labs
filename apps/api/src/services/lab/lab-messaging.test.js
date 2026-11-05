@@ -10,6 +10,8 @@ const {
   createLabMessageFiles, auditAttachmentRead, MESSAGE_RECORD_TYPE,
 } = await import("./lab-messaging.js");
 const { createFakeStore } = await import("../../modules/messaging/index.js");
+const notifications = await import("../../modules/notifications/index.js");
+const { labEventDefs } = await import("./lab-notifications.js");
 
 // A real drizzle query builder over a recording driver: each query answers
 // the next queued row set (arrays in the select's column order); no database.
@@ -322,4 +324,39 @@ test("auditAttachmentRead logs ids only", () => {
   const logged = [];
   auditAttachmentRead({ user: { id: "s1" }, ip: "1.2.3.4" }, { fileId: "rf1", threadId: "t1" }, (e) => logged.push(e));
   assert.deepEqual(logged, [{ userId: "s1", action: "message.attachment_url_issued", targetType: "message_thread", targetId: "t1", metadata: { fileId: "rf1" }, ipAddress: "1.2.3.4" }]);
+});
+
+test("opening a thread clears its message.received alert, so the next reply emails again", async () => {
+  notifications.clearEvents();
+  for (const def of labEventDefs()) notifications.defineNotificationEvent(def);
+  const emails = [];
+  const notifier = notifications.createNotifier({
+    store: notifications.createFakeStore(),
+    resolveAudience: async (_db, a) => (a.party === "practice:P1" ? [{ id: "d1", email: "d1@party.test", kind: "client" }] : []),
+    channels: { email: { send: async (m) => { emails.push(m); return true; } } },
+    log: quiet,
+  });
+  const messaging = createLabMessaging({
+    db: fakeRootDb(), labName: "Test Lab", log: quiet,
+    notify: (db, a) => notifier.notify(db, a),
+    markRead: (db, userId, a) => notifier.markReadFor(db, userId, a),
+    overrides: { store: createFakeStore(), describeParty: async () => new Map(), describeUsers: async () => new Map() },
+  });
+  const t = await messaging.createThread(staff, { party: "practice:P1", body: "One" });
+  await messaging.post(staff, t.id, { body: "Two" });
+  assert.equal(emails.length, 1, "the second post collapsed into the unread alert");
+  await messaging.getThread(d1, t.id);
+  await messaging.post(staff, t.id, { body: "Three" });
+  assert.equal(emails.length, 2, "after the thread was read, the next reply emails again");
+  notifications.clearEvents();
+});
+
+test("a failing markRead does not fail opening the thread", async () => {
+  const messaging = createLabMessaging({
+    db: fakeRootDb(), labName: "Test Lab", log: quiet, notify: async () => {},
+    markRead: async () => { throw new Error("boom"); },
+    overrides: { store: createFakeStore(), describeParty: async () => new Map(), describeUsers: async () => new Map() },
+  });
+  const t = await messaging.createThread(staff, { party: "practice:P1", body: "One" });
+  assert.equal((await messaging.getThread(d1, t.id)).messages.length, 1);
 });
