@@ -260,6 +260,20 @@
       "when": 1793905348071,
       "tag": "0036_seed_lab_scheduling",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1793908678715,
+      "tag": "0037_fluffy_grandmaster",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793908681953,
+      "tag": "0038_seed_adjustment_reasons",
+      "breakpoints": true
     }
   ]
 }
