@@ -23,6 +23,9 @@ vi.mock("../../services/price-lists.service.js", async (importOriginal) => {
   };
 });
 
+const sameGroups = vi.fn(async () => ({ groups: [] }));
+vi.mock("../../services/same-pricing.service.js", () => ({ sameClientPricingGroups: (...a) => sameGroups(...a) }));
+
 const adminPriceListsRoutes = (await import("../admin-price-lists.routes.js")).default;
 const index = readFileSync(fileURLToPath(new URL("../../index.js", import.meta.url)), "utf8");
 
@@ -45,6 +48,7 @@ const ROUTES = [
   ["GET", "/api/v1/admin/clients/c1/price-lists"],
   ["PUT", "/api/v1/admin/clients/c1/price-lists"],
   ["POST", "/api/v1/admin/price-lists/assign"],
+  ["GET", "/api/v1/admin/prices/same-pricing"],
 ];
 
 describe("price list routes", () => {
@@ -92,6 +96,15 @@ describe("price list routes", () => {
     const items = Array.from({ length: 501 }, (_, i) => ({ variantId: `v${i}`, priceCents: 1 }));
     expect((await app.inject({ method: "POST", url: "/api/v1/admin/price-lists/L1/items/bulk", payload: { items } })).statusCode).toBe(422);
     expect((await app.inject({ method: "POST", url: "/api/v1/admin/price-lists/L1/items/bulk", payload: { items: [{ variantId: "v1", priceCents: -5 }] } })).statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("same-pricing returns groups and passes includeSingles through", async () => {
+    const app = await appAs("admin");
+    expect((await app.inject({ method: "GET", url: "/api/v1/admin/prices/same-pricing" })).json()).toEqual({ data: { groups: [] } });
+    expect(sameGroups).toHaveBeenLastCalledWith(undefined, { includeSingles: false });
+    await app.inject({ method: "GET", url: "/api/v1/admin/prices/same-pricing?includeSingles=1" });
+    expect(sameGroups).toHaveBeenLastCalledWith(undefined, { includeSingles: true });
     await app.close();
   });
 

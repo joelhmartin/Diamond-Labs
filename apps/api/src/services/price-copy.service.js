@@ -38,7 +38,7 @@ function assertRequest({ fromClientUserId, toClientUserIds, mode }) {
 }
 
 /** Every client's overrides and ordered list assignment in four selects (three when no live list is assigned). */
-async function loadStates(tx, ids) {
+export async function loadStates(tx, ids) {
   const overrideRows = await tx
     .select({ clientUserId: clientPrices.clientUserId, variantId: clientPrices.variantId, priceCents: clientPrices.priceCents })
     .from(clientPrices).where(inArray(clientPrices.clientUserId, ids));

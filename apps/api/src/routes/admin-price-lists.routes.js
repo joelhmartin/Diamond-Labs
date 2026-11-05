@@ -6,6 +6,7 @@ import { validate } from "../middleware/validate.js";
 import { ADMIN } from "./admin-invoice.routes.js";
 import * as priceLists from "../services/price-lists.service.js";
 import * as priceCopy from "../services/price-copy.service.js";
+import { sameClientPricingGroups } from "../services/same-pricing.service.js";
 
 /** Price lists (piece 10). Admin-only: the lab role sees no money. Writes are audited in the service. */
 export default async function adminPriceListsRoutes(fastify) {
@@ -67,4 +68,8 @@ export default async function adminPriceListsRoutes(fastify) {
 
   fastify.post("/admin/prices/copy", withBody(priceCopySchema), (req, reply) => run(reply, () =>
     priceCopy.applyCopy({ ...req.body, byUserId: req.user.id })));
+
+  // Clients grouped by identical effective prices; singletons only with ?includeSingles=1.
+  fastify.get("/admin/prices/same-pricing", { preHandler: ADMIN }, (req, reply) => run(reply, () =>
+    sameClientPricingGroups(undefined, { includeSingles: ["1", "true"].includes(req.query?.includeSingles) })));
 }

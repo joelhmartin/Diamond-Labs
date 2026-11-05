@@ -8,6 +8,7 @@ import { CONTROL } from "../../components/ui/data-table/FilterControl.jsx";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { useDataTable } from "../../hooks/useDataTable.js";
 import { errorText } from "../../lib/requests.js";
+import { SamePricingTab } from "./SamePricingTab.jsx";
 
 const getRowId = (l) => l.id;
 const FILTERS = [{ id: "archived", label: "Archived", type: "toggle", match: (l) => Boolean(l.archivedAt) }];
@@ -110,7 +111,7 @@ export function AdminPriceListsPage() {
           </button>
         ))}
       </div>
-      {tab === "lists" ? <ListsTab /> : <div data-testid="same-pricing-slot" className="rounded-2xl border border-dashed border-surface-300/60 px-6 py-10 text-center text-sm text-navy/50">Same pricing groups are coming.</div>}
+      {tab === "lists" ? <ListsTab /> : <SamePricingTab />}
     </div>
   );
 }
