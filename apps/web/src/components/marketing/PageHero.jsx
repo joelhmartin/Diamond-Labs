@@ -1,5 +1,22 @@
 import { useEffect, useRef } from "react";
 import gsap from "gsap";
+import { prefersReducedMotion } from "../../lib/reducedMotion";
+
+/* Hero intro: staggered rise of [data-hero-anim] children. Does nothing under
+   reduced motion. Returns the gsap context so the caller can revert it. */
+export function playHeroIntro(root) {
+  if (prefersReducedMotion()) return null;
+  return gsap.context(() => {
+    gsap.from("[data-hero-anim]", {
+      y: 32,
+      opacity: 0,
+      duration: 0.9,
+      stagger: 0.08,
+      ease: "power3.out",
+      delay: 0.15,
+    });
+  }, root);
+}
 
 /* Shared interior-page hero. Two variants, both dark from the top edge so the
    white nav stays legible:
@@ -13,19 +30,8 @@ export function PageHero({ variant = "compact", title, titleAccent, intro, image
   const isImage = variant === "image";
 
   useEffect(() => {
-    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) return undefined;
-    const ctx = gsap.context(() => {
-      gsap.from("[data-hero-anim]", {
-        y: 32,
-        opacity: 0,
-        duration: 0.9,
-        stagger: 0.08,
-        ease: "power3.out",
-        delay: 0.15,
-      });
-    }, ref);
-    return () => ctx.revert();
+    const ctx = playHeroIntro(ref.current);
+    return () => ctx?.revert();
   }, []);
 
   return (

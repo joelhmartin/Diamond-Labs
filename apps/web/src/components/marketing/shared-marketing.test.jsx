@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { StaticRouter } from "react-router-dom";
-import { PageHero } from "./PageHero.jsx";
+import gsap from "gsap";
+import { PageHero, playHeroIntro } from "./PageHero.jsx";
+import { Reveal, revealOnView } from "./Reveal.jsx";
 import { SectionHeading } from "./SectionHeading.jsx";
 import { CtaBand } from "./CtaBand.jsx";
 import { StatRow } from "./StatRow.jsx";
@@ -47,8 +49,10 @@ test("StatRow renders each value and label", () => {
   assert.match(html, /business days/);
 });
 
-test("under reduced motion, hero content is never hidden in the initial markup", () => {
-  vi.stubGlobal("matchMedia", (q) => ({ matches: /reduce/.test(q), addEventListener() {}, removeEventListener() {} }));
+const motion = (reduce) =>
+  vi.stubGlobal("matchMedia", (q) => ({ matches: reduce && /reduce/.test(q) }));
+
+test("hero content is never hidden in the initial markup", () => {
   for (const variant of ["image", "compact"]) {
     const html = render(
       <PageHero variant={variant} title="T" titleAccent="A" intro="I" image="/x.jpg" imageAlt="alt">
@@ -58,6 +62,32 @@ test("under reduced motion, hero content is never hidden in the initial markup",
     assert.doesNotMatch(html, /opacity:\s*0(?![.\d])/);
   }
 });
+
+test("the hero intro does not animate under reduced motion, and does otherwise", () => {
+  const from = vi.spyOn(gsap, "from").mockImplementation(() => ({}));
+  motion(true);
+  playHeroIntro({});
+  assert.equal(from.mock.calls.length, 0);
+  motion(false);
+  playHeroIntro({})?.revert();
+  assert.equal(from.mock.calls.length, 1);
+  from.mockRestore();
+});
+
+test("Reveal markup is never hidden, and revealOnView is skipped under reduced motion", () => {
+  assert.doesNotMatch(render(<Reveal className="x">hi</Reveal>), /opacity:\s*0(?![.\d])/);
+  const fromTo = vi.spyOn(gsap, "fromTo").mockImplementation(() => ({ play() {} }));
+  vi.stubGlobal("IntersectionObserver", class { observe() {} disconnect() {} });
+  motion(true);
+  revealOnView({})();
+  assert.equal(fromTo.mock.calls.length, 0);
+  motion(false);
+  revealOnView({})();
+  assert.equal(fromTo.mock.calls.length, 1);
+  assert.deepEqual(fromTo.mock.calls[0][1], { y: 40, opacity: 0 });
+  fromTo.mockRestore();
+});
+
 /* ---- Task 2: navigation and footer ---- */
 import { NAV_LINKS } from "./Navbar.jsx";
 import { Footer } from "./Footer.jsx";
@@ -76,8 +106,8 @@ test("the nav has no Dr. Olmos entry and names the courses link plainly", () => 
 test("the footer has no status line and links each name to its page", () => {
   const html = render(<Footer />);
   assert.doesNotMatch(html, /System Operational/);
-  assert.match(html, /href="\/services\/digital-workflow"[^>]*>[\s\S]*?Digital Workflow/);
-  assert.match(html, /href="\/submit-case"[^>]*>[\s\S]*?Case Submission/);
+  assert.match(html, /<a[^>]*href="\/services\/digital-workflow"[^>]*>[^<]*Digital Workflow/);
+  assert.match(html, /<a[^>]*href="\/submit-case"[^>]*>[^<]*Case Submission/);
   assert.doesNotMatch(html, /Olmos-Method|Olmos Series/);
 });
 

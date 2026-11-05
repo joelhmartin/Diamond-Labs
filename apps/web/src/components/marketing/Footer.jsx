@@ -56,7 +56,6 @@ export function Footer() {
                 </a>
               ))}
             </div>
-
           </div>
 
           {/* Nav columns */}

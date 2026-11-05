@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import gsap from "gsap";
 import { playOnView } from "../../lib/playOnView";
+import { prefersReducedMotion } from "../../lib/reducedMotion";
 
 /* Closing call-to-action band, extracted from Home's CTA section.
    `titleAccent` and `eyebrow` exist only so Home renders exactly as before;
@@ -26,7 +27,7 @@ export function CtaBand({ eyebrow, title, titleAccent, intro, primary, secondary
   const sectionRef = useRef(null);
 
   useEffect(() => {
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return undefined;
+    if (prefersReducedMotion()) return undefined;
     let cleanup;
     const ctx = gsap.context(() => {
       const tween = gsap.fromTo(
