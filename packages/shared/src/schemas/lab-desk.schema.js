@@ -52,7 +52,8 @@ export const labLineEditSchema = z.discriminatedUnion("op", [
 ]);
 
 // Remake/discount reasons (admin) and materials per line.
-const reasonPercent = z.number().int().min(0).max(100);
+// 1-100, or null for "no default": 0% off is meaningless (a remake priced 0% off is just a full-price order).
+const reasonPercent = z.number().int().min(1).max(100);
 const reasonLabel = z.string().trim().min(1).max(ADJUSTMENT_LABEL_MAX);
 
 export const adjustmentReasonCreateSchema = z.object({
@@ -69,6 +70,8 @@ export const adjustmentReasonUpdateSchema = z.object({
   position: z.number().int().min(0).max(1000).optional(),
   active: z.boolean().optional(),
 }).refine((b) => Object.keys(b).length > 0, "Nothing to change.");
+
+export const adjustmentReasonListQuerySchema = z.object({ appliesTo: z.enum(["remake", "discount"]).optional() });
 
 export const labMaterialsPutSchema = z.object({
   materials: z.array(z.object({

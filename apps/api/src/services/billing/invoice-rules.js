@@ -200,9 +200,11 @@ export function planLineEdit(invoice, lines, edit, { now, taxRateBps }) {
 }
 
 /**
- * A discount on a draft: one negative "adjustment" line. Give a percent (taken of the item-line
- * subtotal and rounded to whole cents, server-side) OR an amountCents, never both. Needs a reason
- * label or text. It may not exceed the item subtotal. Not taxable: it is a flat credit.
+ * A discount on a draft: negative "adjustment" line(s). Give a percent OR an amountCents, never
+ * both; needs a reason label or text. It comes off the NET remaining item amount (items plus
+ * earlier negative adjustments, floored at 0), so stacked discounts can't push the invoice
+ * below zero, and a percent is of that net, rounded to whole cents. Tax follows the discount:
+ * it is split pro-rata into a taxable line and a non-taxable line that sum exactly to it.
  */
 export function planDiscountLine(invoice, lines, { label, text, percent, amountCents }, { now, taxRateBps }) {
   assertDraft(invoice);
@@ -211,22 +213,30 @@ export function planDiscountLine(invoice, lines, { label, text, percent, amountC
   const hasPercent = percent !== undefined && percent !== null;
   const hasAmount = amountCents !== undefined && amountCents !== null;
   if (hasPercent === hasAmount) throw new InvoiceError("INVALID", "Give either a percent or an amount for the discount.");
-  const itemSubtotal = sumCents(lines.filter((l) => (l.kind ?? "item") === "item").map(lineCentsOf));
+  const credits = lines.filter((l) => l.kind === "adjustment" && lineCentsOf(l) < 0);
+  const items = lines.filter((l) => (l.kind ?? "item") === "item");
+  const net = Math.max(0, sumCents(items.map(lineCentsOf)) + sumCents(credits.map(lineCentsOf)));
+  const taxableGross = sumCents(items.filter((l) => l.taxable).map(lineCentsOf));
+  const taxableNet = Math.min(net, Math.max(0, taxableGross + sumCents(credits.filter((l) => l.taxable).map(lineCentsOf))));
   let cents;
   if (hasPercent) {
     if (!Number.isInteger(percent) || percent < 1 || percent > 100) throw new InvoiceError("INVALID", "A discount percent is a whole number from 1 to 100.");
-    cents = Math.round((itemSubtotal * percent) / 100);
+    cents = Math.round((net * percent) / 100);
   } else {
     assertCents(amountCents, "amountCents");
     cents = amountCents;
   }
   if (cents <= 0) throw new InvoiceError("INVALID", "A discount must be more than $0.00.");
-  if (cents > itemSubtotal) throw new InvoiceError("INVALID", "A discount can't be more than the items on the invoice.");
-  const position = lines.reduce((m, l) => Math.max(m, l.position), -1) + 1;
-  const line = lineRow(invoice.id, position, { kind: "adjustment", description, qty: 1, unitCents: -cents, taxable: false, priceSource: "manual" });
+  if (cents > net) throw new InvoiceError("INVALID", "A discount can't be more than what is left on the items.");
+  // Tax follows the discount: the taxable share of the net is discounted as a taxable line.
+  const taxablePart = Math.round((cents * taxableNet) / net);
+  let position = lines.reduce((m, l) => Math.max(m, l.position), -1) + 1;
+  const inserts = [[taxablePart, true], [cents - taxablePart, false]]
+    .filter(([c]) => c > 0)
+    .map(([c, taxable]) => lineRow(invoice.id, position++, { kind: "adjustment", description, qty: 1, unitCents: -c, taxable, priceSource: "manual" }));
   return {
-    op: { insert: line },
-    patch: { ...computeTotals([...lines, line], { taxRateBps }), ...bump(invoice, now) },
+    op: { inserts },
+    patch: { ...computeTotals([...lines, ...inserts], { taxRateBps }), ...bump(invoice, now) },
     audit: { op: "discount", unitCents: -cents, ...(hasPercent ? { percent } : {}) },
   };
 }

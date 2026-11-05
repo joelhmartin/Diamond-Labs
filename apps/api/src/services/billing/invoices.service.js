@@ -174,6 +174,8 @@ export async function commitPatch(tx, invoice, patch) {
  */
 export async function applyLinePlan(tx, invoice, plan, byUserId) {
   if (plan.op.insert) await tx.insert(invoiceLines).values(sealLine({ ...plan.op.insert, id: createId() }));
+  // A plan may add several lines at once (a discount split into taxable and non-taxable parts).
+  for (const row of plan.op.inserts ?? []) await tx.insert(invoiceLines).values(sealLine({ ...row, id: createId() }));
   if (plan.op.update) await tx.update(invoiceLines).set(sealLine(plan.op.update.values)).where(eq(invoiceLines.id, plan.op.update.id));
   if (plan.op.delete) await tx.delete(invoiceLines).where(eq(invoiceLines.id, plan.op.delete));
   const updated = await commitPatch(tx, invoice, plan.patch);

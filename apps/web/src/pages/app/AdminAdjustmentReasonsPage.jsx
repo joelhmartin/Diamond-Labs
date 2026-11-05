@@ -12,12 +12,12 @@ const INPUT =
   "px-3 py-2 rounded-lg bg-white border border-surface-300/60 text-navy text-sm focus:outline-none focus:border-brand-500";
 const BASE = "/admin/lab/adjustment-reasons";
 
-/** "50" -> 50, "" -> null (no default), anything else -> undefined (invalid). */
+/** "50" -> 50, "" -> null (no default), anything else (including 0) -> undefined (invalid). */
 const parsePercent = (text) => {
   const t = text.trim();
   if (!t) return null;
   const n = Number(t);
-  return Number.isInteger(n) && n >= 0 && n <= 100 ? n : undefined;
+  return Number.isInteger(n) && n >= 1 && n <= 100 ? n : undefined;
 };
 
 /**
@@ -82,7 +82,7 @@ export function AdminAdjustmentReasonsPage() {
         key={`d-${r.id}-${r.discountPercent}`} className={`${INPUT} w-24`} inputMode="numeric" placeholder="none" aria-label={`Default percent of ${r.label}`} defaultValue={r.discountPercent ?? ""}
         onBlur={(e) => {
           const v = parsePercent(e.target.value);
-          if (v === undefined) { addToast({ message: "A percent is a whole number from 0 to 100.", type: "error" }); load(); return; }
+          if (v === undefined) { addToast({ message: "A percent is a whole number from 1 to 100 (blank for none).", type: "error" }); load(); return; }
           if (v !== r.discountPercent) patch(r, { discountPercent: v });
         }}
       />
@@ -108,7 +108,7 @@ export function AdminAdjustmentReasonsPage() {
     const label = draft.label.trim();
     const percent = parsePercent(draft.percent);
     if (!label) return;
-    if (percent === undefined) { addToast({ message: "A percent is a whole number from 0 to 100.", type: "error" }); return; }
+    if (percent === undefined) { addToast({ message: "A percent is a whole number from 1 to 100 (blank for none).", type: "error" }); return; }
     call(async () => {
       await api.post(BASE, { label, appliesTo: draft.appliesTo, discountPercent: percent, position: reasons.length * 10 + 10 });
       setDraft({ label: "", appliesTo: draft.appliesTo, percent: "" });

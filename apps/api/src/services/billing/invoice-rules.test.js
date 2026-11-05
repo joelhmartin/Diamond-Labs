@@ -89,23 +89,56 @@ test("asRemakeLines with 50 halves 1999 to 1000", () => {
 test("discount at 10% of 12345 item subtotal is -1235 adjustment", () => {
   const lines = [line({ lineCents: 12345, unitCents: 12345 }), line({ id: "s", kind: "shipping", lineCents: 900, unitCents: 900 })];
   const plan = planDiscountLine(draft(), lines, { label: "Courtesy", percent: 10 }, { now, ...TAX });
-  assert.equal(plan.op.insert.kind, "adjustment");
-  assert.equal(plan.op.insert.unitCents, -1235);
-  assert.equal(plan.op.insert.lineCents, -1235);
-  assert.equal(plan.op.insert.description, "Courtesy");
+  assert.equal(plan.op.inserts[0].kind, "adjustment");
+  assert.equal(plan.op.inserts[0].unitCents, -1235);
+  assert.equal(plan.op.inserts[0].lineCents, -1235);
+  assert.equal(plan.op.inserts[0].description, "Courtesy");
   assert.equal(plan.patch.subtotalCents, 12345 - 1235);
   assert.equal(plan.patch.version, 3);
 });
 
 test("discount with amountCents uses it negated", () => {
   const plan = planDiscountLine(draft(), [line()], { label: "Family", amountCents: 2500 }, { now, ...TAX });
-  assert.equal(plan.op.insert.unitCents, -2500);
+  assert.equal(plan.op.inserts[0].unitCents, -2500);
 });
 
 test("discount needs a reason or text", () => {
   assert.throws(() => planDiscountLine(draft(), [line()], { percent: 10 }, { now, ...TAX }), isCode("REASON_REQUIRED"));
   const ok = planDiscountLine(draft(), [line()], { text: " Loyal client ", percent: 10 }, { now, ...TAX });
-  assert.equal(ok.op.insert.description, "Loyal client");
+  assert.equal(ok.op.inserts[0].description, "Loyal client");
+});
+
+test("stacked discounts come off the net and can never push the items below zero", () => {
+  const first = planDiscountLine(draft(), [line()], { label: "a", percent: 100 }, { now, ...TAX });
+  const after100 = [line(), ...first.op.inserts.map((l) => ({ ...l, id: "d1" }))];
+  assert.throws(() => planDiscountLine(draft(), after100, { label: "b", percent: 50 }, { now, ...TAX }), isCode("INVALID"));
+  const sixty = planDiscountLine(draft(), [line()], { label: "a", percent: 60 }, { now, ...TAX });
+  const afterSixty = [line(), ...sixty.op.inserts.map((l) => ({ ...l, id: "d1" }))];
+  const second = planDiscountLine(draft(), afterSixty, { label: "b", percent: 60 }, { now, ...TAX });
+  assert.equal(second.op.inserts[0].unitCents, -2400, "60% of the 4000 left, not of the 10000 gross");
+  assert.equal(second.patch.subtotalCents, 10000 - 6000 - 2400);
+  assert.throws(() => planDiscountLine(draft(), afterSixty, { label: "b", amountCents: 4001 }, { now, ...TAX }), isCode("INVALID"));
+});
+
+test("a discount on a taxable item discounts the tax too: $100 at 10% off is $90 + $7.20", () => {
+  const plan = planDiscountLine(draft(), [line({ taxable: true })], { label: "Courtesy", percent: 10 }, { now, ...TAX });
+  assert.equal(plan.op.inserts.length, 1);
+  assert.deepEqual([plan.op.inserts[0].unitCents, plan.op.inserts[0].taxable], [-1000, true]);
+  assert.equal(plan.patch.subtotalCents, 9000);
+  assert.equal(plan.patch.taxCents, 720);
+  assert.equal(plan.patch.totalCents, 9720);
+});
+
+test("a mixed taxable/non-taxable draft splits the discount pro-rata, summing exactly", () => {
+  const lines = [line({ id: "t", unitCents: 3333, lineCents: 3333, taxable: true }), line({ id: "n", position: 1, unitCents: 6667, lineCents: 6667 })];
+  const plan = planDiscountLine(draft(), lines, { label: "Family", percent: 33 }, { now, ...TAX });
+  const [taxableLine, plainLine] = plan.op.inserts;
+  assert.equal(taxableLine.taxable, true);
+  assert.equal(plainLine.taxable, false);
+  const total = 3300; // 33% of 10000
+  assert.equal(-(taxableLine.unitCents + plainLine.unitCents), total);
+  assert.equal(-taxableLine.unitCents, Math.round((total * 3333) / 10000));
+  assert.equal(plan.patch.taxCents, Math.round(((3333 + taxableLine.unitCents) * 800) / 10000));
 });
 
 test("discount needs exactly one of percent or amountCents, within the item subtotal", () => {

@@ -1,6 +1,6 @@
 import {
   labOrderCreateSchema, labLineEditSchema, labPricePreviewSchema,
-  adjustmentReasonCreateSchema, adjustmentReasonUpdateSchema, labMaterialsPutSchema, materialSuggestionsQuerySchema,
+  adjustmentReasonCreateSchema, adjustmentReasonUpdateSchema, adjustmentReasonListQuerySchema, labMaterialsPutSchema, materialSuggestionsQuerySchema,
 } from "@my-app/shared";
 import { db } from "../config/database.js";
 import { authenticate } from "../middleware/authenticate.js";
@@ -87,8 +87,8 @@ export default async function labDeskRoutes(fastify) {
     run(reply, async () => ({ lines: await staffOrders.previewPrices(request.body) }), 200, deskErrorReply));
 
   // The remake/discount pick-list. Lab staff read the active ones; admins manage the list.
-  fastify.get("/lab/adjustment-reasons", { preHandler: STAFF }, async (request) => ({
-    data: { reasons: await listReasons({ appliesTo: request.query?.appliesTo }) },
+  fastify.get("/lab/adjustment-reasons", { preHandler: [...STAFF, validateQuery(adjustmentReasonListQuerySchema)] }, async (request) => ({
+    data: { reasons: await listReasons({ appliesTo: request.query.appliesTo }) },
   }));
   fastify.get("/admin/lab/adjustment-reasons", { preHandler: ADMIN }, async () => ({
     data: { reasons: await listReasons({ includeInactive: true }) },
