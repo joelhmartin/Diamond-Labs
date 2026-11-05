@@ -1,9 +1,8 @@
 import { and, eq, gte, inArray, isNotNull, lte, ne, or } from "drizzle-orm";
-import { isoDateIn, LAB_TIMEZONE } from "@my-app/shared";
+import { addIsoDays, daysBetween, isoDateIn, LAB_TIMEZONE } from "@my-app/shared";
 import { labOrders, users, doctorProfiles } from "../../db/schema/index.js";
 import { practiceKeyFor } from "../practice.js";
 import { scheduledPickupsBetween } from "./pickups.service.js";
-import { addDays } from "./pickup-rules.js";
 import { LabOrderError } from "./lab-order-rules.js";
 
 /**
@@ -20,15 +19,12 @@ const DEFAULT_SPAN_DAYS = 6;
 // A route sheet is a week or two; a year-long range is a mistake, not a report.
 export const MAX_SPAN_DAYS = 62;
 
-const DAY_MS = 86_400_000;
-const span = (from, to) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS);
-
 /** `{ from, to }` with the defaults filled: from = today (CT), to = from + 6. A reversed or over-long range is INVALID. */
 export function deliveryRange({ from, to } = {}, todayIso) {
   const start = from || todayIso;
-  const end = to || addDays(start, DEFAULT_SPAN_DAYS);
+  const end = to || addIsoDays(start, DEFAULT_SPAN_DAYS);
   if (end < start) throw new LabOrderError("INVALID", "The end date can't be before the start date.");
-  if (span(start, end) > MAX_SPAN_DAYS) throw new LabOrderError("INVALID", `Pick a range of at most ${MAX_SPAN_DAYS} days.`);
+  if (daysBetween(start, end) > MAX_SPAN_DAYS) throw new LabOrderError("INVALID", `Pick a range of at most ${MAX_SPAN_DAYS} days.`);
   return { from: start, to: end };
 }
 
@@ -44,7 +40,7 @@ function orderDay(o, { from, to }) {
 
 function loadOrders(database, { from, to }) {
   // Coarse in SQL (a day either side of the CT range), exact in orderDay().
-  const shippedSince = new Date(Date.parse(`${from}T00:00:00Z`) - DAY_MS);
+  const shippedSince = new Date(`${addIsoDays(from, -1)}T00:00:00Z`);
   return database
     .select({
       id: labOrders.id, orderNumber: labOrders.orderNumber, status: labOrders.status, version: labOrders.version,

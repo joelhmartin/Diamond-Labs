@@ -2,8 +2,19 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   PICKUP_STATUSES, PICKUP_STATUS_LABELS, PICKUP_MOVES, canMovePickup, isTerminalPickupStatus,
-  TIME_PREFERENCES, TIME_PREFERENCE_LABELS,
+  TIME_PREFERENCES, TIME_PREFERENCE_LABELS, pickupWindowError,
 } from "./logistics.js";
+
+test("pickupWindowError: past, reversed and over-long windows; 14 days and a one-day window are fine", () => {
+  const today = "2026-11-06";
+  assert.deepEqual(pickupWindowError("2026-11-05", null, today), { field: "earliestDate", message: "The first pickup day can't be in the past." });
+  assert.deepEqual(pickupWindowError("2026-11-08", "2026-11-07", today), { field: "latestDate", message: "The last pickup day can't be before the first." });
+  assert.deepEqual(pickupWindowError("2026-11-06", "2026-11-21", today), { field: "latestDate", message: "The pickup window can be at most 14 days." });
+  assert.equal(pickupWindowError("2026-11-06", "2026-11-20", today), null);
+  assert.equal(pickupWindowError("2026-11-06", "", today), null);
+  assert.equal(pickupWindowError("2026-11-06", undefined, today), null);
+  assert.equal(shared.pickupWindowError, pickupWindowError);
+});
 import * as shared from "../index.js";
 
 // The whole table, written out. Every pair not listed here must be refused.

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, PackageCheck, Printer } from "lucide-react";
-import { LAB_STATUS_LABELS } from "@my-app/shared";
+import { LAB_STATUS_LABELS, addIsoDays } from "@my-app/shared";
 import { DataTable } from "../../components/ui/data-table/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
 import { useResource } from "../../hooks/useResource.js";
 import { eachRow } from "../../lib/data-table/bulk.js";
-import { completePickup, addDays } from "../../lib/pickups.js";
+import { completePickup } from "../../lib/pickups.js";
 import {
   addressLine, dayLabel, defaultDeliveryRange, deliveryPrintPath, deliveryRangeOf, markOrderShipped, ordersLabel, planMarkDelivered,
 } from "../../lib/deliveries.js";
@@ -46,7 +46,7 @@ export function DeliveriesPage() {
   // The range is the table's From/To filters, read back into the fetch; they have no `match`, so the hook doesn't filter rows by them.
   const [filters, setFilters] = useState(defaults);
   const from = filters.from || defaults.from;
-  const range = { from, to: filters.to || addDays(from, 6) };
+  const range = { from, to: filters.to || addIsoDays(from, 6) };
   const res = useResource("/lab/deliveries", { params: range });
   useEffect(() => { setRows(res.data?.stops ?? EMPTY); }, [res.data]);
 

@@ -1,6 +1,6 @@
 import { env } from "../../config/env.js";
 import { smsConfig } from "./sms-config.js";
-import { maskPhone, normalizePhone } from "./phone.js";
+import { maskPhone, normalizePhone } from "@my-app/shared";
 import { createTwilioAdapter } from "./adapters/twilio.adapter.js";
 import { createLogAdapter } from "./adapters/log.adapter.js";
 

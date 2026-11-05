@@ -1,6 +1,7 @@
 /**
- * Phone numbers as E.164. North America by default: ten digits, or eleven
- * starting with the country code. Anything else is null, never guessed at.
+ * Phone numbers as E.164, the one rule for the API and the web. North
+ * America by default: ten digits, or eleven starting with the country code;
+ * or "+" and 8 to 15 digits. Anything else is null, never guessed at.
  */
 export function normalizePhone(input, defaultCountry = "1") {
   const raw = String(input ?? "").trim();
@@ -9,7 +10,7 @@ export function normalizePhone(input, defaultCountry = "1") {
   const national = defaultCountry === "1" ? 10 : null;
   if (raw.startsWith("+")) return digits.length >= 8 && digits.length <= 15 && (digits[0] !== "1" || digits.length === 11) ? `+${digits}` : null;
   if (national && digits.length === national) return `+${defaultCountry}${digits}`;
-  if (digits.length === national + defaultCountry.length && digits.startsWith(defaultCountry)) return `+${digits}`;
+  if (national && digits.length === national + defaultCountry.length && digits.startsWith(defaultCountry)) return `+${digits}`;
   return null;
 }
 

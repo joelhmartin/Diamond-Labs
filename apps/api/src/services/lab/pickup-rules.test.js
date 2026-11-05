@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { PickupError, planRequest, planSchedule, planComplete, planCancel, addDays } from "./pickup-rules.js";
+import { PickupError, planRequest, planSchedule, planComplete, planCancel } from "./pickup-rules.js";
 
 const TODAY = "2026-11-05";
 const NOW = new Date("2026-11-05T15:00:00Z");
@@ -26,7 +26,6 @@ test("earliest before today (CT) is refused", () => {
 });
 
 test("window over 14 days is refused", () => {
-  assert.equal(addDays("2026-11-06", 14), "2026-11-20");
   assert.ok(planRequest(req({ latestDate: "2026-11-20" }), TODAY));
   assert.throws(() => planRequest(req({ latestDate: "2026-11-21" }), TODAY), code("INVALID"));
   assert.throws(() => planRequest(req({ latestDate: "2026-11-05" }), TODAY), code("INVALID"));

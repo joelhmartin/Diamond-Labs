@@ -17,7 +17,7 @@ the host app's domain: the host supplies the page chrome, copy, routes and time 
 | `fetchEvents()` | Admin: every registered event `[{ key, label, sms }]` |
 | `useUnreadPoll(fetchCount, { intervalMs })` | `{ count, refresh, setCount }`. Pauses while the tab is hidden, refreshes when it becomes visible. Reusable for any badge count |
 
-`api.js` wraps the routes; `phone.js` mirrors the server's phone rule so a bad
+`api.js` wraps the routes; `normalizePhone` (from `@my-app/shared`) is the server's phone rule, so a bad
 number is rejected before a request is made. Tests mock `config/api.js`.
 
 ## Configuration

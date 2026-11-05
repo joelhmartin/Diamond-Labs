@@ -1,22 +1,15 @@
 import {
-  LAB_TIMEZONE, isoDateIn, formatUsDate, PICKUP_STATUS_LABELS, TIME_PREFERENCE_LABELS, PICKUP_WINDOW_MAX_DAYS,
+  LAB_TIMEZONE, isoDateIn, formatUsDate, PICKUP_STATUS_LABELS, TIME_PREFERENCE_LABELS, addIsoDays, pickupWindowError,
   PICKUP_BOXES_MIN, PICKUP_BOXES_MAX, pickupRequestSchema, labPickupRequestSchema,
 } from "@my-app/shared";
 import api from "../config/api.js";
 
 /** Pickup helpers shared by the doctor and lab screens: the request form's rules, the list calls and the row actions. */
 
-const DAY_MS = 86_400_000;
-/** "YYYY-MM-DD" plus whole days (calendar arithmetic on the date string, no zone involved). */
-export function addDays(isoDate, days) {
-  return new Date(Date.parse(`${isoDate}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
-}
-const daysBetween = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / DAY_MS);
-
 /** A new request form: earliest is today in the lab's zone, latest two days after. */
 export function initialPickupForm(now = new Date()) {
   const today = isoDateIn(LAB_TIMEZONE, now);
-  return { earliestDate: today, latestDate: addDays(today, 2), timePreference: "any", boxCount: 1, notes: "", clientUserId: "" };
+  return { earliestDate: today, latestDate: addIsoDays(today, 2), timePreference: "any", boxCount: 1, notes: "", clientUserId: "" };
 }
 
 /** The request body for the API. Empty latest/notes are left out (no latest = a one-day window). */
@@ -30,7 +23,7 @@ export function pickupBody(form, { staff = false } = {}) {
 
 /**
  * Field → message for a request form (empty when valid). The shared schema checks shapes and limits;
- * the date rules that need "today" mirror the API's pickup-rules.js.
+ * the window rules are the API's own (shared pickupWindowError), with "today" in the lab's zone.
  */
 export function pickupFormErrors(form, { staff = false, now = new Date() } = {}) {
   const errors = {};
@@ -44,12 +37,9 @@ export function pickupFormErrors(form, { staff = false, now = new Date() } = {})
       errors[field] = field === "boxCount" ? `Boxes must be ${PICKUP_BOXES_MIN} to ${PICKUP_BOXES_MAX}.` : issue.message;
     }
   }
-  if (!errors.earliestDate && form.earliestDate < today) errors.earliestDate = "Earliest date can't be in the past.";
-  if (!errors.latestDate && form.latestDate && form.earliestDate) {
-    if (form.latestDate < form.earliestDate) errors.latestDate = "Latest date can't be before the earliest.";
-    else if (daysBetween(form.earliestDate, form.latestDate) > PICKUP_WINDOW_MAX_DAYS) {
-      errors.latestDate = `The window can be at most ${PICKUP_WINDOW_MAX_DAYS} days.`;
-    }
+  if (!errors.earliestDate && !errors.latestDate) {
+    const windowError = pickupWindowError(form.earliestDate, form.latestDate, today);
+    if (windowError) errors[windowError.field] = windowError.message;
   }
   return errors;
 }

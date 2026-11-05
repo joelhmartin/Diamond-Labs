@@ -21,6 +21,8 @@ export * from "./constants/user-roles.js";
 // Utils
 export * from "./utils/permissions.js";
 export * from "./utils/validation.js";
+export * from "./dates/iso-days.js";
+export * from "./phone/phone.js";
 
 // Catalog
 export { canDeleteVariant, canDeleteOptionValue } from "./catalog/variant-rules.js";

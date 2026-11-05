@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Send, Plus, AlertTriangle } from "lucide-react";
+import { normalizePhone } from "@my-app/shared";
 import { DataTable } from "../../components/ui/data-table/index.js";
 import { ConfirmButton } from "../../components/ui/ConfirmButton.jsx";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { useDataTable } from "../../hooks/useDataTable.js";
 import { errorText } from "../../lib/requests.js";
 import { addRecipient, fetchChannels, fetchRecipients, removeRecipient, sendRecipientTest, setRecipientActive } from "./api.js";
-import { normalizePhone } from "./phone.js";
 
 const FIELD = "h-9 rounded-xl border border-surface-300/60 bg-white px-3 text-sm text-navy focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/10";
 const BAD_PHONE = "Use a 10-digit US number or +country format.";

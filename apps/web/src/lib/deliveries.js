@@ -1,7 +1,6 @@
-import { LAB_TIMEZONE, LAB_STATUS_LABELS, isoDateIn, formatUsDate } from "@my-app/shared";
+import { LAB_TIMEZONE, LAB_STATUS_LABELS, addIsoDays, isoDateIn, formatUsDate } from "@my-app/shared";
 import api from "../config/api.js";
 import { ROUTES } from "../config/routes.js";
-import { addDays } from "./pickups.js";
 
 /**
  * The local-delivery route list's helpers (Deliveries page and its print
@@ -14,7 +13,7 @@ import { addDays } from "./pickups.js";
 /** Today in the lab's zone through six days later (the API's own default). */
 export function defaultDeliveryRange(now = new Date()) {
   const from = isoDateIn(LAB_TIMEZONE, now);
-  return { from, to: addDays(from, 6) };
+  return { from, to: addIsoDays(from, 6) };
 }
 
 /** The first and last day of these stops. */

@@ -1,6 +1,6 @@
 import { isStaging } from "../../config/app-env.js";
 import { env as appEnv } from "../../config/env.js";
-import { normalizePhone } from "./phone.js";
+import { normalizePhone } from "@my-app/shared";
 
 const PROVIDERS = ["twilio", "log", "off"];
 

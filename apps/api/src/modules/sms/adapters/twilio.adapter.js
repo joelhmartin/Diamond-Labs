@@ -1,5 +1,5 @@
 import { missingConfigReason } from "../sms-config.js";
-import { maskPhone } from "../phone.js";
+import { maskPhone } from "@my-app/shared";
 
 const TIMEOUT_MS = 10_000;
 

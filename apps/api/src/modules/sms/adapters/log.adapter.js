@@ -1,4 +1,4 @@
-import { maskPhone } from "../phone.js";
+import { maskPhone } from "@my-app/shared";
 
 /**
  * Development provider: writes one line (masked number and length, never the

@@ -1,5 +1,5 @@
 import {
-  canMovePickup, TIME_PREFERENCES, PICKUP_STATUS_LABELS, PICKUP_WINDOW_MAX_DAYS, PICKUP_BOXES_MIN, PICKUP_BOXES_MAX, PICKUP_NOTES_MAX,
+  canMovePickup, pickupWindowError, TIME_PREFERENCES, PICKUP_STATUS_LABELS, PICKUP_BOXES_MIN, PICKUP_BOXES_MAX, PICKUP_NOTES_MAX,
 } from "@my-app/shared";
 import { parseDueDate } from "./lab-order-rules.js";
 
@@ -25,12 +25,6 @@ export class PickupError extends Error {
 
 const invalid = (message) => new PickupError("INVALID", message);
 
-/** "YYYY-MM-DD" + n calendar days. */
-export function addDays(isoDate, n) {
-  const [y, m, d] = isoDate.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
-}
-
 /** Trimmed free text, null when empty; refused over the limit. */
 function cleanText(value, what) {
   const s = typeof value === "string" ? value.trim() : "";
@@ -42,11 +36,10 @@ function cleanText(value, what) {
 export function planRequest({ earliestDate, latestDate, timePreference, boxCount, notes }, todayIso) {
   const earliest = parseDueDate(earliestDate);
   if (!earliest) throw invalid("Pick the first day the boxes are ready.");
-  if (earliest < todayIso) throw invalid("The first pickup day can't be in the past.");
   const latest = latestDate == null || latestDate === "" ? earliest : parseDueDate(latestDate);
   if (!latest) throw invalid("Pick the last day for the pickup.");
-  if (latest < earliest) throw invalid("The last pickup day can't be before the first.");
-  if (latest > addDays(earliest, PICKUP_WINDOW_MAX_DAYS)) throw invalid(`The pickup window can be at most ${PICKUP_WINDOW_MAX_DAYS} days.`);
+  const windowError = pickupWindowError(earliest, latest, todayIso);
+  if (windowError) throw invalid(windowError.message);
   if (!TIME_PREFERENCES.includes(timePreference)) throw invalid("Pick a time of day.");
   if (!Number.isInteger(boxCount) || boxCount < PICKUP_BOXES_MIN || boxCount > PICKUP_BOXES_MAX) {
     throw invalid(`Boxes must be between ${PICKUP_BOXES_MIN} and ${PICKUP_BOXES_MAX}.`);

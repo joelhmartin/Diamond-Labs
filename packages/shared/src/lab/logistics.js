@@ -1,3 +1,5 @@
+import { daysBetween } from "../dates/iso-days.js";
+
 /**
  * Lab logistics vocabulary shared by the API and the web: pickup statuses,
  * the moves between them, and the pickup time preferences. A pickup is the
@@ -31,3 +33,20 @@ export const PICKUP_WINDOW_MAX_DAYS = 14;
 export const PICKUP_BOXES_MIN = 1;
 export const PICKUP_BOXES_MAX = 20;
 export const PICKUP_NOTES_MAX = 500;
+
+/**
+ * The request window's date rules, for the API (pickup-rules.js) and the web
+ * form alike: earliest not before today (CT), latest not before earliest, and
+ * at most PICKUP_WINDOW_MAX_DAYS apart. Takes real "YYYY-MM-DD" dates (shape
+ * is the schema's job); a missing latest is a one-day window.
+ * → null, or { field: "earliestDate" | "latestDate", message } for the first rule broken.
+ */
+export function pickupWindowError(earliest, latest, today) {
+  if (earliest < today) return { field: "earliestDate", message: "The first pickup day can't be in the past." };
+  if (!latest) return null;
+  if (latest < earliest) return { field: "latestDate", message: "The last pickup day can't be before the first." };
+  if (daysBetween(earliest, latest) > PICKUP_WINDOW_MAX_DAYS) {
+    return { field: "latestDate", message: `The pickup window can be at most ${PICKUP_WINDOW_MAX_DAYS} days.` };
+  }
+  return null;
+}

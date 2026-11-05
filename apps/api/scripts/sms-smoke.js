@@ -24,7 +24,7 @@ const live = args.includes("--live");
 // Loaded after the --help check: importing env validates (and may exit on) the environment.
 const { env } = await import("../src/config/env.js");
 const { smsRegistry } = await import("../src/modules/sms/sms-registry.js");
-const { normalizePhone, maskPhone } = await import("../src/modules/sms/phone.js");
+const { normalizePhone, maskPhone } = await import("@my-app/shared");
 const { smsConfig } = await import("../src/modules/sms/sms-config.js");
 const { smokeRefusal } = await import("../src/modules/sms/smoke-guard.js");
 

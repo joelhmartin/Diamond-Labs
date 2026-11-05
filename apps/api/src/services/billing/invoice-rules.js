@@ -1,4 +1,4 @@
-import { INVOICE_LINE_KINDS, allocateOldestFirst } from "@my-app/shared";
+import { INVOICE_LINE_KINDS, addIsoDays, allocateOldestFirst, isCalendarDate } from "@my-app/shared";
 import { assertCents, formatCents, mulCents, pctOfCents, sumCents } from "../../lib/money.js";
 
 /**
@@ -22,14 +22,6 @@ export class InvoiceError extends Error {
 }
 
 const MAX_QTY = 999;
-const ISO = /^(\d{4})-(\d{2})-(\d{2})$/;
-
-/** "YYYY-MM-DD" plus n calendar days (date arithmetic in UTC, so no DST drift). */
-export function addDaysIso(iso, days) {
-  const m = ISO.exec(iso ?? "");
-  if (!m) throw new RangeError(`Not a YYYY-MM-DD date: ${iso}`);
-  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + days)).toISOString().slice(0, 10);
-}
 
 export const lineCentsOf = (l) => mulCents(l.unitCents, l.qty);
 
@@ -361,7 +353,7 @@ export function planIssue(invoice, lines, { now, termsDays, issueDateIso }) {
   const unpriced = lines.find((l) => l.priceSource === "unpriced");
   if (unpriced) throw new InvoiceError("INVALID", `“${unpriced.description}” still needs a price.`);
   if (invoice.totalCents < 0) throw new InvoiceError("INVALID", "An invoice can't be issued for less than $0.00.");
-  return { patch: { status: "issued", issuedAt: now, dueDate: addDaysIso(issueDateIso, termsDays), ...bump(invoice, now) } };
+  return { patch: { status: "issued", issuedAt: now, dueDate: addIsoDays(issueDateIso, termsDays), ...bump(invoice, now) } };
 }
 
 /**
@@ -456,7 +448,7 @@ export function planCredit(invoice, { amountCents, reason, balanceCents }) {
 export function planManualPayment({ openInvoices, amountCents, allocations, paidOn, todayIso }) {
   assertCents(amountCents, "amountCents");
   if (amountCents <= 0) throw new InvoiceError("INVALID", "A payment must be more than $0.00.");
-  if (!ISO.test(paidOn ?? "") || addDaysIso(paidOn, 0) !== paidOn) throw new InvoiceError("INVALID", "The payment date must be YYYY-MM-DD.");
+  if (!isCalendarDate(paidOn)) throw new InvoiceError("INVALID", "The payment date must be YYYY-MM-DD.");
   if (paidOn > todayIso) throw new InvoiceError("INVALID", "The payment date can't be in the future.");
 
   const byId = new Map(openInvoices.map((i) => [i.id, i]));

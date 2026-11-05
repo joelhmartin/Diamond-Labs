@@ -2,7 +2,7 @@ import {
   notificationListQuerySchema, notificationReadSchema, notificationPreferenceSchema,
   notificationRecipientCreateSchema, notificationRecipientUpdateSchema, notificationDeliveryQuerySchema,
 } from "@my-app/shared";
-import { normalizePhone as defaultNormalizePhone } from "../sms/phone.js";
+import { normalizePhone as defaultNormalizePhone } from "@my-app/shared";
 import { maskAddress } from "./data-guard.js";
 import { NotificationInputError } from "./util.js";
 

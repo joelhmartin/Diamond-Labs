@@ -2,7 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import { priceLines } from "../../lib/pricing.js";
 import {
-  InvoiceError, addDaysIso, computeTotals, hasUnpriced, asRemakeLines, planDraftInvoice, planShopInvoice,
+  InvoiceError, computeTotals, hasUnpriced, asRemakeLines, planDraftInvoice, planShopInvoice,
   assertFreshInvoice, planLineEdit, planIssue, planVoid, deriveBalance, canActOnInvoice, planCredit, planManualPayment, planAccountCredit,
   planShipmentLine, planShipmentLineRemoval, planLinkedLineAdd, planLinkedLineRemove, planLinkedLineQty, planDiscountLine,
   hasNoItems,
@@ -148,13 +148,6 @@ test("discount needs exactly one of percent or amountCents, within the item subt
   assert.throws(() => planDiscountLine(draft(), [line()], { label: "x", percent: 101 }, { now, ...TAX }), isCode("INVALID"));
   assert.throws(() => planDiscountLine(draft(), [line()], { label: "x", amountCents: 10001 }, { now, ...TAX }), isCode("INVALID"));
   assert.throws(() => planDiscountLine(draft({ status: "issued" }), [line()], { label: "x", percent: 10 }, { now, ...TAX }), isCode("INVALID_TRANSITION"));
-});
-
-test("addDaysIso crosses months and leap days, and refuses junk", () => {
-  assert.equal(addDaysIso("2026-10-15", 30), "2026-11-14");
-  assert.equal(addDaysIso("2028-02-28", 1), "2028-02-29");
-  assert.equal(addDaysIso("2026-01-01", -1), "2025-12-31");
-  assert.throws(() => addDaysIso("10/15/2026", 1), RangeError);
 });
 
 test("a stale version is refused", () => {
