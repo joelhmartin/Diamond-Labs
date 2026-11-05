@@ -192,7 +192,7 @@ pnpm --filter @my-app/api import:parity $T $S --balances <path> --file-id <final
 Seazona's API never exposed price lists or who is on them, so the load brought none. Keep Labzona's PriceList screen and its Same Pricing report open beside the new app.
 
 - (a) **Admin › Price lists › New list**: create the 3 lists, named as in Labzona.
-- (b) Fill each list's prices: in the list editor select all, run the bulk action **Set to base price**, then edit each price that differs, reading Labzona's PriceList screen.
+- (b) Fill each list's prices: in the list editor enter only the prices that differ from the base price, reading Labzona's PriceList screen, then turn on the **Only priced in this list** filter to check the list holds just those. Do not set every product to its base price: a full-sheet list hides any later list for its clients and freezes them at today's base prices when base prices change.
 - (c) Assign clients from **Admin › Users**: filter or search by practice, select the clients, run **Assign price list…** and pick the list. Repeat per list.
 - (d) Open **Price lists › Same pricing** and compare the group sizes with Labzona's Same Pricing report. A group that does not match is re-checked (list items and assignments) before unfreeze.
 - (e) `statement_sends` starts empty, so the first **Receivables › Monthly statements** run after cutover sends to every client due one. That is correct only for the month after Labzona's last statement run: pick that month in the panel, not one Labzona already sent.
