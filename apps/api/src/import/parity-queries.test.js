@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { fakeTx } from "../test/fake-tx.js";
 
 const { readAppSide, readSeazonaSide, readOnly } = await import("./parity-queries.js");
+const { buildParity } = await import("./parity.js");
 
 const raw = {
   records: async (entity) => ({
@@ -80,4 +81,14 @@ test("the Seazona side flags an invoice summary run that paged past an accepted 
   const note = possiblyIncompleteNote([{ timestamp: "2025-11-29T15:05:50", pageSize: 10000 }]);
   const capped = await readSeazonaSide({ ...raw, latestDoneSummaryRun: async (e) => (e === "invoice" ? { id: "run-c", note } : null) });
   assert.deepEqual(capped.invoiceSummaryPossiblyIncomplete, { runId: "run-c", note });
+});
+
+test("parity counts owned records without account", async () => {
+  // after the legacy selects: rx_cases, lab_orders, invoices counts of doctor-owned rows with a null account_id
+  const db = fakeTx({ selects: [users, legacy, orders, [], [], [{ n: 0 }], [{ n: 0 }], [{ n: 1 }]] });
+  const app = await readAppSide(readOnly(db), raw);
+  assert.deepEqual(app.recordsWithoutAccount, { rxCases: 0, labOrders: 0, invoices: 1, total: 1 });
+  const report = buildParity({ seazona: { ...(await readSeazonaSide(raw)), balanceByAccount: null }, app, seeds: { errors: [], warnings: [] } });
+  assert.deepEqual(report.recordsWithoutAccount, { rxCases: 0, labOrders: 0, invoices: 1, total: 1 });
+  assert.ok(report.differences.includes("records_without_account"));
 });

@@ -37,7 +37,7 @@ export const statementSendsStore = {
     const [row] = await database
       .insert(statementSends)
       .values({ id: createId(), clientUserId, month, closingCents, status: "sending", sentBy: byUserId, runId })
-      .onConflictDoNothing({ target: [statementSends.clientUserId, statementSends.month] })
+      .onConflictDoNothing({ target: [statementSends.subjectKey, statementSends.clientUserId, statementSends.month] })
       .returning({ id: statementSends.id });
     if (row) return row.id;
     const [retaken] = await database
@@ -53,7 +53,7 @@ export const statementSendsStore = {
       .insert(statementSends)
       .values({ id: createId(), clientUserId, month, closingCents, status: "sending", sentBy: byUserId, runId: null })
       .onConflictDoUpdate({
-        target: [statementSends.clientUserId, statementSends.month],
+        target: [statementSends.subjectKey, statementSends.clientUserId, statementSends.month],
         set: { status: "sending", closingCents, sentBy: byUserId, runId: null, updatedAt: new Date() },
       })
       .returning({ id: statementSends.id });
@@ -66,7 +66,7 @@ export const statementSendsStore = {
     await database
       .insert(statementSends)
       .values({ id: createId(), clientUserId, month, closingCents, status: "no_email", sentBy: byUserId, runId })
-      .onConflictDoNothing({ target: [statementSends.clientUserId, statementSends.month] });
+      .onConflictDoNothing({ target: [statementSends.subjectKey, statementSends.clientUserId, statementSends.month] });
   },
 };
 

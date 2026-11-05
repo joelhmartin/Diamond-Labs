@@ -186,3 +186,13 @@ function numberGapsCap() {
   const inv = [{ seazonaId: "a", number: 1, status: "issued", totalCents: 0, year: "2026" }, { seazonaId: "b", number: 200, status: "issued", totalCents: 0, year: "2026" }];
   return buildParity({ seazona: { ...seazona, invoices: inv, invoiceSummaryPossiblyIncomplete: { runId: "r" } }, app, seeds }).invoices.seazonaNumbersMissing.numbers;
 }
+
+test("records_without_account is a difference that --accept refuses", () => {
+  const withGap = { ...app, recordsWithoutAccount: { rxCases: 0, labOrders: 0, invoices: 1, total: 1 } };
+  const report = buildParity({ seazona, app: withGap, seeds });
+  assert.deepEqual(report.differences, ["records_without_account"]);
+  assert.equal(report.clean, false);
+  assert.throws(() => applyAccepted(report, ["records_without_account"]), /cannot be accepted/);
+  assert.ok(!DIFFERENCE_KINDS.includes("records_without_account"));
+  assert.equal(buildParity({ seazona, app, seeds }).clean, true, "no gap, clean");
+});

@@ -23,6 +23,8 @@ export const invoices = pgTable("invoices", {
   kind: varchar("kind", { length: 10 }).notNull(),
   // The doctor billed. Null only for a guest's shop invoice (never on a statement).
   clientUserId: varchar("client_user_id", { length: 128 }),
+  // The practice (accounts.id) billed, stamped at create. Null on an owned invoice = a backfill gap; scope checks fail closed.
+  accountId: varchar("account_id", { length: 128 }),
   labOrderId: varchar("lab_order_id", { length: 128 }),
   // Piece 5's import key.
   legacySeazonaInvoiceId: varchar("legacy_seazona_invoice_id", { length: 128 }),
@@ -51,6 +53,7 @@ export const invoices = pgTable("invoices", {
   uniqueIndex("invoices_lab_order_idx").on(t.labOrderId),
   uniqueIndex("invoices_legacy_seazona_idx").on(t.legacySeazonaInvoiceId),
   index("invoices_client_idx").on(t.clientUserId),
+  index("invoices_account_id_idx").on(t.accountId),
   index("invoices_status_idx").on(t.status),
 ]);
 

@@ -1,7 +1,7 @@
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, count } from "drizzle-orm";
 import { isPossiblyIncomplete } from "./seazona-fetch.js";
 import { isOpeningBalanceInvoice, isoDateIn, LAB_TIMEZONE, LEGACY_SETTLEMENT_SOURCE, OPENING_BALANCE_PREFIX, TERMINAL_LAB_STATUSES } from "@my-app/shared";
-import { users, invoices, invoicePayments, labOrders } from "../db/schema/index.js";
+import { users, invoices, invoicePayments, labOrders, rxCases } from "../db/schema/index.js";
 import { paidCentsFor } from "../services/billing/paid-cents.js";
 import { deriveBalance } from "../services/billing/invoice-rules.js";
 import { orderStatusFor } from "./seazona-records.js";
@@ -94,6 +94,21 @@ async function legacyMoney({ db, raw, legacy, accountOfUser }) {
   return { history, accountKey, balanceByAccount, unowned, historyWithoutSettlement };
 }
 
+/**
+ * Owned records (a doctor's rx case, lab order or invoice) with no practice:
+ * a backfill gap, which every scope check fails closed on. Only doctor-owned
+ * records count, since a shopper's records have no practice to stamp.
+ */
+async function recordsWithoutAccount(db) {
+  const one = async (table, owner) => {
+    const [row] = await db.select({ n: count() }).from(table).innerJoin(users, eq(users.id, owner))
+      .where(and(isNull(table.accountId), eq(users.role, "doctor")));
+    return Number(row?.n ?? 0);
+  };
+  const out = { rxCases: await one(rxCases, rxCases.userId), labOrders: await one(labOrders, labOrders.clientUserId), invoices: await one(invoices, invoices.clientUserId) };
+  return { ...out, total: out.rxCases + out.labOrders + out.invoices };
+}
+
 /** The target's side of parity, strictly reads. Balances use the app's own ledger rule (deriveBalance over paidCentsFor). */
 export async function readAppSide(db, raw) {
   const userRows = await db
@@ -120,6 +135,7 @@ export async function readAppSide(db, raw) {
     openOrders: orders.filter((o) => isOpenStatus(o.status)),
     unownedOrders: orders.filter((o) => !o.clientUserId).map((o) => ({ sourceId: o.sourceId, open: isOpenStatus(o.status) })),
     openingInvoices: legacy.length - m.history.length,
+    recordsWithoutAccount: await recordsWithoutAccount(db),
   };
 }
 

@@ -35,6 +35,8 @@ export const labOrders = pgTable("lab_orders", {
   // rx_case | shop_order | legacy (packages/shared LAB_ORDER_SOURCES)
   source: varchar("source", { length: 20 }).notNull(),
   sourceId: varchar("source_id", { length: 128 }).notNull(),
+  // The practice (accounts.id), stamped at create. Null on an owned order = a backfill gap; scope checks fail closed.
+  accountId: varchar("account_id", { length: 128 }),
   // Piece 5: a legacy (Seazona) order has no Rx case to read the patient from,
   // so its patient lives here. Encrypted (lab-orders.service sealOrder). Null otherwise.
   legacyPatient: text("legacy_patient"),
@@ -87,6 +89,7 @@ export const labOrders = pgTable("lab_orders", {
   index("lab_orders_pan_idx").on(t.panNumber),
   index("lab_orders_status_idx").on(t.status),
   index("lab_orders_client_idx").on(t.clientUserId),
+  index("lab_orders_account_id_idx").on(t.accountId),
   index("lab_orders_shipment_idx").on(t.shipmentId),
   index("lab_orders_merged_into_idx").on(t.mergedIntoOrderId),
 ]);

@@ -77,6 +77,7 @@ export const SCRUB_PLAN = {
       slug: pii(`CASE WHEN ${OWNER_IS_SHOPPER} THEN 'account-' || "accounts"."id" ELSE "accounts"."slug" END`),
       owner_id: K,
       logo_url: pii(`CASE WHEN ${OWNER_IS_SHOPPER} THEN NULL ELSE "accounts"."logo_url" END`),
+      is_client: K, account_number: K, legacy_client_key: K, // practice flag and the lab's account number / Seazona client id: business identifiers
       settings: pii(`'{}'::jsonb`), // free-form jsonb, no schema guarantee it is PHI-free
       plan: K, status: K, created_at: K, updated_at: K,
     },
@@ -200,7 +201,7 @@ export const SCRUB_PLAN = {
   rx_cases: {
     mode: "update",
     columns: {
-      id: K, case_number: K, user_id: K, seazona_client_id: K, seazona_account_number: K,
+      id: K, case_number: K, user_id: K, account_id: K, seazona_client_id: K, seazona_account_number: K,
       practice_name: K, // the doctor's practice, kept
       patient_first: phi(`'Test'`),
       patient_last: phi(`'Patient ' || "case_number"`),
@@ -293,7 +294,7 @@ export const SCRUB_PLAN = {
   statement_sends: {
     mode: "update",
     columns: {
-      id: K, client_user_id: K, month: K, closing_cents: K, status: K,
+      id: K, subject_key: K, client_user_id: K, month: K, closing_cents: K, status: K,
       sent_at: K, sent_by: K, run_id: K, created_at: K, updated_at: K,
     },
   },
@@ -322,7 +323,7 @@ export const SCRUB_PLAN = {
   lab_orders: {
     mode: "update",
     columns: {
-      id: K, order_number: K, source: K, source_id: K, client_user_id: K, status: K, held_from: K,
+      id: K, order_number: K, source: K, source_id: K, account_id: K, client_user_id: K, status: K, held_from: K,
       department_id: K, assignee_user_id: K, due_date: K, rush: K, rush_tier: K, is_remake: K, remake_of_order_id: K, remake_reason_id: K,
       merged_into_order_id: K,
       hold_reason: phi("NULL"),
@@ -368,7 +369,7 @@ export const SCRUB_PLAN = {
   invoices: {
     mode: "update",
     columns: {
-      id: K, invoice_number: K, kind: K, client_user_id: K, lab_order_id: K, legacy_seazona_invoice_id: K,
+      id: K, invoice_number: K, kind: K, client_user_id: K, account_id: K, lab_order_id: K, legacy_seazona_invoice_id: K,
       status: K, version: K, issued_at: K, due_date: K, voided_at: K,
       void_reason: phi("NULL"),
       legacy_patient: phi("NULL"), // Seazona's patient on an imported invoice (encrypted)
