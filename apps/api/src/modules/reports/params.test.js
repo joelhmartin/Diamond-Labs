@@ -50,6 +50,20 @@ describe("paramsSchema", () => {
     expect(() => parse(params, {})).toThrow();
   });
 
+  test("blank values count as missing; required and defaults still apply", () => {
+    expect(parse([{ name: "n", type: "number" }], { n: "" })).toEqual({});
+    expect(() => parse([{ name: "n", type: "number", required: true }], { n: "" })).toThrow();
+    expect(() => parse([{ name: "n", type: "number", required: true }], { n: null })).toThrow();
+    expect(parse([{ name: "n", type: "number", default: 5 }], { n: "" })).toEqual({ n: 5 });
+  });
+
+  test("a missing required toggle is an error; an optional one stays absent", () => {
+    expect(() => parse([{ name: "t", type: "toggle", required: true }], {})).toThrow();
+    expect(parse([{ name: "t", type: "toggle", required: true }], { t: "false" })).toEqual({ t: false });
+    expect(parse([{ name: "t", type: "toggle" }], {})).toEqual({});
+    expect(parse([{ name: "m", type: "multiselect", options: ["a"] }], {})).toEqual({});
+  });
+
   test("unknown query keys are ignored", () => {
     expect(parse([{ name: "n", type: "number" }], { n: "3", limit: "10", sort: "x" })).toEqual({ n: 3 });
   });

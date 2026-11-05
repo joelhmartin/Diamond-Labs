@@ -81,6 +81,28 @@ describe("listing and access", () => {
   });
 });
 
+describe("define-time validation", () => {
+  test("rejects duplicate params/columns, option-less selects and bad dateRange defaults", () => {
+    const reg = make();
+    const p = { name: "a", type: "number" };
+    expect(() => reg.defineReport(base({ key: "v.1", params: [p, p] }))).toThrow(/duplicate param/);
+    const c = { id: "x", label: "X", type: "text" };
+    expect(() => reg.defineReport(base({ key: "v.2", columns: [c, c] }))).toThrow(/duplicate column/);
+    expect(() => reg.defineReport(base({ key: "v.3", params: [{ name: "s", type: "select" }] }))).toThrow(/options/);
+    expect(() => reg.defineReport(base({ key: "v.4", params: [{ name: "m", type: "multiselect", options: [] }] }))).toThrow(/options/);
+    expect(() => reg.defineReport(base({ key: "v.5", params: [{ name: "r", type: "dateRange", default: "soon" }] }))).toThrow(/default/);
+    expect(() => reg.defineReport(base({ key: "v.6", params: [{ name: "r", type: "dateRange", default: { from: "2026-01-01", to: "2026-01-31" } }] }))).not.toThrow();
+  });
+
+  test("an explicit undefined does not override a default", () => {
+    const reg = make();
+    reg.defineReport(base({ paging: undefined, requires: undefined }));
+    const def = reg.getReport("sales.daily");
+    expect(def.paging).toBe("client");
+    expect(def.requires).toEqual([]);
+  });
+});
+
 describe("groups, dashboards, metrics, lookups", () => {
   test("groups sort by position and dashboards/metrics/lookups round trip", () => {
     const reg = make();
@@ -97,6 +119,17 @@ describe("groups, dashboards, metrics, lookups", () => {
     expect(reg.getDashboard("missing")).toBeUndefined();
     expect(() => reg.defineMetric({ key: "m.one", run() {} })).toThrow(/already/);
     expect(() => reg.defineDashboard({ key: "d", title: "D", tiles: [{ id: "t", kind: "weird" }] })).toThrow(/kind/);
+  });
+
+  test("listDashboards falls back to defaultRoles and never fails open", () => {
+    const reg = make();
+    reg.defineDashboard({ key: "open", title: "Open", tiles: [] });
+    reg.defineDashboard({ key: "money", title: "Money", roles: ["admin"], tiles: [] });
+    expect(reg.listDashboards({ role: "staff" }).map((d) => d.key)).toEqual(["open"]);
+    expect(reg.listDashboards({ role: "admin" }).map((d) => d.key)).toEqual(["open", "money"]);
+    expect(reg.listDashboards({ role: "guest" })).toEqual([]);
+    expect(reg.listDashboards(null)).toEqual([]);
+    expect(reg.listDashboards({ role: undefined })).toEqual([]);
   });
 
   test("two registries do not share state", () => {

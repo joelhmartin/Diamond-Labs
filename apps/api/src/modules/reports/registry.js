@@ -3,7 +3,7 @@
  * never share state. The module knows nothing about the host's roles: the app
  * passes `defaultRoles` (who may view a report that names no roles of its own).
  */
-import { PARAM_TYPES, COLUMN_TYPES } from "@my-app/shared";
+import { PARAM_TYPES, COLUMN_TYPES, DATE_PRESETS } from "@my-app/shared";
 
 export const MAX_TIMEOUT_MS = 30000;
 export const CHART_TYPES = Object.freeze(["line", "bar", "groupedBar", "stackedBar"]);
@@ -19,18 +19,37 @@ function requireKey(kind, map, def) {
   if (map.has(def.key)) fail(`${kind} "${def.key}" is already registered`);
 }
 
+function validateParam(where, p) {
+  if ((p.type === "select" || p.type === "multiselect") && !(Array.isArray(p.options) && p.options.length)) {
+    fail(`${where}: ${p.type} param "${p.name}" needs options`);
+  }
+  if (p.type !== "dateRange" || p.default === undefined) return;
+  const d = p.default;
+  const isRange = d && typeof d === "object" && typeof d.from === "string" && typeof d.to === "string";
+  if (!isRange && !DATE_PRESETS.includes(d)) fail(`${where}: dateRange default for "${p.name}" is not a preset or { from, to }`);
+}
+
+const withoutUndefined = (def) => Object.fromEntries(Object.entries(def).filter(([, v]) => v !== undefined));
+
 function validateReport(def, groups) {
   const where = `defineReport("${def.key}")`;
   if (!def.title) fail(`${where} requires a title`);
   if (!groups.has(def.group)) fail(`${where}: unknown group "${def.group}"`);
   if (typeof def.run !== "function") fail(`${where} requires a run function`);
+  const names = new Set();
   for (const p of def.params || []) {
     if (!p.name) fail(`${where}: every param needs a name`);
+    if (names.has(p.name)) fail(`${where}: duplicate param name "${p.name}"`);
+    names.add(p.name);
     if (!PARAM_TYPES.includes(p.type)) fail(`${where}: unknown param type "${p.type}"`);
+    validateParam(where, p);
   }
   if (!Array.isArray(def.columns) || def.columns.length === 0) fail(`${where} requires columns`);
+  const ids = new Set();
   for (const c of def.columns) {
     if (!c.id) fail(`${where}: every column needs an id`);
+    if (ids.has(c.id)) fail(`${where}: duplicate column id "${c.id}"`);
+    ids.add(c.id);
     if (!COLUMN_TYPES.includes(c.type)) fail(`${where}: unknown column type "${c.type}"`);
   }
   if (def.timeoutMs !== undefined && !(def.timeoutMs > 0 && def.timeoutMs <= MAX_TIMEOUT_MS)) {
@@ -70,7 +89,7 @@ export function createRegistry({ defaultRoles = [] } = {}) {
     defineReport(def) {
       requireKey("Report", reports, def);
       validateReport(def, groups);
-      reports.set(def.key, { paging: "client", params: [], requires: [], ...def });
+      reports.set(def.key, { paging: "client", params: [], requires: [], ...withoutUndefined(def) });
     },
 
     defineDashboard(def) {
@@ -79,7 +98,7 @@ export function createRegistry({ defaultRoles = [] } = {}) {
         if (!t.id) fail(`defineDashboard("${def.key}"): every tile needs an id`);
         if (!TILE_KINDS.includes(t.kind)) fail(`defineDashboard("${def.key}"): unknown tile kind "${t.kind}"`);
       }
-      dashboards.set(def.key, { params: [], ...def });
+      dashboards.set(def.key, { params: [], ...withoutUndefined(def) });
     },
 
     defineMetric(def) {
@@ -113,7 +132,7 @@ export function createRegistry({ defaultRoles = [] } = {}) {
     },
 
     listDashboards: (actor) =>
-      [...dashboards.values()].filter((d) => !d.roles || canView(actor, d)).map(metaOf),
+      [...dashboards.values()].filter((d) => canView(actor, d)).map(metaOf),
 
     getReport: (key) => reports.get(key),
     getDashboard: (key) => dashboards.get(key),

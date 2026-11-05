@@ -8,9 +8,9 @@ import { DATE_PRESETS, checkCustomRange, isIsoDate, resolveDateRange } from "@my
 
 const optionValues = (p) => (p.options || []).map((o) => (typeof o === "object" ? o.value : o));
 
-const toBool = (v) => (typeof v === "boolean" ? v : ["true", "1", "on", "yes"].includes(String(v).toLowerCase()));
+const toBool = (v) => (v === undefined || typeof v === "boolean" ? v : ["true", "1", "on", "yes"].includes(String(v).toLowerCase()));
 
-const toList = (v) => (Array.isArray(v) ? v : String(v).split(",").map((s) => s.trim()).filter(Boolean));
+const toList = (v) => (v === undefined || Array.isArray(v) ? v : String(v).split(",").map((s) => s.trim()).filter(Boolean));
 
 /** "from..to" string or { from, to } object -> { from, to }; a preset name stays a string. */
 function rangeInput(v) {
@@ -60,7 +60,9 @@ export function paramsSchema(def) {
     shape,
     /** Validate raw query values; unknown keys are dropped. Throws ZodError. */
     parse(query = {}, { now = new Date(), tz = "UTC" } = {}) {
-      const out = shape.parse(query);
+      // Blank values (""/null) count as missing so defaults and `required` apply.
+      const cleaned = Object.fromEntries(Object.entries(query).filter(([, v]) => v !== "" && v !== null));
+      const out = shape.parse(cleaned);
       for (const p of specs) {
         if (p.type === "dateRange" && out[p.name] !== undefined) {
           out[p.name] = resolveDateRange(out[p.name], now, tz, { maxDays: p.maxDays });

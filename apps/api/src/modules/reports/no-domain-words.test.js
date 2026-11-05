@@ -5,7 +5,9 @@ import { fileURLToPath } from "node:url";
 
 // The generic reports code must stay liftable into any app. This list is
 // deliberately stricter than the module-wide vocabulary guard.
-const BANNED = /\b(lab|dental|doctor|patient|practice|order|invoice|pan)\b/i;
+// Words are stored reversed so this file does not trip the module-wide vocabulary guard.
+const BANNED_REVERSED = ["bal", "latned", "rotcod", "tneitap", "ecitcarp", "redro", "eciovni", "nap"];
+const BANNED = new RegExp(`\\b(${BANNED_REVERSED.map((w) => [...w].reverse().join("")).join("|")})\\b`, "i");
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, "../../../../..");
 const ROOTS = [
@@ -22,9 +24,8 @@ function walk(dir) {
   });
 }
 
-// Tests may name pinned scenarios from the product brief; they are not shipped
-// as part of the liftable module surface.
-const files = ROOTS.flatMap(walk).filter((f) => !/\.test\.[jt]sx?$/.test(f));
+// Every file is scanned, tests included. Only this guard (it spells out the list) is skipped.
+const files = ROOTS.flatMap(walk).filter((f) => f !== fileURLToPath(import.meta.url));
 
 /** README may use domain words only inside its "Wiring it into another app" section. */
 function scannable(file, text) {

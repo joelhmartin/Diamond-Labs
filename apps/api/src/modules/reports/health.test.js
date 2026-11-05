@@ -24,9 +24,14 @@ describe("activityHealth", () => {
     expect(run(0, 2, 91).band).toBe("inactive");
   });
 
-  test("never ordered is inactive; old order with no history is inactive", () => {
+  test("no activity ever, or only old activity with no history, is inactive", () => {
     expect(run(0, 0, null).band).toBe("inactive");
     expect(run(0, 0, 200)).toMatchObject({ band: "inactive", isNew: false });
+  });
+
+  test("a missing or invalid asOf throws instead of returning NaN", () => {
+    expect(() => activityHealth({ recent: 1, baseline: 1, lastAt: ago(1) }, T)).toThrow(/asOf/);
+    expect(() => activityHealth({ recent: 1, baseline: 1, lastAt: ago(1), asOf: "nope" }, T)).toThrow(/asOf/);
   });
 
   test("accepts ISO strings for dates and does not mark established clients new", () => {

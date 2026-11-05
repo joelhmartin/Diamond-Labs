@@ -24,6 +24,16 @@ test("formatCell other types and nulls", () => {
     "2026-10-31 23:30",
   );
   assert.equal(COLUMN_TYPES.length, 9);
+  assert.equal(formatCell({ type: "money" }, "abc"), "");
+});
+
+test("date columns read Dates and timestamps in the column timezone", () => {
+  const chi = { type: "date", timeZone: "America/Chicago" };
+  assert.equal(formatCell(chi, new Date("2026-11-05T12:00:00Z")), "2026-11-05");
+  assert.equal(formatCell(chi, "2026-11-01T04:30:00Z"), "2026-10-31");
+  assert.equal(formatCell(chi, "2026-11-01"), "2026-11-01");
+  assert.equal(formatCell({ type: "date" }, "2026-11-01T04:30:00Z"), "2026-11-01");
+  assert.equal(csvValue(chi, "2026-11-01T04:30:00Z"), "2026-10-31");
 });
 
 test("csvValue gives plain money and numbers", () => {

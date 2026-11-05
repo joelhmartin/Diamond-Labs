@@ -14,8 +14,10 @@ const DAY_MS = 86400000;
 const asTime = (v) => (v == null ? null : new Date(v).getTime());
 
 export function activityHealth({ recent, baseline, lastAt, asOf }, { inactiveDays, declining, stable }) {
+  const now = asTime(asOf);
+  if (now == null || Number.isNaN(now)) throw new Error("activityHealth requires a valid asOf date");
   const last = asTime(lastAt);
-  const idleDays = last == null ? Infinity : (asTime(asOf) - last) / DAY_MS;
+  const idleDays = last == null ? Infinity : (now - last) / DAY_MS;
   if (idleDays > inactiveDays) return { band: "inactive", trend: null, isNew: false };
 
   if (!(baseline > 0)) {
