@@ -149,5 +149,9 @@ collaborator fills it in `views.js` (`messageList`) and takes files on
 
 ## Wiring it into another app
 
-TODO: boot wiring (createMessaging with the app's party keys, record
-resolvers and onMessage → notify), route registration and the web inbox.
+The host app builds the service once at boot with its own collaborators
+(party keys, record resolvers, labels, search, an `onMessage` that emits its
+alert) and registers `messagingRoutes` with its `authenticate`, a `guard` and
+`listParties`. In this repo that wiring lives in `services/app-modules.js`,
+with the collaborators in its glue file next to the other notification glue.
+The web inbox is still to come.
