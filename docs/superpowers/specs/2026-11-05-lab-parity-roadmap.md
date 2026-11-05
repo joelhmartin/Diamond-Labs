@@ -110,3 +110,22 @@ onto the updated `feat/own-the-lab` and **regenerates its own migrations**
 `pnpm db:generate`) instead of hand-merging the drizzle journal. Shared
 registration points (route index, nav config, job definitions index) are
 one-line appends, so conflicts there are mechanical.
+
+## Rulings after planning (2026-11-05, binding over the plans where they differ)
+
+- **R-A `defaultDueAt`:** piece 7 owns it, at `apps/api/src/services/lab/lab-scheduling.js`:
+  `defaultDueAt(tx, { variantIds, requestedDueDate, rush, workflowKey, startAt }) → { dueDate, plan }` and
+  `saveSchedule(tx, labOrderId, plan)`.
+  Piece 6 builds in parallel against a **stub with the identical path, exports and signature** (today + 13 days, skipping Sat/Sun; `plan: null`; `saveSchedule` is a no-op).
+  When piece 6 rebases onto piece 7 it deletes the stub and keeps piece 7's file. Piece 6's plan text calling it "piece 6's seam" is superseded.
+- **R-B notify seam:** `apps/api/src/services/notify-seam.js` exports `async function notify(db, { event, recordType, recordId, audience, data })`. It is a no-op that resolves to undefined.
+  Whichever piece needs it first creates it with exactly that content, and a later piece keeps the existing file. Piece 8 repoints its body at `modules/notifications`.
+- **R-C module vocabulary guard:** piece 7 creates `apps/api/src/modules/` and `apps/web/src/modules/` and the test that fails on lab/doctor/patient/dental/rx words inside modules.
+  A piece that builds a module before rebasing onto 7 adds the same guard only if it is missing, and keeps piece 7's on rebase.
+- **R-D reuse across pieces:**
+  - Piece 8 message attachments use piece 6's `record-files` module.
+  - Piece 9 report favorites use piece 6's `record_stars` (`recordType "report"`).
+  - Piece 9 registers piece 10's `sameClientPricingGroups` as `clients.same-pricing`.
+  - Piece 8's local-delivery list reads piece 6's `lab_orders.delivery_method`.
+- **R-E migrations:** on rebase, regenerate. Hand-written seed migrations (piece 6 `seed_adjustment_reasons`, piece 7 calendar/workflow seed) are re-created with the same SQL under the new number, never dropped.
+- **R-F lab timezone:** `LAB_TIMEZONE` stays America/Chicago until the user confirms. The audit shows a La Mesa, CA address, and the cutover runbook carries a confirm step.
