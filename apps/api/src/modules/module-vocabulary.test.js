@@ -11,6 +11,8 @@ const SELF = fileURLToPath(import.meta.url);
 const ROOTS = [
   fileURLToPath(new URL(".", import.meta.url)),
   fileURLToPath(new URL("../../../web/src/modules", import.meta.url)),
+  fileURLToPath(new URL("../../../../packages/shared/src/business-calendar", import.meta.url)),
+  fileURLToPath(new URL("../../../../packages/shared/src/workflows", import.meta.url)),
 ];
 
 function* walk(dir) {
