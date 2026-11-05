@@ -74,10 +74,17 @@ test("labels batch: one query per type, only what the caller may see", async () 
   assert.deepEqual([...forStaff], [["o1", "Case #1042"]]);
 });
 
-test("pickup resolver is registered and resolves nothing yet", async () => {
-  const { db, calls } = queueDb();
-  assert.equal(await labRecordResolvers.pickup.resolve(db, "p1", staff), null);
-  assert.equal(calls.length, 0);
+// pickup resolve selects: id, pickupNumber, partyKey.
+const pickupRow = (partyKey) => [["p1", 17, partyKey]];
+
+test("pickup resolves through its party_key: \"Pickup #<n>\" for staff and the practice, not another practice", async () => {
+  const expected = { label: "Pickup #17", partyKey: "practice:P1", hostPath: "/lab/pickups?pickup=p1", partyPath: "/doctor/pickups?pickup=p1" };
+  assert.deepEqual(await labRecordResolvers.pickup.resolve(queueDb(pickupRow("practice:P1")).db, "p1", staff), expected);
+  assert.deepEqual(await labRecordResolvers.pickup.resolve(queueDb(pickupRow("practice:P1")).db, "p1", d2), expected);
+  assert.equal(await labRecordResolvers.pickup.resolve(queueDb(pickupRow("practice:P1")).db, "p1", d4), null);
+  assert.equal(await labRecordResolvers.pickup.resolve(queueDb([]).db, "nope", staff), null);
+  const labels = await labRecordResolvers.pickup.labels(queueDb([["p1", 17, "practice:P1"], ["p2", 18, "practice:P2"]]).db, ["p1", "p2"], d1);
+  assert.deepEqual([...labels], [["p1", "Pickup #17"]]);
 });
 
 test("host post alerts the party; party post alerts staff (excluding author) with recordType/recordId of the record or message_thread", async () => {

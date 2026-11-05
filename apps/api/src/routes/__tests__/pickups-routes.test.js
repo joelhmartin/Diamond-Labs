@@ -1,0 +1,53 @@
+import { test } from "vitest";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { labRouteErrorReply } from "../lab-route-helpers.js";
+import { PickupError } from "../../services/lab/pickup-rules.js";
+import { handlerSource } from "./_source.js";
+
+const read = (p) => readFileSync(fileURLToPath(new URL(p, import.meta.url)), "utf8");
+const source = read("../pickups.routes.js");
+const index = read("../../index.js");
+
+const DOCTOR = ['fastify.get("/pickups",', 'fastify.post("/pickups",', 'fastify.post("/pickups/:id/cancel",'];
+const LAB = [
+  'fastify.get("/lab/pickups",', 'fastify.post("/lab/pickups",', 'fastify.post("/lab/pickups/:id/schedule",',
+  'fastify.post("/lab/pickups/:id/complete",', 'fastify.post("/lab/pickups/:id/cancel",',
+];
+
+test("doctor routes require approved doctor; lab routes require staff", () => {
+  for (const marker of DOCTOR) {
+    const body = handlerSource(source, marker);
+    assert.match(body, /preHandler: \[authenticate, requireApprovedDoctor/, marker);
+    assert.doesNotMatch(body, /STAFF/, marker);
+  }
+  for (const marker of LAB) assert.match(handlerSource(source, marker), /preHandler: \[\.\.\.STAFF/, marker);
+  assert.match(source, /import \{ STAFF \} from "\.\/lab\.routes\.js"/);
+});
+
+test("every pickup mutation is audited, by id only", () => {
+  for (const marker of [...DOCTOR.slice(1), ...LAB.slice(1)]) {
+    const body = handlerSource(source, marker);
+    assert.match(body, /audit\(request, "pickup\.[a-z_]+", [a-z.]+id, /, marker);
+    assert.doesNotMatch(body, /notes|reason:/, `${marker} audit carries no free text`);
+  }
+});
+
+test("every mutation validates its body with the shared schema", () => {
+  for (const marker of [...DOCTOR.slice(1), ...LAB.slice(1)]) assert.match(handlerSource(source, marker), /validate\(/, marker);
+  for (const marker of [DOCTOR[0], LAB[0]]) assert.match(handlerSource(source, marker), /validateQuery\(/, marker);
+});
+
+test("pickup errors map to a reply: another practice's pickup is 404, a stale version 409", () => {
+  assert.equal(labRouteErrorReply(new PickupError("NOT_FOUND", "Pickup not found.")).status, 404);
+  const stale = labRouteErrorReply(new PickupError("STALE", "This pickup changed — reload."));
+  assert.equal(stale.status, 409);
+  assert.equal(stale.body.error.message, "This pickup changed — reload.");
+  assert.equal(labRouteErrorReply(new PickupError("REASON_REQUIRED", "x")).status, 422);
+  assert.equal(labRouteErrorReply(new PickupError("INVALID_TRANSITION", "x")).status, 422);
+});
+
+test("the routes are registered under /api/v1", () => {
+  assert.match(index, /routes\/pickups\.routes\.js.*\{ prefix: "\/api\/v1" \}/);
+});

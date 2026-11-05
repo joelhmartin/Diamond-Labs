@@ -15,14 +15,17 @@ import { renderStatementPdf } from "./billing-pdf.js";
 /** The doctor's bill-to and ship-to block (statements, invoices, the Ship form), or null when the user isn't a doctor. */
 export async function loadClient(clientUserId, database = db) {
   const [row] = await database
-    .select({ id: users.id, name: users.name, email: users.email, role: users.role, accountNumber: users.seazonaAccountNumber, profile: doctorProfiles })
+    .select({
+      id: users.id, name: users.name, email: users.email, role: users.role, accountNumber: users.seazonaAccountNumber,
+      seazonaClientId: users.seazonaClientId, profile: doctorProfiles,
+    })
     .from(users)
     .leftJoin(doctorProfiles, eq(doctorProfiles.userId, users.id))
     .where(eq(users.id, clientUserId));
   if (!row || row.role !== "doctor") return null;
   const p = row.profile;
   return {
-    id: row.id, name: row.name, email: row.email, accountNumber: row.accountNumber ?? null,
+    id: row.id, name: row.name, email: row.email, accountNumber: row.accountNumber ?? null, seazonaClientId: row.seazonaClientId ?? null,
     practice: p?.companyName ?? null, address1: p?.address1 ?? null, address2: p?.address2 ?? null,
     city: p?.city ?? null, state: p?.state ?? null, zip: p?.zip ?? null,
     phone: p?.phone ?? null, deliveryMethod: p?.deliveryMethod ?? null, deliveryNotes: p?.deliveryNotes ?? null,

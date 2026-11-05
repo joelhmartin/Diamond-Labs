@@ -251,6 +251,7 @@ await fastify.register(themeRoutes,     { prefix: "/api/v1" });
 await fastify.register(autopayRoutes,   { prefix: "/api/v1" });
 await fastify.register(adminPaymentRoutes, { prefix: "/api/v1" });
 await fastify.register(appModuleRoutes, { prefix: "/api/v1" });
+await fastify.register((await import("./routes/pickups.routes.js")).default, { prefix: "/api/v1" });
 
 registerAllJobs();
 registerJobTriggerRoutes(fastify);

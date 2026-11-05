@@ -1,6 +1,6 @@
 import { and, asc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { isStaffRole } from "@my-app/shared";
-import { doctorProfiles, labOrders, rxCases, users } from "../../db/schema/index.js";
+import { doctorProfiles, labOrders, pickups, rxCases, users } from "../../db/schema/index.js";
 import { containsPattern, prefixPattern } from "../../lib/list-query.js";
 import { requireApprovedDoctor } from "../../middleware/require-role.js";
 import { createMessaging } from "../../modules/messaging/index.js";
@@ -41,6 +41,8 @@ const orderSelect = { id: labOrders.id, orderNumber: labOrders.orderNumber, owne
 
 const rxQuery = (db, where) => db.select(rxSelect).from(rxCases).leftJoin(users, eq(users.id, rxCases.userId)).where(where);
 const orderQuery = (db, where) => db.select(orderSelect).from(labOrders).leftJoin(users, eq(users.id, labOrders.clientUserId)).where(where);
+// A pickup carries its practice key (party_key, set at request time), so no owner join.
+const pickupQuery = (db, where) => db.select({ id: pickups.id, pickupNumber: pickups.pickupNumber, partyKey: pickups.partyKey }).from(pickups).where(where);
 
 const rxView = (r) => ({
   label: `Case ${r.caseNumber}`, partyKey: ownerKey(r.ownerId, r.ownerClientId),
@@ -51,6 +53,11 @@ const rxView = (r) => ({
 const orderView = (r) => (r.ownerId
   ? { label: `Case #${r.orderNumber}`, partyKey: ownerKey(r.ownerId, r.ownerClientId), hostPath: `/lab/orders/${enc(r.id)}`, partyPath: null }
   : null);
+
+const pickupView = (r) => ({
+  label: `Pickup #${r.pickupNumber}`, partyKey: r.partyKey,
+  hostPath: `/lab/pickups?pickup=${enc(r.id)}`, partyPath: `/doctor/pickups?pickup=${enc(r.id)}`,
+});
 
 /** One record type: a single-row resolve and a batch of labels, both filtered by mayOpen. */
 function resolverFor(query, table, view) {
@@ -77,14 +84,13 @@ function resolverFor(query, table, view) {
 
 /**
  * The lab's record types for messaging (spec "Lab record resolvers"):
- * rx_case "Case {caseNumber}", lab_order "Case #{orderNumber}", and pickup,
- * which has no table yet and so resolves nothing (no thread can be opened on
- * a pickup until the pickups glue fills this entry in).
+ * rx_case "Case {caseNumber}", lab_order "Case #{orderNumber}" and pickup
+ * "Pickup #{pickupNumber}" (visible through its party_key).
  */
 export const labRecordResolvers = {
   rx_case: resolverFor(rxQuery, rxCases, rxView),
   lab_order: resolverFor(orderQuery, labOrders, orderView),
-  pickup: { resolve: async () => null },
+  pickup: resolverFor(pickupQuery, pickups, pickupView),
 };
 
 // ── Labels: parties and authors ─────────────────────────────────────────────

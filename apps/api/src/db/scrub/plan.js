@@ -419,6 +419,19 @@ export const SCRUB_PLAN = {
     mode: "update",
     columns: { id: K, thread_id: K, author_user_id: K, author_side: K, body: phi("'[scrubbed]'"), created_at: K },
   },
+  // Pickups (piece 8, lab glue). notes and cancel_reason are sealed free text
+  // that can name a patient: replaced, never decrypted. address is the
+  // practice address snapshot, kept like doctor_profiles' address.
+  pickups: {
+    mode: "update",
+    columns: {
+      id: K, pickup_number: K, client_user_id: K, party_key: K, requested_by_user_id: K,
+      earliest_date: K, latest_date: K, time_preference: K, box_count: K,
+      notes: phi("NULL"), address: K, status: K, scheduled_date: K, assignee_user_id: K,
+      completed_at: K, completed_by_user_id: K, cancelled_at: K, cancel_reason: phi("NULL"),
+      source: K, version: K, created_at: K, updated_at: K,
+    },
+  },
   app_theme: { mode: "update", columns: { id: K, tokens: K, updated_by: K, updated_at: K } },
   products: {
     mode: "update",

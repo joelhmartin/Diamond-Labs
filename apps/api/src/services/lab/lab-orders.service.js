@@ -368,12 +368,17 @@ export function mutate(id, expectedVersion, plan, database = db) {
   return database.transaction((tx) => mutateIn(tx, id, expectedVersion, plan));
 }
 
-async function assertAssignable(tx, userId) {
+/** Whether `userId` is someone work can be assigned to (an active admin or lab user): orders, pickups. */
+export async function isAssignableStaff(tx, userId) {
   const [u] = await tx
     .select({ id: users.id })
     .from(users)
     .where(and(eq(users.id, userId), inArray(users.role, STAFF_ROLES), eq(users.status, "active")));
-  if (!u) throw new LabOrderError("INVALID", "Orders can only be assigned to lab staff.");
+  return Boolean(u);
+}
+
+async function assertAssignable(tx, userId) {
+  if (!(await isAssignableStaff(tx, userId))) throw new LabOrderError("INVALID", "Orders can only be assigned to lab staff.");
 }
 
 async function assertActiveDepartment(tx, departmentId) {
