@@ -53,6 +53,8 @@ import { LabOrderDetailPage } from "./pages/lab/LabOrderDetailPage.jsx";
 import { LabMessagesPage } from "./pages/lab/LabMessagesPage.jsx";
 import { LabThreadPage } from "./pages/lab/LabThreadPage.jsx";
 import { MessagesPage } from "./pages/doctor/MessagesPage.jsx";
+import { PickupsPage } from "./pages/doctor/PickupsPage.jsx";
+import { LabPickupsPage } from "./pages/lab/LabPickupsPage.jsx";
 import { ThreadPage } from "./pages/doctor/ThreadPage.jsx";
 
 // Marketing pages
@@ -251,6 +253,7 @@ function AppRoutes() {
           <Route path="/lab/orders/:id" element={<LabOrderDetailPage />} />
           <Route path="/lab/messages" element={<LabMessagesPage />} />
           <Route path="/lab/messages/:id" element={<LabThreadPage />} />
+          <Route path="/lab/pickups" element={<LabPickupsPage />} />
           <Route path="/admin/shipments" element={<ShipmentsPage />} />
           <Route path="/admin/rx-cases" element={<AdminRxCasesPage />} />
           <Route path="/admin/rx-cases/:id" element={<AdminRxCaseDetailPage />} />
@@ -274,6 +277,7 @@ function AppRoutes() {
           <Route path="cases" element={<MyCasesPage />} />
           <Route path="messages" element={<MessagesPage />} />
           <Route path="messages/:id" element={<ThreadPage />} />
+          <Route path="pickups" element={<PickupsPage />} />
         </Route>
       </Route>
 

@@ -21,6 +21,7 @@ import {
   Truck,
   BellRing,
   MessageSquare,
+  PackageOpen,
 } from "lucide-react";
 import { brand } from "../../config/brand.js";
 import { isStaffRole } from "@my-app/shared";
@@ -41,6 +42,7 @@ const staffItems = [
   { label: "Rx Cases",   to: ROUTES.ADMIN_RX_CASES, icon: ClipboardCheck },
   { label: "Shipments",  to: ROUTES.ADMIN_SHIPMENTS, icon: Truck },
   { label: "Messages",   to: ROUTES.LAB_MESSAGES,    icon: MessageSquare, badge: <MessagesBadge className="ml-auto" /> },
+  { label: "Pickups",    to: ROUTES.LAB_PICKUPS,     icon: PackageOpen },
 ];
 
 const adminItems = [

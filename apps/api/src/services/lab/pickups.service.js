@@ -213,3 +213,21 @@ export function scheduledPickupsBetween(database, from, to) {
     .where(and(eq(pickups.status, "scheduled"), gte(pickups.scheduledDate, from), lte(pickups.scheduledDate, to)))
     .orderBy(pickups.scheduledDate, pickups.pickupNumber);
 }
+
+/**
+ * Staff "New pickup" client picker: approved doctors whose name or practice
+ * matches `q` → [{ id, label }] (at most 20). Names only, no contact details.
+ */
+export async function searchPickupClients(q, { database = db } = {}) {
+  const text = String(q ?? "").trim();
+  const conds = [eq(users.role, "doctor"), eq(users.approvalStatus, "approved")];
+  if (text) conds.push(or(ilike(users.name, containsPattern(text)), ilike(doctorProfiles.companyName, containsPattern(text))));
+  const rows = await database
+    .select({ id: users.id, name: users.name, companyName: doctorProfiles.companyName })
+    .from(users)
+    .leftJoin(doctorProfiles, eq(doctorProfiles.userId, users.id))
+    .where(and(...conds))
+    .orderBy(users.name)
+    .limit(20);
+  return rows.map((r) => ({ id: r.id, label: r.companyName ? `${r.companyName} (${r.name})` : r.name }));
+}

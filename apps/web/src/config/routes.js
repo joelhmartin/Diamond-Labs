@@ -41,6 +41,7 @@ export const ROUTES = {
   LAB_SHIPMENT_PRINT: "/lab/shipments/:id/print",
   LAB_MESSAGES: "/lab/messages",
   LAB_THREAD: "/lab/messages/:id",
+  LAB_PICKUPS: "/lab/pickups",
 
   // Doctor
   DOCTOR_INVOICES: "/doctor/invoices",
@@ -51,6 +52,7 @@ export const ROUTES = {
   DOCTOR_CASES: "/doctor/cases",
   DOCTOR_MESSAGES: "/doctor/messages",
   DOCTOR_THREAD: "/doctor/messages/:id",
+  DOCTOR_PICKUPS: "/doctor/pickups",
   DOCTOR_NEW_CASE: "/app/cases/new",
 
   // Rx forms (faithful 1:1 JotForm ports)

@@ -51,3 +51,10 @@ test("pickup errors map to a reply: another practice's pickup is 404, a stale ve
 test("the routes are registered under /api/v1", () => {
   assert.match(index, /routes\/pickups\.routes\.js.*\{ prefix: "\/api\/v1" \}/);
 });
+
+test("the staff client picker is staff-only and read-only (no audit)", () => {
+  const body = handlerSource(source, 'fastify.get("/lab/pickup-clients",');
+  assert.match(body, /preHandler: STAFF/);
+  assert.match(body, /searchPickupClients\(/);
+  assert.doesNotMatch(body, /audit\(/);
+});
