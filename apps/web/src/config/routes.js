@@ -31,9 +31,11 @@ export const ROUTES = {
   ADMIN_JOBS: "/admin/jobs",
   ADMIN_DEPARTMENTS: "/admin/lab/departments",
   ADMIN_SHIPMENTS: "/admin/shipments",
+  ADMIN_SCHEDULING: "/admin/scheduling",
 
   // Lab (admin + lab staff)
   LAB_BOARD: "/lab",
+  LAB_CALENDAR: "/lab/calendar",
   LAB_ORDER_DETAIL: "/lab/orders/:id",
   LAB_SHIPMENT_PRINT: "/lab/shipments/:id/print",
 
