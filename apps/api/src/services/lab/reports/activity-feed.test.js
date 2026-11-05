@@ -60,6 +60,8 @@ test("activity feed merges events, shipments and payments newest first, limit 50
 
   const queries = executedSql(tx);
   assert.match(queries[0].text, /lab_order_events\.type in \('status', 'hold'\)/);
+  // One line per shipped order: a move to Shipped is dropped when the order has a shipment (its shipment line names the carrier).
+  assert.match(queries[0].text, /and not \(lab_order_events\.to_value = 'shipped' and lab_orders\.shipment_id is not null\)/);
   assert.match(queries[1].text, /shipments\.status <> 'voided'/);
   for (const { text } of queries) {
     assert.match(text, /order by .* desc limit \$\d+$/);
@@ -78,4 +80,17 @@ test("the feed report is staff, unlisted, and its columns are a time and a line"
   assert.equal(activityFeedReport.roles, undefined);
   assert.equal(activityFeedReport.unlisted, true);
   assert.deepEqual(activityFeedReport.columns.map((c) => c.type), ["datetime", "text"]);
+});
+
+test("equal times sort by kind, then text, then href, whatever the query order", async () => {
+  const t = at("2026-11-05T15:00:00Z");
+  const ev = (id, orderNumber, toStatus) => ({ id, kind: "status", fromStatus: null, toStatus, at: t, labOrderId: id, orderNumber, client: null });
+  const ship = { id: "s", carrier: "ups", at: t, labOrderId: "lo9", orderNumber: 9, client: null };
+  const pay = { id: "p", cents: "100", at: t, invoiceId: "inv", labOrderId: null, orderNumber: null, client: null };
+  const run = (events) => activityFeed(fakeTx({ executes: [events, [ship], [pay]] }), { since, limit: FEED_LIMIT, includeMoney: true });
+  const a = await run([ev("b", 2, "received"), ev("a", 1, "received")]);
+  const b = await run([ev("a", 1, "received"), ev("b", 2, "received")]);
+  assert.deepEqual(a, b);
+  assert.deepEqual(a.map((r) => r.kind), ["payment", "shipment", "status", "status"]);
+  assert.deepEqual(a.slice(2).map((r) => r.text), ["Order #1: Received", "Order #2: Received"]);
 });

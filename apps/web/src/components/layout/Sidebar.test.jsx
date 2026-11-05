@@ -19,18 +19,22 @@ function sectionLinks(title) {
   return links.filter((a) => heading.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING);
 }
 
-test("staff see Dashboard first in the Lab section, linking to the lab dashboard", () => {
+test("staff see Lab dashboard first in the Lab section, linking to the lab dashboard", () => {
   render(<MemoryRouter><Sidebar /></MemoryRouter>);
   const lab = sectionLinks("Lab");
-  assert.equal(lab[0].textContent, "Dashboard");
+  assert.equal(lab[0].textContent, "Lab dashboard");
   assert.ok(lab[0].getAttribute("href").endsWith("/lab/dashboard"));
-  assert.deepEqual(lab.map((a) => a.textContent), ["Dashboard", "Production", "Rx Cases", "Shipments", "Reports"]);
+  assert.deepEqual(lab.map((a) => a.textContent), ["Lab dashboard", "Production", "Rx Cases", "Shipments", "Reports"]);
 });
 
 test("admins see the same Lab section, then Admin", () => {
   role = "admin";
   render(<MemoryRouter><Sidebar /></MemoryRouter>);
   assert.equal(sectionLinks("Lab")[0].getAttribute("href"), "/lab/dashboard");
+  // One "Dashboard" (the account page) and one "Lab dashboard": no duplicate labels.
+  const labels = screen.getAllByRole("link").map((a) => a.textContent);
+  assert.equal(labels.filter((l) => l === "Dashboard").length, 1);
+  assert.equal(labels.filter((l) => l === "Lab dashboard").length, 1);
   assert.ok(screen.getByText("Admin"));
 });
 

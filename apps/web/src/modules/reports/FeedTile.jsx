@@ -39,7 +39,8 @@ export function FeedTile({ rows = [], columns = [], reload, intervalMs = FEED_PO
 }
 
 function FeedLine({ row, text }) {
-  const href = typeof row.href === "string" && row.href.startsWith("/") ? row.href : null;
+  // An app path only: "//host" is protocol-relative (another site), so it stays plain text.
+  const href = typeof row.href === "string" && row.href.startsWith("/") && !row.href.startsWith("//") ? row.href : null;
   if (!href) return <span className="min-w-0 text-navy/80">{text}</span>;
   return <Link to={href} className="min-w-0 text-navy/80 hover:text-brand-600 hover:underline">{text}</Link>;
 }

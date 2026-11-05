@@ -36,7 +36,7 @@ const mainItems = [
 
 const staffItems = [
   // The lab dashboards (Pulse first); `end: false` keeps it active on /lab/dashboard/:key.
-  { label: "Dashboard",  to: ROUTES.LAB_DASHBOARD_HOME, icon: LayoutDashboard, end: false },
+  { label: "Lab dashboard", to: ROUTES.LAB_DASHBOARD_HOME, icon: LayoutDashboard, end: false },
   { label: "Production", to: ROUTES.LAB_BOARD,      icon: LayoutGrid },
   { label: "Rx Cases",   to: ROUTES.ADMIN_RX_CASES, icon: ClipboardCheck },
   { label: "Shipments",  to: ROUTES.ADMIN_SHIPMENTS, icon: Truck },

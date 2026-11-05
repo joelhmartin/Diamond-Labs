@@ -8,7 +8,10 @@
  * selects a note column (lab_order_events.note, invoice_payments.note), a hold
  * reason or a payment reference.
  *
- * - status / hold: lab_order_events of type status or hold.
+ * - status / hold: lab_order_events of type status or hold. A move to Shipped
+ *   is left out when the order has a shipment: its shipment line (which names
+ *   the carrier) is that order's one shipped line. An order shipped with no
+ *   shipment record (imported history) keeps its status line.
  * - shipment: each order on a shipment (label bought or hand-off recorded; voided
  *   labels are left out), at the shipment's purchased_at.
  * - payment: invoice_payments rows with applied_cents > 0 (charges, not refunds
@@ -42,6 +45,7 @@ async function orderEvents(db, since, limit) {
     join ${labOrders} on ${labOrders.id} = ${labOrderEvents.labOrderId}
     ${clientJoin(labOrders.clientUserId)}
     where ${labOrderEvents.type} in ('status', 'hold') and ${after(labOrderEvents.at, since)}
+      and not (${labOrderEvents.to} = 'shipped' and ${labOrders.shipmentId} is not null)
     order by ${labOrderEvents.at} desc, ${labOrderEvents.id} desc limit ${limit}`);
   return raw.map((r) => {
     const hold = r.kind === "hold";
@@ -81,6 +85,10 @@ async function paymentEvents(db, since, limit) {
   }));
 }
 
+const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+/** Newest first; equal times by kind, then text, then href, so the order never depends on query order. */
+const newestFirst = (a, b) => cmp(b.at, a.at) || cmp(a.kind, b.kind) || cmp(a.text, b.text) || cmp(a.href ?? "", b.href ?? "");
+
 /**
  * `[{ at, kind: "status" | "hold" | "shipment" | "payment", text, href }]`,
  * newest first, at most `limit`, from `since` (a Date). Payments only when
@@ -89,7 +97,7 @@ async function paymentEvents(db, since, limit) {
 export async function activityFeed(db, { since, limit = FEED_LIMIT, includeMoney = false }) {
   const parts = [await orderEvents(db, since, limit), await shipmentEvents(db, since, limit)];
   if (includeMoney) parts.push(await paymentEvents(db, since, limit));
-  return parts.flat().sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)).slice(0, limit);
+  return parts.flat().sort(newestFirst).slice(0, limit);
 }
 
 /**

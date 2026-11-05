@@ -211,10 +211,15 @@ test("StatTile shows detail counts under the value when present", async () => {
 
 test("FeedTile links a row that carries an href", () => {
   const columns = [{ id: "at", label: "When", type: "datetime" }, { id: "text", label: "What", type: "text" }];
-  const rows = [{ at: "2026-11-05T15:00:00.000Z", text: "Moved to production", href: "/somewhere/12" }, { at: "2026-11-05T14:00:00.000Z", text: "No link here" }];
+  const rows = [
+    { at: "2026-11-05T15:00:00.000Z", text: "Moved to production", href: "/somewhere/12" },
+    { at: "2026-11-05T14:00:00.000Z", text: "No link here" },
+    { at: "2026-11-05T13:00:00.000Z", text: "Elsewhere", href: "//evil.example/x" },
+  ];
   render(<MemoryRouter><FeedTile rows={rows} columns={columns} /></MemoryRouter>);
   const link = screen.getByRole("link", { name: "Moved to production" });
   assert.ok(link.getAttribute("href").endsWith("/somewhere/12"));
   assert.equal(screen.getAllByRole("link").length, 1);
   assert.ok(screen.getByText("No link here"));
+  assert.ok(screen.getByText("Elsewhere"));
 });
