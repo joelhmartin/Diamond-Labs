@@ -6,16 +6,16 @@ import { createExportRegistry } from "./registry.js";
 import { csvFormat } from "./formats/csv.js";
 import { createExportsRoutes } from "./routes.js";
 
-function build({ order = [], audit = async () => {} } = {}) {
+function build({ order = [], audit = async () => {}, fetchPage, logLines } = {}) {
   const registry = createExportRegistry();
   registry.defineFormat(csvFormat);
   registry.defineSource({
     key: "sales", label: "Sales", params: [{ id: "from", label: "From", type: "date" }],
     paramsSchema: z.object({ from: z.string().optional(), to: z.string().optional() }),
     fields: [{ key: "name", label: "Name", type: "text" }],
-    async fetchPage() { return { rows: [{ name: "a" }, { name: "b" }], total: 2 }; },
+    fetchPage: fetchPage ?? (async () => ({ rows: [{ name: "a" }, { name: "b" }], total: 2 })),
   });
-  const app = Fastify();
+  const app = Fastify(logLines ? { logger: { level: "error", stream: { write: (line) => logLines.push(JSON.parse(line)) } } } : {});
   app.register(createExportsRoutes({
     registry, db: {}, audit,
     preHandler: async (request) => { order.push("pre"); request.user = { id: "admin-1" }; },
@@ -65,4 +65,23 @@ test("bad params and unsupported format are 422, unknown source 404, and nothing
   assert.equal((await app.inject({ url: "/admin/exports/sales/download.zip" })).statusCode, 422);
   assert.equal((await app.inject({ url: "/admin/exports/nope/download.csv" })).statusCode, 404);
   assert.deepEqual(audits, []);
+});
+
+test("a source failing after the headers went out is logged (no row data) and still audited", async () => {
+  const logLines = [];
+  const audits = [];
+  let calls = 0;
+  const fetchPage = async (_db, _params, { limit }) => {
+    calls += 1;
+    if (calls > 1) throw new Error("connection reset");
+    return { rows: Array.from({ length: limit }, () => ({ name: "secret-row-value" })), total: limit * 3 };
+  };
+  const app = build({ fetchPage, logLines, audit: async (a) => audits.push(a) });
+  await app.inject({ url: "/admin/exports/sales/download.csv" }).catch(() => {});
+  await new Promise((r) => setTimeout(r, 20));
+  const line = logLines.find((l) => l.msg === "export stream failed; the download is truncated");
+  assert.ok(line, "the truncation is logged");
+  assert.deepEqual([line.sourceKey, line.formatKey, line.err], ["sales", "csv", "connection reset"]);
+  assert.ok(!JSON.stringify(logLines).includes("secret-row-value"), "no row data in the log");
+  assert.equal(audits.length, 1);
 });

@@ -37,6 +37,10 @@ export function createExportsRoutes({ registry, db, preHandler, audit, pathPrefi
       async function* audited() {
         try {
           yield* run.stream;
+        } catch (err) {
+          // Headers are already sent, so the client just sees a short file: make the truncation visible.
+          request.log.error({ sourceKey, formatKey, err: String(err?.message || err) }, "export stream failed; the download is truncated");
+          throw err;
         } finally {
           try {
             await audit?.({ actorId: request.user?.id ?? null, sourceKey, formatKey, params: run.params, rowCount: await run.countPromise });
