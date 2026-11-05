@@ -11,7 +11,7 @@ export default async function contactRoutes(fastify) {
   }, async (request, reply) => {
     const body = request.body ?? {};
     // Honeypot: humans never see this field. Look successful so bots don't adapt.
-    if (body.website) return { ok: true };
+    if (body.contact_hp_check) return { ok: true };
 
     const parsed = contactMessageSchema.safeParse(body);
     if (!parsed.success) {

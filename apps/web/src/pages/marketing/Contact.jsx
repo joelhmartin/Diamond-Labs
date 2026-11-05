@@ -109,10 +109,10 @@ function ContactForm() {
   };
 
   const fields = [
-    { name: "name", label: "Full Name", type: "text", required: true },
-    { name: "practice", label: "Practice Name", type: "text" },
-    { name: "email", label: "Email Address", type: "email", required: true },
-    { name: "phone", label: "Phone Number", type: "tel" },
+    { name: "name", label: "Full Name", type: "text", required: true, maxLength: 200 },
+    { name: "practice", label: "Practice Name", type: "text", maxLength: 200 },
+    { name: "email", label: "Email Address", type: "email", required: true, maxLength: 320 },
+    { name: "phone", label: "Phone Number", type: "tel", maxLength: 50 },
   ];
 
   return (
@@ -133,6 +133,7 @@ function ContactForm() {
               type={field.type}
               name={field.name}
               required={field.required}
+              maxLength={field.maxLength}
               className="w-full pt-6 pb-2 px-4 rounded-2xl bg-surface-100 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all duration-300"
               onFocus={() =>
                 setFocused((prev) => ({ ...prev, [field.name]: true }))
@@ -190,6 +191,7 @@ function ContactForm() {
         <textarea
           name="message"
           required
+          maxLength={5000}
           rows={4}
           className="w-full pt-6 pb-2 px-4 rounded-2xl bg-surface-100 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all duration-300 resize-none"
           onFocus={() =>
@@ -207,15 +209,11 @@ function ContactForm() {
         Please don&apos;t include patient details in this form.
       </p>
 
-      {/* Honeypot: hidden from people, filled in by bots. */}
-      <input
-        type="text"
-        name="website"
-        tabIndex={-1}
-        autoComplete="off"
-        aria-hidden="true"
-        className="absolute -left-[9999px] h-px w-px opacity-0"
-      />
+      {/* Honeypot: hidden from people, filled in by bots. The name avoids anything
+          browsers autofill, or a real visitor would be silently dropped. */}
+      <div aria-hidden="true" className="sr-only pointer-events-none">
+        <input type="text" name="contact_hp_check" tabIndex={-1} autoComplete="off" />
+      </div>
 
       {formState === "error" && (
         <p role="alert" className="text-sm text-navy">

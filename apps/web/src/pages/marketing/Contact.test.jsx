@@ -13,7 +13,7 @@ function formData(entries) {
 test("posts the filled-in fields and leaves out blank optional ones", async () => {
   const fetchMock = vi.fn(async () => new Response('{"ok":true}', { status: 200 }));
   vi.stubGlobal("fetch", fetchMock);
-  await postContactMessage(formData({ name: "A Doctor", phone: "", email: "doc@example.com", message: "Hi", website: "" }));
+  await postContactMessage(formData({ name: "A Doctor", phone: "", email: "doc@example.com", message: "Hi", contact_hp_check: "" }));
   const [url, init] = fetchMock.mock.calls[0];
   assert.equal(url, "/api/v1/contact");
   assert.deepEqual(JSON.parse(init.body), { name: "A Doctor", email: "doc@example.com", message: "Hi" });
