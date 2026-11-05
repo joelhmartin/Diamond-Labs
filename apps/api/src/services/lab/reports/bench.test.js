@@ -5,7 +5,8 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { labOrders, labOrderEvents, invoices, invoiceLines, invoicePayments, shipments } from "../../../db/schema/index.js";
-import { BENCH_DATABASE, assertBenchUrl } from "../../../../scripts/reports-bench.js";
+import { BENCH_DATABASE, assertBenchUrl, benchUrl, maintenanceUrl } from "../../../../scripts/reports-bench.js";
+import { sqlText } from "../../../test/sql-text.js";
 import { SEED_PLAN, seedPlan } from "../../../../scripts/reports-bench-seed.js";
 
 test("bench refuses a database not named diamond_labs_bench", () => {
@@ -23,9 +24,29 @@ test("bench refuses a database not named diamond_labs_bench", () => {
     // Right name, but not this machine: the bench never runs against a remote server.
     "postgresql://u:p@34.45.85.116:5432/diamond_labs_bench",
     "postgresql://u:p@/diamond_labs_bench?host=/cloudsql/x:y:z",
+    // Right path, but postgres.js would take the database (or startup options) from the query string.
+    "postgresql://bif@localhost/diamond_labs_bench?database=diamond_labs",
+    "postgresql://bif@localhost/diamond_labs_bench?options=-c%20search_path%3Dother",
+    "postgresql://bif@localhost/diamond_labs_bench?sslmode=disable&db=diamond_labs",
+    "postgresql://bif@localhost/diamond_labs_bench?host=localhost",
   ]) {
     assert.throws(() => assertBenchUrl(url), /diamond_labs_bench/, `accepted ${url}`);
   }
+});
+
+test("the bench connects only through a URL rebuilt from its validated parts", () => {
+  assert.equal(benchUrl("postgresql://bif@localhost:5432/diamond_labs_bench"), "postgresql://bif@localhost:5432/diamond_labs_bench");
+  const rebuilt = new URL(benchUrl("postgres://bif:s%40cret@127.0.0.1:6543/diamond_labs_bench"));
+  assert.equal(rebuilt.search, "");
+  assert.equal(rebuilt.protocol, "postgresql:");
+  assert.equal(`${rebuilt.username}:${rebuilt.password}@${rebuilt.host}${rebuilt.pathname}`, "bif:s%40cret@127.0.0.1:6543/diamond_labs_bench");
+  // sslmode is the one parameter kept.
+  assert.equal(new URL(benchUrl("postgresql://bif@localhost/diamond_labs_bench?sslmode=disable")).search, "?sslmode=disable");
+  // The maintenance URL (DROP / CREATE) is rebuilt the same way, pointing at postgres.
+  const admin = new URL(maintenanceUrl(benchUrl("postgresql://bif@localhost:5432/diamond_labs_bench")));
+  assert.equal(admin.pathname, "/postgres");
+  assert.equal(admin.search, "");
+  assert.equal(admin.host, "localhost:5432");
 });
 
 test("seed plan sizes match the stated counts", () => {
@@ -71,29 +92,30 @@ test("seed plan is deterministic, spread over about three years, and carries no 
   assert.ok(has(a.rxCases, (r) => r.recordsMethod) && a.rxCaseFiles.some((f) => f.kind === "scan"));
 });
 
+// [table, name, columns, partial predicate or null]
 const REPORT_INDEXES = [
-  [labOrders, "lab_orders_received_idx", ["received_at"], false],
-  [labOrders, "lab_orders_shipped_idx", ["shipped_at"], true],
-  [labOrders, "lab_orders_client_received_idx", ["client_user_id", "received_at"], false],
-  [labOrders, "lab_orders_open_due_idx", ["due_date"], true],
-  [labOrders, "lab_orders_department_idx", ["department_id"], true],
-  [labOrders, "lab_orders_assignee_idx", ["assignee_user_id"], true],
-  [labOrderEvents, "lab_order_events_at_idx", ["at"], false],
-  [labOrderEvents, "lab_order_events_type_at_idx", ["type", "at"], false],
-  [invoices, "invoices_status_issued_idx", ["status", "issued_at"], false],
-  [invoices, "invoices_client_issued_idx", ["client_user_id", "issued_at"], false],
-  [invoicePayments, "invoice_payments_paid_on_idx", ["paid_on"], false],
-  [invoicePayments, "invoice_payments_created_at_idx", ["created_at"], false],
-  [invoiceLines, "invoice_lines_variant_idx", ["variant_id"], false],
-  [shipments, "shipments_shipped_idx", ["shipped_at"], false],
+  [labOrders, "lab_orders_received_idx", ["received_at"], null],
+  [labOrders, "lab_orders_shipped_idx", ["shipped_at"], "shipped_at is not null"],
+  [labOrders, "lab_orders_client_received_idx", ["client_user_id", "received_at"], null],
+  [labOrders, "lab_orders_open_due_idx", ["due_date"], "status not in ('shipped', 'cancelled')"],
+  [labOrders, "lab_orders_department_idx", ["department_id"], "department_id is not null"],
+  [labOrders, "lab_orders_assignee_idx", ["assignee_user_id"], "assignee_user_id is not null"],
+  [labOrderEvents, "lab_order_events_at_idx", ["at"], null],
+  [labOrderEvents, "lab_order_events_type_at_idx", ["type", "at"], null],
+  [invoices, "invoices_status_issued_idx", ["status", "issued_at"], null],
+  [invoices, "invoices_client_issued_idx", ["client_user_id", "issued_at"], null],
+  [invoicePayments, "invoice_payments_paid_on_idx", ["paid_on"], null],
+  [invoicePayments, "invoice_payments_created_at_idx", ["created_at"], null],
+  [invoiceLines, "invoice_lines_variant_idx", ["variant_id"], null],
+  [shipments, "shipments_shipped_idx", ["shipped_at"], null],
 ];
 
 test("schema declares each listed index", () => {
-  for (const [table, name, columns, partial] of REPORT_INDEXES) {
+  for (const [table, name, columns, predicate] of REPORT_INDEXES) {
     const idx = getTableConfig(table).indexes.find((i) => i.config.name === name);
     assert.ok(idx, `missing index ${name}`);
     assert.deepEqual(idx.config.columns.map((c) => c.name), columns, name);
-    assert.equal(Boolean(idx.config.where), partial, `${name} partial`);
+    assert.equal(idx.config.where ? sqlText(idx.config.where).trim() : null, predicate, `${name} predicate`);
     assert.equal(Boolean(idx.config.unique), false, `${name} unique`);
   }
 });

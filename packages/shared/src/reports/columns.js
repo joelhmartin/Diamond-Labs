@@ -16,13 +16,23 @@ function plainMoney(value) {
 const isoDay = (parts) => `${parts.year}-${parts.month}-${parts.day}`;
 const PLAIN_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+// One formatter per zone (the options never vary): building an Intl.DateTimeFormat
+// costs far more than using one, and a CSV export formats up to 100k cells.
+const ZONED_FORMATS = new Map();
+
+function zonedFormat(timeZone) {
+  let format = ZONED_FORMATS.get(timeZone);
+  if (!format) {
+    format = new Intl.DateTimeFormat("en-CA", {
+      timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    });
+    ZONED_FORMATS.set(timeZone, format);
+  }
+  return format;
+}
+
 function zoned(column, d) {
-  return Object.fromEntries(
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: column.timeZone || "UTC", year: "numeric", month: "2-digit", day: "2-digit",
-      hour: "2-digit", minute: "2-digit", hourCycle: "h23",
-    }).formatToParts(d).map((x) => [x.type, x.value]),
-  );
+  return Object.fromEntries(zonedFormat(column.timeZone || "UTC").formatToParts(d).map((x) => [x.type, x.value]));
 }
 
 /** Calendar day. A plain "YYYY-MM-DD" passes through; a Date or timestamp is read in column.timeZone (default UTC). */
