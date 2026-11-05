@@ -25,3 +25,4 @@ export { priceLists, priceListItems, clientPriceLists } from "./price-lists.js";
 export { labDepartments, labOrders, labOrderLines, labOrderEvents } from "./lab-orders.js";
 export { invoices, invoiceLines } from "./invoices.js";
 export { shipments, shipmentEvents } from "./shipments.js";
+export { statementSends, STATEMENT_SEND_STATUSES } from "./statement-sends.js";

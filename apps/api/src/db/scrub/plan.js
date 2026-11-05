@@ -289,6 +289,14 @@ export const SCRUB_PLAN = {
     mode: "update",
     columns: { id: K, client_user_id: K, price_list_id: K, position: K, assigned_at: K, assigned_by: K },
   },
+  // Statement notice ledger (piece 10): ids, a month, a closing balance and a status only.
+  statement_sends: {
+    mode: "update",
+    columns: {
+      id: K, client_user_id: K, month: K, closing_cents: K, status: K,
+      sent_at: K, sent_by: K, run_id: K, created_at: K, updated_at: K,
+    },
+  },
   // Lab orders (own-the-lab piece 2). Staff-typed free text (hold reason, lab notes,
   // event notes) can name a patient and is encrypted at rest in prod: replaced, never decrypted.
   lab_departments: { mode: "update", columns: { id: K, name: K, position: K, active: K, created_at: K, updated_at: K } },

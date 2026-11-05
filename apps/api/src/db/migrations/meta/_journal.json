@@ -246,6 +246,13 @@
       "when": 1793904876234,
       "tag": "0034_flawless_penance",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793905900327,
+      "tag": "0035_lively_elektra",
+      "breakpoints": true
     }
   ]
 }
