@@ -50,6 +50,10 @@ import { RequireAdmin } from "./guards/RequireAdmin.jsx";
 import { RequireStaff } from "./guards/RequireStaff.jsx";
 import { LabBoardPage } from "./pages/lab/LabBoardPage.jsx";
 import { LabOrderDetailPage } from "./pages/lab/LabOrderDetailPage.jsx";
+import { LabMessagesPage } from "./pages/lab/LabMessagesPage.jsx";
+import { LabThreadPage } from "./pages/lab/LabThreadPage.jsx";
+import { MessagesPage } from "./pages/doctor/MessagesPage.jsx";
+import { ThreadPage } from "./pages/doctor/ThreadPage.jsx";
 
 // Marketing pages
 import { HomePage } from "./pages/marketing/Home.jsx";
@@ -245,6 +249,8 @@ function AppRoutes() {
         <Route element={<RequireStaff />}>
           <Route path="/lab" element={<LabBoardPage />} />
           <Route path="/lab/orders/:id" element={<LabOrderDetailPage />} />
+          <Route path="/lab/messages" element={<LabMessagesPage />} />
+          <Route path="/lab/messages/:id" element={<LabThreadPage />} />
           <Route path="/admin/shipments" element={<ShipmentsPage />} />
           <Route path="/admin/rx-cases" element={<AdminRxCasesPage />} />
           <Route path="/admin/rx-cases/:id" element={<AdminRxCaseDetailPage />} />
@@ -266,6 +272,8 @@ function AppRoutes() {
           <Route path="autopay" element={<AutoPayPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="cases" element={<MyCasesPage />} />
+          <Route path="messages" element={<MessagesPage />} />
+          <Route path="messages/:id" element={<ThreadPage />} />
         </Route>
       </Route>
 

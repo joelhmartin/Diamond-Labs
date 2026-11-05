@@ -39,6 +39,8 @@ export const ROUTES = {
   LAB_BOARD: "/lab",
   LAB_ORDER_DETAIL: "/lab/orders/:id",
   LAB_SHIPMENT_PRINT: "/lab/shipments/:id/print",
+  LAB_MESSAGES: "/lab/messages",
+  LAB_THREAD: "/lab/messages/:id",
 
   // Doctor
   DOCTOR_INVOICES: "/doctor/invoices",
@@ -47,6 +49,8 @@ export const ROUTES = {
   DOCTOR_SAVED_CARDS: "/doctor/saved-cards",
   DOCTOR_AUTOPAY: "/doctor/autopay",
   DOCTOR_CASES: "/doctor/cases",
+  DOCTOR_MESSAGES: "/doctor/messages",
+  DOCTOR_THREAD: "/doctor/messages/:id",
   DOCTOR_NEW_CASE: "/app/cases/new",
 
   // Rx forms (faithful 1:1 JotForm ports)
@@ -61,6 +65,8 @@ export const ROUTES = {
 export const labOrderPath = (id) => `/lab/orders/${id}`;
 export const doctorInvoicePath = (id) => `/doctor/invoices/${id}`;
 export const adminInvoicePath = (id) => `/admin/invoices/${id}`;
+export const labThreadPath = (id) => `/lab/messages/${id}`;
+export const doctorThreadPath = (id) => `/doctor/messages/${id}`;
 export const shipmentPrintPath = (id) => `/lab/shipments/${id}/print`;
 
 /**

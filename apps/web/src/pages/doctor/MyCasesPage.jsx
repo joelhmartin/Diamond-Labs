@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { RotateCcw } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { MessageSquare, RotateCcw } from "lucide-react";
 import { formatLabDate, formatUsDate } from "@my-app/shared";
 import api from "../../config/api.js";
-import { ROUTES } from "../../config/routes.js";
+import { ROUTES, doctorThreadPath } from "../../config/routes.js";
 import { DataTable } from "../../components/ui/data-table/index.js";
+import { useToast } from "../../components/ui/Toast.jsx";
+import { errorText } from "../../lib/requests.js";
+import { NewThreadModal, fetchRecordThreads } from "../../modules/messaging/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
 
 const TONES = {
@@ -58,6 +61,28 @@ export function MyCasesPage() {
   const [cases, setCases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [messaging, setMessaging] = useState(null); // the case a new thread is being started on
+  const navigate = useNavigate();
+  const { addToast } = useToast();
+
+  // Opens the case's existing conversation, or starts one.
+  const messageTheLab = async (c) => {
+    try {
+      const threads = await fetchRecordThreads({ recordType: "rx_case", recordId: c.id, side: "party" });
+      if (threads.length) navigate(doctorThreadPath(threads[0].id));
+      else setMessaging(c);
+    } catch (err) {
+      addToast({ message: errorText(err), type: "error" });
+    }
+  };
+  const columns = [...COLUMNS, {
+    id: "message", header: "", export: false, align: "right",
+    cell: (c) => (
+      <button type="button" onClick={() => messageTheLab(c)} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50">
+        <MessageSquare size={12} /> Message the lab
+      </button>
+    ),
+  }];
 
   const load = async () => {
     try {
@@ -88,11 +113,18 @@ export function MyCasesPage() {
       </div>
       <DataTable
         table={table}
-        columns={COLUMNS}
+        columns={columns}
         searchPlaceholder="Case #, device, or patient"
         itemLabel="cases"
         exportFileName="my-cases.csv"
         emptyText="No cases yet. Submitted prescriptions appear here with their production status."
+      />
+      <NewThreadModal
+        open={Boolean(messaging)}
+        onClose={() => setMessaging(null)}
+        title={messaging ? `Message the lab about ${messaging.caseNumber}` : "Message the lab"}
+        record={messaging ? { recordType: "rx_case", recordId: messaging.id } : null}
+        onCreated={(thread) => { setMessaging(null); navigate(doctorThreadPath(thread.id)); }}
       />
     </div>
   );

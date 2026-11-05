@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Loader2, AlertCircle, Printer, FileText, RotateCcw, Zap, PauseCircle, Clock } from "lucide-react";
-import { LAB_STATUS_LABELS, LAB_ORDER_SOURCE_LABELS, allowedNextStatuses, canRemake, reasonRequiredFor, groupRxAnswers, getRxForm } from "@my-app/shared";
+import { LAB_TIMEZONE, LAB_STATUS_LABELS, LAB_ORDER_SOURCE_LABELS, allowedNextStatuses, canRemake, reasonRequiredFor, groupRxAnswers, getRxForm } from "@my-app/shared";
 import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { Modal } from "../../components/ui/Modal.jsx";
-import { ROUTES, labOrderPath } from "../../config/routes.js";
+import { ROUTES, labOrderPath, labThreadPath } from "../../config/routes.js";
+import { RecordThreads } from "../../modules/messaging/index.js";
 import { describeEvent } from "../../lib/lab-board.js";
 import { INPUT } from "../../components/lab/form-styles.js";
 import { LegacyOrderPanel } from "../../components/lab/LegacyOrderPanel.jsx";
@@ -359,6 +360,17 @@ export function LabOrderDetailPage() {
             </Panel>
           )}
         </div>
+      </div>
+
+      {/* An order released from an Rx case shares that case's conversation, so both sides land in one thread. */}
+      <div className="mt-6">
+        <RecordThreads
+          recordType={order.source === "rx_case" ? "rx_case" : "lab_order"}
+          recordId={order.source === "rx_case" ? order.sourceId : order.id}
+          side="host"
+          threadPath={labThreadPath}
+          timeZone={LAB_TIMEZONE}
+        />
       </div>
 
       <Modal open={!!reasonFor} onClose={() => setReasonFor(null)} title={reasonFor?.title}>
