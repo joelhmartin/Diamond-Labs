@@ -1,4 +1,4 @@
-import { test } from "vitest";
+import { test, vi, afterEach } from "vitest";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -13,7 +13,7 @@ const { fakeTx, fakeDb } = await import("../../test/fake-tx.js");
 test("the service exposes what the routes, release and checkout call", () => {
   for (const name of [
     "allocateOrderNumber", "releaseRxCase", "createShopLabOrder", "listLabOrders", "getLabOrderDetail",
-    "labOrdersForCases", "changeStatus", "changeField", "remakeOrder", "listAssignableStaff", "mutateIn",
+    "labOrdersForCases", "changeStatus", "changeField", "remakeOrder", "listAssignableStaff", "mutateIn", "changeWorkflow",
   ]) assert.equal(typeof mod[name], "function", name);
 });
 
@@ -229,4 +229,130 @@ test("the doctor view's lab orders carry the current shipment's public facts onl
   const body = source.slice(source.indexOf("export async function labOrdersForCases"), source.indexOf("export async function mutateIn"));
   assert.match(body, /leftJoin\(shipments, eq\(shipments\.id, labOrders\.shipmentId\)\)/);
   assert.doesNotMatch(body, /labelData|shipTo|chargeCents|trackingError/);
+});
+
+// ── Scheduling (workflow plans) ────────────────────────────────────────────
+
+const START = new Date("2026-11-02T15:00:00Z"); // Monday, 9am in Chicago
+const CAL_ROW = { key: "default", timezone: "America/Chicago", leadDays: 13, closedWeekdays: [0, 6], capacityBasis: "none", capacityByWeekday: {} };
+const wf = (key, totalDays) => ({ id: `w-${key}`, key, name: key, totalDays, rushWorkflowKey: null, isDefault: false, active: true, position: 0 });
+const stages = (w) => [
+  { workflowId: w.id, position: 0, key: "check-in", label: "Check in", milestone: "received", dayOffset: 0 },
+  { workflowId: w.id, position: 1, key: "ship", label: "Ship", milestone: "shipped", dayOffset: w.totalDays },
+];
+const planRow = (over = {}) => ({
+  recordType: "lab_order", recordId: "lo-1", workflowKey: "10d-printed", workflowName: "10-day Printed",
+  startDate: "2026-11-02", dueDate: "2026-11-16", direction: "forward", stages: [], ...over,
+});
+const inserts = (tx) => tx.log.filter((l) => l.op === "insert").map((l) => l.values);
+const planInsert = (tx) => inserts(tx).find((v) => v && !Array.isArray(v) && v.recordType === "lab_order");
+
+afterEach(() => { vi.useRealTimers(); });
+
+test("release saves a workflow plan in the same transaction", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(START);
+  const w10 = wf("10d-printed", 10);
+  const tx = fakeTx({
+    updates: [[{ id: "c1" }]],
+    selects: [
+      [{ status: "confirmed", noteOnly: false, seazonaCode: "2608", name: "DDSO Nylon" }], // lines, re-read after the claim
+      [{ id: "v1", code: "2608" }], // variant ids for the codes
+      [{ max: 100050 }], // order number
+      [CAL_ROW], [], // calendar + holidays
+      [{ familyId: "f1" }], // the variants' families
+      [w10], stages(w10), // active templates
+      [{ subjectType: "variant", subjectId: "v1", workflowKey: "10d-printed" }],
+      [w10], stages(w10), // planFor
+    ],
+  });
+  const out = await mod.releaseRxCase(tx, { caseRow: { id: "c1", userId: "u1", status: "in_review", dueDate: null, formData: {} }, byUserId: "u1" });
+  const all = inserts(tx);
+  const order = all[0];
+  assert.equal(order.id, out.labOrder.id);
+  assert.equal(order.dueDate, "2026-11-16", "no requested date: 10 business days from release");
+  const plan = planInsert(tx);
+  assert.equal(plan.recordId, out.labOrder.id);
+  assert.equal(plan.workflowKey, "10d-printed");
+  assert.equal(plan.dueDate, "2026-11-16");
+  assert.equal(plan.direction, "forward");
+  assert.ok(all.indexOf(plan) > 0, "the plan is written after the order, inside the release transaction");
+});
+
+test("remake plans from the original's workflow with no requested date", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(START);
+  const w7 = wf("7d-1-device", 7);
+  const original = {
+    id: "lo-1", orderNumber: 100245, status: "shipped", source: "rx_case", sourceId: "case-1", clientUserId: "doc-1",
+    version: 3, holdReason: null, labNotes: null, dueDate: "2026-10-01",
+  };
+  const tx = fakeTx({
+    updates: [[{ id: "lo-1" }]],
+    selects: [
+      [original],
+      [{ id: "l1", labOrderId: "lo-1", position: 0, variantId: "v1", code: "2608", name: "DDSO Nylon", arch: null, qty: 1, noteOnly: false, sourceLabel: null }],
+      [{ max: 100300 }],
+      [planRow({ workflowKey: "7d-1-device", direction: "reverse" })], // the original's saved plan
+      [CAL_ROW], [],
+      [w7], stages(w7),
+    ],
+  });
+  const out = await mod.remakeOrder("lo-1", { reason: "Cracked", expectedVersion: 3, byUserId: "u1" }, fakeDb(tx));
+  const order = inserts(tx)[0];
+  assert.equal(order.isRemake, true);
+  assert.equal(order.dueDate, "2026-11-11", "7 business days from now, forward (the original's date is not reused)");
+  const plan = planInsert(tx);
+  assert.equal(plan.recordId, out.labOrder.id);
+  assert.equal(plan.workflowKey, "7d-1-device");
+  assert.equal(plan.direction, "forward");
+  assert.equal(plan.startDate, "2026-11-02");
+});
+
+const openRow = {
+  ...baseRow, status: "in_production", heldFrom: null, dueDate: "2026-11-16", receivedAt: START, orderNumber: 100001,
+};
+
+test("changeWorkflow replans from receivedAt, patches the due date, logs a workflow event and saves the plan", async () => {
+  const w7 = wf("7d-1-device", 7);
+  const tx = fakeTx({
+    selects: [[openRow], [planRow()], [CAL_ROW], [], [w7], stages(w7)],
+    updates: [[{ ...openRow, version: 4, dueDate: "2026-11-11" }]],
+  });
+  const out = await mod.changeWorkflow("lo-1", { workflowKey: "7d-1-device", keepDueDate: false, expectedVersion: 3, byUserId: "u1" }, fakeDb(tx));
+  assert.equal(out.changed, true);
+  const set = tx.log.find((l) => l.op === "set").values;
+  assert.equal(set.dueDate, "2026-11-11");
+  assert.equal(set.version, 4);
+  const event = inserts(tx).find((v) => v.type === "workflow");
+  assert.deepEqual([event.from, event.to, event.byUserId], ["10d-printed", "7d-1-device", "u1"]);
+  const plan = planInsert(tx);
+  assert.equal(plan.recordId, "lo-1");
+  assert.equal(plan.workflowKey, "7d-1-device");
+  assert.equal(plan.startDate, "2026-11-02");
+});
+
+test("changeWorkflow with keepDueDate plans in reverse from the current due date", async () => {
+  const w7 = wf("7d-1-device", 7);
+  const tx = fakeTx({
+    selects: [[openRow], [], [CAL_ROW], [], [w7], stages(w7)], // an order with no saved plan yet
+    updates: [[{ ...openRow, version: 4 }]],
+  });
+  await mod.changeWorkflow("lo-1", { workflowKey: "7d-1-device", keepDueDate: true, expectedVersion: 3, byUserId: "u1" }, fakeDb(tx));
+  assert.equal(tx.log.find((l) => l.op === "set").values.dueDate, "2026-11-16");
+  assert.equal(inserts(tx).find((v) => v.type === "workflow").from, null);
+  const plan = planInsert(tx);
+  assert.equal(plan.direction, "reverse");
+  assert.equal(plan.dueDate, "2026-11-16");
+});
+
+test("changeWorkflow refuses a stale version and a terminal order before any write", async () => {
+  const stale = fakeTx({ selects: [[openRow]] });
+  await assert.rejects(mod.changeWorkflow("lo-1", { workflowKey: "7d-1-device", expectedVersion: 2 }, fakeDb(stale)), isStale);
+  const shipped = fakeTx({ selects: [[{ ...openRow, status: "shipped" }]] });
+  await assert.rejects(
+    mod.changeWorkflow("lo-1", { workflowKey: "7d-1-device", expectedVersion: 3 }, fakeDb(shipped)),
+    (e) => e instanceof LabOrderError && e.code === "INVALID",
+  );
+  for (const tx of [stale, shipped]) assert.equal(tx.log.filter((l) => l.op === "update" || l.op === "insert").length, 0);
 });

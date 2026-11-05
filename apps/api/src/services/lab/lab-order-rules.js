@@ -55,6 +55,11 @@ export function rushFromCase(caseRow = {}) {
   return { rush: true, rushTier: tiers.length ? tiers.join(" / ").slice(0, 40) : null };
 }
 
+/** The doctor's "Due Date Requested": the case column (retired wizard) wins over the form answer; null unless a real date. */
+export function requestedDueDateOf(caseRow = {}) {
+  return parseDueDate(caseRow.dueDate) ?? parseDueDate(caseRow.formData?.dueDate);
+}
+
 function newOrder({ labOrderId, orderNumber, source, sourceId, clientUserId, now }) {
   return {
     id: labOrderId, orderNumber, source, sourceId, clientUserId: clientUserId ?? null,
@@ -73,13 +78,17 @@ function newOrder({ labOrderId, orderNumber, source, sourceId, clientUserId, now
  * release a partial job. `variantIdByCode` maps a lab code to its catalog
  * variant; a code with no variant is kept (the code is what the bench reads)
  * and reported in `unknownCodes` for invoicing (piece 3) to catch.
+ * `dueDate` is the scheduled date (lab-scheduling.js defaultDueAt); without
+ * one it is the doctor's requested date, else null.
  */
-export function planRxRelease({ caseRow, lines, variantIdByCode = new Map(), orderNumber, labOrderId, byUserId = null, now }) {
+export function planRxRelease({
+  caseRow, lines, variantIdByCode = new Map(), orderNumber, labOrderId, byUserId = null, now, dueDate = requestedDueDateOf(caseRow),
+}) {
   const gate = canRelease(lines);
   if (!gate.ok) throw new LabOrderError("RELEASE_BLOCKED", gate.reason, { blocking: gate.blocking ?? [] });
   const labOrder = {
     ...newOrder({ labOrderId, orderNumber, source: "rx_case", sourceId: caseRow.id, clientUserId: caseRow.userId, now }),
-    dueDate: parseDueDate(caseRow.dueDate) ?? parseDueDate(caseRow.formData?.dueDate),
+    dueDate,
     ...rushFromCase(caseRow),
   };
   const unknownCodes = [];
@@ -119,7 +128,7 @@ export function planShopLabOrder({ orderId, clientUserId = null, quoteLines, ord
  * reason is required — "why was this remade" is what the lab and invoicing
  * (piece 3) both ask. Whether it is charged is piece 3's concern.
  */
-export function planRemake({ original, originalLines, reason, orderNumber, labOrderId, byUserId = null, now }) {
+export function planRemake({ original, originalLines, reason, orderNumber, labOrderId, byUserId = null, now, dueDate = null }) {
   if (original.source === "legacy") throw new LabOrderError("INVALID", "Seazona orders can't be remade here — start a new Rx case for the remake.");
   if (!canRemake(original)) throw new LabOrderError("INVALID", "Only a shipped order can be remade.");
   const why = typeof reason === "string" ? reason.trim() : "";
@@ -128,6 +137,7 @@ export function planRemake({ original, originalLines, reason, orderNumber, labOr
     ...newOrder({ labOrderId, orderNumber, source: original.source, sourceId: original.sourceId, clientUserId: original.clientUserId, now }),
     isRemake: true,
     remakeOfOrderId: original.id,
+    dueDate,
   };
   const lines = originalLines.map((l, position) => ({
     labOrderId, position, variantId: l.variantId ?? null, code: l.code ?? null, name: l.name,
@@ -212,6 +222,27 @@ export function planFieldChange(order, field, rawValue, { byUserId = null, now }
     ? { labOrderId: order.id, type: "note", from: null, to: null, byUserId, note: "Lab notes updated", at: now }
     : { labOrderId: order.id, type: spec.event, from: before, to: value, byUserId, note: null, at: now };
   return { patch, event };
+}
+
+// ── Scheduling ─────────────────────────────────────────────────────────────
+
+/** A shipped or cancelled order's schedule is history: it can't be replanned. */
+export function assertSchedulable(order) {
+  if (isTerminalLabStatus(order.status)) {
+    throw new LabOrderError("INVALID", `Order #${order.orderNumber} is ${label(order.status).toLowerCase()} — its workflow can't change.`);
+  }
+}
+
+/**
+ * A workflow switch → the row patch (the new plan's due date) and a
+ * `workflow` event naming the old and new keys. The caller saves the plan.
+ */
+export function planWorkflowChange(order, { fromKey = null, plan, byUserId = null, now }) {
+  assertSchedulable(order);
+  return {
+    patch: { dueDate: plan.dueAt, version: order.version + 1, updatedAt: now },
+    event: { labOrderId: order.id, type: "workflow", from: fromKey, to: plan.workflowKey, byUserId, note: null, at: now },
+  };
 }
 
 // ── Board cards ────────────────────────────────────────────────────────────

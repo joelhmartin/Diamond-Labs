@@ -93,6 +93,7 @@ export function describeEvent(e, { staffById = {}, departmentsById = {} } = {}) 
     case "department": return e.to ? `${who}: moved to ${departmentsById[e.to] ?? "a removed department"}` : `${who}: removed from its department`;
     case "due": return e.to ? `${who}: due date set to ${formatUsDate(e.to)}` : `${who}: due date cleared`;
     case "note": return `${who}: ${e.note ?? "note"}`;
+    case "workflow": return e.from ? `${who}: workflow changed from ${e.from} to ${e.to}` : `${who}: workflow set to ${e.to}`;
     case "shipment": return `${who}: ${e.note ?? (e.to ? "shipping label bought" : "shipping label voided")}`;
     default: return `${who}: ${e.type}`;
   }

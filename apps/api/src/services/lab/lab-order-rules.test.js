@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   LabOrderError, summariseLabLines, parseDueDate, rushFromCase, planRxRelease, planShopLabOrder, planRemake,
   assertFresh, planStatusChange, planFieldChange, initialsFor, presentBoardCard, planShipmentLink, planShipmentUnlink,
+  planWorkflowChange, requestedDueDateOf,
 } from "./lab-order-rules.js";
 
 const now = new Date("2026-10-07T15:00:00Z");
@@ -90,6 +91,15 @@ test("a case's own dueDate column wins over the form answer", () => {
   assert.equal(plan.labOrder.dueDate, "2026-11-01");
   const junk = planRxRelease({ caseRow: { ...caseRow, dueDate: "next week", formData: {} }, lines, orderNumber: 1, labOrderId: "x", now });
   assert.equal(junk.labOrder.dueDate, null);
+});
+
+test("planRxRelease uses the dueDate it is given", () => {
+  const given = planRxRelease({ caseRow, lines, orderNumber: 1, labOrderId: "x", now, dueDate: "2026-11-16" });
+  assert.equal(given.labOrder.dueDate, "2026-11-16", "the scheduled date, not the form's");
+  const cleared = planRxRelease({ caseRow, lines, orderNumber: 1, labOrderId: "x", now, dueDate: null });
+  assert.equal(cleared.labOrder.dueDate, null);
+  assert.equal(requestedDueDateOf(caseRow), "2026-10-21", "the doctor's requested date the caller schedules from");
+  assert.equal(requestedDueDateOf({ dueDate: "junk", formData: { dueDate: "2026-02-30" } }), null);
 });
 
 // Review Focus 5.
@@ -328,4 +338,25 @@ test("a legacy order's board card says where it came from and never shows a pati
   assert.equal(card.reference, "Seazona");
   assert.equal(card.practice, "Dr. Example");
   assert.ok(!JSON.stringify(card).includes("Test Patient"));
+});
+
+// ── Scheduling ─────────────────────────────────────────────────────────────
+
+const newPlan = { workflowKey: "7d-1-device", workflowName: "7-day 1-device", startDate: "2026-10-07", dueAt: "2026-10-16", direction: "forward", stages: [] };
+
+test("planWorkflowChange refuses a shipped order", () => {
+  for (const status of ["shipped", "cancelled"]) {
+    assert.throws(() => planWorkflowChange({ ...order, status }, { fromKey: "a", plan: newPlan, now }), isCode("INVALID"), status);
+  }
+});
+
+test("planWorkflowChange moves the due date to the plan's and logs the workflow switch", () => {
+  const { patch, event } = planWorkflowChange(order, { fromKey: "10d-printed", plan: newPlan, byUserId: "staff-1", now });
+  assert.deepEqual(patch, { dueDate: "2026-10-16", version: 4, updatedAt: now });
+  assert.deepEqual(event, { labOrderId: "lo-1", type: "workflow", from: "10d-printed", to: "7d-1-device", byUserId: "staff-1", note: null, at: now });
+});
+
+test("a remake takes the due date it is given", () => {
+  const plan = planRemake({ original: shipped, originalLines: shippedLines, reason: "Cracked", orderNumber: 2, labOrderId: "lo-9", now, dueDate: "2026-10-26" });
+  assert.equal(plan.labOrder.dueDate, "2026-10-26");
 });

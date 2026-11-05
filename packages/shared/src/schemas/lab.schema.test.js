@@ -2,8 +2,22 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   labStatusChangeSchema, labFieldChangeSchema, labRemakeSchema, labOrderListQuerySchema,
-  labDepartmentUpdateSchema, rxReleaseSchema, userRoleChangeSchema,
+  labDepartmentUpdateSchema, rxReleaseSchema, userRoleChangeSchema, labWorkflowChangeSchema, labSchedulePreviewQuerySchema,
 } from "./lab.schema.js";
+
+test("a workflow change names a workflow key and the version the client saw", () => {
+  assert.deepEqual(labWorkflowChangeSchema.parse({ workflowKey: "7d-1-device", expectedVersion: 2 }), { workflowKey: "7d-1-device", keepDueDate: false, expectedVersion: 2 });
+  assert.equal(labWorkflowChangeSchema.safeParse({ workflowKey: "7d-1-device" }).success, false);
+  assert.equal(labWorkflowChangeSchema.safeParse({ workflowKey: null, expectedVersion: 2 }).success, false);
+  assert.equal(labWorkflowChangeSchema.safeParse({ workflowKey: "Not A Key", expectedVersion: 2 }).success, false);
+});
+
+test("the schedule preview reads variant ids as a list or a comma string", () => {
+  assert.deepEqual(labSchedulePreviewQuerySchema.parse({}), { variantIds: [], rush: false, workflowKey: null, requestedDueDate: null });
+  assert.deepEqual(labSchedulePreviewQuerySchema.parse({ variantIds: "v1, v2,v1", rush: "true" }).variantIds, ["v1", "v2"]);
+  assert.deepEqual(labSchedulePreviewQuerySchema.parse({ variantIds: ["v1", "v3"] }).variantIds, ["v1", "v3"]);
+  assert.equal(labSchedulePreviewQuerySchema.safeParse({ requestedDueDate: "11/20/2026" }).success, false);
+});
 
 test("a status change needs a known status and the version the client saw", () => {
   assert.ok(labStatusChangeSchema.safeParse({ to: "in_production", expectedVersion: 3 }).success);

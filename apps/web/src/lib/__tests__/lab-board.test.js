@@ -38,6 +38,8 @@ test("timeline rows read as sentences, naming people and rooms", () => {
   assert.equal(describeEvent({ type: "due", to: "2026-10-21", byName: "Ana" }, ctx), "Ana: due date set to 10/21/2026");
   assert.equal(describeEvent({ type: "due", to: null, byName: "Ana" }, ctx), "Ana: due date cleared");
   assert.equal(describeEvent({ type: "note", note: "Lab notes updated", byName: "Ana" }, ctx), "Ana: Lab notes updated");
+  assert.equal(describeEvent({ type: "workflow", from: "10d-printed", to: "7d-1-device", byName: "Ana" }, ctx), "Ana: workflow changed from 10d-printed to 7d-1-device");
+  assert.equal(describeEvent({ type: "workflow", from: null, to: "7d-1-device", byName: "Ana" }, ctx), "Ana: workflow set to 7d-1-device");
 });
 
 test("a labelled card offers only → Shipped (anything else would strand its label)", () => {
