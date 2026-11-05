@@ -60,6 +60,13 @@ export function firstString(obj, keys) {
   return null;
 }
 
+/** Records in one fixed order (seazonaId, code-unit order): readRecords and payments-match both use it. */
+export const bySeazonaId = (a, b) => {
+  const x = String(a.seazonaId);
+  const y = String(b.seazonaId);
+  return x < y ? -1 : x > y ? 1 : 0;
+};
+
 export const INVOICE_NUMBER_FIELDS = ["invoiceNumber", "number"];
 // Seazona orders carry no number of their own: an order is known by its
 // invoice's number (seen live 2026-10-26: 20,696 orders, every invoiceNumber

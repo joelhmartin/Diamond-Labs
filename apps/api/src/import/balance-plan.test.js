@@ -46,6 +46,28 @@ test("per-invoice: a re-run with the same export writes nothing new", () => {
   assert.equal(again.alreadySettled, 2);
 });
 
+test("per-invoice from a derived file: an invoice the file does not list stays OPEN (missingMeansOpen), never paid", () => {
+  const plan = planInvoiceSettlements({ legacyInvoices: legacy, exportRows: invoiceRows, existingTransactionIds: new Set(), missingMeansOpen: true });
+  assert.deepEqual(plan.absentFromDerived, [11121]);
+  assert.deepEqual(plan.rows.map((r) => r.invoiceNumber), ["11115"]);
+  assert.equal(plan.openByClient.get("u-2001"), 9500, "its whole total is left open on its owner");
+  assert.equal(plan.reconciliation.differences.absentFromDerived, -9500);
+  const lab = planInvoiceSettlements({ legacyInvoices: legacy, exportRows: invoiceRows, existingTransactionIds: new Set() });
+  assert.deepEqual(lab.absentFromDerived, [], "a lab export keeps its meaning: absent means owes nothing");
+});
+
+test("per-invoice from a derived file: a number on more than one loaded invoice settles NEITHER; both stay open, reported", () => {
+  const twins = [inv(500, 1000), inv(500, 700, { id: "id-500b", legacySeazonaInvoiceId: "inv-500b", clientUserId: "u-2001" }), inv(501, 300)];
+  const plan = planInvoiceSettlements({
+    legacyInvoices: twins, exportRows: [{ key: 500, cents: 0 }, { key: 501, cents: 0 }], existingTransactionIds: new Set(), missingMeansOpen: true,
+  });
+  assert.deepEqual(plan.duplicateNumber, [500, 500]);
+  assert.deepEqual(plan.rows.map((r) => r.invoiceNumber), ["501"]);
+  assert.equal(plan.openByClient.get("u-1324"), 1000);
+  assert.equal(plan.openByClient.get("u-2001"), 700);
+  assert.equal(plan.reconciliation.differences.duplicateNumber, -1700);
+});
+
 test("per-invoice: an invoice that already has a real payment is reported and not settled", () => {
   const plan = planInvoiceSettlements({
     legacyInvoices: legacy, exportRows: invoiceRows, existingTransactionIds: new Set(), paidByInvoice: new Map([["id-11115", 5000]]),

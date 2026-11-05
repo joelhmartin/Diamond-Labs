@@ -177,6 +177,8 @@ export function buildParity({ seazona, app, seeds }) {
   else if (balances.differenceCount || balances.exportTotalCents !== balances.appTotalCents) differences.push("balances");
   const exportProblems = seazona.exportProblems ?? [];
   if (exportProblems.length) differences.push("balance export problems");
+  // Balances derived from the Payments export are an inference: the user accepts that explicitly.
+  if (seazona.exportDerived) differences.push("balance export is derived");
 
   const orders = orderSection(seazona, app, differences);
   if (seeds.errors.length) differences.push("seeds");
@@ -186,6 +188,7 @@ export function buildParity({ seazona, app, seeds }) {
     invoices,
     balances,
     exportProblems,
+    ...(seazona.exportDerived ? { balanceExportDerived: seazona.exportDerived } : {}),
     orders,
     seeds,
     differences,
@@ -196,7 +199,7 @@ export function buildParity({ seazona, app, seeds }) {
 /** Every difference kind buildParity can raise: the names `--accept` takes. */
 export const DIFFERENCE_KINDS = [
   "clients", "invoice counts", "invoice totals", "invoices not loaded", "unowned invoices with a balance",
-  "balances", "no balance export compared", "balance export problems",
+  "balances", "no balance export compared", "balance export problems", "balance export is derived",
   "open orders", "orders not loaded", "unowned open orders", "seeds", "seazona_invoice_numbers_missing",
 ];
 
