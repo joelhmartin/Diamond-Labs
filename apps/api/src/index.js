@@ -46,6 +46,8 @@ import autopayRoutes from "./routes/autopay.routes.js";
 import adminPaymentRoutes from "./routes/admin-payment.routes.js";
 import adminPriceListsRoutes from "./routes/admin-price-lists.routes.js";
 import statementRunRoutes from "./routes/statement-run.routes.js";
+import { createOrganizationsRoutes } from "./modules/organizations/index.js";
+import { organizationsService, describeAccounts, userExists } from "./services/organizations.service.js";
 import { ADMIN } from "./routes/admin-invoice.routes.js";
 import { createExportsRoutes } from "./modules/exports/index.js";
 import { appExports, auditExportDownload } from "./exports/index.js";
@@ -264,6 +266,10 @@ await fastify.register((await import("./routes/pickups.routes.js")).default, { p
 await fastify.register(createExportsRoutes({ registry: appExports, db, preHandler: ADMIN, audit: auditExportDownload }), { prefix: "/api/v1/admin" });
 await fastify.register(adminPriceListsRoutes, { prefix: "/api/v1" });
 await fastify.register(statementRunRoutes, { prefix: "/api/v1" });
+await fastify.register(
+  createOrganizationsRoutes({ service: organizationsService, guard: ADMIN, describeAccounts, userExists }),
+  { prefix: "/api/v1/admin/organizations" },
+);
 
 registerAllJobs();
 registerJobTriggerRoutes(fastify);

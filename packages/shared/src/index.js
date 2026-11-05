@@ -12,6 +12,7 @@ export * from "./schemas/price-lists.schema.js";
 export * from "./schemas/autopay.schema.js";
 export * from "./record-tags/schemas.js";
 export * from "./record-files/schemas.js";
+export * from "./organizations/schemas.js";
 
 // Constants
 export * from "./constants/roles.js";
