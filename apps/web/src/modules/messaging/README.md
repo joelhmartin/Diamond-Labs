@@ -11,17 +11,23 @@ paths and which record types exist.
 | Export | What it is |
 |---|---|
 | `InboxTable` | server-paged thread list: folder switch, Unread filter, optional record-type select, bulk read/unread/complete/reopen/archive/unarchive (one POST per thread, `{ ok, failed }` toast) |
-| `ThreadView` | one conversation (oldest first, own side on the right) with the folder action and a `Composer` |
-| `Composer` | message box, `onSend({ body })`, 5,000-character limit with a counter near it |
-| `NewThreadModal` | starts a thread, on a `record` or to a `pickParty` party (host only) |
+| `ThreadView` | one conversation (oldest first, own side on the right) with the folder action, attachment chips and a `Composer` |
+| `Composer` | message box, `onSend({ body, files? })`, 5,000-character limit with a counter near it; file chips (pick or drop, remove), up to 5 files of 20 MB each, refused inline before any request |
+| `NewThreadModal` | starts a thread (first message may carry files), on a `record` or to a `pickParty` party (host only) |
 | `RecordThreads` | a record's threads plus a "New message" button |
 | `MessagesBadge` | nav unread pill (polls `/messages/unread-count`, refreshes on `messaging:changed`) |
 
 ## Configuration
 
 Props that vary by app: `threadPath(id)`, `folders`, `bulk`, `recordTypes`,
-`timeZone`, `side` (`"host"` or `"party"`). Files are not supported yet; the
-composer's object argument leaves room for them.
+`timeZone`, `side` (`"host"` or `"party"`). Attachment limits come from
+`MESSAGE_FILES_MAX` / `MESSAGE_FILE_MAX_BYTES` in `@my-app/shared`. A post
+with files goes as multipart `FormData` (`api.js` `messageRequest`); without
+files it stays JSON. An attachment chip links to
+`/api/v1/messages/attachments/:id`; a click fetches the signed link with
+`?as=json` (the session token rides in a header a plain link cannot carry)
+and opens it in a new tab. The server only accepts files when its messaging
+service has a `files` collaborator.
 
 ## Data model
 
@@ -35,7 +41,7 @@ event after a write so badges refresh.
 1. Wire the server module first (see "Wiring it into another app" in
    `apps/api/src/modules/messaging/README.md`).
 2. Copy this directory. It depends on the app's `config/api.js` client, the
-   shared `DataTable` + `useDataTable` (and `lib/data-table`), `Modal`, `SegmentedControl`, `ConfirmButton`, `useDebouncedValue`, `lib/requests.js` and the toast.
+   shared `DataTable` + `useDataTable` (and `lib/data-table`), `Modal`, `SegmentedControl`, `ConfirmButton`, `useDebouncedValue`, `lib/requests.js`, the toast, and the `record-files` web module (`FileDrop`, `checkFiles`, `fileSizeLabel`).
 3. Put `MessagesBadge` next to the inbox link in the nav. This repo does it in
    `components/layout/Sidebar.jsx` (staff) and
    `components/layout/DoctorShell.jsx` (outside users).

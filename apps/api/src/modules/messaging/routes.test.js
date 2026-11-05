@@ -21,6 +21,7 @@ function fakeReply() {
     body: undefined,
     code(n) { this.statusCode = n; return this; },
     send(b) { this.body = b; return this; },
+    redirect(url, code = 302) { this.statusCode = code; this.location = url; return this; },
   };
 }
 
@@ -30,10 +31,10 @@ const host = { id: "h1", role: "staff" };
 const party = { id: "p1", role: "member", org: "1" };
 const other = { id: "p2", role: "member", org: "2" };
 
-async function setup(opts = {}) {
+async function setup({ files = null, ...opts } = {}) {
   const db = { transaction: async (fn) => fn(db) };
   const messaging = createMessaging({
-    db, store: createFakeStore(),
+    db, store: createFakeStore(), files,
     isHost: (u) => u.role === "staff",
     partyKeysFor: (u) => [`user:${u.id}`, ...(u.org ? [`org:${u.org}`] : [])],
     defaultPartyKey: (u) => `org:${u.org}`,
@@ -46,7 +47,7 @@ async function setup(opts = {}) {
     assert.ok(r, `${method} ${path} is registered`);
     const reply = fakeReply();
     const out = await r.handler({ params: {}, query: {}, body: {}, ...request }, reply);
-    return { status: reply.statusCode, body: reply.body ?? out };
+    return { status: reply.statusCode, body: reply.body ?? out, location: reply.location };
   }
   return { fastify, call, messaging };
 }
@@ -56,6 +57,7 @@ const ALL = [
   "POST /messages/threads/:id/messages", "POST /messages/threads/:id/read", "POST /messages/threads/:id/unread",
   "POST /messages/threads/:id/complete", "POST /messages/threads/:id/reopen",
   "POST /messages/threads/:id/archive", "POST /messages/threads/:id/unarchive",
+  "GET /messages/attachments/:id",
 ];
 
 test("every route uses authenticate", async () => {
@@ -126,4 +128,101 @@ test("parties are host only and pass the query through", async () => {
   assert.deepEqual(seen, ["ac"]);
   const no = await call("GET", "/messages/parties", { user: party, query: {} });
   assert.equal(no.status, 403);
+});
+
+// ── Attachments ─────────────────────────────────────────────────────────────
+
+function memoryFiles() {
+  const f = { rows: [], signed: [] };
+  f.attach = async (_db, { recordId, files }) => files.map((x) => {
+    const r = { id: `f${f.rows.length + 1}`, recordId, fileName: x.originalName, contentType: x.contentType, sizeBytes: x.buffer.length };
+    f.rows.push(r);
+    return r;
+  });
+  f.listFor = async (_db, ids) => new Map(ids.map((id) => [id, f.rows.filter((r) => r.recordId === id)]).filter(([, v]) => v.length));
+  f.find = async (_db, id) => { const r = f.rows.find((x) => x.id === id); return r ? { id: r.id, messageId: r.recordId } : null; };
+  f.signedUrl = async (_db, id) => { f.signed.push(id); return `https://signed.example/${id}`; };
+  f.remove = async () => {};
+  return f;
+}
+
+// A multipart request as @fastify/multipart presents it: an async iterator of
+// field and file parts. `drained` lists file parts whose stream was consumed.
+function multipart(parts) {
+  const drained = [];
+  const request = {
+    isMultipart: () => true,
+    body: undefined,
+    async *parts() {
+      for (const p of parts) {
+        if (p.file) {
+          yield {
+            type: "file", fieldname: p.field, filename: p.file, mimetype: "application/pdf",
+            toBuffer: async () => { drained.push(p.field); return Buffer.from(p.content ?? "abc"); },
+          };
+        } else yield { type: "field", fieldname: p.field, value: p.value };
+      }
+    },
+  };
+  return { request, drained };
+}
+const file = (name, field = "files") => ({ field, file: name });
+
+test("multipart post drains unknown parts and rejects a 6th file", async () => {
+  const files = memoryFiles();
+  const { call } = await setup({ files });
+  const t = (await call("POST", "/messages/threads", { user: party, body: { body: "Hello" } })).body.data;
+
+  const ok = multipart([{ field: "body", value: "See scan" }, file("a.pdf"), file("junk.bin", "other"), file("b.pdf")]);
+  const posted = await call("POST", "/messages/threads/:id/messages", { ...ok.request, user: party, params: { id: t.id } });
+  assert.equal(posted.status, 201);
+  assert.equal(posted.body.data.body, "See scan");
+  assert.deepEqual(posted.body.data.attachments.map((a) => a.fileName), ["a.pdf", "b.pdf"]);
+  assert.ok(ok.drained.includes("other"), "an unknown file part is drained, not attached");
+
+  const six = multipart([{ field: "body", value: "Too many" }, ...Array.from({ length: 6 }, (_, i) => file(`${i}.pdf`))]);
+  const refused = await call("POST", "/messages/threads/:id/messages", { ...six.request, user: party, params: { id: t.id } });
+  assert.equal(refused.status, 400);
+  assert.equal(refused.body.error.code, "INVALID");
+  assert.equal(files.rows.length, 2, "nothing from the refused post was stored");
+});
+
+test("multipart create takes fields and files; a bad field is 422", async () => {
+  const files = memoryFiles();
+  const { call } = await setup({ files });
+  const form = multipart([{ field: "subject", value: "Fit" }, { field: "body", value: "Hello" }, file("a.pdf")]);
+  const made = await call("POST", "/messages/threads", { ...form.request, user: party });
+  assert.equal(made.status, 201);
+  assert.equal(made.body.data.subject, "Fit");
+  assert.equal(files.rows.length, 1);
+  const bad = multipart([{ field: "body", value: "" }]);
+  assert.equal((await call("POST", "/messages/threads", { ...bad.request, user: party })).status, 422);
+});
+
+test("JSON body is still accepted when no files", async () => {
+  const { call } = await setup({ files: memoryFiles() });
+  const t = await call("POST", "/messages/threads", { user: party, isMultipart: () => false, body: { body: "Plain" } });
+  assert.equal(t.status, 201);
+  const p = await call("POST", "/messages/threads/:id/messages", { user: party, isMultipart: () => false, params: { id: t.body.data.id }, body: { body: "Also plain" } });
+  assert.equal(p.status, 201);
+  assert.deepEqual(p.body.data.attachments, []);
+});
+
+test("attachment download: 302 to the signed link, ?as=json for the browser app, 404 without access", async () => {
+  const files = memoryFiles();
+  const reads = [];
+  const { call } = await setup({ files, onAttachmentRead: (_req, info) => reads.push(info) });
+  const form = multipart([{ field: "body", value: "Hello" }, file("a.pdf")]);
+  const t = (await call("POST", "/messages/threads", { ...form.request, user: party })).body.data;
+  const reply = await call("GET", "/messages/attachments/:id", { user: host, params: { id: "f1" } });
+  assert.equal(reply.status, 302);
+  assert.equal(reply.location, "https://signed.example/f1");
+  const json = await call("GET", "/messages/attachments/:id", { user: party, params: { id: "f1" }, query: { as: "json" } });
+  assert.deepEqual(json.body, { data: { url: "https://signed.example/f1" } });
+  assert.deepEqual(reads, [{ fileId: "f1", threadId: t.id }, { fileId: "f1", threadId: t.id }]);
+
+  const hidden = await call("GET", "/messages/attachments/:id", { user: other, params: { id: "f1" } });
+  assert.equal(hidden.status, 404);
+  assert.equal(hidden.body.error.code, "NOT_FOUND");
+  assert.deepEqual(files.signed, ["f1", "f1"], "no link is signed for someone who cannot read the thread");
 });

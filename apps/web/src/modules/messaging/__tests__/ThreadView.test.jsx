@@ -55,3 +55,21 @@ test("host sees Complete, party sees Archive", async () => {
   await screen.findByText("First hello");
   assert.ok(screen.getByRole("button", { name: "Archive" }));
 });
+
+test("ThreadView attachment chip links to /messages/attachments/:id", async () => {
+  const withFile = [{ ...MESSAGES[0], attachments: [{ id: "f1", fileName: "scan.pdf", contentType: "application/pdf", sizeBytes: 2048 }] }, MESSAGES[1]];
+  api.get.mockResolvedValue({ data: { data: { thread: THREAD, messages: withFile } } });
+  mount("party");
+  const chip = await screen.findByRole("link", { name: /scan\.pdf/ });
+  assert.equal(chip.getAttribute("href"), "/api/v1/messages/attachments/f1");
+  assert.equal(chip.getAttribute("target"), "_blank");
+
+  // A click fetches the signed link with the session token (a bare navigation would carry none).
+  const tab = { location: { href: "" }, close: vi.fn() };
+  const open = vi.spyOn(window, "open").mockReturnValue(tab);
+  api.get.mockResolvedValueOnce({ data: { data: { url: "https://signed.example/f1" } } });
+  fireEvent.click(chip);
+  await waitFor(() => assert.equal(tab.location.href, "https://signed.example/f1"));
+  assert.deepEqual(api.get.mock.calls.at(-1), ["/messages/attachments/f1", { params: { as: "json" } }]);
+  open.mockRestore();
+});

@@ -8,6 +8,9 @@ import { z } from "zod";
 export const MESSAGE_BODY_MAX = 5000;
 export const MESSAGE_SUBJECT_MAX = 200;
 export const MESSAGE_FOLDERS = ["inbox", "completed", "archived"];
+/** Attachments: at most 5 files on one message, each at most 20 MB (the API's multipart cap). */
+export const MESSAGE_FILES_MAX = 5;
+export const MESSAGE_FILE_MAX_BYTES = 20 * 1024 * 1024;
 
 const blankToUndefined = (schema) => z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), schema);
 const key = (max) => z.string().trim().min(1).max(max);

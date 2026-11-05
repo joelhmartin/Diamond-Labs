@@ -81,3 +81,10 @@ test("listMessages is oldest first", async () => {
   await createDrizzleStore().listMessages(db, "t1");
   assert.match(calls[0].sql, /where "messages"."thread_id" = \$1 order by "messages"."created_at", "messages"."id"/);
 });
+
+test("getMessage reads one message by id", async () => {
+  const { db, calls } = recordingDb([]);
+  assert.equal(await createDrizzleStore().getMessage(db, "m1"), null);
+  assert.match(calls[0].sql, /from "messages" where "messages"."id" = \$1 limit \$2/);
+  assert.equal(calls[0].params[0], "m1");
+});

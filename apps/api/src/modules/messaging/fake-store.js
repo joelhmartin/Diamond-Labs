@@ -43,6 +43,10 @@ export function createFakeStore() {
     async insertMessage(_db, row) {
       state.messages.push({ ...row });
     },
+    async getMessage(_db, id) {
+      const r = state.messages.find((x) => x.id === id);
+      return r ? { ...r } : null;
+    },
     async listMessages(_db, threadId) {
       return state.messages.filter((x) => x.threadId === threadId)
         .sort((a, b) => time(a.createdAt) - time(b.createdAt) || a.id.localeCompare(b.id))

@@ -4,6 +4,8 @@ import { doctorProfiles, labOrders, pickups, rxCases, users } from "../../db/sch
 import { containsPattern, prefixPattern } from "../../lib/list-query.js";
 import { requireApprovedDoctor } from "../../middleware/require-role.js";
 import { createMessaging } from "../../modules/messaging/index.js";
+import * as recordFiles from "../../modules/record-files/index.js";
+import * as auditService from "../audit.service.js";
 import { notify as notifySeam } from "../notify-seam.js";
 import { parsePartyKey, partyKeysFor, practiceKeyFor } from "../practice.js";
 
@@ -11,8 +13,8 @@ import { parsePartyKey, partyKeysFor, practiceKeyFor } from "../practice.js";
  * Lab glue for the generic messaging module: lab staff are the host, a
  * doctor's practice (services/practice.js keys) is the party. This file owns
  * the record resolvers (Rx case, lab order, pickup), the party and author
- * labels, search, the staff "New message" picker, the route guard and the
- * message.received alert. Boot (services/app-modules.js) wires it once.
+ * labels, search, the staff "New message" picker, the route guard, the
+ * message.received alert and attachment storage (record-files). Boot (services/app-modules.js) wires it once.
  *
  * Visibility is canActOnInvoice restated as keys (practice.js): a doctor may
  * open a record exactly when partyKeysFor(doctor) includes
@@ -240,6 +242,58 @@ export function createLabMessageAlert({ db, labName, notify = notifySeam, descri
   };
 }
 
+// ── Attachments ─────────────────────────────────────────────────────────────
+
+/** Message attachments live in record-files under this record type (record id = message id). */
+export const MESSAGE_RECORD_TYPE = "message";
+export const MESSAGE_FILE_KIND = "attachment";
+
+const attachmentMeta = (f) => ({ id: f.id, fileName: f.originalName, contentType: f.contentType ?? null, sizeBytes: f.size });
+
+/**
+ * The messaging `files` collaborator over piece 6's record-files module.
+ * `find` answers null for an unknown id and for a file of any other record
+ * type, so a download can never sign, say, a lab order's scan.
+ */
+export function createLabMessageFiles({ service = recordFiles } = {}) {
+  return {
+    async attach(db, { recordId, files, byUserId }) {
+      const rows = await service.attachFiles({
+        recordType: MESSAGE_RECORD_TYPE, recordId, byUserId,
+        files: files.map((f) => ({ ...f, kind: MESSAGE_FILE_KIND })),
+      }, db);
+      return rows.map(attachmentMeta);
+    },
+    async listFor(db, messageIds) {
+      const found = await service.filesFor(MESSAGE_RECORD_TYPE, messageIds, db);
+      return new Map([...found].map(([id, rows]) => [id, rows.map(attachmentMeta)]));
+    },
+    async find(db, fileId) {
+      try {
+        const f = await service.getFile(fileId, db);
+        return f.recordType === MESSAGE_RECORD_TYPE ? { id: f.id, messageId: f.recordId } : null;
+      } catch (err) {
+        if (err?.name === "FileError" && err.code === "NOT_FOUND") return null;
+        throw err;
+      }
+    },
+    async signedUrl(db, fileId) {
+      return (await service.signedUrlFor(fileId, {}, db)).url;
+    },
+    async remove(db, fileIds) {
+      for (const id of fileIds) await service.removeFile(id, {}, db);
+    },
+  };
+}
+
+/** Routes' onAttachmentRead: audit-log each issued download link (ids only, never the file name). */
+export function auditAttachmentRead(request, { fileId, threadId }, log = auditService.logSafe) {
+  log({
+    userId: request.user.id, action: "message.attachment_url_issued", targetType: "message_thread",
+    targetId: threadId, metadata: { fileId }, ipAddress: request.ip,
+  });
+}
+
 // ── Routes guard and the service ────────────────────────────────────────────
 
 /** Every messaging route: staff pass; anyone else must be an approved doctor. */
@@ -248,8 +302,11 @@ export async function labMessagingGuard(request, reply) {
   return requireApprovedDoctor(request, reply);
 }
 
-/** The lab's messaging service. `overrides` reach createMessaging as-is (tests pass a fake store). */
-export function createLabMessaging({ db, labName, notify = notifySeam, log = console, overrides = {} }) {
+/**
+ * The lab's messaging service. `fileService` is record-files (tests pass a
+ * stub); `overrides` reach createMessaging as-is (tests pass a fake store).
+ */
+export function createLabMessaging({ db, labName, notify = notifySeam, log = console, fileService = recordFiles, overrides = {} }) {
   return createMessaging({
     db,
     records: labRecordResolvers,
@@ -260,6 +317,7 @@ export function createLabMessaging({ db, labName, notify = notifySeam, log = con
     describeUsers: describeLabUsers,
     search: (d, q) => searchLabRecords(d, q),
     onMessage: createLabMessageAlert({ db, labName, notify, log }),
+    files: createLabMessageFiles({ service: fileService }),
     log,
     ...overrides,
   });

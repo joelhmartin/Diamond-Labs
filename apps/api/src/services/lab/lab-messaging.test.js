@@ -7,6 +7,7 @@ process.env.PHI_ENCRYPTION_KEY ||= "a".repeat(64);
 const {
   labRecordResolvers, createLabMessageAlert, messageAlertArgs, describeLabParties, describeLabUsers,
   listLabParties, searchLabRecords, labMessagingGuard, createLabMessaging, isLabHost,
+  createLabMessageFiles, auditAttachmentRead, MESSAGE_RECORD_TYPE,
 } = await import("./lab-messaging.js");
 const { createFakeStore } = await import("../../modules/messaging/index.js");
 
@@ -235,3 +236,90 @@ function fakeRootDb() {
   };
   return db;
 }
+
+// ── Attachments through record-files ────────────────────────────────────────
+
+class FileError extends Error {
+  constructor(code) { super(code); this.name = "FileError"; this.code = code; }
+}
+
+// A stand-in for modules/record-files: rows as record-files returns them
+// (originalName, size), plus the calls each function saw.
+function recordFilesStub(seed = []) {
+  const rows = [...seed];
+  const calls = { attach: [], signed: [], removed: [] };
+  return {
+    rows, calls, FileError,
+    async attachFiles(args) {
+      calls.attach.push(args);
+      return args.files.map((f, i) => {
+        const r = { id: `rf${rows.length + 1}`, recordType: args.recordType, recordId: args.recordId, kind: f.kind, originalName: f.originalName, contentType: f.contentType, size: f.buffer.length, createdAt: new Date(i) };
+        rows.push(r);
+        return r;
+      });
+    },
+    async filesFor(type, ids) {
+      const m = new Map();
+      for (const r of rows) if (r.recordType === type && ids.includes(r.recordId)) m.set(r.recordId, [...(m.get(r.recordId) ?? []), r]);
+      return m;
+    },
+    async getFile(id) {
+      const r = rows.find((x) => x.id === id);
+      if (!r) throw new FileError("NOT_FOUND");
+      return r;
+    },
+    async signedUrlFor(id) { calls.signed.push(id); return { url: `https://signed.example/${id}`, file: rows.find((x) => x.id === id) }; },
+    async removeFile(id) { calls.removed.push(id); },
+  };
+}
+
+const pdf = (name) => ({ buffer: Buffer.from("%PDF"), originalName: name, contentType: "application/pdf" });
+
+function labMessagingWithFiles(service) {
+  return createLabMessaging({ db: fakeRootDb(), labName: "Test Lab", log: quiet, notify: async () => {}, fileService: service, overrides: { store: createFakeStore() } });
+}
+
+test("post with files stores them through record-files under recordType \"message\"", async () => {
+  const service = recordFilesStub();
+  const messaging = labMessagingWithFiles(service);
+  const t = await messaging.createThread(staff, { party: "practice:P1", body: "Hello" });
+  const m = await messaging.post(staff, t.id, { body: "See scan", files: [pdf("scan.pdf")] });
+  assert.equal(MESSAGE_RECORD_TYPE, "message");
+  assert.equal(service.calls.attach.length, 1);
+  const call = service.calls.attach[0];
+  assert.equal(call.recordType, "message");
+  assert.equal(call.recordId, m.id);
+  assert.equal(call.byUserId, "s1");
+  assert.deepEqual(call.files.map((f) => f.kind), ["attachment"]);
+  assert.deepEqual(m.attachments, [{ id: "rf1", fileName: "scan.pdf", contentType: "application/pdf", sizeBytes: 4 }]);
+});
+
+test("a non-message record-files id → NOT_FOUND, never signed", async () => {
+  const service = recordFilesStub([{ id: "lab1", recordType: "lab_order", recordId: "o1", kind: "scan", originalName: "x.stl", contentType: null, size: 1, createdAt: new Date(0) }]);
+  const messaging = labMessagingWithFiles(service);
+  await assert.rejects(messaging.attachmentUrl(staff, "lab1"), (e) => e.code === "NOT_FOUND");
+  await assert.rejects(messaging.attachmentUrl(staff, "unknown"), (e) => e.code === "NOT_FOUND");
+  assert.deepEqual(service.calls.signed, []);
+});
+
+test("attachment download checks thread access before signing (another practice → NOT_FOUND)", async () => {
+  const service = recordFilesStub();
+  const messaging = labMessagingWithFiles(service);
+  const t = await messaging.createThread(d1, { body: "Hello", files: [pdf("a.pdf")] });
+  await assert.rejects(messaging.attachmentUrl(d4, "rf1"), (e) => e.code === "NOT_FOUND");
+  assert.deepEqual(service.calls.signed, []);
+  const ok = await messaging.attachmentUrl(d2, "rf1");
+  assert.deepEqual(ok, { url: "https://signed.example/rf1", fileId: "rf1", threadId: t.id });
+});
+
+test("createLabMessageFiles.remove removes each file through record-files", async () => {
+  const service = recordFilesStub();
+  await createLabMessageFiles({ service }).remove({}, ["a", "b"]);
+  assert.deepEqual(service.calls.removed, ["a", "b"]);
+});
+
+test("auditAttachmentRead logs ids only", () => {
+  const logged = [];
+  auditAttachmentRead({ user: { id: "s1" }, ip: "1.2.3.4" }, { fileId: "rf1", threadId: "t1" }, (e) => logged.push(e));
+  assert.deepEqual(logged, [{ userId: "s1", action: "message.attachment_url_issued", targetType: "message_thread", targetId: "t1", metadata: { fileId: "rf1" }, ipAddress: "1.2.3.4" }]);
+});

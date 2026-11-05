@@ -37,13 +37,14 @@ export function NewThreadModal({ open, onClose, title = "New message", record = 
   const [party, setParty] = useState("");
   const [subject, setSubject] = useState("");
 
-  const send = async ({ body }) => {
+  const send = async ({ body, files }) => {
     if (pickParty && !record && !party) throw new Error("Choose who to message.");
     const payload = {
       ...(record ? { recordType: record.recordType, recordId: record.recordId } : {}),
       ...(pickParty && !record ? { party } : {}),
       ...(subject.trim() ? { subject: subject.trim() } : {}),
       body,
+      ...(files?.length ? { files } : {}),
     };
     const thread = await createThread(payload);
     setParty("");

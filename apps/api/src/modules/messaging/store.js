@@ -33,6 +33,10 @@ export function createDrizzleStore() {
     async insertMessage(db, row) {
       await db.insert(m).values(row);
     },
+    async getMessage(db, id) {
+      const [r] = await db.select().from(m).where(eq(m.id, id)).limit(1);
+      return r ?? null;
+    },
     async listMessages(db, threadId) {
       return db.select().from(m).where(eq(m.threadId, threadId)).orderBy(m.createdAt, m.id);
     },

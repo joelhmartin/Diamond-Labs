@@ -3,7 +3,7 @@
  * label, party label, author name). A failing label lookup is logged and the
  * label left null, so the inbox still loads.
  */
-export function createViews({ records, sealer, describeParty, describeUsers, log }) {
+export function createViews({ records, sealer, describeParty, describeUsers, attachments, log }) {
   async function safely(what, fn, fallback) {
     try {
       return (await fn()) ?? fallback;
@@ -82,11 +82,14 @@ export function createViews({ records, sealer, describeParty, describeUsers, log
       }));
     },
 
-    // `attachments` is always [] for now. Files arrive later through a separate
-    // record-files collaborator; this is where its per-message lookup slots in.
+    // Attachment metadata comes from the files collaborator (attachments.js);
+    // without one, or when its lookup fails, every list is [].
     async messageList(db, rows) {
       const ids = unique(rows.map((r) => r.authorUserId));
-      const names = ids.length ? await safely("describeUsers", () => describeUsers(db, ids), new Map()) : new Map();
+      const [names, files] = await Promise.all([
+        ids.length ? safely("describeUsers", () => describeUsers(db, ids), new Map()) : new Map(),
+        safely("attachments", () => attachments.listFor(db, rows.map((r) => r.id)), new Map()),
+      ]);
       return rows.map((r) => ({
         id: r.id,
         authorUserId: r.authorUserId,
@@ -94,7 +97,7 @@ export function createViews({ records, sealer, describeParty, describeUsers, log
         authorSide: r.authorSide,
         body: sealer.open({ body: r.body }).body,
         createdAt: r.createdAt,
-        attachments: [],
+        attachments: files.get(r.id) ?? [],
       }));
     },
   };

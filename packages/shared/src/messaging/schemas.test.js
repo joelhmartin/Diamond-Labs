@@ -2,13 +2,18 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   messageThreadListQuerySchema, messageThreadCreateSchema, messagePostSchema, messagePartyQuerySchema,
-  MESSAGE_BODY_MAX, MESSAGE_SUBJECT_MAX, MESSAGE_FOLDERS,
+  MESSAGE_BODY_MAX, MESSAGE_SUBJECT_MAX, MESSAGE_FOLDERS, MESSAGE_FILES_MAX, MESSAGE_FILE_MAX_BYTES,
 } from "../index.js";
 
 test("limits and folders are published for the web app", () => {
   assert.equal(MESSAGE_BODY_MAX, 5000);
   assert.equal(MESSAGE_SUBJECT_MAX, 200);
   assert.deepEqual(MESSAGE_FOLDERS, ["inbox", "completed", "archived"]);
+});
+
+test("attachment limits: 5 files a message, 20 MB each", () => {
+  assert.equal(MESSAGE_FILES_MAX, 5);
+  assert.equal(MESSAGE_FILE_MAX_BYTES, 20 * 1024 * 1024);
 });
 
 test("list query coerces paging and unread, treats blanks as none", () => {

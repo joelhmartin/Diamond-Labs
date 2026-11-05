@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle, Paperclip } from "lucide-react";
 import { useToast } from "../../components/ui/Toast.jsx";
-import { errorText } from "../../lib/requests.js";
+import { errorText, openInNewTab } from "../../lib/requests.js";
+import { fileSizeLabel } from "../record-files/index.js";
 import { formatWhen } from "../notifications/format.js";
-import { fetchThread, postMessage, setThreadFlag } from "./api.js";
+import { attachmentPath, fetchAttachmentUrl, fetchThread, postMessage, setThreadFlag } from "./api.js";
 import { Composer } from "./Composer.jsx";
 
 // What each side can do to the thread as a whole: [label shown, flag to set, label when already set].
@@ -13,7 +14,30 @@ const HEADER_ACTIONS = {
   party: { on: "archivedAt", set: ["Archive", "archive"], unset: ["Unarchive", "unarchive"] },
 };
 
-function Bubble({ message, own, timeZone }) {
+// The href is the download route (302 to a signed link) so the chip reads and
+// copies as a link; a click fetches the signed link with the session token
+// instead, since a plain navigation cannot carry it.
+function AttachmentChip({ file, onError }) {
+  const open = (e) => {
+    e.preventDefault();
+    openInNewTab(() => fetchAttachmentUrl(file.id)).catch(onError);
+  };
+  return (
+    <a
+      href={`/api/v1${attachmentPath(file.id)}`}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={open}
+      className="flex items-center gap-1.5 rounded-full border border-surface-300/60 bg-white px-3 py-1 text-xs font-medium text-brand-700 hover:border-brand-500"
+    >
+      <Paperclip size={12} aria-hidden="true" />
+      <span className="max-w-[16rem] truncate">{file.fileName || "Attachment"}</span>
+      {file.sizeBytes != null && <span className="text-navy/40">{fileSizeLabel(file.sizeBytes)}</span>}
+    </a>
+  );
+}
+
+function Bubble({ message, own, timeZone, onFileError }) {
   return (
     <div
       data-side={message.authorSide}
@@ -25,6 +49,11 @@ function Bubble({ message, own, timeZone }) {
         <span>{formatWhen(message.createdAt, timeZone)}</span>
       </div>
       <p className="whitespace-pre-wrap break-words">{message.body}</p>
+      {message.attachments?.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {message.attachments.map((f) => <AttachmentChip key={f.id} file={f} onError={onFileError} />)}
+        </div>
+      )}
     </div>
   );
 }
@@ -100,7 +129,9 @@ export function ThreadView({ threadId, side = "party", timeZone, onChanged }) {
       </header>
 
       <div className="flex flex-col gap-3">
-        {messages.map((m) => <Bubble key={m.id} message={m} own={m.authorSide === side} timeZone={timeZone} />)}
+        {messages.map((m) => (
+          <Bubble key={m.id} message={m} own={m.authorSide === side} timeZone={timeZone} onFileError={(err) => addToast({ message: errorText(err), type: "error" })} />
+        ))}
       </div>
 
       <Composer onSend={send} />

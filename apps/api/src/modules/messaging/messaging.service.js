@@ -1,9 +1,10 @@
 import { createId } from "@paralleldrive/cuid2";
-import { MESSAGE_BODY_MAX, MESSAGE_SUBJECT_MAX } from "@my-app/shared";
+import { MESSAGE_BODY_MAX, MESSAGE_SUBJECT_MAX, MESSAGE_FILES_MAX, MESSAGE_FILE_MAX_BYTES } from "@my-app/shared";
 import { fieldSealer } from "../../lib/crypto.js";
 import { createDrizzleStore } from "./store.js";
 import { MessagingError, canRead, folderWhere, afterPost, SIDES } from "./rules.js";
 import { createViews } from "./views.js";
+import { createAttachments } from "./attachments.js";
 
 /** Free text the service seals at rest: a thread's subject and a message's body. */
 export const SEALED_FIELDS = ["subject", "body"];
@@ -11,7 +12,7 @@ const LIST_DEFAULT = 50;
 const LIST_MAX = 100;
 
 const invalid = (message) => new MessagingError("INVALID", message);
-const notFound = () => new MessagingError("NOT_FOUND", "Thread not found.");
+const notFound = (what = "Thread") => new MessagingError("NOT_FOUND", `${what} not found.`);
 
 /**
  * Build the messaging service. Collaborators (all injected, so another app
@@ -23,6 +24,10 @@ const notFound = () => new MessagingError("NOT_FOUND", "Thread not found.");
  * - describeParty(db, partyKeys) → Map<key, label>; describeUsers(db, userIds) → Map<id, name>
  * - search(db, q, user) → { partyKeys?, records?: [{ recordType, recordId }] } (no search: q matches nothing)
  * - onMessage(evt): after each post commits; a throw is logged, never surfaced
+ * - files: optional attachment storage (attachments.js; README "Files"):
+ *     { attach(db, { recordId, files, byUserId }) → rows, listFor(db, messageIds) → Map<messageId, rows>,
+ *       find(db, fileId) → { id, messageId } | null, signedUrl(db, fileId) → url, remove(db, fileIds) }
+ *     rows are { id, fileName, contentType, sizeBytes }. Without it, files are refused.
  * - store (default drizzle; tests pass fake-store.js), sealer (default fieldSealer)
  */
 export function createMessaging({
@@ -37,6 +42,7 @@ export function createMessaging({
   describeUsers = async () => new Map(),
   search = null,
   onMessage = null,
+  files = null,
   limits = {},
   log = console,
   now = () => new Date(),
@@ -45,8 +51,9 @@ export function createMessaging({
   if (!rootDb || !isHost || !partyKeysFor || !defaultPartyKey) {
     throw new Error("createMessaging needs db, isHost, partyKeysFor and defaultPartyKey");
   }
-  const lim = { bodyMax: MESSAGE_BODY_MAX, subjectMax: MESSAGE_SUBJECT_MAX, ...limits };
-  const views = createViews({ records, sealer, describeParty, describeUsers, log });
+  const lim = { bodyMax: MESSAGE_BODY_MAX, subjectMax: MESSAGE_SUBJECT_MAX, filesMax: MESSAGE_FILES_MAX, fileMaxBytes: MESSAGE_FILE_MAX_BYTES, ...limits };
+  const attachments = createAttachments({ files, lim, log });
+  const views = createViews({ records, sealer, describeParty, describeUsers, attachments, log });
   const hook = { onMessage, log, views };
 
   const who = (user) => {
@@ -107,6 +114,7 @@ export function createMessaging({
       const c = who(user);
       const body = cleanBody(input.body, lim);
       const subject = cleanSubject(input.subject, lim);
+      const uploads = attachments.clean(input.files);
       const { recordType, recordId, partyKey, resolved } = await placeThread({ db: rootDb, records, defaultPartyKey }, user, c, input);
       const at = now();
       const thread = {
@@ -115,11 +123,11 @@ export function createMessaging({
         createdAt: at, updatedAt: at,
       };
       const message = { id: newId(), threadId: thread.id, authorUserId: user.id, authorSide: c.side, ...sealer.seal({ body }), createdAt: at };
-      await rootDb.transaction(async (tx) => {
+      await attachments.attachThenCommit(rootDb, { messageId: message.id, uploads, byUserId: user.id }, () => rootDb.transaction(async (tx) => {
         await store.insertThread(tx, thread);
         await store.insertMessage(tx, message);
         await store.touchParticipant(tx, { threadId: thread.id, userId: user.id, side: c.side }, { lastReadAt: at });
-      });
+      }));
       await fireOnMessage(hook, thread, message, resolved?.label);
       return views.threadRow(rootDb, thread, { recordLabel: resolved?.label ?? null, unread: false, archivedAt: null });
     },
@@ -141,22 +149,36 @@ export function createMessaging({
       return { thread: { ...row, recordPath }, messages: await views.messageList(rootDb, rows) };
     },
 
-    /** Add a message. → the message, opened. */
+    /** Add a message (with optional `files`). → the message, opened. */
     async post(user, threadId, input = {}) {
       const { thread, side } = await loadVisible(user, threadId);
       const body = cleanBody(input.body, lim);
+      const uploads = attachments.clean(input.files);
       const at = now();
       const message = { id: newId(), threadId: thread.id, authorUserId: user.id, authorSide: side, ...sealer.seal({ body }), createdAt: at };
       const patch = afterPost(thread, side, at);
-      await rootDb.transaction(async (tx) => {
+      await attachments.attachThenCommit(rootDb, { messageId: message.id, uploads, byUserId: user.id }, () => rootDb.transaction(async (tx) => {
         await store.insertMessage(tx, message);
         await store.recordPost(tx, thread.id, patch);
         await store.touchParticipant(tx, { threadId: thread.id, userId: user.id, side }, { lastReadAt: at });
-      });
+      }));
       const resolved = await views.resolveRecord(rootDb, thread, user);
       await fireOnMessage(hook, { ...thread, ...patch, messageCount: thread.messageCount + 1 }, message, resolved?.label);
       const [view] = await views.messageList(rootDb, [message]);
       return view;
+    },
+
+    /**
+     * A short-lived link to one attachment. The file must belong to a message
+     * whose thread the caller can read; anything else (unknown id, another
+     * kind of file, someone else's thread) is NOT_FOUND and nothing is signed.
+     */
+    async attachmentUrl(user, fileId) {
+      const file = await attachments.find(rootDb, fileId);
+      const message = file?.messageId ? await store.getMessage(rootDb, file.messageId) : null;
+      if (!message) throw notFound("File");
+      const { thread } = await loadVisible(user, message.threadId);
+      return { url: await attachments.signedUrl(rootDb, file.id), fileId: file.id, threadId: thread.id };
     },
 
     async setRead(user, id, read) {

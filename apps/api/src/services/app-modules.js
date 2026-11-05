@@ -7,7 +7,7 @@ import { messagingRoutes } from "../modules/messaging/index.js";
 import { smsRegistry } from "../modules/sms/sms-registry.js";
 import { isEmailConfigured, sendNotificationEmail } from "./email.service.js";
 import { labKindOf, registerLabNotificationEvents, resolveLabAudience } from "./lab/lab-notifications.js";
-import { createLabMessaging, labMessagingGuard, listLabParties } from "./lab/lab-messaging.js";
+import { auditAttachmentRead, createLabMessaging, labMessagingGuard, listLabParties } from "./lab/lab-messaging.js";
 
 let messaging = null;
 
@@ -44,5 +44,7 @@ export async function appModuleRoutes(fastify) {
   const notifier = currentNotifier();
   if (!notifier) throw new Error("appModuleRoutes: call configureAppModules() first");
   await fastify.register(notificationRoutes, { notifier, authenticate, requireAdmin, kindOf: labKindOf, channelStatus });
-  await fastify.register(messagingRoutes, { messaging, authenticate, guard: labMessagingGuard, listParties: listLabParties });
+  await fastify.register(messagingRoutes, {
+    messaging, authenticate, guard: labMessagingGuard, listParties: listLabParties, onAttachmentRead: auditAttachmentRead,
+  });
 }

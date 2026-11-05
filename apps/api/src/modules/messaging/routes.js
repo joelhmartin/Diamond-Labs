@@ -2,6 +2,7 @@ import {
   messageThreadListQuerySchema, messageThreadCreateSchema, messagePostSchema, messagePartyQuerySchema,
 } from "@my-app/shared";
 import { MessagingError } from "./rules.js";
+import { readMessageInput } from "./form.js";
 
 const STATUS = { NOT_FOUND: 404, FORBIDDEN: 403, INVALID: 400 };
 
@@ -13,12 +14,15 @@ const STATUS = { NOT_FOUND: 404, FORBIDDEN: 403, INVALID: 400 };
  * - guard: optional preHandler (or list) run after authenticate on every route
  * - listParties(db, q) → [{ key, label }]: optional; registers GET /messages/parties (host only)
  * - db: passed to listParties (default: the service's db)
+ * - onAttachmentRead(request, { fileId, threadId }): optional; after a download link is issued (ids only)
+ *
+ * Create and post take JSON, or multipart (text fields plus up to 5 `files` parts).
  */
 export async function messagingRoutes(fastify, opts) {
-  const { messaging, authenticate, guard = null, listParties = null, db = null } = opts ?? {};
+  const { messaging, authenticate, guard = null, listParties = null, db = null, onAttachmentRead = null } = opts ?? {};
   if (!messaging || !authenticate) throw new Error("messagingRoutes needs messaging and authenticate");
   const pre = { preHandler: [authenticate, ...(guard ? [].concat(guard) : [])] };
-  const h = createHandlers({ messaging, listParties, db: db ?? messaging.db });
+  const h = createHandlers({ messaging, listParties, db: db ?? messaging.db, onAttachmentRead });
 
   fastify.get("/messages/threads", pre, h.list);
   fastify.get("/messages/unread-count", pre, h.unreadCount);
@@ -31,6 +35,7 @@ export async function messagingRoutes(fastify, opts) {
   fastify.post("/messages/threads/:id/reopen", pre, h.flag((m, u, id) => m.reopen(u, id)));
   fastify.post("/messages/threads/:id/archive", pre, h.flag((m, u, id) => m.archive(u, id, true)));
   fastify.post("/messages/threads/:id/unarchive", pre, h.flag((m, u, id) => m.archive(u, id, false)));
+  fastify.get("/messages/attachments/:id", pre, h.attachment);
   if (listParties) fastify.get("/messages/parties", pre, h.parties);
 }
 
@@ -56,7 +61,18 @@ async function run(reply, fn) {
   }
 }
 
-function createHandlers({ messaging, listParties, db }) {
+/** Read a create/post request (JSON or multipart) and validate its fields; null when a reply was sent. */
+async function messageInput(request, reply, schema) {
+  const input = await readMessageInput(request);
+  if (input.error) {
+    fail(reply, 400, "INVALID", input.error);
+    return null;
+  }
+  const b = parsed(schema, input.fields, reply);
+  return b.ok ? { ...b.data, ...(input.files.length ? { files: input.files } : {}) } : null;
+}
+
+function createHandlers({ messaging, listParties, db, onAttachmentRead }) {
   return {
     async list(request, reply) {
       const q = parsed(messageThreadListQuerySchema, request.query, reply);
@@ -67,17 +83,27 @@ function createHandlers({ messaging, listParties, db }) {
       return { data: { count: await messaging.unreadCount(request.user) } };
     },
     async create(request, reply) {
-      const b = parsed(messageThreadCreateSchema, request.body, reply);
-      if (!b.ok) return reply;
-      return run(reply, async () => reply.code(201).send({ data: await messaging.createThread(request.user, b.data) }));
+      const input = await messageInput(request, reply, messageThreadCreateSchema);
+      if (!input) return reply;
+      return run(reply, async () => reply.code(201).send({ data: await messaging.createThread(request.user, input) }));
     },
     async open(request, reply) {
       return run(reply, async () => ({ data: await messaging.getThread(request.user, request.params.id) }));
     },
     async post(request, reply) {
-      const b = parsed(messagePostSchema, request.body, reply);
-      if (!b.ok) return reply;
-      return run(reply, async () => reply.code(201).send({ data: await messaging.post(request.user, request.params.id, b.data) }));
+      const input = await messageInput(request, reply, messagePostSchema);
+      if (!input) return reply;
+      return run(reply, async () => reply.code(201).send({ data: await messaging.post(request.user, request.params.id, input) }));
+    },
+    // 302 to a short-lived signed link. `?as=json` answers { url } instead, for
+    // a browser app whose token rides in a header a plain link cannot carry.
+    async attachment(request, reply) {
+      return run(reply, async () => {
+        const { url, fileId, threadId } = await messaging.attachmentUrl(request.user, request.params.id);
+        onAttachmentRead?.(request, { fileId, threadId });
+        if (request.query?.as === "json") return { data: { url } };
+        return reply.redirect(url, 302);
+      });
     },
     flag(fn) {
       return async (request, reply) => run(reply, async () => {

@@ -242,3 +242,116 @@ test("q searches only what the search collaborator matches; without one it match
   await bare.messaging.createThread(host, { party: "org:2", body: "b" });
   assert.equal((await bare.messaging.listThreads(host, { q: "acme" })).total, 0);
 });
+
+// ── Attachments (the files collaborator) ────────────────────────────────────
+
+// An in-memory files collaborator: rows keyed by message id; `removed` shows
+// what a failed post cleaned up.
+function fakeFiles() {
+  const f = { rows: [], attached: [], removed: [], signed: [] };
+  const meta = (r) => ({ id: r.id, fileName: r.fileName, contentType: r.contentType, sizeBytes: r.sizeBytes });
+  f.attach = async (_db, { recordId, files, byUserId }) => {
+    f.attached.push({ recordId, byUserId, count: files.length });
+    const out = files.map((x) => {
+      const r = { id: `f${f.rows.length + 1}`, recordId, fileName: x.originalName, contentType: x.contentType ?? null, sizeBytes: x.buffer.length, storage: "gs://secret" };
+      f.rows.push(r);
+      return r;
+    });
+    return out.map(meta);
+  };
+  f.listFor = async (_db, ids) => {
+    const m = new Map();
+    for (const r of f.rows) if (ids.includes(r.recordId)) m.set(r.recordId, [...(m.get(r.recordId) ?? []), r]);
+    return m;
+  };
+  f.find = async (_db, id) => {
+    const r = f.rows.find((x) => x.id === id);
+    return r ? { id: r.id, messageId: r.recordId } : null;
+  };
+  f.signedUrl = async (_db, id) => { f.signed.push(id); return `https://signed.example/${id}`; };
+  f.remove = async (_db, ids) => { f.removed.push(...ids); f.rows = f.rows.filter((r) => !ids.includes(r.id)); };
+  return f;
+}
+const upload = (name, bytes = 3) => ({ buffer: Buffer.alloc(bytes), originalName: name, contentType: "application/pdf" });
+
+test("post with files stores them through the files collaborator under the message id", async () => {
+  const files = fakeFiles();
+  const { messaging, store } = setup({ files });
+  const t = await messaging.createThread(partyA, { body: "see attached", files: [upload("a.pdf")] });
+  const m = await messaging.post(host, t.id, { body: "two more", files: [upload("b.pdf"), upload("c.pdf", 5)] });
+  const [first, second] = store.state.messages;
+  assert.deepEqual(files.attached, [
+    { recordId: first.id, byUserId: "p1", count: 1 },
+    { recordId: second.id, byUserId: "h1", count: 2 },
+  ]);
+  assert.deepEqual(m.attachments.map((a) => [a.fileName, a.sizeBytes]), [["b.pdf", 3], ["c.pdf", 5]]);
+  const plain = await messaging.post(host, t.id, { body: "no files" });
+  assert.deepEqual(plain.attachments, []);
+  assert.equal(files.attached.length, 2, "no files → the collaborator is not called");
+});
+
+test("more than 5 files → INVALID; an oversize file → INVALID; no files collaborator + files → INVALID", async () => {
+  const files = fakeFiles();
+  const { messaging, store } = setup({ files });
+  const six = Array.from({ length: 6 }, (_, i) => upload(`${i}.pdf`));
+  await rejectsWith(messaging.createThread(partyA, { body: "x", files: six }), "INVALID");
+  const t = await messaging.createThread(partyA, { body: "x" });
+  await rejectsWith(messaging.post(partyA, t.id, { body: "x", files: six }), "INVALID");
+  await rejectsWith(messaging.post(partyA, t.id, { body: "x", files: [upload("big.pdf", 20 * 1024 * 1024 + 1)] }), "INVALID");
+  assert.equal(files.attached.length, 0);
+  assert.equal(store.state.messages.length, 1);
+
+  const bare = setup();
+  const t2 = await bare.messaging.createThread(partyA, { body: "x" });
+  await rejectsWith(bare.messaging.post(partyA, t2.id, { body: "x", files: [upload("a.pdf")] }), "INVALID");
+  await rejectsWith(bare.messaging.createThread(partyA, { body: "x", files: [upload("a.pdf")] }), "INVALID");
+  assert.deepEqual((await bare.messaging.getThread(partyA, t2.id)).messages[0].attachments, []);
+});
+
+test("getThread returns attachment metadata per message (fileName, contentType, sizeBytes) and never storage urls", async () => {
+  const files = fakeFiles();
+  const { messaging } = setup({ files });
+  const t = await messaging.createThread(partyA, { body: "one", files: [upload("scan.pdf", 7)] });
+  await messaging.post(host, t.id, { body: "two" });
+  const { messages } = await messaging.getThread(host, t.id);
+  assert.deepEqual(messages[0].attachments, [{ id: "f1", fileName: "scan.pdf", contentType: "application/pdf", sizeBytes: 7 }]);
+  assert.deepEqual(messages[1].attachments, []);
+  assert.ok(!JSON.stringify(messages).includes("gs://"), "no storage url leaves the service");
+});
+
+test("attachment download checks thread access before signing", async () => {
+  const files = fakeFiles();
+  const { messaging } = setup({ files });
+  const t = await messaging.createThread(partyA, { body: "one", files: [upload("scan.pdf")] });
+  await rejectsWith(messaging.attachmentUrl(partyB, "f1"), "NOT_FOUND");
+  assert.deepEqual(files.signed, [], "the signer never runs for someone who cannot read the thread");
+  assert.deepEqual(await messaging.attachmentUrl(host, "f1"), { url: "https://signed.example/f1", fileId: "f1", threadId: t.id });
+  assert.equal((await messaging.attachmentUrl(partyA, "f1")).url, "https://signed.example/f1");
+  await rejectsWith(messaging.attachmentUrl(host, "missing"), "NOT_FOUND");
+  await rejectsWith(setup().messaging.attachmentUrl(host, "f1"), "NOT_FOUND");
+});
+
+test("a file whose message is gone → NOT_FOUND, never signed", async () => {
+  const files = fakeFiles();
+  const { messaging } = setup({ files });
+  files.rows.push({ id: "orphan", recordId: "no-such-message", fileName: "x", contentType: null, sizeBytes: 1 });
+  await rejectsWith(messaging.attachmentUrl(host, "orphan"), "NOT_FOUND");
+  assert.deepEqual(files.signed, []);
+});
+
+test("a failed post leaves no uploaded objects", async () => {
+  const files = fakeFiles();
+  const { messaging, store } = setup({ files });
+  const t = await messaging.createThread(partyA, { body: "one" });
+  store.recordPost = async () => { throw new Error("db down"); };
+  await assert.rejects(messaging.post(partyA, t.id, { body: "two", files: [upload("a.pdf"), upload("b.pdf")] }), /db down/);
+  assert.deepEqual(files.removed, ["f1", "f2"]);
+  assert.equal(files.rows.length, 0);
+
+  const other = fakeFiles();
+  const failing = setup({ files: other });
+  failing.store.insertThread = async () => { throw new Error("insert failed"); };
+  await assert.rejects(failing.messaging.createThread(partyA, { body: "x", files: [upload("a.pdf")] }), /insert failed/);
+  assert.deepEqual(other.removed, ["f1"]);
+  assert.equal(other.rows.length, 0);
+});
