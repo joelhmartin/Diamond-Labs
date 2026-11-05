@@ -138,12 +138,21 @@ export async function describeLabUsers(db, ids) {
   return new Map(rows.map((r) => [r.id, r.name]));
 }
 
-/** Staff "New message" picker: approved, active doctors grouped by practice key, at most 20. */
-export async function listLabParties(db, q = "") {
+/**
+ * Approved, active doctors matching `q` on name or practice name (oldest
+ * first). The one doctor search behind both staff pickers (message parties and
+ * the pickup client), so they agree on who is eligible.
+ */
+export function searchApprovedDoctors(db, q = "", limit = SEARCH_ROWS) {
   const conds = [eq(users.role, "doctor"), eq(users.approvalStatus, "approved"), eq(users.status, "active")];
   const text = clean(q);
   if (text) conds.push(or(ilike(users.name, containsPattern(text)), ilike(doctorProfiles.companyName, containsPattern(text))));
-  const rows = await doctorQuery(db, and(...conds)).orderBy(asc(users.createdAt)).limit(SEARCH_ROWS);
+  return doctorQuery(db, and(...conds)).orderBy(asc(users.createdAt)).limit(limit);
+}
+
+/** Staff "New message" picker: approved, active doctors grouped by practice key, at most 20. */
+export async function listLabParties(db, q = "") {
+  const rows = await searchApprovedDoctors(db, q);
   const labels = labelsByKey(rows, (r) => [practiceKeyFor(r)]);
   return [...labels]
     .map(([key, label]) => ({ key, label }))

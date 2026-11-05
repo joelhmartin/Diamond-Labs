@@ -223,3 +223,16 @@ test("scheduledPickupsBetween returns scheduled pickups in the date range (ids, 
   assert.match(calls[0].sql, /"scheduled_date" <= \$3/);
   assert.deepEqual(calls[0].params.slice(0, 3), ["scheduled", "2026-11-05", "2026-11-11"]);
 });
+
+test("staff status=open filters requested + scheduled in one query", async () => {
+  const { db, calls } = queueDb([], [[0]]);
+  await svc.listPickups(staff, { status: "open", limit: 25 }, { database: db });
+  assert.match(calls[0].sql, /"status" in \(\$1, \$2\)/);
+  assert.deepEqual(calls[0].params.slice(0, 2), ["requested", "scheduled"]);
+});
+
+test("getPickup returns the staff row, or NOT_FOUND", async () => {
+  const found = await svc.getPickup("p1", staff, { database: fakeTx({ selects: [[{ ...row(), clientName: "Dr. Ada" }]] }) });
+  assert.equal(found.id, "p1");
+  await assert.rejects(svc.getPickup("nope", staff, { database: fakeTx({ selects: [[]] }) }), (e) => e instanceof PickupError && e.code === "NOT_FOUND");
+});

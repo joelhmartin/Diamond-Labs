@@ -58,3 +58,10 @@ test("the staff client picker is staff-only and read-only (no audit)", () => {
   assert.match(body, /searchPickupClients\(/);
   assert.doesNotMatch(body, /audit\(/);
 });
+
+test("the single-pickup read is staff-only and has no audit", () => {
+  const body = handlerSource(source, 'fastify.get("/lab/pickups/:id",');
+  assert.match(body, /preHandler: STAFF/);
+  assert.match(body, /getPickup\(/);
+  assert.doesNotMatch(body, /audit\(/);
+});

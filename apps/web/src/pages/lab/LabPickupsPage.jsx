@@ -13,7 +13,7 @@ import { pageParams } from "../../lib/data-table/server.js";
 import { eachRow } from "../../lib/data-table/bulk.js";
 import { errorText } from "../../lib/requests.js";
 import {
-  cancelPickupAsStaff, completePickup, fetchAssignableStaff, fetchLabPickups, isOpenPickup, schedulePickup,
+  cancelPickupAsStaff, completePickup, fetchAssignableStaff, fetchLabPickup, fetchLabPickups, isOpenPickup, schedulePickup,
   statusLabel, timePreferenceLabel, windowLabel,
 } from "../../lib/pickups.js";
 
@@ -54,18 +54,25 @@ export function LabPickupsPage() {
     mode: "server", fetchPage, filters, initialFilters: { status: "open" }, urlKey: "pk", getRowId: (p) => p.id, isRowSelectable: isOpenPickup,
   });
 
-  // ?pickup=<id> opens that pickup: from the loaded page when it is there, else by looking it up across all statuses.
+  // ?pickup=<id> opens that pickup, read fresh by id (so its version is current); a missing one is toasted.
   const linkedId = params.get("pickup");
-  const loaded = linkedId ? table.rows.find((p) => p.id === linkedId) : null;
-  useEffect(() => {
-    if (!linkedId || loaded || table.loading) return undefined;
-    let live = true;
-    fetchLabPickups({ limit: 100 }).then(({ rows }) => { if (live) setLinked(rows.find((p) => p.id === linkedId) ?? null); }).catch(() => {});
-    return () => { live = false; };
-  }, [linkedId, loaded, table.loading]);
-  const detail = linkedId ? (loaded ?? (linked?.id === linkedId ? linked : null)) : null;
   const closeDetail = () => setParams((prev) => { const next = new URLSearchParams(prev); next.delete("pickup"); return next; }, { replace: true });
   const openDetail = (p) => setParams((prev) => { const next = new URLSearchParams(prev); next.set("pickup", p.id); return next; }, { replace: true });
+  useEffect(() => {
+    if (!linkedId) return undefined;
+    let live = true;
+    fetchLabPickup(linkedId)
+      .then((p) => { if (live) setLinked(p); })
+      .catch((err) => {
+        if (!live) return;
+        addToast({ message: err?.response?.status === 404 ? "That pickup was not found." : errorText(err), type: "error" });
+        closeDetail();
+      });
+    return () => { live = false; };
+    // closeDetail and addToast are stable enough for a one-shot read per linked id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkedId]);
+  const detail = linkedId && linked?.id === linkedId ? linked : null;
 
   const report = (result) => addToast({ message: summarizeResult(result), type: result.failed.length === 0 ? "success" : result.ok ? "warning" : "error", duration: result.failed.length ? 8000 : 4000 });
 
@@ -101,8 +108,9 @@ export function LabPickupsPage() {
   ];
 
   const detailActions = {
-    schedule: (p) => setDialog({ mode: "schedule", rows: [p] }),
-    cancel: (p) => setDialog({ mode: "cancel", rows: [p] }),
+    // The detail closes first so the date / reason modal isn't stacked on top of it.
+    schedule: (p) => { closeDetail(); setDialog({ mode: "schedule", rows: [p] }); },
+    cancel: (p) => { closeDetail(); setDialog({ mode: "cancel", rows: [p] }); },
     complete: async (p) => report(await runComplete([p])),
   };
 

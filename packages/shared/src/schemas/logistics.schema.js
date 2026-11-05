@@ -46,7 +46,8 @@ export const pickupListQuerySchema = z.object({
 });
 
 export const labPickupListQuerySchema = z.object({
-  status: z.enum(PICKUP_STATUSES).optional(),
+  // "open" is requested + scheduled (the desk's default view).
+  status: z.enum([...PICKUP_STATUSES, "open"]).optional(),
   from: isoDate.optional(),
   to: isoDate.optional(),
   assigneeUserId: id.optional(),

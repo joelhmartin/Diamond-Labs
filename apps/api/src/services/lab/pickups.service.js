@@ -10,6 +10,7 @@ import { allocateSequenceNumber } from "../sequence.service.js";
 import { loadClient } from "../billing/statements.service.js";
 import { notify } from "../notify-seam.js";
 import { partyKeysFor, practiceKeyFor } from "../practice.js";
+import { searchApprovedDoctors } from "./lab-messaging.js";
 import { isAssignableStaff } from "./lab-orders.service.js";
 import { shipToFromClient } from "./lab-shipping-rules.js";
 import { PickupError, planRequest, planSchedule, planComplete, planCancel } from "./pickup-rules.js";
@@ -29,6 +30,7 @@ import { PickupError, planRequest, planSchedule, planComplete, planCancel } from
 // Serialises pickup-number allocation (services/sequence.service.js); spec ruling.
 export const PICKUP_NUMBER_LOCK = 7300480;
 const LIST_CAP = 500;
+const OPEN_STATUSES = ["requested", "scheduled"];
 
 const sealer = fieldSealer(["notes", "cancelReason"]);
 const client = alias(users, "client");
@@ -155,9 +157,11 @@ const PICKUP_COLS = {
 };
 
 /** The lab list's filters: status, a date range over the scheduled (else first) day, driver, number or client text. */
-function staffConditions({ status, from, to, assigneeUserId, q }) {
+function staffConditions({ id, status, from, to, assigneeUserId, q }) {
   const conds = [];
-  if (status) conds.push(eq(pickups.status, status));
+  if (id) conds.push(eq(pickups.id, id));
+  if (status === "open") conds.push(inArray(pickups.status, OPEN_STATUSES));
+  else if (status) conds.push(eq(pickups.status, status));
   const day = sql`coalesce(${pickups.scheduledDate}, ${pickups.earliestDate})`;
   if (from) conds.push(gte(day, from));
   if (to) conds.push(lte(day, to));
@@ -215,19 +219,17 @@ export function scheduledPickupsBetween(database, from, to) {
 }
 
 /**
- * Staff "New pickup" client picker: approved doctors whose name or practice
- * matches `q` → [{ id, label }] (at most 20). Names only, no contact details.
+ * Staff "New pickup" client picker: the approved, active doctors matching `q`
+ * (the same search as the message picker) -> [{ id, label }], at most 20.
  */
 export async function searchPickupClients(q, { database = db } = {}) {
-  const text = String(q ?? "").trim();
-  const conds = [eq(users.role, "doctor"), eq(users.approvalStatus, "approved")];
-  if (text) conds.push(or(ilike(users.name, containsPattern(text)), ilike(doctorProfiles.companyName, containsPattern(text))));
-  const rows = await database
-    .select({ id: users.id, name: users.name, companyName: doctorProfiles.companyName })
-    .from(users)
-    .leftJoin(doctorProfiles, eq(doctorProfiles.userId, users.id))
-    .where(and(...conds))
-    .orderBy(users.name)
-    .limit(20);
+  const rows = await searchApprovedDoctors(database, q, 20);
   return rows.map((r) => ({ id: r.id, label: r.companyName ? `${r.companyName} (${r.name})` : r.name }));
+}
+
+/** One pickup in the lab list's row shape (staff), or NOT_FOUND. */
+export async function getPickup(id, user, { database = db } = {}) {
+  const { rows } = await listPickups(user, { id }, { database });
+  if (!rows[0]) throw notFound();
+  return rows[0];
 }

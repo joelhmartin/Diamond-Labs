@@ -22,8 +22,12 @@ const SCHEDULED = [row("c", 3, "scheduled", { scheduledDate: "2026-11-07", addre
 beforeEach(() => {
   api.get.mockImplementation((url, cfg) => {
     if (url === "/lab/staff") return Promise.resolve({ data: { data: { staff: [{ id: "s1", name: "Dana Driver" }] } } });
-    const s = cfg?.params?.status;
-    const rows = s === "requested" ? REQUESTED : s === "scheduled" ? SCHEDULED : [...REQUESTED, ...SCHEDULED];
+    const one = /^\/lab\/pickups\/(.+)$/.exec(url);
+    if (one) {
+      const hit = [...REQUESTED, ...SCHEDULED].find((r) => r.id === one[1]);
+      return hit ? Promise.resolve({ data: { data: hit } }) : Promise.reject({ response: { status: 404, data: { error: { message: "Pickup not found." } } } });
+    }
+    const rows = cfg?.params?.status === "open" ? [...REQUESTED, ...SCHEDULED] : [];
     return Promise.resolve({ data: { data: { rows, total: rows.length } } });
   });
   api.post.mockResolvedValue({ data: { data: { ok: true } } });
@@ -36,8 +40,9 @@ const select = (n) => fireEvent.click(screen.getByText(`#${n}`).closest("tr").qu
 test("default filter is open (requested+scheduled)", async () => {
   mount();
   await screen.findByText("#1");
-  const statuses = api.get.mock.calls.filter(([u]) => u === "/lab/pickups").map(([, c]) => c.params.status).sort();
-  assert.deepEqual(statuses, ["requested", "scheduled"]);
+  const calls = api.get.mock.calls.filter(([u]) => u === "/lab/pickups");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][1].params.status, "open");
   assert.ok(screen.getByText("#3"));
 });
 
@@ -82,4 +87,18 @@ test("a row with no address shows the empty note in the detail", async () => {
   mount("/lab/pickups?pickup=c");
   await screen.findByRole("heading", { name: "Pickup #3" });
   assert.ok(screen.getByText("No address on file"));
+});
+
+test("a deep link to a missing pickup toasts not found", async () => {
+  mount("/lab/pickups?pickup=zzz");
+  await screen.findByText("That pickup was not found.");
+  assert.equal(screen.queryByRole("heading", { name: /^Pickup #/ }), null);
+});
+
+test("Schedule from the detail closes the detail before opening the schedule modal", async () => {
+  mount("/lab/pickups?pickup=a");
+  await screen.findByRole("heading", { name: "Pickup #1" });
+  fireEvent.click(screen.getByRole("button", { name: "Schedule…" }));
+  await screen.findByRole("heading", { name: "Schedule 1 pickup" });
+  assert.equal(screen.queryByRole("heading", { name: "Pickup #1" }), null);
 });

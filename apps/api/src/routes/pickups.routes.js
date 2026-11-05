@@ -40,6 +40,9 @@ export default async function pickupsRoutes(fastify) {
   fastify.get("/lab/pickups", { preHandler: [...STAFF, validateQuery(labPickupListQuerySchema)] }, (request, reply) =>
     run(reply, () => pickupsService.listPickups(request.user, request.query)));
 
+  fastify.get("/lab/pickups/:id", { preHandler: STAFF }, (request, reply) =>
+    run(reply, () => pickupsService.getPickup(request.params.id, request.user)));
+
   fastify.get("/lab/pickup-clients", { preHandler: STAFF }, (request, reply) =>
     run(reply, async () => ({ clients: await pickupsService.searchPickupClients(request.query?.q) })));
 

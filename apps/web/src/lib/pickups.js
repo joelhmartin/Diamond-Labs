@@ -80,18 +80,10 @@ export const cancelOwnPickup = (p) => api.post(`/pickups/${p.id}/cancel`, { expe
 export const searchPickupClients = async (q) => data(await api.get("/lab/pickup-clients", { params: q ? { q } : {} })).clients;
 export const fetchAssignableStaff = async () => data(await api.get("/lab/staff")).staff;
 
-/**
- * The lab list. "open" is requested + scheduled, which the API takes one status at a time: fetch
- * both newest-first up to the end of the requested page, merge, and slice that page.
- */
-export async function fetchLabPickups({ status, limit, offset = 0, ...rest }) {
-  const list = async (s, lim, off) => data(await api.get("/lab/pickups", { params: { ...rest, ...(s ? { status: s } : {}), limit: lim, offset: off } }));
-  if (status !== "open") return list(status, limit, offset);
-  const end = offset + limit;
-  const [a, b] = await Promise.all([list("requested", end, 0), list("scheduled", end, 0)]);
-  const rows = [...a.rows, ...b.rows].sort((x, y) => String(y.createdAt).localeCompare(String(x.createdAt)) || y.pickupNumber - x.pickupNumber);
-  return { rows: rows.slice(offset, end), total: a.total + b.total };
-}
+/** The lab list: `status` may be "open" (requested + scheduled), the API's own filter. → { rows, total } */
+export const fetchLabPickups = async (params) => data(await api.get("/lab/pickups", { params }));
+/** One pickup in the lab list's row shape (404 when it doesn't exist). */
+export const fetchLabPickup = async (id) => data(await api.get(`/lab/pickups/${encodeURIComponent(id)}`));
 
 export const schedulePickup = (p, { scheduledDate, assigneeUserId }) =>
   api.post(`/lab/pickups/${p.id}/schedule`, { scheduledDate, ...(assigneeUserId !== undefined ? { assigneeUserId } : {}), expectedVersion: p.version });
