@@ -76,6 +76,40 @@ export async function loadClientPriceResolution(clientUserId, variantIds, databa
   };
 }
 
+/**
+ * Many clients at once: every override and ordered list assignment (archived ones flagged), with live-list items,
+ * in three selects (two when no live list is assigned). -> { states: Map<clientId, { overrides, listIds, archivedListIds }>, lists: Map<listId, { listId, name, archived, items }> }
+ * Batched twin of loadClientPriceResolution for copy and same-pricing.
+ */
+export async function loadClientPriceStates(tx, ids) {
+  const overrideRows = await tx
+    .select({ clientUserId: clientPrices.clientUserId, variantId: clientPrices.variantId, priceCents: clientPrices.priceCents })
+    .from(clientPrices).where(inArray(clientPrices.clientUserId, ids));
+  const assigned = await tx
+    .select({ clientUserId: clientPriceLists.clientUserId, listId: priceLists.id, name: priceLists.name, archivedAt: priceLists.archivedAt, position: clientPriceLists.position })
+    .from(clientPriceLists)
+    .innerJoin(priceLists, eq(priceLists.id, clientPriceLists.priceListId))
+    .where(inArray(clientPriceLists.clientUserId, ids))
+    .orderBy(asc(clientPriceLists.position), asc(clientPriceLists.id));
+  const liveIds = [...new Set(assigned.filter((a) => !a.archivedAt).map((a) => a.listId))];
+  const itemRows = liveIds.length === 0 ? [] : await tx
+    .select({ listId: priceListItems.priceListId, variantId: priceListItems.variantId, priceCents: priceListItems.priceCents })
+    .from(priceListItems).where(inArray(priceListItems.priceListId, liveIds));
+
+  const lists = new Map();
+  for (const a of assigned) if (!lists.has(a.listId)) lists.set(a.listId, { listId: a.listId, name: a.name, archived: Boolean(a.archivedAt), items: new Map() });
+  for (const r of itemRows) lists.get(r.listId)?.items.set(r.variantId, r.priceCents);
+
+  const states = new Map(ids.map((id) => [id, { overrides: new Map(), listIds: [], archivedListIds: new Set() }]));
+  for (const r of overrideRows) states.get(r.clientUserId)?.overrides.set(r.variantId, r.priceCents);
+  for (const a of assigned) {
+    const s = states.get(a.clientUserId);
+    s.listIds.push(a.listId);
+    if (a.archivedAt) s.archivedListIds.add(a.listId);
+  }
+  return { states, lists };
+}
+
 /** The pricing callers' view (shop, catalog, lab invoices): Map<variantId, { cents, source }> for unitPriceFor. */
 export async function loadClientPrices(clientUserId, variantIds, database = db) {
   const effective = await loadEffectiveClientPrices(clientUserId, variantIds, database);

@@ -3,7 +3,7 @@ import { db } from "../config/database.js";
 import { users, memberships, accounts } from "../db/schema/index.js";
 import { resolveClientPrices } from "../lib/pricing.js";
 import { groupBySignature } from "../lib/same-pricing.js";
-import { loadStates } from "./price-copy.service.js";
+import { loadClientPriceStates } from "./pricing.service.js";
 
 /**
  * Clients (approved doctors) grouped by identical effective prices, resolved through
@@ -21,7 +21,7 @@ export async function sameClientPricingGroups(database = db, { includeSingles = 
   if (clientRows.length === 0) return { groups: [] };
   const ids = clientRows.map((c) => c.id);
 
-  const { states, lists } = await loadStates(database, ids);
+  const { states, lists } = await loadClientPriceStates(database, ids);
   const inputs = clientRows.map((c) => {
     const s = states.get(c.id);
     const live = s.listIds.filter((id) => !s.archivedListIds.has(id)).map((id) => lists.get(id));

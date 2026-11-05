@@ -1,11 +1,12 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { PRICE_COPY_MAX_TARGETS } from "@my-app/shared";
 import { db } from "../config/database.js";
-import { users, clientPrices, priceLists, priceListItems, clientPriceLists } from "../db/schema/index.js";
+import { users, clientPrices } from "../db/schema/index.js";
 import { createId } from "../lib/id.js";
 import { planCopy, stateAfterPlan, effectiveAfterPlan, diffEffective, previewHash } from "../lib/price-copy.js";
 import * as auditService from "./audit.service.js";
 import { setClientLists } from "./price-lists.service.js";
+import { loadClientPriceStates } from "./pricing.service.js";
 
 // Copy prices from one client to many (spec R3). previewCopy and applyCopy share one
 // computation (computeCopy); effective prices come from lib/pricing.js resolveClientPrices
@@ -37,36 +38,6 @@ function assertRequest({ fromClientUserId, toClientUserIds, mode }) {
   if (toClientUserIds.includes(fromClientUserId)) throw new PriceCopyError("INVALID", "A client cannot be copied onto itself.");
 }
 
-/** Every client's overrides and ordered list assignment in four selects (three when no live list is assigned). */
-export async function loadStates(tx, ids) {
-  const overrideRows = await tx
-    .select({ clientUserId: clientPrices.clientUserId, variantId: clientPrices.variantId, priceCents: clientPrices.priceCents })
-    .from(clientPrices).where(inArray(clientPrices.clientUserId, ids));
-  const assigned = await tx
-    .select({ clientUserId: clientPriceLists.clientUserId, listId: priceLists.id, name: priceLists.name, archivedAt: priceLists.archivedAt, position: clientPriceLists.position })
-    .from(clientPriceLists)
-    .innerJoin(priceLists, eq(priceLists.id, clientPriceLists.priceListId))
-    .where(inArray(clientPriceLists.clientUserId, ids))
-    .orderBy(asc(clientPriceLists.position), asc(clientPriceLists.id));
-  const liveIds = [...new Set(assigned.filter((a) => !a.archivedAt).map((a) => a.listId))];
-  const itemRows = liveIds.length === 0 ? [] : await tx
-    .select({ listId: priceListItems.priceListId, variantId: priceListItems.variantId, priceCents: priceListItems.priceCents })
-    .from(priceListItems).where(inArray(priceListItems.priceListId, liveIds));
-
-  const lists = new Map();
-  for (const a of assigned) if (!lists.has(a.listId)) lists.set(a.listId, { listId: a.listId, name: a.name, archived: Boolean(a.archivedAt), items: new Map() });
-  for (const r of itemRows) lists.get(r.listId)?.items.set(r.variantId, r.priceCents);
-
-  const states = new Map(ids.map((id) => [id, { overrides: new Map(), listIds: [], archivedListIds: new Set() }]));
-  for (const r of overrideRows) states.get(r.clientUserId)?.overrides.set(r.variantId, r.priceCents);
-  for (const a of assigned) {
-    const s = states.get(a.clientUserId);
-    s.listIds.push(a.listId);
-    if (a.archivedAt) s.archivedListIds.add(a.listId);
-  }
-  return { states, lists };
-}
-
 const listView = (state, lists) => state.listIds.map((id) => ({ listId: id, name: lists.get(id).name, archived: state.archivedListIds.has(id) }));
 
 /** The plans, diffs and hash for a request. Throws on a bad request or a non-client source. */
@@ -82,7 +53,7 @@ async function computeCopy(tx, req) {
   const failed = toIds.filter((id) => !clients.has(id)).map((id) => ({ id, message: NOT_A_CLIENT }));
   if (targets.length === 0) return { targets: [], failed, previewHash: previewHash([]) };
 
-  const { states, lists } = await loadStates(tx, [fromClientUserId, ...targets]);
+  const { states, lists } = await loadClientPriceStates(tx, [fromClientUserId, ...targets]);
   const source = states.get(fromClientUserId);
   const planned = targets.map((clientUserId) => {
     const before = states.get(clientUserId);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../../config/api.js";
 import { ROUTES } from "../../config/routes.js";
@@ -40,16 +40,19 @@ export function SamePricingTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const latest = useRef(0);
   const load = useCallback(async () => {
+    const token = ++latest.current; // a slower, older response must not overwrite the newer one
     setLoading(true);
     try {
       const res = await api.get("/admin/prices/same-pricing", { params: includeSingles ? { includeSingles: "1" } : {} });
+      if (token !== latest.current) return;
       setRows(res.data.data.groups);
       setError(null);
     } catch (err) {
-      setError(err);
+      if (token === latest.current) setError(err);
     } finally {
-      setLoading(false);
+      if (token === latest.current) setLoading(false);
     }
   }, [includeSingles]);
   useEffect(() => { load(); }, [load]);
