@@ -4,7 +4,9 @@ import { isoDateIn, LAB_TIMEZONE } from "@my-app/shared";
 import { fakeTx } from "../../../test/fake-tx.js";
 import {
   salesCents, salesByDay, salesByMonth, salesBreakdown, clientName, coverageNotice, labDayBetween,
+  beforeCoverage, discountCoverageNotice, turnaroundDaysSql,
 } from "./lab-metrics.js";
+import { remakeCoverageNotice } from "./productivity.reports.js";
 import { invoices } from "../../../db/schema/index.js";
 import { sqlText, executedSql as executed } from "../../../test/sql-text.js";
 
@@ -71,4 +73,23 @@ test("coverage notice appears only for ranges that start before REPORTS_COVERAGE
   process.env.REPORTS_COVERAGE_FROM = "2026-11-15";
   assert.match(coverageNotice({ from: "2026-11-01", to: "2026-11-30" }), /2026-11-15/);
   assert.equal(coverageNotice({ from: "2026-11-15", to: "2026-11-30" }), null);
+});
+
+test("beforeCoverage is the one coverage condition (unset = imported history is in range)", () => {
+  assert.equal(beforeCoverage({ from: "2026-11-01" }, undefined), true);
+  assert.equal(beforeCoverage({ from: "2026-11-14" }, "2026-11-15"), true);
+  assert.equal(beforeCoverage({ from: "2026-11-15" }, "2026-11-15"), false);
+  assert.equal(beforeCoverage(undefined, "2026-11-15"), true);
+  // All three notices agree with it.
+  for (const notice of [discountCoverageNotice, remakeCoverageNotice]) {
+    assert.ok(notice({ from: "2026-11-14" }, "2026-11-15"));
+    assert.equal(notice({ from: "2026-11-15" }, "2026-11-15"), null);
+    assert.ok(notice({ from: "2026-11-15" }, undefined));
+  }
+  assert.ok(coverageNotice({ from: "2026-11-14" }, "2026-11-15"));
+  assert.equal(coverageNotice({ from: "2026-11-01" }, undefined), null, "product coverage stays quiet until cutover is recorded");
+});
+
+test("turnaroundDaysSql never goes below zero, like turnaroundDays()", () => {
+  assert.match(sqlText(turnaroundDaysSql), /^greatest\(0, /);
 });

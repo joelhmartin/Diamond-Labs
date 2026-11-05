@@ -52,7 +52,7 @@ export const isLiveOrder = sql`${labOrders.status} <> 'cancelled'`;
  * `turnaroundDays(order, calendar?)` and any report averaging turnaround use
  * this; piece 7 swaps business days in here.
  */
-export const turnaroundDaysSql = sql`(${labDay(labOrders.shippedAt)} - ${labDay(labOrders.receivedAt)})`;
+export const turnaroundDaysSql = sql`greatest(0, ${labDay(labOrders.shippedAt)} - ${labDay(labOrders.receivedAt)})`;
 
 /** A line's catalog variant when it names only a code (imported lines). See `catalogJoins`. */
 export const byCode = alias(productVariants, "by_code");
@@ -172,6 +172,16 @@ export async function salesBreakdown(db, { from, to }) {
   };
 }
 
+/**
+ * THE coverage condition: the range reaches back before REPORTS_COVERAGE_FROM
+ * (the cutover day), or cutover is not recorded yet (unset), so imported
+ * history is in it. A range with no start counts as reaching back.
+ */
+export function beforeCoverage(range, coverageFrom = process.env.REPORTS_COVERAGE_FROM) {
+  if (!coverageFrom || !range?.from) return true;
+  return range.from < coverageFrom;
+}
+
 /** The notice the remake reduction gap needs wherever discounts are shown. */
 export const REMAKE_DISCOUNT_NOTICE =
   "Discounts are negative adjustment lines. A remake is billed at $0 and the price it would have had is not stored, so remake reductions are not included.";
@@ -182,7 +192,7 @@ export const REMAKE_DISCOUNT_NOTICE =
  * cutover is recorded) undercounts them.
  */
 export function discountCoverageNotice(range, coverageFrom = process.env.REPORTS_COVERAGE_FROM) {
-  if (coverageFrom && range?.from && range.from >= coverageFrom) return null;
+  if (!beforeCoverage(range, coverageFrom)) return null;
   const since = coverageFrom ? ` (before ${coverageFrom})` : "";
   return `Discounts on invoices imported from Seazona${since} are not itemised, so they are not counted as discounts; those invoices' net sales are complete.`;
 }
@@ -196,6 +206,7 @@ export const discountNotices = (range) => [REMAKE_DISCOUNT_NOTICE, discountCover
  * REPORTS_COVERAGE_FROM (an ISO date set at cutover; unset = no note).
  */
 export function coverageNotice(range, coverageFrom = process.env.REPORTS_COVERAGE_FROM) {
-  if (!coverageFrom || !range?.from || range.from >= coverageFrom) return null;
+  // Unlike the discount and remake notes, this one stays quiet until cutover is recorded (spec: unset = no note).
+  if (!coverageFrom || !beforeCoverage(range, coverageFrom)) return null;
   return `Product detail is complete from ${coverageFrom}. Most invoices before then were imported as one summary line, so they count as "No product" here. Money totals by day, month and client are complete.`;
 }

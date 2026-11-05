@@ -11,7 +11,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { LAB_ORDER_SOURCES, LAB_ORDER_SOURCE_LABELS, LAB_ORDER_STATUSES, LAB_STATUS_LABELS, monthsBetween } from "@my-app/shared";
 import { labOrders, labOrderEvents, labOrderLines, productFamilies, users, doctorProfiles } from "../../../db/schema/index.js";
 import {
-  ORDER_LINK, catalogJoins, clientName, isClient, isLiveOrder, labDayBetween, labDayText, labMonthText, labToday, num, orderAndPage,
+  ORDER_LINK, beforeCoverage, catalogJoins, clientName, isClient, isLiveOrder, labDayBetween, labDayText, labMonthText, labToday, num, orderAndPage,
   rowsOf, turnaroundDaysSql,
 } from "./lab-metrics.js";
 import { assigneeJoin, assigneeName, orderJoins, statusBadge, unitsJoin } from "./order-metrics.js";
@@ -111,7 +111,7 @@ const ordersCompleted = {
 
 const tasksCompleted = {
   key: "productivity.tasks-completed", group: GROUP, featured: true, title: "Tasks Completed",
-  description: "Status moves each person made in the range, by the status they moved the order to. Moves the system made (checkout, imports) are not counted.",
+  description: "Status moves each person made in the range, by the status they moved the order to. Putting an order on hold counts too (it is recorded as a hold event). Moves the system made (checkout, imports) are not counted.",
   params: [RANGE],
   columns: [
     { id: "user", label: "Person", type: "text" },
@@ -123,7 +123,7 @@ const tasksCompleted = {
       select ${labOrderEvents.byUserId} as "userId", ${users.name} as "user", ${labOrderEvents.to} as "toStatus", count(*) as "moves"
       from ${labOrderEvents}
       left join ${users} on ${users.id} = ${labOrderEvents.byUserId}
-      where ${labOrderEvents.type} = 'status' and ${labOrderEvents.byUserId} is not null and ${labDayBetween(labOrderEvents.at, range)}
+      where ${labOrderEvents.type} in ('status', 'hold') and ${labOrderEvents.byUserId} is not null and ${labDayBetween(labOrderEvents.at, range)}
       group by ${labOrderEvents.byUserId}, ${users.name}, ${labOrderEvents.to}
       order by 2, 1`);
     const byUser = new Map();
@@ -211,7 +211,7 @@ const monthlyOrders = {
  * REPORTS_COVERAGE_FROM, or always while it is unset.
  */
 export function remakeCoverageNotice(range, coverageFrom = process.env.REPORTS_COVERAGE_FROM) {
-  if (coverageFrom && range?.from && range.from >= coverageFrom) return null;
+  if (!beforeCoverage(range, coverageFrom)) return null;
   const since = coverageFrom ? ` (history before ${coverageFrom})` : "";
   return `Imported orders are not flagged as remakes${since}, so remakes before cutover read as zero.`;
 }

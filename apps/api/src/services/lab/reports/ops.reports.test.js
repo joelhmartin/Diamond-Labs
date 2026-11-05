@@ -17,15 +17,16 @@ const PHI = /legacy_patient|patient_|form_data|notes|hold_reason|lab_notes|sourc
 
 afterEach(() => { delete process.env.REPORTS_COVERAGE_FROM; });
 
-test("tasks completed counts status events per byUserId per to-status in range, ignoring system (null) moves", async () => {
+test("tasks completed counts status (and hold) events per byUserId per to-status in range, ignoring system (null) moves", async () => {
   const tx = fakeTx({ executes: [[
     { userId: "u1", user: "Ana", toStatus: "in_production", moves: "3" },
     { userId: "u1", user: "Ana", toStatus: "quality_check", moves: "2" },
     { userId: "u2", user: "Ben", toStatus: "shipped", moves: "1" },
+    { userId: "u2", user: "Ben", toStatus: "on_hold", moves: "2" }, // from type 'hold' events
   ]] });
   const out = await report("productivity.tasks-completed").run(tx, { range: range("2026-10-01", "2026-10-31") }, null, ctx());
   const [{ text, params }] = executedSql(tx);
-  assert.match(text, /lab_order_events\.type = 'status'/);
+  assert.match(text, /lab_order_events\.type in \('status', 'hold'\)/); // a hold is a move to on_hold, recorded as type hold
   assert.match(text, /lab_order_events\.by_user_id is not null/);
   assert.match(text, /lab_order_events\.to_value as toStatus/);
   assert.match(text, /group by lab_order_events\.by_user_id, users\.name, lab_order_events\.to_value/);
@@ -38,8 +39,11 @@ test("tasks completed counts status events per byUserId per to-status in range, 
   assert.equal(ana.quality_check, 2);
   assert.equal(ana.shipped, 0);
   assert.equal(ana.total, 5);
-  assert.equal(out.rows.find((r) => r.userId === "u2").total, 1);
-  assert.equal(out.summary.total, 6);
+  const ben = out.rows.find((r) => r.userId === "u2");
+  assert.equal(ben.on_hold, 2);
+  assert.equal(ben.total, 3);
+  assert.equal(out.summary.total, 8);
+  assert.equal(out.summary.on_hold, 2);
   assert.equal(out.rows.length, 2);
 });
 
@@ -64,7 +68,7 @@ test("case submission: digital when recordsMethod is set or a scan file exists, 
   assert.deepEqual(out.summary, { day: "Total", digital: 3, physical: 1, unknown: 2, total: 6, digitalShare: 0.75 });
 });
 
-test("turnaround excludes unshipped and cancelled orders; median of [2,4,30] is 4", async () => {
+test("turnaround shapes rows and the summary and asks Postgres for percentile_cont(0.5); unshipped and cancelled orders excluded (the median itself is exercised by the Task 9 bench)", async () => {
   const tx = fakeTx({ executes: [[
     { month: "2026-10", category: "Night guards", orders: "3", avgDays: "12", medianDays: "4", isTotal: 0 },
     { month: null, category: null, orders: "3", avgDays: "12", medianDays: "4", isTotal: 1 },
@@ -73,7 +77,7 @@ test("turnaround excludes unshipped and cancelled orders; median of [2,4,30] is 
   const [{ text }] = executedSql(tx);
   assert.match(text, /lab_orders\.status = 'shipped' and lab_orders\.shipped_at is not null/);
   assert.match(text, /percentile_cont\(0\.5\) within group \(order by x\.days\)/);
-  assert.match(text, /\(\(lab_orders\.shipped_at at time zone 'America\/Chicago'\)::date - \(lab_orders\.received_at at time zone 'America\/Chicago'\)::date\)/);
+  assert.match(text, /greatest\(0, \(lab_orders\.shipped_at at time zone 'America\/Chicago'\)::date - \(lab_orders\.received_at at time zone 'America\/Chicago'\)::date\)/); // clamped like turnaroundDays()
   assert.match(text, /lab_orders\.shipped_at >= /);
   assert.match(text, /grouping sets \(\(x\.month, x\.category\), \(\)\)/);
   assert.deepEqual(out.rows, [{ month: "2026-10", category: "Night guards", orders: 3, avgDays: 12, medianDays: 4 }]);

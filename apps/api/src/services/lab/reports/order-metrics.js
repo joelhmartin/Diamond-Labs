@@ -10,8 +10,10 @@
  *                 IS past due (isOverdue only exempts terminal statuses; the
  *                 board shows it red), and it is also counted as on hold.
  * - At risk     = interim rule until piece 7's board tiles (Task 10 re-points
- *                 `boardDayCounts` there): open, not on hold, due on or before
- *                 today + 2, and still received or in production.
+ *                 `boardDayCounts` there): open, not on hold, still received or
+ *                 in production, and due today through today + 2 inclusive, so
+ *                 never already past due (a late order is past due, not at
+ *                 risk). The same window as Technician Workload's "due soon".
  * - Turnaround  = calendar days received → shipped (lab-metrics turnaroundDaysSql).
  *
  * "today" is always the lab-local day the caller passes (the runner's ctx.today).
@@ -44,9 +46,10 @@ export const isOnHold = sql`${labOrders.status} = 'on_hold'`;
 export const pastDueSql = (today) => sql`${isOpenOrder} and ${labOrders.dueDate} < ${today}::date`;
 /** Open and due on `day`. */
 export const dueOnSql = (day) => sql`${isOpenOrder} and ${labOrders.dueDate} = ${day}::date`;
+/** Due today through today + AT_RISK_DAYS inclusive (at risk's window; Technician Workload's "due soon"). */
+export const dueSoonSql = (today) => sql`${labOrders.dueDate} between ${today}::date and ${addDays(today, AT_RISK_DAYS)}::date`;
 /** The interim at-risk rule (see header). */
-export const atRiskSql = (today) =>
-  sql`${labOrders.status} in (${literalList(AT_RISK_STATUSES)}) and ${labOrders.dueDate} <= ${addDays(today, AT_RISK_DAYS)}::date`;
+export const atRiskSql = (today) => sql`${labOrders.status} in (${literalList(AT_RISK_STATUSES)}) and ${dueSoonSql(today)}`;
 
 /** The person an order is assigned to (a second users join). */
 export const assignee = alias(users, "assignee");

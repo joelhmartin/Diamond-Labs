@@ -2,9 +2,9 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import { isOverdue, TERMINAL_LAB_STATUSES, LAB_ORDER_STATUSES } from "@my-app/shared";
 import { fakeTx } from "../../../test/fake-tx.js";
-import { executedSql, sqlText } from "../../../test/sql-text.js";
+import { executedSql, renderSql, sqlText } from "../../../test/sql-text.js";
 import {
-  atRiskOrders, atRiskSql, boardDayCounts, isOpenOrder, ordersByDay, openUnitsByCategory, pastDueSql, shippedByDay, turnaroundDays,
+  atRiskOrders, atRiskSql, boardDayCounts, dueSoonSql, isOpenOrder, ordersByDay, openUnitsByCategory, pastDueSql, shippedByDay, turnaroundDays,
 } from "./order-metrics.js";
 
 const PHI = /legacy_patient|patient_|form_data|notes|hold_reason|lab_notes|source_label|\bnote\b/;
@@ -35,10 +35,22 @@ test("boardDayCounts agrees with isOverdue: an on-hold past-due order is past du
   for (const d of ["2026-11-01", "2026-11-02", "2026-11-03"]) assert.ok(params.includes(d), `missing ${d}`);
 });
 
-test("at risk is received or in production and due within two days; on hold is never at risk", () => {
-  const text = sqlText(atRiskSql("2026-11-01"));
-  assert.match(text, /lab_orders\.status in \('received', 'in_production'\) and lab_orders\.due_date <= \$1::date/);
+test("at risk is received or in production and due today through today+2; on hold is never at risk", () => {
+  const { text, params } = renderSql(atRiskSql("2026-11-01"));
+  assert.match(text, /lab_orders\.status in \('received', 'in_production'\) and lab_orders\.due_date between \$1::date and \$2::date/);
+  assert.deepEqual(params, ["2026-11-01", "2026-11-03"]);
   assert.doesNotMatch(text, /on_hold/);
+  // The same window as Technician Workload's "due soon".
+  assert.equal(sqlText(dueSoonSql("2026-11-01")), "lab_orders.due_date between $1::date and $2::date");
+});
+
+test("a past-due in-production order is past due, not at risk", () => {
+  // Due Oct 30, today Nov 1: below at risk's lower bound (today), inside past due (< today).
+  const due = "2026-10-30";
+  const [low, high] = renderSql(atRiskSql("2026-11-01")).params;
+  assert.equal(due >= low && due <= high, false, "not in the at-risk window");
+  assert.equal(isOverdue(due, "in_production", "2026-11-01"), true, "past due by the shared rule");
+  assert.match(sqlText(pastDueSql("2026-11-01")), /due_date < \$1::date/);
 });
 
 test("atRiskOrders lists soonest due first and never selects notes or patients", async () => {

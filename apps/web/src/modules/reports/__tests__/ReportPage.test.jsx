@@ -268,6 +268,38 @@ test("Wall view opens full screen with the chart above the table, and Esc or Exi
   assert.equal(screen.queryByRole("dialog"), null);
 });
 
+const TIMEOUT = {
+  response: { status: 503, data: { error: { code: "REPORT_TIMEOUT", message: "This report took too long. Try a shorter date range." } } },
+};
+
+test("a failed wall re-run keeps the last good figures on screen with an error badge", async () => {
+  runReport.mockResolvedValueOnce(RESULT).mockRejectedValue(TIMEOUT);
+  mount({ meta: WALL });
+  await screen.findByText("$12.50");
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    fireEvent.click(screen.getByRole("button", { name: "Wall view" }));
+    act(() => { vi.advanceTimersByTime(60000); });
+    await waitFor(() => assert.equal(runReport.mock.calls.length, 2));
+    const wall = screen.getByRole("dialog");
+    assert.ok(await within(wall).findByText(/couldn't refresh/i));
+    assert.ok(within(wall).getByText("$12.50"), "the last good rows stay up");
+    assert.equal(within(wall).queryByText("This report took too long. Try a shorter date range."), null);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("off the wall, a failed rerun still replaces the rows with the error", async () => {
+  runReport.mockResolvedValueOnce(RESULT).mockRejectedValue(TIMEOUT);
+  mount({ meta: WALL });
+  await screen.findByText("$12.50");
+  fireEvent.click(screen.getByRole("button", { name: "Run" }));
+  assert.ok(await screen.findByText("This report took too long. Try a shorter date range."));
+  assert.equal(screen.queryByText("$12.50"), null);
+  assert.equal(screen.queryByText(/couldn't refresh/i), null);
+});
+
 test("Wall view reruns the report every 60 s while visible, and stops when closed", async () => {
   runReport.mockResolvedValue(RESULT);
   mount({ meta: WALL });

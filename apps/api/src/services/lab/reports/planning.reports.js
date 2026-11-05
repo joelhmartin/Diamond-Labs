@@ -5,11 +5,10 @@
  * reports need its workflow stage targets.
  */
 import { sql } from "drizzle-orm";
-import { addDays } from "@my-app/shared";
 import { labOrders } from "../../../db/schema/index.js";
 import { ORDER_LINK, clientName, isLiveOrder, labDayBetween, labDayText, labToday, num, rowsOf } from "./lab-metrics.js";
 import {
-  AT_RISK_DAYS, assigneeJoin, assigneeName, isOnHold, isOpenOrder, orderJoins, pastDueSql, statusBadge, unitsJoin,
+  AT_RISK_DAYS, assigneeJoin, assigneeName, dueSoonSql, isOnHold, isOpenOrder, orderJoins, pastDueSql, statusBadge, unitsJoin,
 } from "./order-metrics.js";
 import { dependentReport } from "./dependent.js";
 
@@ -40,7 +39,7 @@ const workload = {
     const raw = await rowsOf(tx, sql`
       select ${labOrders.assigneeUserId} as "assigneeUserId", ${assigneeName} as "assignee", count(*) as "orders",
         coalesce(sum(u.units), 0) as "units", count(*) filter (where ${pastDueSql(today)}) as "pastDue",
-        count(*) filter (where ${labOrders.dueDate} between ${today}::date and ${addDays(today, AT_RISK_DAYS)}::date) as "dueSoon",
+        count(*) filter (where ${dueSoonSql(today)}) as "dueSoon",
         count(*) filter (where ${isOnHold}) as "onHold", count(*) filter (where ${labOrders.rush}) as "rush"
       from ${labOrders} ${assigneeJoin} ${unitsJoin}
       where ${isOpenOrder}

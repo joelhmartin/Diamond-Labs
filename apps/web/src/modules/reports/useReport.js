@@ -19,6 +19,8 @@ export function useReport(key) {
   const [meta, setMeta] = useState(null);
   const [metaError, setMetaError] = useState(null);
   const [result, setResult] = useState(null);
+  // The latest successful result; unlike `result` it survives a failed run (the Wall view keeps showing it).
+  const [lastResult, setLastResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [runId, setRunId] = useState(0);
@@ -29,6 +31,7 @@ export function useReport(key) {
     setMeta(null);
     setMetaError(null);
     setResult(null);
+    setLastResult(null);
     reportsApi.listReports()
       .then((list) => {
         if (!live) return;
@@ -60,6 +63,7 @@ export function useReport(key) {
       const { stale, value } = await latest(() => reportsApi.runReport(key, paramsRef.current, paging));
       if (stale) return null;
       setResult(value);
+      setLastResult(value);
       setError(null);
       setLoading(false);
       return value;
@@ -81,5 +85,5 @@ export function useReport(key) {
   const run = useCallback(() => setRunId((n) => n + 1), []);
 
   // paramsKey: changes only when params do (the table goes back to page 1); runKey also changes on Run.
-  return { meta, metaError, params, setParams, result, loading, error, run, load, paramsKey: pKey, runKey: `${pKey}#${runId}` };
+  return { meta, metaError, params, setParams, result, lastResult, loading, error, run, load, paramsKey: pKey, runKey: `${pKey}#${runId}` };
 }

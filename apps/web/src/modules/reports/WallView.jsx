@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef } from "react";
-import { Minimize2, RefreshCw } from "lucide-react";
+import { AlertTriangle, Minimize2, RefreshCw } from "lucide-react";
+import { errorText } from "../../lib/requests.js";
 import { useVisibleInterval } from "./useVisibleInterval.js";
 
 export const WALL_RERUN_MS = 60000;
@@ -13,11 +14,13 @@ const updatedText = (iso) => {
 /**
  * A report shown full screen for a wall display (a report with `display:
  * "wall"`): a fixed overlay with large type that re-runs the report every
- * 60 s while the page is visible. Esc or the Exit button closes it.
+ * 60 s while the page is visible. Esc or the Exit button closes it. `failed`
+ * (the error of the latest re-run, while older figures are shown) adds a
+ * "Couldn't refresh" badge; the caller keeps the last good data on screen.
  *
- *   <WallView title onExit rerun generatedAt>{chart and table}</WallView>
+ *   <WallView title onExit rerun generatedAt failed?>{chart and table}</WallView>
  */
-export function WallView({ title, onExit, rerun, generatedAt, children }) {
+export function WallView({ title, onExit, rerun, generatedAt, failed = null, children }) {
   const titleId = useId();
   const exitRef = useRef(null);
   useVisibleInterval(rerun, WALL_RERUN_MS);
@@ -42,6 +45,11 @@ export function WallView({ title, onExit, rerun, generatedAt, children }) {
       <header className="flex flex-wrap items-center justify-between gap-4">
         <h1 id={titleId} className="font-heading text-4xl font-bold tracking-tight text-navy md:text-5xl">{title}</h1>
         <div className="flex items-center gap-4">
+          {failed && (
+            <span role="status" className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1 text-sm font-medium text-red-700" title={errorText(failed)}>
+              <AlertTriangle size={14} aria-hidden="true" /> Couldn't refresh · showing the last figures
+            </span>
+          )}
           <span className="inline-flex items-center gap-1.5 font-mono text-sm text-navy/50">
             <RefreshCw size={14} aria-hidden="true" /> {updatedText(generatedAt) || "Refreshes every minute"}
           </span>

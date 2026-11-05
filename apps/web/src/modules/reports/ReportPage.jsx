@@ -21,10 +21,15 @@ export const tookText = (ms) => `took ${(Math.max(0, Number(ms) || 0) / 1000).to
 export function ReportPage() {
   const { key } = useParams();
   const report = useReport(key);
-  const { meta, metaError, params, setParams, result, loading, error, run, load, runKey, paramsKey } = report;
+  const { meta, metaError, params, setParams, loading, run, load, runKey, paramsKey } = report;
   const [wall, setWall] = useState(false);
   const exitWall = useCallback(() => setWall(false), []);
   const canWall = meta?.display === "wall";
+  // On the wall a failed re-run keeps the last good figures up (with a badge) instead of blanking the screen.
+  // The normal page is unchanged: an error replaces the result.
+  const stale = wall && Boolean(report.error) && Boolean(report.lastResult);
+  const result = stale ? report.lastResult : report.result;
+  const error = stale ? null : report.error;
 
   const body = meta && (
     <>
@@ -76,7 +81,7 @@ export function ReportPage() {
               <ReportParamsForm specs={meta.params} params={params} onChange={setParams} onRun={run} running={loading} />
               {/* The chart and table render once: in the wall overlay while it is open, else here. */}
               {wall ? (
-                <WallView title={meta.title} onExit={exitWall} rerun={run} generatedAt={result?.generatedAt}>{body}</WallView>
+                <WallView title={meta.title} onExit={exitWall} rerun={run} generatedAt={result?.generatedAt} failed={stale ? report.error : null}>{body}</WallView>
               ) : body}
             </>
           ) : (
