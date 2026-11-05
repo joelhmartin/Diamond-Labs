@@ -62,3 +62,29 @@ test("AdminUsersPage passwordless-only filter narrows the list", async () => {
   await waitFor(() => assert.equal(screen.queryByText("Alice"), null));
   assert.ok(screen.getByText("Bob"));
 });
+
+test("Users bulk Assign price list posts clientUserIds and toasts ok/failed", async () => {
+  get.mockImplementation(async (path) => {
+    if (path === "/admin/price-lists") return { data: { data: [{ id: "L1", name: "Gold" }] } };
+    return { data: { data: { users: USERS, summary: null } } };
+  });
+  post.mockResolvedValue({ data: { data: { ok: 1, failed: [{ id: "u2", message: "Not a client" }] } } });
+  render(
+    <MemoryRouter>
+      <ToastProvider><AdminUsersPage /></ToastProvider>
+    </MemoryRouter>,
+  );
+  await screen.findByText("Alice");
+  const boxes = screen.getAllByLabelText("Select row");
+  fireEvent.click(boxes[0]);
+  fireEvent.click(boxes[1]);
+  fireEvent.click(await screen.findByRole("button", { name: "Assign price list…" }));
+  fireEvent.change(await screen.findByLabelText("Price list"), { target: { value: "L1" } });
+  fireEvent.click(await screen.findByRole("button", { name: "Assign to 2 users" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Click again to assign to 2 clients" }));
+  await waitFor(() => assert.equal(post.mock.calls.length, 1));
+  const [path, body] = post.mock.calls[0];
+  assert.equal(path, "/admin/price-lists/assign");
+  assert.deepEqual({ ...body, clientUserIds: [...body.clientUserIds].sort() }, { listId: "L1", mode: "add", clientUserIds: ["u1", "u2"] });
+  assert.ok(await screen.findByText("1 done, 1 failed: u2 Not a client"));
+});

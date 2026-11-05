@@ -35,6 +35,8 @@ import { AdminPaymentsPage } from "./pages/app/AdminPaymentsPage.jsx";
 import { AdminExportsPage } from "./pages/app/AdminExportsPage.jsx";
 import { AdminUsersPage } from "./pages/app/AdminUsersPage.jsx";
 import { AdminClientPricingPage } from "./pages/app/AdminClientPricingPage.jsx";
+import { AdminPriceListsPage } from "./pages/app/AdminPriceListsPage.jsx";
+import { AdminPriceListEditorPage } from "./pages/app/AdminPriceListEditorPage.jsx";
 import { AdminAutoPayPage } from "./pages/app/AdminAutoPayPage.jsx";
 import { AdminJobsPage } from "./pages/app/AdminJobsPage.jsx";
 import { AdminOrdersPage } from "./pages/app/AdminOrdersPage.jsx";
@@ -227,6 +229,8 @@ function AppRoutes() {
         <Route element={<RequireAdmin />}>
           <Route path="/admin" element={<Navigate to="/admin/invoices" replace />} />
           <Route path="/admin/products" element={<AdminCatalogPage />} />
+          <Route path="/admin/price-lists" element={<AdminPriceListsPage />} />
+          <Route path="/admin/price-lists/:id" element={<AdminPriceListEditorPage />} />
           <Route path="/admin/invoices" element={<AdminInvoicesPage />} />
           <Route path="/admin/invoices/:id" element={<AdminInvoiceDetailPage />} />
           <Route path="/admin/receivables" element={<AdminReceivablesPage />} />

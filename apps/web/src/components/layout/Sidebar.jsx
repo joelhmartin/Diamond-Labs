@@ -20,6 +20,7 @@ import {
   Landmark,
   Truck,
   Download,
+  Tags,
 } from "lucide-react";
 import { brand } from "../../config/brand.js";
 import { isStaffRole } from "@my-app/shared";
@@ -51,6 +52,7 @@ const adminItems = [
   { label: "Departments", to: ROUTES.ADMIN_DEPARTMENTS, icon: Building2 },
   { label: "Users",      to: ROUTES.ADMIN_USERS,       icon: UserCog },
   { label: "Products",   to: ROUTES.ADMIN_PRODUCTS,    icon: Package },
+  { label: "Price lists", to: ROUTES.ADMIN_PRICE_LISTS, icon: Tags },
   { label: "Rx Mapping", to: ROUTES.ADMIN_RX_MAPPING,  icon: FlaskConical },
 ];
 
