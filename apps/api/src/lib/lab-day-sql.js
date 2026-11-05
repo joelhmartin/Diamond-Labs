@@ -23,6 +23,9 @@ export const labDayText = (col) => sql`to_char(${labDay(col)}, 'YYYY-MM-DD')`;
 /** A timestamptz column's lab-local month as "YYYY-MM" text. */
 export const labMonthText = (col) => sql`to_char(${labDay(col)}, 'YYYY-MM')`;
 
+/** The instant the lab-local day `iso` ("YYYY-MM-DD") begins: an inclusive lower bound for "on or after iso". */
+export const startOfLabDay = (iso) => sql`(${iso}::date)::timestamp at time zone ${LAB_TZ}`;
+
 /** The instant the lab-local day after `iso` ("YYYY-MM-DD") begins: an exclusive upper bound for "on or before iso". */
 export const afterLabDay = (iso) => sql`((${iso}::date + 1)::timestamp at time zone ${LAB_TZ})`;
 
@@ -31,4 +34,4 @@ export const afterLabDay = (iso) => sql`((${iso}::date + 1)::timestamp at time z
  * `from`..`to`, written as instant bounds so an index on the column applies.
  */
 export const labDayBetween = (col, { from, to }) =>
-  sql`${col} >= (${from}::date)::timestamp at time zone ${LAB_TZ} and ${col} < ${afterLabDay(to)}`;
+  sql`${col} >= ${startOfLabDay(from)} and ${col} < ${afterLabDay(to)}`;

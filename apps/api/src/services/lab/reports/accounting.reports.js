@@ -15,7 +15,7 @@ import { statementEvents, monthBounds } from "../../billing/statement-model.js";
 import { deriveBalance } from "../../billing/invoice-rules.js";
 import {
   CLIENT_LINK, INVOICE_LINK, clientLabel, discountNotices, clientName, isDiscountLine, labDayBetween, labDayText, labMonthText, labToday, num, orderAndPage,
-  paymentDay, rowsOf, salesWhere,
+  paymentDay, paymentDayBetween, rowsOf, salesWhere,
 } from "./lab-metrics.js";
 
 const ADMIN = ["admin"];
@@ -83,7 +83,7 @@ const adjustments = {
       select 'Credit', to_char(${paymentDay}, 'YYYY-MM-DD'), ${invoices.id}, ${invoices.invoiceNumber},
         ${invoices.clientUserId}, ${clientName}, null, -${invoicePayments.appliedCents}
       from ${invoicePayments} join ${invoices} on ${invoices.id} = ${invoicePayments.invoiceId} ${clientJoin(invoices.clientUserId)}
-      where ${invoicePayments.source} = ${CREDIT_SOURCE} and ${paymentDay} between ${range.from}::date and ${range.to}::date
+      where ${invoicePayments.source} = ${CREDIT_SOURCE} and ${paymentDayBetween(range)}
       order by 2, 4, 1`);
     const rows = raw.map((r) => ({ ...r, invoiceNumber: invoiceNo(r.invoiceNumber), amount: num(r.amount) }));
     return { rows, summary: { amount: sumOf(rows, "amount") } };
@@ -252,7 +252,7 @@ const paymentsReceived = {
     const where = sql.join([
       sql`${invoicePayments.appliedCents} > 0`,
       sql`coalesce(${invoicePayments.source}, '') not in (${inList([CREDIT_SOURCE, LEGACY_SETTLEMENT_SOURCE])})`,
-      sql`${paymentDay} between ${range.from}::date and ${range.to}::date`,
+      paymentDayBetween(range),
       SOURCE_FILTERS[source] ? sql`${invoicePayments.source} in (${inList(SOURCE_FILTERS[source])})` : undefined,
       client ? sql`${payer} = ${client}` : undefined,
     ].filter(Boolean), sql` and `);

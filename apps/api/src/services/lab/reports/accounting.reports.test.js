@@ -72,7 +72,13 @@ test("payments received excludes negative reversal rows and labels source", asyn
   for (const q of [count, rows]) {
     assert.match(q.text, /invoice_payments\.applied_cents > 0/);
     assert.ok(q.params.includes("credit") && q.params.includes("legacy_settlement"));
+    // The day filter is the index-friendly ledgerRowDayBetween, never the coalesce.
+    assert.match(q.text, /\(invoice_payments\.paid_on >= \$\d+::date and invoice_payments\.paid_on <= \$\d+::date\) or \(invoice_payments\.paid_on is null and/);
+    assert.doesNotMatch(q.text, /where[^]*coalesce\(invoice_payments\.paid_on[^)]*\) between/);
   }
+  const adj = fakeTx({ executes: [[]] });
+  await report("accounting.adjustments").run(adj, { range });
+  assert.match(executedSql(adj)[0].text, /source = \$\d+ and \(\(invoice_payments\.paid_on >= /);
   assert.match(rows.text, /order by .*invoice_payments\.id/);
   assert.match(rows.text, /limit \$\d+ offset \$\d+/);
 });

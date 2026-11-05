@@ -7,7 +7,7 @@ import { summarizePayments } from "../../lib/payment-summary.js";
 import { deriveBalance, canActOnInvoice } from "./invoice-rules.js";
 import { openLedgerRow } from "./invoice-crypto.js";
 import { paidCentsFor } from "./paid-cents.js";
-import { labDay } from "../../lib/lab-day-sql.js";
+import { labDay, startOfLabDay, afterLabDay } from "../../lib/lab-day-sql.js";
 
 /**
  * A ledger row's day in SQL: when a manual payment was received (staff-entered
@@ -15,6 +15,23 @@ import { labDay } from "../../lib/lab-day-sql.js";
  * statement (statement-model.js `p.paidOn ?? labDay(p.createdAt)`).
  */
 export const ledgerRowDay = sql`coalesce(${invoicePayments.paidOn}, ${labDay(invoicePayments.createdAt)})`;
+
+/**
+ * THE ledger-row-day range filter: rows whose ledgerRowDay falls in the
+ * inclusive lab days `from`..`to` (either bound may be left out; neither
+ * means no filter, `undefined`). Selects exactly the rows
+ * `ledgerRowDay between from and to` would, but written as
+ *   (paid_on in range) or (paid_on is null and created_at in the lab-day range)
+ * so the paid_on and created_at indexes apply; the coalesce serves no index.
+ * Use ledgerRowDay itself for SELECT / GROUP BY / ORDER BY.
+ */
+export function ledgerRowDayBetween({ from, to } = {}) {
+  if (!from && !to) return undefined;
+  const both = (parts) => sql.join(parts.filter(Boolean), sql` and `);
+  const paid = both([from && sql`${invoicePayments.paidOn} >= ${from}::date`, to && sql`${invoicePayments.paidOn} <= ${to}::date`]);
+  const created = both([from && sql`${invoicePayments.createdAt} >= ${startOfLabDay(from)}`, to && sql`${invoicePayments.createdAt} < ${afterLabDay(to)}`]);
+  return sql`((${paid}) or (${invoicePayments.paidOn} is null and ${created}))`;
+}
 
 /**
  * The invoice ledger's read side. Paid is the SUM of an invoice's

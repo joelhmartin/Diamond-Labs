@@ -8,6 +8,23 @@ const { fakeTx } = await import("../../test/fake-tx.js");
 const ledger = await import("./ledger.service.js");
 const source = readFileSync(fileURLToPath(new URL("./ledger.service.js", import.meta.url)), "utf8");
 
+test("ledgerRowDayBetween: paid_on in range, or no paid_on and created in the lab-day range (no coalesce)", async () => {
+  const { renderSql } = await import("../../test/sql-text.js");
+  const both = renderSql(ledger.ledgerRowDayBetween({ from: "2026-10-01", to: "2026-10-31" }));
+  assert.equal(
+    both.text,
+    "((invoice_payments.paid_on >= $1::date and invoice_payments.paid_on <= $2::date) or (invoice_payments.paid_on is null and "
+      + "invoice_payments.created_at >= ($3::date)::timestamp at time zone 'America/Chicago' and "
+      + "invoice_payments.created_at < (($4::date + 1)::timestamp at time zone 'America/Chicago')))",
+  );
+  assert.deepEqual(both.params, ["2026-10-01", "2026-10-31", "2026-10-01", "2026-10-31"]);
+  const from = renderSql(ledger.ledgerRowDayBetween({ from: "2026-10-01" }));
+  assert.match(from.text, /^\(\(invoice_payments\.paid_on >= \$1::date\) or \(invoice_payments\.paid_on is null and invoice_payments\.created_at >= /);
+  assert.equal(ledger.ledgerRowDayBetween({}), undefined);
+  // ledgerRowDay stays the SELECT / GROUP BY expression.
+  assert.match(renderSql(ledger.ledgerRowDay).text, /^coalesce\(invoice_payments\.paid_on, /);
+});
+
 test("paid per invoice is the SUM of its rows; numbers come back from bigint strings", async () => {
   const db = fakeTx({ selects: [[{ invoiceId: "a", paid: "5500" }, { invoiceId: "b", paid: "-100" }]] });
   const paid = await ledger.paidCentsByInvoice(["a", "b", "a"], db);

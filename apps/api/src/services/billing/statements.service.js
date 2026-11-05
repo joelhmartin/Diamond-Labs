@@ -1,8 +1,8 @@
-import { and, eq, inArray, isNotNull, lt, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lt, ne } from "drizzle-orm";
 import { isoDateIn, LAB_TIMEZONE } from "@my-app/shared";
 import { db } from "../../config/database.js";
 import { invoices, invoicePayments, labOrders, users, doctorProfiles } from "../../db/schema/index.js";
-import { openReceivableInvoices, ledgerRowDay } from "./ledger.service.js";
+import { openReceivableInvoices, ledgerRowDayBetween } from "./ledger.service.js";
 import { afterLabDay } from "../../lib/lab-day-sql.js";
 import { buildReceivables } from "./aging.js";
 import { buildStatementModel } from "./statement-model.js";
@@ -43,7 +43,7 @@ export function statementActivityFilters(clientUserIds, { through } = {}) {
     ne(invoices.status, "draft"),
     through ? lt(invoices.issuedAt, afterLabDay(through)) : undefined,
   );
-  const paymentBound = through ? sql`${ledgerRowDay} <= ${through}::date` : undefined;
+  const paymentBound = through ? ledgerRowDayBetween({ to: through }) : undefined;
   return { invoiceScope, paymentBound };
 }
 

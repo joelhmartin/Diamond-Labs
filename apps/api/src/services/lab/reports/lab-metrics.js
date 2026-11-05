@@ -14,7 +14,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { LAB_TIMEZONE, OPENING_BALANCE_PREFIX, daysBetween, isoDateIn, monthsBetween } from "@my-app/shared";
 import { invoices, invoiceLines, users, doctorProfiles, labOrders, productVariants, productFamilies } from "../../../db/schema/index.js";
 import { afterLabDay, labDay, labDayBetween, labDayText, labMonthText } from "../../../lib/lab-day-sql.js";
-import { ledgerRowDay } from "../../billing/ledger.service.js";
+import { ledgerRowDay, ledgerRowDayBetween } from "../../billing/ledger.service.js";
 
 // The lab-day SQL helpers live in lib/lab-day-sql.js (billing uses them too); re-exported for the report glue.
 export { afterLabDay, labDay, labDayBetween, labDayText, labMonthText };
@@ -87,6 +87,9 @@ export const isDiscountLine = sql`${invoiceLines.kind} = 'adjustment' and ${invo
 
 /** A ledger row's lab-local day (billing/ledger.service.js ledgerRowDay, the statement's rule). */
 export const paymentDay = ledgerRowDay;
+
+/** Ledger rows dated in a lab-day range (ledgerRowDayBetween: index-friendly, same rows as `paymentDay between`). */
+export const paymentDayBetween = (range) => ledgerRowDayBetween(range);
 
 /** The JS side of `clientName` for rows from loadClientNames / listReceivables. */
 export const clientLabel = (c) => c?.practice ?? c?.name ?? null;
