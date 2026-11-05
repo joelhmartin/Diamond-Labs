@@ -68,7 +68,7 @@ export function ProductPage() {
         media={
           <LottiePlayer
             src="/animations/hero-lottie.json"
-            className="w-full max-w-[420px] lg:max-w-none mx-auto aspect-[750/680] opacity-40"
+            className="w-full max-w-[280px] lg:max-w-[380px] mx-auto aspect-[750/680] opacity-40"
           />
         }
       />

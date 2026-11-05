@@ -30,7 +30,7 @@ export function RotatingGeometry() {
     <svg
       ref={ref}
       viewBox="0 0 200 200"
-      className="w-64 h-64 md:w-80 md:h-80"
+      className="w-full max-w-64 md:max-w-80 aspect-square"
     >
       <g data-rotate>
         <circle
@@ -127,7 +127,7 @@ export function ScanningGrid() {
     <svg
       ref={ref}
       viewBox="0 0 200 200"
-      className="w-64 h-64 md:w-80 md:h-80"
+      className="w-full max-w-64 md:max-w-80 aspect-square"
     >
       {dots}
       <line
@@ -178,7 +178,7 @@ export function PulsingWaveform() {
     <svg
       ref={ref}
       viewBox="0 0 200 100"
-      className="w-72 h-36 md:w-96 md:h-48"
+      className="w-full max-w-72 md:max-w-96 aspect-[2/1]"
     >
       <path
         data-waveform

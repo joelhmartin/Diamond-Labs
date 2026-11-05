@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import gsap from "gsap";
 import { playOnView } from "../../lib/playOnView";
+import { prefersReducedMotion } from "../../lib/reducedMotion";
 import { HeroStage } from "../../components/marketing/HeroStage";
 import { CtaBand } from "../../components/marketing/CtaBand.jsx";
 import { RotatingGeometry, ScanningGrid, PulsingWaveform } from "../../components/marketing/ProtocolAnimations.jsx";
@@ -21,6 +22,7 @@ function Hero() {
   const heroRef = useRef(null);
 
   useEffect(() => {
+    if (prefersReducedMotion()) return undefined;
     const ctx = gsap.context(() => {
       gsap.from("[data-hero-anim]", {
         y: 40,
@@ -54,7 +56,7 @@ function Hero() {
         <div data-hero-anim className="mb-4">
           <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/10 text-on-dark/70 font-mono text-xs font-semibold tracking-wider shadow-sm">
             <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-500 opacity-75" />
+              <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-500 opacity-75" />
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-brand-500" />
             </span>
             TMD & SLEEP ORTHOTIC LAB
@@ -269,7 +271,7 @@ function TelemetryTypewriter() {
         ))}
         <div className="text-navy/80 leading-relaxed">
           {currentLine}
-          <span className="inline-block w-1.5 h-3.5 bg-brand-500 ml-0.5 animate-pulse rounded-sm" />
+          <span className="inline-block w-1.5 h-3.5 bg-brand-500 ml-0.5 motion-safe:animate-pulse rounded-sm" />
         </div>
       </div>
     </div>
@@ -514,6 +516,7 @@ function Features() {
   const sectionRef = useRef(null);
 
   useEffect(() => {
+    if (prefersReducedMotion()) return undefined;
     let cleanup;
     const ctx = gsap.context(() => {
       const tween = gsap.fromTo(
@@ -574,6 +577,7 @@ function Philosophy() {
   const sectionRef = useRef(null);
 
   useEffect(() => {
+    if (prefersReducedMotion()) return undefined;
     let cleanupPhil;
     let cleanupStat;
     const ctx = gsap.context(() => {
@@ -723,8 +727,8 @@ function Protocol() {
         {steps.map((step, i) => (
           <li
             key={step.title}
-            className="lg:sticky relative overflow-hidden rounded-[2.5rem] md:rounded-[3rem] bg-white border border-navy/10 shadow-xl shadow-navy/10"
-            style={{ top: 112 + i * 20 }}
+            className="lg:sticky lg:top-[var(--stack-top)] relative overflow-hidden rounded-[2.5rem] md:rounded-[3rem] bg-white border border-navy/10 shadow-xl shadow-navy/10"
+            style={{ "--stack-top": `${112 + i * 20}px` }}
           >
             <HeroStage tone="light" />
             <div className="relative z-10 grid lg:grid-cols-2 gap-8 items-center p-8 md:p-14 lg:min-h-[440px]">
