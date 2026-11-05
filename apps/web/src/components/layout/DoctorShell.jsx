@@ -4,6 +4,8 @@ import { ArrowLeft, FileText, CreditCard, ClipboardPlus, ClipboardList, Receipt,
 import { brand } from "../../config/brand.js";
 import { ROUTES } from "../../config/routes.js";
 import { useAuth } from "../../hooks/useAuth.js";
+import { LAB_TIMEZONE } from "@my-app/shared";
+import { NotificationBell } from "../../modules/notifications/index.js";
 
 const navItems = [
   { label: "Invoices", to: ROUTES.DOCTOR_INVOICES, icon: FileText },
@@ -55,6 +57,7 @@ export function DoctorShell() {
         </div>
 
         <div className="flex items-center gap-4">
+          <NotificationBell to={ROUTES.DOCTOR_NOTIFICATIONS} timeZone={LAB_TIMEZONE} />
           <Link
             to="/"
             className="flex items-center gap-2 text-sm font-medium text-gray-600 transition-colors hover:text-gray-900"

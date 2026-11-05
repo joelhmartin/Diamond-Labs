@@ -36,6 +36,8 @@ import { AdminUsersPage } from "./pages/app/AdminUsersPage.jsx";
 import { AdminClientPricingPage } from "./pages/app/AdminClientPricingPage.jsx";
 import { AdminAutoPayPage } from "./pages/app/AdminAutoPayPage.jsx";
 import { AdminJobsPage } from "./pages/app/AdminJobsPage.jsx";
+import { AdminLabAlertsPage } from "./pages/app/AdminLabAlertsPage.jsx";
+import { NotificationsPage } from "./pages/app/NotificationsPage.jsx";
 import { AdminOrdersPage } from "./pages/app/AdminOrdersPage.jsx";
 import { AdminDepartmentsPage } from "./pages/app/AdminDepartmentsPage.jsx";
 import { ShipmentsPage } from "./pages/lab/ShipmentsPage.jsx";
@@ -223,6 +225,7 @@ function AppRoutes() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/members" element={<MembersPage />} />
+        <Route path="/notifications" element={<NotificationsPage />} />
         <Route element={<RequireAdmin />}>
           <Route path="/admin" element={<Navigate to="/admin/invoices" replace />} />
           <Route path="/admin/products" element={<AdminCatalogPage />} />
@@ -236,6 +239,7 @@ function AppRoutes() {
           <Route path="/admin/users/:userId/pricing" element={<AdminClientPricingPage />} />
           <Route path="/admin/autopay" element={<AdminAutoPayPage />} />
           <Route path="/admin/jobs" element={<AdminJobsPage />} />
+          <Route path="/admin/notifications" element={<AdminLabAlertsPage />} />
           <Route path="/admin/rx-mapping" element={<AdminRxMappingPage />} />
         </Route>
         <Route element={<RequireStaff />}>
@@ -260,6 +264,7 @@ function AppRoutes() {
           <Route path="payments" element={<PaymentsPage />} />
           <Route path="saved-cards" element={<SavedCardsPage />} />
           <Route path="autopay" element={<AutoPayPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
           <Route path="cases" element={<MyCasesPage />} />
         </Route>
       </Route>

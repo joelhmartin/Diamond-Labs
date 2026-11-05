@@ -29,6 +29,9 @@ export const ROUTES = {
   ADMIN_RX_CASE_DETAIL: "/admin/rx-cases/:id",
   ADMIN_AUTOPAY: "/admin/autopay",
   ADMIN_JOBS: "/admin/jobs",
+  NOTIFICATIONS: "/notifications",
+  DOCTOR_NOTIFICATIONS: "/doctor/notifications",
+  ADMIN_LAB_ALERTS: "/admin/notifications",
   ADMIN_DEPARTMENTS: "/admin/lab/departments",
   ADMIN_SHIPMENTS: "/admin/shipments",
 
