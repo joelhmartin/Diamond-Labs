@@ -36,10 +36,11 @@ export function ProductViewer({
   const activeItem = product.images[activeIdx];
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-      {/* Main display */}
-      <div className="lg:col-span-6">
-        <div className="relative aspect-[4/3] rounded-[2rem] overflow-hidden bg-surface-100 border border-surface-300/50">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 items-start rounded-[2.5rem] bg-white border border-surface-300/60 shadow-xl shadow-navy/10 p-4 md:p-6 lg:p-8">
+      {/* Product stage */}
+      <div className="lg:col-span-7">
+        <div className="relative aspect-[4/3] rounded-[2rem] overflow-hidden bg-gradient-to-br from-white via-surface-50 to-surface-100 border border-surface-300/50">
+          <div aria-hidden="true" className="absolute inset-x-[12%] bottom-[8%] h-[10%] rounded-full bg-navy/10 blur-2xl" />
           {activeItem.is3D ? (
             <ModelViewer
               objPath={activeItem.objPath}
@@ -51,7 +52,7 @@ export function ProductViewer({
               ref={mainRef}
               src={activeItem.src}
               alt={activeItem.label}
-              className="w-full h-full object-contain p-8"
+              className="relative w-full h-full object-contain p-6 md:p-10 drop-shadow-[0_18px_28px_rgba(0,20,60,0.18)]"
             />
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center text-navy/70">
@@ -79,7 +80,7 @@ export function ProductViewer({
           )}
         </div>
         {/* Thumbnails */}
-        <div className="mt-4 flex gap-2 overflow-x-auto scrollbar-hide pb-2">
+        <div className="mt-4 flex gap-3 overflow-x-auto scrollbar-hide p-1">
           {product.images.map((img, i) => (
             <button
               key={i}
@@ -87,10 +88,10 @@ export function ProductViewer({
               aria-label={img.label}
               aria-pressed={i === activeIdx}
               onClick={() => handleThumbClick(i)}
-              className={`flex-shrink-0 w-16 h-16 md:w-20 md:h-20 rounded-xl overflow-hidden border-2 transition-all duration-300 ${
+              className={`flex-shrink-0 w-16 h-16 md:w-20 md:h-20 rounded-2xl overflow-hidden border-2 bg-white transition-all duration-300 ${
                 i === activeIdx
-                  ? "border-brand-500 ring-2 ring-brand-500/20"
-                  : "border-surface-300/50 hover:border-surface-400"
+                  ? "border-brand-500 ring-4 ring-brand-500/20 shadow-md"
+                  : "border-surface-300/60 hover:border-brand-300 hover:-translate-y-0.5"
               }`}
             >
               {img.is3D ? (
@@ -102,7 +103,7 @@ export function ProductViewer({
                 <img
                   src={img.src}
                   alt={img.label}
-                  className="w-full h-full object-contain bg-surface-50 p-1"
+                  className="w-full h-full object-contain bg-white p-1.5"
                   loading="lazy"
                 />
               )}
@@ -112,28 +113,28 @@ export function ProductViewer({
       </div>
 
       {/* Details */}
-      <div className="lg:col-span-6">
+      <div className="lg:col-span-5 lg:py-2">
         <Heading className="font-heading font-bold text-3xl md:text-4xl tracking-tight text-navy">
           {product.name}
           {registered && <sup className="ml-0.5 text-base font-semibold text-navy/70">®</sup>}
         </Heading>
-        <div className="mt-1 font-heading text-sm text-navy/70">
+        <div className="mt-1 font-heading text-sm font-semibold text-brand-700">
           {product.fullName}
         </div>
-        <p className="mt-4 text-navy/70 text-sm leading-relaxed">
+        <p className="mt-4 text-navy/70 leading-relaxed">
           {product.tagline}
         </p>
 
-        <div className="mt-6 space-y-3">
+        <div className="mt-6 rounded-[1.5rem] border border-surface-300/60 overflow-hidden">
           {product.specs.map((spec, i) => (
             <div
               key={i}
-              className="flex items-center justify-between py-2 border-b border-surface-300/30"
+              className="flex items-center justify-between gap-4 px-5 py-3 odd:bg-surface-50"
             >
               <span className="text-sm text-navy/70">
                 {spec.label}
               </span>
-              <span className="text-sm font-medium text-navy">
+              <span className="text-sm font-semibold text-navy text-right">
                 {spec.value}
               </span>
             </div>
