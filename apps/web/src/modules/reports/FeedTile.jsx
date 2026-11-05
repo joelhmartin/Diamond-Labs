@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
 import { formatCell } from "@my-app/shared";
+import { useVisibleInterval } from "./useVisibleInterval.js";
 
 export const FEED_POLL_MS = 30000;
 export const FEED_LIMIT = 50;
@@ -16,29 +16,7 @@ const TIME_TYPES = new Set(["datetime", "date"]);
  *   <FeedTile rows={rows} columns={columnSpecs} reload={() => …} />
  */
 export function FeedTile({ rows = [], columns = [], reload, intervalMs = FEED_POLL_MS }) {
-  const reloadRef = useRef(reload);
-  reloadRef.current = reload;
-  const polling = Boolean(reload);
-
-  useEffect(() => {
-    if (!polling) return undefined;
-    let timer = null;
-    const start = () => { timer ??= setInterval(() => reloadRef.current?.(), intervalMs); };
-    const stop = () => { clearInterval(timer); timer = null; };
-    const onVisibility = () => {
-      if (document.visibilityState !== "visible") stop();
-      else if (timer === null) {
-        reloadRef.current?.();
-        start();
-      }
-    };
-    if (document.visibilityState === "visible") start();
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      stop();
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [polling, intervalMs]);
+  useVisibleInterval(() => reload?.(), intervalMs, Boolean(reload));
 
   const timeCol = columns.find((c) => TIME_TYPES.has(c.type));
   const rest = columns.filter((c) => c !== timeCol);

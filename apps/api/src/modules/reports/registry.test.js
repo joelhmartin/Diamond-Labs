@@ -35,6 +35,13 @@ describe("defineReport validation", () => {
     expect(() => reg.defineReport(base({ display: "tv" }))).toThrow(/display/);
   });
 
+  test("rejects a param named like a paging key (limit, offset, sort)", () => {
+    const reg = make();
+    for (const name of ["limit", "offset", "sort"]) {
+      expect(() => reg.defineReport(base({ key: `sales.${name}`, params: [{ name, type: "number" }] }))).toThrow(new RegExp(`"${name}" is reserved for paging`));
+    }
+  });
+
   test("accepts the optional fields", () => {
     const reg = make();
     reg.defineReport(base({

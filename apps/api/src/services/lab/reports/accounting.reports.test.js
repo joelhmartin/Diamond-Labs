@@ -159,13 +159,13 @@ test("no accounting or sales report selects legacy_patient or decrypts", () => {
   }
 });
 
-test("registerLabReports registers the 9 accounting + 7 sales reports, admin only, in 8 groups", () => {
+test("registerLabReports registers the 9 accounting + 8 sales reports (Sales By Rep pending), admin only, in 8 groups", () => {
   const registry = createRegistry({ defaultRoles: STAFF_ROLES });
   registerLabReports(registry);
   const keys = [
     "accounting.account-balance", "accounting.adjustments", "accounting.aging-summary", "accounting.discounts", "accounting.invoices",
     "accounting.invoices-summary", "accounting.invoices-payments", "accounting.payments-received", "accounting.statements-summary",
-    "sales.comparison", "sales.summary", "sales.daily", "sales.lab", "sales.net-chart", "sales.category", "sales.by-client",
+    "sales.comparison", "sales.summary", "sales.daily", "sales.lab", "sales.net-chart", "sales.category", "sales.by-client", "sales.by-rep",
   ];
   for (const k of keys) assert.deepEqual(registry.getReport(k)?.roles, ["admin"], k);
   const admin = { id: "a", role: "admin" };

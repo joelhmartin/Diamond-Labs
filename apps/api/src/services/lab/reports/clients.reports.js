@@ -1,16 +1,17 @@
 /**
- * Clients (8 of the audit's 9; Same Pricing waits for piece 10). Clients are
- * doctor users; orders are non-cancelled lab orders by lab-local received day;
+ * Clients (9). Same Pricing waits for piece 10's price lists (registered with
+ * `requires`, dependent.js). Clients are doctor users; orders are non-cancelled lab orders by lab-local received day;
  * sales are the one sales rule in lab-metrics.js. Every report is admin only
  * except the two lists, which carry no money and are staff.
  */
 import { sql } from "drizzle-orm";
-import { LAB_TIMEZONE, addDays, daysBetween, isoDateIn } from "@my-app/shared";
+import { addDays, daysBetween } from "@my-app/shared";
 import { invoices, labOrders, users, doctorProfiles, memberships, accounts } from "../../../db/schema/index.js";
 import {
-  CLIENT_LINK, ORDER_LINK, afterLabDay, clientName, isClient, isLiveOrder, isSale, labDayBetween, labDayText, num, rowsOf, salesWhere,
+  CLIENT_LINK, ORDER_LINK, afterLabDay, clientName, isClient, isLiveOrder, isSale, labDayBetween, labDayText, labToday, num, rowsOf, salesWhere,
 } from "./lab-metrics.js";
 import { HEALTH_BANDS, clientHealthRows, healthCounts } from "./client-health.js";
+import { dependentReport } from "./dependent.js";
 
 const ADMIN = ["admin"];
 const GROUP = "clients";
@@ -25,8 +26,6 @@ const sumOf = (rows, k) => rows.reduce((s, r) => s + (r[k] ?? 0), 0);
 const whole = (v, fallback) => (Number.isFinite(v) ? Math.trunc(v) : fallback);
 const capital = (s) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
-/** The lab day the report runs on (ctx.now when the caller pins it, else now). */
-const labToday = (ctx) => ctx?.today ?? isoDateIn(LAB_TIMEZONE, ctx?.now ?? new Date());
 /** asOf for the health rule: the pinned instant, else now. */
 const asOfOf = (ctx) => ctx?.now ?? new Date();
 
@@ -199,7 +198,7 @@ const bottomClients = {
 
 const inactive = {
   key: "clients.inactive", group: GROUP, roles: ADMIN, title: "Inactive Clients",
-  description: "Clients whose last order was more than the chosen number of days ago (default 90), with their lifetime sales. Clients who have never ordered are not listed.",
+  description: "Clients whose last order was more than the chosen number of lab days ago (default 90, the Client Health \"Inactive\" rule), with their lifetime sales. Clients who have never ordered are not listed.",
   params: [DAYS],
   columns: [
     CLIENT_COL, ACCOUNT_COL, { id: "lastOrder", label: "Last order", type: "date" },
@@ -207,7 +206,9 @@ const inactive = {
   ],
   async run(tx, params, _actor, ctx) {
     const today = labToday(ctx);
-    const cut = addDays(today, -whole(params?.days, 90)); // the last order is on or before this lab day
+    // Inactive = MORE than N lab days since the last order (activityHealth's rule), so the last
+    // order is on or before today - (N + 1); an order exactly N days ago is not inactive yet.
+    const cut = addDays(today, -(whole(params?.days, 90) + 1));
     const raw = await rowsOf(tx, sql`
       select ${users.id} as "clientUserId", ${clientName} as "client", ${users.seazonaAccountNumber} as "accountNumber",
         ${labDayText(sql`max(${labOrders.receivedAt})`)} as "lastDay", ls.cents as "lifetime"
@@ -288,7 +289,17 @@ const noRecentSales = {
   },
 };
 
-export const CLIENT_REPORTS = [health, list, doctors, top, bottomClients, inactive, newOrders, noRecentSales];
+const samePricing = dependentReport({
+  key: "clients.same-pricing", group: GROUP, roles: ADMIN, title: "Same Pricing", requires: ["price-lists"],
+  description: "Clients grouped by an identical set of prices (the same price list or the same client prices).",
+  params: [],
+  columns: [
+    { id: "priceSet", label: "Price set", type: "text" }, { id: "clients", label: "Clients", type: "int" },
+    { id: "clientNames", label: "Client names", type: "text", sortable: false }, { id: "items", label: "Priced items", type: "int" },
+  ],
+});
+
+export const CLIENT_REPORTS = [health, list, doctors, top, bottomClients, inactive, newOrders, noRecentSales, samePricing];
 
 export function registerClientReports(registry) {
   for (const def of CLIENT_REPORTS) registry.defineReport(def);

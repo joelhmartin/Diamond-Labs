@@ -4,7 +4,9 @@
  * slots so a burst of heavy reports cannot exhaust the database pool.
  */
 import { sql } from "drizzle-orm";
+import { localDay } from "@my-app/shared";
 import { paramsSchema } from "./params.js";
+import { PAGING_KEYS } from "./registry.js";
 
 export const ROW_CAP = 5000;
 export const DEFAULT_TIMEOUT_MS = 10000;
@@ -12,8 +14,7 @@ export const MAX_CONCURRENT_RUNS = 4;
 export const SLOT_WAIT_MS = 5000;
 export const DEFAULT_PAGE_LIMIT = 50;
 export const MAX_PAGE_LIMIT = 500;
-/** Query keys that drive server paging; they are never report params. */
-export const PAGING_KEYS = ["limit", "offset", "sort"];
+export { PAGING_KEYS };
 
 const TIMEOUT_PG_CODE = "57014";
 
@@ -118,7 +119,8 @@ function parseSort(raw, def) {
 /**
  * Everything checked before any SQL runs: the report exists, the actor may
  * view it, its capabilities are present, and the query is valid. Returns
- * { def, params, page } where page is null for client-paged reports.
+ * { def, params, page, clock } where page is null for client-paged reports and
+ * clock is { now, today, tz } (today = now's calendar day in tz).
  */
 export function prepareRun({ registry, key, query = {}, actor, now = new Date(), tz = "UTC" }) {
   const def = registry.getReport(key);
@@ -143,14 +145,20 @@ export function prepareRun({ registry, key, query = {}, actor, now = new Date(),
         sort: parseSort(query.sort, def),
       }
     : null;
-  return { def, params, page };
+  return { def, params, page, clock: runClock(now, tz) };
 }
 
-/** Execute one prepared run (one page, for server-paged reports) and shape the result. */
-export async function executePrepared({ def, params, page }, { db, actor, slots, timeoutMs: override }) {
+/** What a definition's run sees of time: `{ now, today, tz }`, today being now's "YYYY-MM-DD" in tz. */
+export const runClock = (now = new Date(), tz = "UTC") => ({ now, today: localDay(now, tz), tz });
+
+/**
+ * Execute one prepared run (one page, for server-paged reports) and shape the
+ * result. The definition's run gets ctx = { page, now, today, tz }.
+ */
+export async function executePrepared({ def, params, page, clock = runClock() }, { db, actor, slots, timeoutMs: override }) {
   const started = Date.now();
   const timeoutMs = override ?? def.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const out = await inReadOnlyTx({ db, timeoutMs, slots }, (tx) => def.run(tx, params, actor, { page }));
+  const out = await inReadOnlyTx({ db, timeoutMs, slots }, (tx) => def.run(tx, params, actor, { page, ...clock }));
   const rows = out?.rows || [];
   const result = { rows, total: out?.total ?? rows.length, truncated: false, generatedAt: new Date().toISOString() };
   if (!page && rows.length > ROW_CAP) {

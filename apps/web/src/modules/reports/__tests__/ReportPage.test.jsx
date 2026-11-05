@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { test, afterEach, vi } from "vitest";
 import assert from "node:assert/strict";
-import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor, act, within } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { ToastProvider } from "../../../components/ui/Toast.jsx";
 
@@ -233,4 +233,63 @@ test("a report with a chart spec draws it above the table", async () => {
   const chart = screen.getByTestId("chart");
   assert.equal(chart.textContent, "bar:2");
   assert.ok(chart.compareDocumentPosition(screen.getByRole("table")) & Node.DOCUMENT_POSITION_FOLLOWING);
+});
+
+// ---- Wall view (reports with display: "wall") --------------------------------
+
+const WALL = { ...META, display: "wall", chart: { type: "stackedBar", x: "day", series: [{ field: "total", label: "Total" }] } };
+
+function setVisibility(state) {
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });
+  document.dispatchEvent(new Event("visibilitychange"));
+}
+
+test("only a wall report offers Wall view", async () => {
+  runReport.mockResolvedValue(RESULT);
+  mount();
+  await screen.findByText("$12.50");
+  assert.equal(screen.queryByRole("button", { name: /wall view/i }), null);
+});
+
+test("Wall view opens full screen with the chart above the table, and Esc or Exit closes it", async () => {
+  runReport.mockResolvedValue(RESULT);
+  mount({ meta: WALL });
+  await screen.findByText("$12.50");
+  fireEvent.click(screen.getByRole("button", { name: "Wall view" }));
+  const wall = screen.getByRole("dialog", { name: "Daily totals" });
+  assert.match(wall.className, /fixed/);
+  assert.match(wall.className, /inset-0/);
+  const chart = within(wall).getByTestId("chart");
+  assert.ok(chart.compareDocumentPosition(within(wall).getByRole("table")) & Node.DOCUMENT_POSITION_FOLLOWING);
+  fireEvent.keyDown(document, { key: "Escape" });
+  assert.equal(screen.queryByRole("dialog"), null);
+  fireEvent.click(screen.getByRole("button", { name: "Wall view" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /exit wall view/i }));
+  assert.equal(screen.queryByRole("dialog"), null);
+});
+
+test("Wall view reruns the report every 60 s while visible, and stops when closed", async () => {
+  runReport.mockResolvedValue(RESULT);
+  mount({ meta: WALL });
+  await screen.findByText("$12.50");
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+  try {
+    fireEvent.click(screen.getByRole("button", { name: "Wall view" }));
+    act(() => { vi.advanceTimersByTime(59000); });
+    assert.equal(runReport.mock.calls.length, 1);
+    act(() => { vi.advanceTimersByTime(1000); });
+    await waitFor(() => assert.equal(runReport.mock.calls.length, 2));
+    act(() => { setVisibility("hidden"); });
+    act(() => { vi.advanceTimersByTime(180000); });
+    assert.equal(runReport.mock.calls.length, 2);
+    act(() => { setVisibility("visible"); }); // back on screen: refresh at once
+    await waitFor(() => assert.equal(runReport.mock.calls.length, 3));
+    fireEvent.keyDown(document, { key: "Escape" });
+    act(() => { vi.advanceTimersByTime(180000); });
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal(runReport.mock.calls.length, 3);
+  } finally {
+    vi.useRealTimers();
+    setVisibility("visible");
+  }
 });

@@ -9,6 +9,8 @@ export const MAX_TIMEOUT_MS = 30000;
 export const CHART_TYPES = Object.freeze(["line", "bar", "groupedBar", "stackedBar"]);
 export const TILE_KINDS = Object.freeze(["stat", "chart", "table", "feed"]);
 const PAGING = ["client", "server"];
+/** Query keys that drive server paging (the runner reads them); they are never report params. */
+export const PAGING_KEYS = Object.freeze(["limit", "offset", "sort"]);
 
 function fail(msg) {
   throw new Error(msg);
@@ -40,6 +42,7 @@ function validateReport(def, groups) {
   for (const p of def.params || []) {
     if (!p.name) fail(`${where}: every param needs a name`);
     if (names.has(p.name)) fail(`${where}: duplicate param name "${p.name}"`);
+    if (PAGING_KEYS.includes(p.name)) fail(`${where}: param name "${p.name}" is reserved for paging (${PAGING_KEYS.join(", ")})`);
     names.add(p.name);
     if (!PARAM_TYPES.includes(p.type)) fail(`${where}: unknown param type "${p.type}"`);
     validateParam(where, p);

@@ -1,5 +1,6 @@
 /**
- * Products & Services (4 of the audit's 5; Materials Used waits for piece 6).
+ * Products & Services (5). Materials Used waits for piece 6's materials and
+ * lots (registered with `requires`, dependent.js).
  * Price List and Products Sold show money and are admin only; Units Sold and
  * its detail count bench lines (no money) and are staff. Lines are matched to
  * the catalog by variant, falling back to their code (lab-metrics catalogJoins).
@@ -9,8 +10,9 @@ import {
   invoices, invoiceLines, labOrders, labOrderLines, productVariants, productFamilies, users, doctorProfiles,
 } from "../../../db/schema/index.js";
 import {
-  INVOICE_LINK, ORDER_LINK, byCode, catalogJoins, clientName, coverageNotice, isLiveOrder, labDayBetween, labDayText, num, orderAndPage, rowsOf, salesWhere,
+  ORDER_LINK, byCode, catalogJoins, clientName, coverageNotice, isLiveOrder, labDayBetween, labDayText, num, orderAndPage, rowsOf, salesWhere,
 } from "./lab-metrics.js";
+import { dependentReport } from "./dependent.js";
 
 const ADMIN = ["admin"];
 const GROUP = "products";
@@ -120,7 +122,8 @@ const unitsDetail = {
     { id: "orderNumber", label: "Order #", type: "text", link: ORDER_LINK },
     { id: "client", label: "Client", type: "text" }, { id: "code", label: "Code", type: "text" },
     { id: "product", label: "Product", type: "text" }, { id: "qty", label: "Qty", type: "int" },
-    { id: "invoiceNumber", label: "Invoice #", type: "text", link: INVOICE_LINK, sortable: false },
+    // No link: this report is staff, and the invoice page is admin only.
+    { id: "invoiceNumber", label: "Invoice #", type: "text", sortable: false },
   ],
   async run(tx, { range }, _actor, ctx) {
     const from = sql`
@@ -156,7 +159,18 @@ const unitsDetail = {
   },
 };
 
-export const PRODUCT_REPORTS = [priceList, sold, units, unitsDetail];
+const materials = dependentReport({
+  key: "products.materials", group: GROUP, title: "Materials Used", requires: ["materials"],
+  description: "Materials and lot numbers used on each product line of orders received in the range.",
+  params: [RANGE],
+  columns: [
+    { id: "received", label: "Received", type: "date" }, { id: "orderNumber", label: "Order #", type: "text", link: ORDER_LINK },
+    { id: "product", label: "Product", type: "text" }, { id: "material", label: "Material", type: "text" },
+    { id: "lot", label: "Lot", type: "text" }, { id: "qty", label: "Qty", type: "int" },
+  ],
+});
+
+export const PRODUCT_REPORTS = [priceList, sold, units, unitsDetail, materials];
 
 export function registerProductReports(registry) {
   for (const def of PRODUCT_REPORTS) registry.defineReport(def);

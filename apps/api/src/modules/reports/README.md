@@ -34,7 +34,24 @@ registry.canView(actor, def);
 ```
 
 `defineReport` throws on a duplicate key, an unknown group, param type, column
-type or chart type, a bad `paging` or `display`, and `timeoutMs > 30000`.
+type or chart type, a bad `paging` or `display`, `timeoutMs > 30000`, and a
+param named `limit`, `offset` or `sort` (`PAGING_KEYS`: the runner reads those
+from the query for server paging).
+
+`run(db, params, actor, ctx)` gets `ctx = { page, now, today, tz }`:
+
+- `page`: `{ limit, offset, sort: { id, desc } | null }` for a server-paged
+  report, else `null`.
+- `now`: the instant of the run (a `Date`).
+- `today`: `now`'s calendar day, `"YYYY-MM-DD"`, in `tz`.
+- `tz`: the app's timezone (`createReportRoutes({ tz })`, default UTC).
+
+A metric's `run` gets the same `{ now, today, tz }` (no `page`). Use
+`ctx.today` for "today" rather than reading the clock, so a run and its tests
+agree on the day.
+
+`display: "wall"` marks a report the web can show full screen (large type,
+re-run every 60 s while visible).
 
 `paramsSchema(def).parse(query, { now, tz })` coerces query strings, applies
 defaults and rejects bad values. Each `dateRange` comes back as
@@ -47,7 +64,7 @@ The host chooses the windows and thresholds.
 
 ## Running and routes
 
-`runReport({ registry, db, key, query, actor, tz, slots })` validates, then runs
+`runReport({ registry, db, key, query, actor, now?, tz, slots })` validates, then runs
 in a read-only transaction after `SET LOCAL statement_timeout` (report
 `timeoutMs`, default 10000), inside one of 4 per-process run slots (5 s wait,
 then `BUSY`). It throws `ReportError(code)` with code `NOT_FOUND`, `FORBIDDEN`,

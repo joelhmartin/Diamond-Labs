@@ -84,6 +84,7 @@ test("units sold detail is server-paged, ordered with a line-id tiebreaker, and 
   assert.ok(rows.params.includes(25) && rows.params.includes(50));
   const cols = Object.fromEntries(report("products.units-detail").columns.map((c) => [c.id, c]));
   assert.equal(cols.orderNumber.link, "/lab/orders/{labOrderId}");
-  assert.equal(cols.invoiceNumber.link, "/admin/invoices/{invoiceId}");
+  // Staff can run this report; the invoice page is admin only, so the number is plain text.
+  assert.equal(cols.invoiceNumber.link, undefined);
   assert.ok(!Object.values(cols).some((c) => c.type === "money"));
 });

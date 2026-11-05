@@ -11,7 +11,7 @@
  */
 import { sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { OPENING_BALANCE_PREFIX, daysBetween, monthsBetween } from "@my-app/shared";
+import { LAB_TIMEZONE, OPENING_BALANCE_PREFIX, daysBetween, isoDateIn, monthsBetween } from "@my-app/shared";
 import { invoices, invoiceLines, users, doctorProfiles, labOrders, productVariants, productFamilies } from "../../../db/schema/index.js";
 import { afterLabDay, labDay, labDayBetween, labDayText, labMonthText } from "../../../lib/lab-day-sql.js";
 import { ledgerRowDay } from "../../billing/ledger.service.js";
@@ -27,6 +27,13 @@ export const CLIENT_LINK = "/admin/invoices?inv.clientUserId={clientUserId}";
 export const INVOICE_LINK = "/admin/invoices/{invoiceId}";
 /** One lab order: ROUTES.LAB_ORDER_DETAIL (admin and lab staff). The row needs `labOrderId`. */
 export const ORDER_LINK = "/lab/orders/{labOrderId}";
+
+/**
+ * The lab day a report runs on: the runner's ctx.today (lab-local, from the
+ * configured tz), else ctx.now's lab day, else today's. Called without ctx it
+ * is the lab's today (for param defaults computed at definition time).
+ */
+export const labToday = (ctx) => ctx?.today ?? isoDateIn(LAB_TIMEZONE, ctx?.now ?? new Date());
 
 // ── SQL building blocks ──────────────────────────────────────────────────
 

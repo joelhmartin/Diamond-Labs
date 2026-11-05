@@ -6,15 +6,15 @@
  */
 import { sql } from "drizzle-orm";
 import {
-  AGING_BUCKETS, CREDIT_SOURCE, INVOICE_KIND_LABELS, INVOICE_STATUS_LABELS, LAB_TIMEZONE, LEGACY_SETTLEMENT_SOURCE,
-  PAYMENT_SOURCE_LABELS, invoiceStatusLabel, isoDateIn,
+  AGING_BUCKETS, CREDIT_SOURCE, INVOICE_KIND_LABELS, INVOICE_STATUS_LABELS, LEGACY_SETTLEMENT_SOURCE,
+  PAYMENT_SOURCE_LABELS, invoiceStatusLabel,
 } from "@my-app/shared";
 import { invoices, invoiceLines, invoicePayments, users, doctorProfiles } from "../../../db/schema/index.js";
 import { listReceivables, loadStatementActivity, loadClientNames } from "../../billing/statements.service.js";
 import { statementEvents, monthBounds } from "../../billing/statement-model.js";
 import { deriveBalance } from "../../billing/invoice-rules.js";
 import {
-  CLIENT_LINK, INVOICE_LINK, clientLabel, discountNotices, clientName, isDiscountLine, labDayBetween, labDayText, labMonthText, num, orderAndPage,
+  CLIENT_LINK, INVOICE_LINK, clientLabel, discountNotices, clientName, isDiscountLine, labDayBetween, labDayText, labMonthText, labToday, num, orderAndPage,
   paymentDay, rowsOf, salesWhere,
 } from "./lab-metrics.js";
 
@@ -29,7 +29,6 @@ const invoiceCol = { id: "invoiceNumber", label: "Invoice", type: "text", link: 
 const sumOf = (rows, id) => rows.reduce((s, r) => s + (r[id] ?? 0), 0);
 const sums = (rows, ids) => Object.fromEntries(ids.map((id) => [id, sumOf(rows, id)]));
 const invoiceNo = (v) => (v === null || v === undefined ? null : String(v));
-const labToday = () => isoDateIn(LAB_TIMEZONE, new Date());
 
 /** Who a row bills, joined from a client user id expression. */
 const clientJoin = (clientUserIdExpr) =>
@@ -209,7 +208,7 @@ const invoicesPayments = {
         ${invoices.totalCents} as "total", ${paid} as "paid", to_char(ledger.last_paid, 'YYYY-MM-DD') as "lastPaid"
       from ${invoices} left join ${ledgerTotals} on ledger.invoice_id = ${invoices.id} ${clientJoin(invoices.clientUserId)}
       where ${where} ${orderAndPage(ctx?.page, sorts, { id: "day", desc: true }, invoices.id)}`);
-    const today = labToday();
+    const today = labToday(ctx);
     const rows = raw.map((r) => {
       const b = deriveBalance({ status: r.status, totalCents: num(r.total) }, num(r.paid));
       return {

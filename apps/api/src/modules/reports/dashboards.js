@@ -9,7 +9,7 @@
  * Successful tiles are cached per process for 60 s, keyed by tile, params and
  * role. Tiles therefore must not depend on who the actor is beyond their role.
  */
-import { runReport, inReadOnlyTx, ReportError, defaultRunSlots } from "./runner.js";
+import { runReport, inReadOnlyTx, ReportError, defaultRunSlots, runClock } from "./runner.js";
 import { paramsSchema } from "./params.js";
 
 export const TILE_TIMEOUT_MS = 5000;
@@ -79,7 +79,7 @@ async function runMetric({ def, query, db, actor, slots, now, tz }) {
       throw new ReportError("INVALID", "Invalid tile settings");
     }
   }
-  return inReadOnlyTx({ db, timeoutMs: TILE_TIMEOUT_MS, slots }, (tx) => def.run(tx, params, actor, { now, tz }));
+  return inReadOnlyTx({ db, timeoutMs: TILE_TIMEOUT_MS, slots }, (tx) => def.run(tx, params, actor, runClock(now, tz)));
 }
 
 function runTile({ registry, tile, source, query, db, actor, slots, now, tz }) {

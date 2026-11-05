@@ -102,6 +102,16 @@ describe("runReport", () => {
     await expect(go(s, { query: { sort: "zzz" } })).rejects.toMatchObject({ code: "INVALID", field: "sort" });
   });
 
+  test("run receives ctx now, today (the calendar day in tz) and tz", async () => {
+    const s = setup();
+    const now = new Date("2026-11-01T04:30:00Z"); // still Oct 31 in Chicago
+    await go(s, { now, tz: "America/Chicago" });
+    const ctx = s.run.mock.calls[0][3];
+    expect(ctx).toMatchObject({ page: null, now, today: "2026-10-31", tz: "America/Chicago" });
+    await go(s, { now, tz: "UTC" });
+    expect(s.run.mock.calls[1][3].today).toBe("2026-11-01");
+  });
+
   test("client report gets ctx.page null", async () => {
     const s = setup();
     await go(s);

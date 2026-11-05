@@ -37,10 +37,6 @@ function cellOf(column, row) {
 
 const rowsToCsv = (columns, rows) => rows.map((row) => csvLine(columns.map((c) => cellOf(c, row)))).join("");
 
-function dayIn(tz, now) {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
-}
-
 /**
  * Validate, run the first page (so a bad request or timeout is a normal JSON
  * error), then send the rest as a stream. `onExport(paramNames)` fires once
@@ -49,7 +45,7 @@ function dayIn(tz, now) {
 export async function streamCsv({ registry, db, key, query, actor, reply, now = new Date(), tz = "UTC", slots = defaultRunSlots, onExport }) {
   const prepared = prepareRun({ registry, key, query, actor, now, tz });
   const { def, params } = prepared;
-  const exec = (page) => executePrepared({ ...prepared, page }, { db, actor, slots, now });
+  const exec = (page) => executePrepared({ ...prepared, page }, { db, actor, slots });
   const server = def.paging === "server";
   const sort = prepared.page?.sort ?? null;
 
@@ -72,7 +68,7 @@ export async function streamCsv({ registry, db, key, query, actor, reply, now = 
 
   reply
     .header("Content-Type", "text/csv; charset=utf-8")
-    .header("Content-Disposition", `attachment; filename="${key}-${dayIn(tz, now)}.csv"`)
+    .header("Content-Disposition", `attachment; filename="${key}-${prepared.clock.today}.csv"`)
     .header("Cache-Control", "no-store");
   return reply.send(Readable.from(lines()));
 }

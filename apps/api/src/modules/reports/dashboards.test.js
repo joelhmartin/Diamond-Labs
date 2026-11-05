@@ -45,6 +45,19 @@ function setup() {
 }
 
 describe("resolveDashboard", () => {
+  test("a metric tile's run gets ctx now, today and tz", async () => {
+    const s = setup();
+    const now = new Date("2026-11-01T04:30:00Z");
+    await s.go({ now, tz: "America/Chicago" });
+    expect(s.metricRun.mock.calls[0][3]).toMatchObject({ now, today: "2026-10-31", tz: "America/Chicago" });
+  });
+
+  test("a report tile's run gets ctx today", async () => {
+    const s = setup();
+    await s.go({ now: new Date("2026-11-01T04:30:00Z"), tz: "America/Chicago" });
+    expect(s.runs.list.mock.calls[0][3]).toMatchObject({ today: "2026-10-31", tz: "America/Chicago" });
+  });
+
   test("one failing tile does not fail the dashboard", async () => {
     const s = setup();
     const onTileError = vi.fn();

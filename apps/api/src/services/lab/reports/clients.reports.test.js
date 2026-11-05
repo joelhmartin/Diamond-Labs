@@ -118,14 +118,17 @@ test("inactive clients default to 90 days and honour the days param", async () =
 
   const tx90 = fakeTx({ executes: [[]] });
   await report("clients.inactive").run(tx90, {}, null, { now: NOW });
-  // Lab day Nov 1, 90 days: the last order must be on or before Aug 3 (before the start of Aug 4).
+  // Lab day Nov 1, 90 days: listed only when MORE than 90 lab days have passed (activityHealth's
+  // inactive rule), so the last order is on or before Aug 2 (91 days ago), before the start of Aug 3.
   const [q90] = executedSql(tx90);
-  assert.ok(q90.params.includes("2026-08-03"));
+  assert.ok(q90.params.includes("2026-08-02"));
+  assert.ok(!q90.params.includes("2026-08-03"), "an order exactly 90 days ago is not inactive yet");
   assert.match(q90.text, /having max\(lab_orders\.received_at\) </);
 
   const tx30 = fakeTx({ executes: [[]] });
   await report("clients.inactive").run(tx30, { days: 30 }, null, { now: NOW });
-  assert.ok(executedSql(tx30)[0].params.includes("2026-10-02"));
+  assert.ok(executedSql(tx30)[0].params.includes("2026-10-01"));
+  assert.match(report("clients.inactive").description, /more than/);
   assert.equal(report("clients.inactive").params.find((p) => p.name === "days").default, 90);
 });
 

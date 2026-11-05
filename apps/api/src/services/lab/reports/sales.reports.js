@@ -1,6 +1,6 @@
 /**
- * Sales (7 of the audit's 8; Sales By Rep waits for piece 6's client tags).
- * Admin only. Every figure is the one sales rule in lab-metrics.js: issued
+ * Sales (8). Sales By Rep waits for piece 6's client tags (registered with
+ * `requires`, dependent.js). Admin only. Every figure is the one sales rule in lab-metrics.js: issued
  * invoices' subtotal by lab-local issue day.
  */
 import { sql } from "drizzle-orm";
@@ -9,6 +9,7 @@ import { invoices, invoiceLines, productFamilies, users, doctorProfiles } from "
 import {
   CLIENT_LINK, catalogJoins, clientName, coverageNotice, discountNotices, labDayText, num, orderAndPage, rowsOf, salesBreakdown, salesByDay, salesByMonth, salesWhere,
 } from "./lab-metrics.js";
+import { dependentReport } from "./dependent.js";
 
 const ADMIN = ["admin"];
 const GROUP = "sales";
@@ -174,7 +175,18 @@ const byClient = {
   },
 };
 
-export const SALES_REPORTS = [comparison, summary, daily, labSales, netChart, category, byClient];
+const byRep = dependentReport({
+  key: "sales.by-rep", group: GROUP, roles: ADMIN, title: "Sales By Rep", requires: ["record-tags"],
+  description: "Sales in the range grouped by each client's rep (a tag on the client).",
+  params: [RANGE],
+  columns: [
+    { id: "rep", label: "Rep", type: "text" }, { id: "clients", label: "Clients", type: "int" }, { id: "invoices", label: "Invoices", type: "int" },
+    money("sales", "Sales"), { id: "share", label: "Share", type: "pct" },
+  ],
+  chart: { type: "bar", x: "rep", series: [{ field: "sales", label: "Sales" }] },
+});
+
+export const SALES_REPORTS = [comparison, summary, daily, labSales, netChart, category, byClient, byRep];
 
 export function registerSalesReports(registry) {
   for (const def of SALES_REPORTS) registry.defineReport(def);
