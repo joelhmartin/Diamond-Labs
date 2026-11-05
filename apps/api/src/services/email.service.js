@@ -60,6 +60,7 @@ async function send({ to, bcc, replyTo, subject, html, text }) {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: form.toString(),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");

@@ -44,7 +44,7 @@ test("missing or malformed required fields are rejected without sending", async 
 });
 
 test("a filled honeypot looks successful but sends nothing", async () => {
-  const res = await post({ ...VALID, website: "http://spam.example" });
+  const res = await post({ ...VALID, contact_hp_check: "http://spam.example" });
   assert.equal(res.statusCode, 200);
   assert.equal(sendContactMessage.mock.calls.length, 0);
 });
