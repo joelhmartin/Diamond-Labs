@@ -35,21 +35,31 @@ export function planPracticeBackfill({ users, accounts: accountRows, memberships
   const plan = {
     markClient: [], setFields: [], addMemberships: [], deleteAccounts: [], reportShared: [], createAccounts: [],
     practiceOfUser: new Map(), accountByLegacyKey: new Map(),
+    // Records of a doctor who is no longer eligible (pending/rejected/deleted) but carries a client id stay with the practice.
+    stampOfUser: new Map(),
+    conflicts: [], // canonical accounts whose existing number/key differs from the owner's: never overwritten
+    blockedKeys: [], // client ids held by a non-active account (unique index): the key is skipped
   };
   const doctors = users.filter(isInvoiceOwner).map((u) => ({ ...u, seazonaClientId: trimmed(u.seazonaClientId) }));
   const active = accountRows.filter((a) => a.status === "active");
+  // A removed/suspended membership is deliberately NOT re-activated: a removed member must stay out.
   const memberOf = new Set(membershipRows.map((m) => `${m.userId}|${m.accountId}`));
   const takenNumbers = new Map(accountRows.filter((a) => a.accountNumber).map((a) => [a.accountNumber, a.id]));
 
   const groups = new Map();
   for (const d of doctors) groups.set(groupKeyOf(d), [...(groups.get(groupKeyOf(d)) ?? []), d]);
+  const inactiveKeys = new Set(accountRows.filter((a) => a.status !== "active" && a.legacyClientKey).map((a) => a.legacyClientKey));
   const oldestOfClient = oldestByKey(doctors, "seazonaClientId");
   const canonicalAccountIds = new Set();
 
   for (const [groupKey, members] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
-    const clientKey = groupKey.startsWith("client:") ? groupKey.slice(7) : null;
+    let clientKey = groupKey.startsWith("client:") ? groupKey.slice(7) : null;
     const leader = clientKey ? members.find((d) => d.id === oldestOfClient.get(clientKey)) : members[0];
     const keyed = clientKey ? active.filter((a) => a.legacyClientKey === clientKey).sort(byAge)[0] : null;
+    if (clientKey && !keyed && inactiveKeys.has(clientKey)) {
+      plan.blockedKeys.push(clientKey);
+      clientKey = null; // fail safe: skip the key rather than collide with the unique index
+    }
     let canonical = keyed ?? active.filter((a) => a.ownerId === leader.id).sort(byAge)[0] ?? null;
 
     if (!canonical) {
@@ -65,9 +75,15 @@ export function planPracticeBackfill({ users, accounts: accountRows, memberships
       canonical = { id: accountId, ownerId: leader.id };
     } else {
       if (!canonical.isClient) plan.markClient.push(canonical.id);
+      // Only ever fill a null: an existing different value is reported, never overwritten.
       const wanted = trimmed(leader.seazonaAccountNumber);
-      const number = wanted && wanted !== canonical.accountNumber && !takenNumbers.has(wanted) ? wanted : null;
-      const key = clientKey && clientKey !== canonical.legacyClientKey ? clientKey : null;
+      if (wanted && canonical.accountNumber && wanted !== canonical.accountNumber) plan.conflicts.push({ accountId: canonical.id, field: "account_number" });
+      if (clientKey && canonical.legacyClientKey && clientKey !== canonical.legacyClientKey) {
+        plan.conflicts.push({ accountId: canonical.id, field: "legacy_client_key" });
+        clientKey = null;
+      }
+      const number = wanted && !canonical.accountNumber && !takenNumbers.has(wanted) ? wanted : null;
+      const key = clientKey && !canonical.legacyClientKey ? clientKey : null;
       if (number) takenNumbers.set(number, canonical.id);
       if (number || key) plan.setFields.push({ accountId: canonical.id, accountNumber: number, legacyClientKey: key });
     }
@@ -80,6 +96,11 @@ export function planPracticeBackfill({ users, accounts: accountRows, memberships
         plan.addMemberships.push({ userId: d.id, accountId: canonical.id, role: d.id === canonical.ownerId ? "owner" : MEMBER_ROLE_FOR_SHARER });
       }
     }
+  }
+
+  for (const u of users) {
+    const key = trimmed(u.seazonaClientId);
+    if (key && !plan.practiceOfUser.has(u.id) && plan.accountByLegacyKey.has(key)) plan.stampOfUser.set(u.id, plan.accountByLegacyKey.get(key));
   }
 
   // Duplicate personal accounts: every other active, plain account a practice doctor owns.
@@ -106,6 +127,7 @@ const pairs = (entries) => sql.join(entries.map(([a, b]) => sql`(${a}, ${b})`), 
 export async function writePracticeBackfill(plan, tx) {
   const counts = {
     createdAccounts: 0, markedClient: 0, fieldsSet: 0, membershipsAdded: 0, accountsDeleted: 0, sharedReported: plan.reportShared.length,
+    conflicts: (plan.conflicts ?? []).length, blockedKeys: (plan.blockedKeys ?? []).length,
     rxCases: 0, labOrders: 0, invoices: 0, pickups: 0, messageThreads: 0, statementSends: 0,
   };
   if (plan.createAccounts.length) {
@@ -133,7 +155,7 @@ export async function writePracticeBackfill(plan, tx) {
     counts.accountsDeleted = plan.deleteAccounts.length;
   }
 
-  const users = [...plan.practiceOfUser];
+  const users = [...new Map([...(plan.stampOfUser ?? []), ...plan.practiceOfUser])];
   if (users.length) {
     const map = pairs(users);
     counts.rxCases = affected(await tx.execute(sql`update rx_cases t set account_id = m.account_id from (values ${map}) as m(user_id, account_id) where t.user_id = m.user_id and t.account_id is null`));

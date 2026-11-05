@@ -44,6 +44,9 @@ export const planCounts = (plan) => ({
   duplicateAccountsToDelete: plan.deleteAccounts.length,
   duplicateAccountsSharedReported: plan.reportShared.length,
   doctorsWithPractice: plan.practiceOfUser.size,
+  formerDoctorsStamped: plan.stampOfUser.size,
+  numberOrKeyConflicts: plan.conflicts.length,
+  clientIdsBlockedByInactiveAccount: plan.blockedKeys.length,
 });
 
 export async function main(argv, deps = {}) {

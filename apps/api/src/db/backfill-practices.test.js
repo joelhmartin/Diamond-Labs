@@ -119,7 +119,7 @@ test("re-running on the planned result plans nothing", () => {
 const sqlText = (q) => (q?.queryChunks ?? []).map((c) => (typeof c === "string" ? c : c?.value ? c.value.join("") : c?.queryChunks ? sqlText(c) : "")).join("");
 const emptyPlan = () => ({
   markClient: [], setFields: [], addMemberships: [], deleteAccounts: [], reportShared: [], createAccounts: [],
-  practiceOfUser: new Map(), accountByLegacyKey: new Map(),
+  practiceOfUser: new Map(), accountByLegacyKey: new Map(), stampOfUser: new Map(), conflicts: [], blockedKeys: [],
 });
 const executed = (tx) => tx.log.filter((e) => e.op === "execute");
 
@@ -157,7 +157,7 @@ test("the writer applies the plan's rows and returns counts", async () => {
     createAccounts: [{ accountId: "n1", ownerId: "u9", name: "Co", accountNumber: null, legacyClientKey: "C9" }],
   }, tx);
   assert.equal(tx.log.filter((e) => e.op === "insert").length, 2, "new account + memberships");
-  assert.deepEqual(counts, { createdAccounts: 1, markedClient: 1, fieldsSet: 1, membershipsAdded: 1, accountsDeleted: 1, sharedReported: 1, rxCases: 0, labOrders: 0, invoices: 0, pickups: 0, messageThreads: 0, statementSends: 0 });
+  assert.deepEqual(counts, { createdAccounts: 1, markedClient: 1, fieldsSet: 1, membershipsAdded: 1, accountsDeleted: 1, sharedReported: 1, conflicts: 0, blockedKeys: 0, rxCases: 0, labOrders: 0, invoices: 0, pickups: 0, messageThreads: 0, statementSends: 0 });
 });
 
 test("the CLI dry run writes nothing and prints counts only", async () => {
@@ -173,4 +173,38 @@ test("the CLI dry run writes nothing and prints counts only", async () => {
   assert.equal(transacted, false);
   assert.ok(out.join("\n").includes('"accountsToCreate":1'));
   assert.ok(!out.join("\n").includes("Secret Dental") && !out.join("\n").includes("u1"));
+});
+
+test("a deleted doctor with a client id still has their records stamped with the practice; a pending doctor without one does not", async () => {
+  const gone = doctor("u2", { seazonaClientId: "C1", status: "deleted", createdAt: day(2) });
+  const pendingNoKey = doctor("u3", { approvalStatus: "pending" });
+  const p = plan({ users: [doctor("u1", { seazonaClientId: "C1" }), gone, pendingNoKey], accounts: [account("a1", "u1")] });
+  assert.equal(p.stampOfUser.get("u2"), "a1");
+  assert.equal(p.stampOfUser.has("u3"), false);
+  assert.equal(p.practiceOfUser.has("u2"), false, "no membership or practiceOfUser entry for an ineligible doctor");
+  assert.deepEqual(p.addMemberships.filter((m) => m.userId === "u2"), []);
+  const tx = fakeTx();
+  await writePracticeBackfill(p, tx);
+  const values = JSON.stringify(tx.log.filter((e) => e.op === "execute").map((e) => e.q.queryChunks));
+  assert.ok(values.includes('"u2"'), "u2's records are stamped");
+  assert.ok(!values.includes('"u3"'));
+});
+
+test("an existing different account number or client key is never overwritten; it is reported", () => {
+  const users = [doctor("u1", { seazonaClientId: "C1", seazonaAccountNumber: "NEW" })];
+  const p = plan({ users, accounts: [account("a1", "u1", { accountNumber: "OLD", legacyClientKey: "OTHER" })] });
+  assert.deepEqual(p.setFields, []);
+  assert.deepEqual(p.conflicts.map((c) => c.field).sort(), ["account_number", "legacy_client_key"]);
+  assert.equal(p.accountByLegacyKey.has("C1"), false, "party keys are not rewritten onto a mismatched account");
+});
+
+test("a non-active account holding the client id blocks the key: skipped and reported, no collision", () => {
+  const users = [doctor("u1", { seazonaClientId: "C1" }), doctor("u2", { seazonaClientId: "C2" })];
+  const accounts = [account("a1", "u1"), account("dead", "u9", { status: "deleted", legacyClientKey: "C1" })];
+  const p = plan({ users, accounts });
+  assert.deepEqual(p.blockedKeys, ["C1"]);
+  assert.deepEqual(p.setFields, []);
+  assert.deepEqual(p.createAccounts.map((c) => [c.ownerId, c.legacyClientKey]), [["u2", "C2"]]);
+  const blockedCreate = plan({ users: [doctor("u5", { seazonaClientId: "C1" })], accounts: [accounts[1]] });
+  assert.equal(blockedCreate.createAccounts[0].legacyClientKey, null);
 });

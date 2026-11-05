@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, isNull, count } from "drizzle-orm";
+import { and, eq, ne, or, inArray, isNotNull, isNull, count } from "drizzle-orm";
 import { isPossiblyIncomplete } from "./seazona-fetch.js";
 import { isOpeningBalanceInvoice, isoDateIn, LAB_TIMEZONE, LEGACY_SETTLEMENT_SOURCE, OPENING_BALANCE_PREFIX, TERMINAL_LAB_STATUSES } from "@my-app/shared";
 import { users, invoices, invoicePayments, labOrders, rxCases } from "../db/schema/index.js";
@@ -96,13 +96,19 @@ async function legacyMoney({ db, raw, legacy, accountOfUser }) {
 
 /**
  * Owned records (a doctor's rx case, lab order or invoice) with no practice:
- * a backfill gap, which every scope check fails closed on. Only doctor-owned
- * records count, since a shopper's records have no practice to stamp.
+ * a backfill gap, which every scope check fails closed on. Counted only when
+ * the owner could have been mapped: an approved, non-deleted doctor, or any
+ * user with a Seazona client id (the practice keeps a former doctor's records).
  */
+export const ownerCouldBeMapped = or(
+  and(eq(users.role, "doctor"), eq(users.approvalStatus, "approved"), ne(users.status, "deleted")),
+  isNotNull(users.seazonaClientId),
+);
+
 async function recordsWithoutAccount(db) {
   const one = async (table, owner) => {
     const [row] = await db.select({ n: count() }).from(table).innerJoin(users, eq(users.id, owner))
-      .where(and(isNull(table.accountId), eq(users.role, "doctor")));
+      .where(and(isNull(table.accountId), ownerCouldBeMapped));
     return Number(row?.n ?? 0);
   };
   const out = { rxCases: await one(rxCases, rxCases.userId), labOrders: await one(labOrders, labOrders.clientUserId), invoices: await one(invoices, invoices.clientUserId) };

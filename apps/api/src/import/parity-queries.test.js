@@ -92,3 +92,10 @@ test("parity counts owned records without account", async () => {
   assert.deepEqual(report.recordsWithoutAccount, { rxCases: 0, labOrders: 0, invoices: 1, total: 1 });
   assert.ok(report.differences.includes("records_without_account"));
 });
+
+test("the without-account count covers an approved doctor, or any owner with a client id, and no one else", async () => {
+  const { PgDialect } = await import("drizzle-orm/pg-core");
+  const { ownerCouldBeMapped } = await import("./parity-queries.js");
+  const { sql } = new PgDialect().sqlToQuery(ownerCouldBeMapped);
+  assert.match(sql, /\("users"\."role" = \$1 and "users"\."approval_status" = \$2 and "users"\."status" <> \$3\) or "users"\."seazona_client_id" is not null/);
+});
