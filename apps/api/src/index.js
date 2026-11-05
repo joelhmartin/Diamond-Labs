@@ -11,7 +11,7 @@ import fastifyStatic from "@fastify/static";
 import multipart from "@fastify/multipart";
 import { env } from "./config/env.js";
 import { assertSafeConfig, assertScrubMarker, registerStagingHeaders } from "./config/app-env.js";
-import { queryClient } from "./config/database.js";
+import { db, queryClient } from "./config/database.js";
 import { reqSerializer } from "./lib/log-serializers.js";
 import project from "../../../project.config.js";
 import { errorHandler } from "./middleware/error-handler.js";
@@ -41,6 +41,9 @@ import shippingRoutes from "./routes/shipping.routes.js";
 import themeRoutes from "./routes/theme.routes.js";
 import autopayRoutes from "./routes/autopay.routes.js";
 import adminPaymentRoutes from "./routes/admin-payment.routes.js";
+import { ADMIN } from "./routes/admin-invoice.routes.js";
+import { createExportsRoutes } from "./modules/exports/index.js";
+import { appExports, auditExportDownload } from "./exports/index.js";
 import { registerAllJobs } from "./jobs/definitions/index.js";
 import { registerJobTriggerRoutes } from "./jobs/triggers/http.js";
 
@@ -246,6 +249,7 @@ await fastify.register(shippingRoutes, { prefix: "/api/v1" });
 await fastify.register(themeRoutes,     { prefix: "/api/v1" });
 await fastify.register(autopayRoutes,   { prefix: "/api/v1" });
 await fastify.register(adminPaymentRoutes, { prefix: "/api/v1" });
+await fastify.register(createExportsRoutes({ registry: appExports, db, preHandler: ADMIN, audit: auditExportDownload }), { prefix: "/api/v1/admin" });
 
 registerAllJobs();
 registerJobTriggerRoutes(fastify);

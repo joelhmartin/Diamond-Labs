@@ -34,6 +34,7 @@ export * from "./schemas/lab.schema.js";
 
 // Exports
 export * from "./exports/csv.js";
+export * from "./schemas/exports.schema.js";
 
 // Money (integer cents)
 export * from "./money.js";
