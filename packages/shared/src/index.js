@@ -8,6 +8,7 @@ export * from "./schemas/rx.schema.js";
 export * from "./schemas/theme.schema.js";
 export * from "./schemas/payment.schema.js";
 export * from "./schemas/autopay.schema.js";
+export * from "./schemas/contact.schema.js";
 
 // Constants
 export * from "./constants/roles.js";

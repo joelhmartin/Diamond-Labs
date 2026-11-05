@@ -14,6 +14,7 @@ import {
   Linkedin,
   Youtube,
 } from "lucide-react";
+import { CONTACT_SUBJECTS } from "@my-app/shared";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -76,21 +77,41 @@ function ContactHero() {
 }
 
 /* ─── CONTACT FORM ─── */
+/** Sends the form's filled-in fields; throws unless the API accepted them. */
+export async function postContactMessage(formData) {
+  const res = await fetch("/api/v1/contact", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(
+      Object.fromEntries([...formData].filter(([, value]) => value !== ""))
+    ),
+  });
+  if (!res.ok) throw new Error(`Contact form returned ${res.status}`);
+}
+
 function ContactForm() {
   const [formState, setFormState] = useState("idle");
   const [focused, setFocused] = useState({});
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    const form = e.currentTarget;
     setFormState("sending");
-    setTimeout(() => setFormState("success"), 1500);
-    setTimeout(() => setFormState("idle"), 4000);
+    try {
+      await postContactMessage(new FormData(form));
+      form.reset();
+      setFocused({});
+      setFormState("success");
+      setTimeout(() => setFormState("idle"), 4000);
+    } catch {
+      setFormState("error");
+    }
   };
 
   const fields = [
-    { name: "name", label: "Full Name", type: "text" },
+    { name: "name", label: "Full Name", type: "text", required: true },
     { name: "practice", label: "Practice Name", type: "text" },
-    { name: "email", label: "Email Address", type: "email" },
+    { name: "email", label: "Email Address", type: "email", required: true },
     { name: "phone", label: "Phone Number", type: "tel" },
   ];
 
@@ -111,6 +132,7 @@ function ContactForm() {
             <input
               type={field.type}
               name={field.name}
+              required={field.required}
               className="w-full pt-6 pb-2 px-4 rounded-2xl bg-surface-100 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all duration-300"
               onFocus={() =>
                 setFocused((prev) => ({ ...prev, [field.name]: true }))
@@ -149,11 +171,9 @@ function ContactForm() {
           defaultValue=""
         >
           <option value="" disabled></option>
-          <option>New Case Inquiry</option>
-          <option>Product Information</option>
-          <option>Digital Workflow Setup</option>
-          <option>Existing Case Question</option>
-          <option>General Question</option>
+          {CONTACT_SUBJECTS.map((subject) => (
+            <option key={subject}>{subject}</option>
+          ))}
         </select>
       </div>
 
@@ -169,6 +189,7 @@ function ContactForm() {
         </label>
         <textarea
           name="message"
+          required
           rows={4}
           className="w-full pt-6 pb-2 px-4 rounded-2xl bg-surface-100 border border-surface-300/50 text-navy text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 transition-all duration-300 resize-none"
           onFocus={() =>
@@ -182,9 +203,33 @@ function ContactForm() {
         />
       </div>
 
+      <p className="text-xs text-navy/70">
+        Please don&apos;t include patient details in this form.
+      </p>
+
+      {/* Honeypot: hidden from people, filled in by bots. */}
+      <input
+        type="text"
+        name="website"
+        tabIndex={-1}
+        autoComplete="off"
+        aria-hidden="true"
+        className="absolute -left-[9999px] h-px w-px opacity-0"
+      />
+
+      {formState === "error" && (
+        <p role="alert" className="text-sm text-navy">
+          Your message wasn&apos;t sent. Try again, or call the lab at{" "}
+          <a href="tel:+16197246400" className="font-semibold underline">
+            619.724.6400
+          </a>
+          .
+        </p>
+      )}
+
       <button
         type="submit"
-        disabled={formState !== "idle"}
+        disabled={formState === "sending" || formState === "success"}
         className={`btn-magnetic w-full py-4 rounded-full font-semibold text-sm transition-all duration-500 ${
           formState === "success"
             ? "bg-emerald-500 text-white"
@@ -193,7 +238,7 @@ function ContactForm() {
       >
         <span className="btn-bg bg-accent-600 rounded-full" />
         <span className="relative z-10 flex items-center justify-center gap-2">
-          {formState === "idle" && (
+          {(formState === "idle" || formState === "error") && (
             <>
               Send Message <Send size={16} />
             </>
