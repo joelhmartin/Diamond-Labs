@@ -25,7 +25,8 @@ const toNum = (iso) => {
   return Date.UTC(y, m - 1, d) / DAY_MS;
 };
 const fromNum = (n) => new Date(n * DAY_MS).toISOString().slice(0, 10);
-const addDays = (iso, n) => fromNum(toNum(iso) + n);
+/** "YYYY-MM-DD" shifted by `n` calendar days (negative goes back). */
+export const addDays = (iso, n) => fromNum(toNum(iso) + n);
 /** Month may be out of 1..12 (Date.UTC rolls the year). */
 const ymd = (y, m, d) => fromNum(Date.UTC(y, m - 1, d) / DAY_MS);
 

@@ -149,7 +149,7 @@ test("payments received sorts invoice numbers numerically and methods by the lab
   assert.ok(label.params.includes("admin_check") && label.params.includes("Check"));
 });
 
-const GLUE = ["lab-metrics.js", "accounting.reports.js", "sales.reports.js", "lookups.js"];
+const GLUE = ["lab-metrics.js", "accounting.reports.js", "sales.reports.js", "lookups.js", "clients.reports.js", "client-health.js", "products.reports.js"];
 
 test("no accounting or sales report selects legacy_patient or decrypts", () => {
   for (const f of GLUE) {
@@ -169,8 +169,9 @@ test("registerLabReports registers the 9 accounting + 7 sales reports, admin onl
   ];
   for (const k of keys) assert.deepEqual(registry.getReport(k)?.roles, ["admin"], k);
   const admin = { id: "a", role: "admin" };
-  assert.deepEqual(registry.listReports(admin).map((r) => r.key).sort(), [...keys].sort());
-  assert.equal(registry.listReports({ id: "l", role: "lab" }).length, 0);
+  const moneyGroups = (r) => /^(accounting|sales)\./.test(r.key);
+  assert.deepEqual(registry.listReports(admin).filter(moneyGroups).map((r) => r.key).sort(), [...keys].sort());
+  assert.equal(registry.listReports({ id: "l", role: "lab" }).filter(moneyGroups).length, 0);
   assert.deepEqual(registry.listGroups().map((g) => g.title), [
     "Accounting", "Clients", "Departments", "Operations", "Planning", "Productivity", "Products & Services", "Sales",
   ]);

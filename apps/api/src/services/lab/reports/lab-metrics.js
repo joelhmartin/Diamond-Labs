@@ -10,13 +10,14 @@
  * carry a client's AR balance at cutover, not a sale made that day.
  */
 import { sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { OPENING_BALANCE_PREFIX, daysBetween, monthsBetween } from "@my-app/shared";
-import { invoices, invoiceLines, users, doctorProfiles } from "../../../db/schema/index.js";
-import { labDay, labDayBetween, labDayText, labMonthText } from "../../../lib/lab-day-sql.js";
+import { invoices, invoiceLines, users, doctorProfiles, labOrders, productVariants, productFamilies } from "../../../db/schema/index.js";
+import { afterLabDay, labDay, labDayBetween, labDayText, labMonthText } from "../../../lib/lab-day-sql.js";
 import { ledgerRowDay } from "../../billing/ledger.service.js";
 
 // The lab-day SQL helpers live in lib/lab-day-sql.js (billing uses them too); re-exported for the report glue.
-export { labDay, labDayBetween, labDayText, labMonthText };
+export { afterLabDay, labDay, labDayBetween, labDayText, labMonthText };
 
 // ── Links (the admin web routes, apps/web/src/config/routes.js) ──────────
 
@@ -24,11 +25,40 @@ export { labDay, labDayBetween, labDayText, labMonthText };
 export const CLIENT_LINK = "/admin/invoices?inv.clientUserId={clientUserId}";
 /** One invoice: ROUTES.ADMIN_INVOICE_DETAIL. */
 export const INVOICE_LINK = "/admin/invoices/{invoiceId}";
+/** One lab order: ROUTES.LAB_ORDER_DETAIL (admin and lab staff). The row needs `labOrderId`. */
+export const ORDER_LINK = "/lab/orders/{labOrderId}";
 
 // ── SQL building blocks ──────────────────────────────────────────────────
 
 /** A client's display name: the practice, falling back to the doctor's name. Join users + doctor_profiles. */
 export const clientName = sql`coalesce(${doctorProfiles.companyName}, ${users.name})`;
+
+/** The user is a client (spec: Client = a user with role doctor). */
+export const isClient = sql`${users.role} = 'doctor'`;
+
+/** The lab order counts (spec: cancelled orders are excluded unless a report says otherwise). */
+export const isLiveOrder = sql`${labOrders.status} <> 'cancelled'`;
+
+/**
+ * Turnaround in calendar days, received → shipped, between the two lab-local
+ * days (spec "Turnaround"). THE turnaround expression: Task 7's
+ * `turnaroundDays(order, calendar?)` and any report averaging turnaround use
+ * this; piece 7 swaps business days in here.
+ */
+export const turnaroundDaysSql = sql`(${labDay(labOrders.shippedAt)} - ${labDay(labOrders.receivedAt)})`;
+
+/** A line's catalog variant when it names only a code (imported lines). See `catalogJoins`. */
+export const byCode = alias(productVariants, "by_code");
+
+/**
+ * Joins a line table (invoice_lines or lab_order_lines) to the catalog: its
+ * variant, or for a line that names only a code (imported lines) the variant
+ * with that code (`by_code`), and the family of whichever matched.
+ */
+export const catalogJoins = (line) => sql`
+  left join ${productVariants} on ${productVariants.id} = ${line.variantId}
+  left join ${productVariants} as by_code on ${line.variantId} is null and ${byCode.code} = ${line.code}
+  left join ${productFamilies} on ${productFamilies.id} = coalesce(${productVariants.familyId}, ${byCode.familyId})`;
 
 /** The invoice is a sale (status and opening-balance rule; no date). */
 export const isSale = sql`${invoices.status} = 'issued' and not (${invoices.kind} = 'legacy' and coalesce(${invoices.legacySeazonaInvoiceId}, '') like ${`${OPENING_BALANCE_PREFIX}%`})`;
@@ -81,6 +111,14 @@ export function orderAndPage(page, sorts, fallback, tiebreak) {
 export async function salesCents(db, { from, to, clientUserId } = {}) {
   const [r] = await rowsOf(db, sql`select coalesce(sum(${invoices.subtotalCents}), 0) as "cents" from ${invoices} where ${salesWhere({ from, to, clientUserId })}`);
   return num(r?.cents);
+}
+
+/** Sales cents per client for lab-local days `from`..`to`: Map(clientUserId → cents). One grouped query. */
+export async function salesByClient(db, { from, to }) {
+  const rows = await rowsOf(db, sql`
+    select ${invoices.clientUserId} as "clientUserId", sum(${invoices.subtotalCents}) as "cents"
+    from ${invoices} where ${salesWhere({ from, to })} and ${invoices.clientUserId} is not null group by 1`);
+  return new Map(rows.map((r) => [r.clientUserId, num(r.cents)]));
 }
 
 /** Sales per lab-local day, every day in the range (zeros filled). */

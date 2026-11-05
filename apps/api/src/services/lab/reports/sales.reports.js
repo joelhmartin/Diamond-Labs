@@ -4,11 +4,10 @@
  * invoices' subtotal by lab-local issue day.
  */
 import { sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
 import { INVOICE_KINDS, INVOICE_KIND_LABELS, LAB_TIMEZONE, isoDateIn } from "@my-app/shared";
-import { invoices, invoiceLines, productVariants, productFamilies, users, doctorProfiles } from "../../../db/schema/index.js";
+import { invoices, invoiceLines, productFamilies, users, doctorProfiles } from "../../../db/schema/index.js";
 import {
-  CLIENT_LINK, clientName, coverageNotice, discountNotices, labDayText, num, orderAndPage, rowsOf, salesBreakdown, salesByDay, salesByMonth, salesWhere,
+  CLIENT_LINK, catalogJoins, clientName, coverageNotice, discountNotices, labDayText, num, orderAndPage, rowsOf, salesBreakdown, salesByDay, salesByMonth, salesWhere,
 } from "./lab-metrics.js";
 
 const ADMIN = ["admin"];
@@ -110,8 +109,6 @@ const netChart = {
   },
 };
 
-const byCode = alias(productVariants, "by_code");
-
 const category = {
   key: "sales.category", group: GROUP, roles: ADMIN, title: "Product Category Sales",
   description: "Sales by product category (each line's product family). Lines with no product are grouped as adjustments, fees or \"No product\".",
@@ -130,9 +127,7 @@ const category = {
         sum(${invoiceLines.lineCents}) as "amount"
       from ${invoiceLines}
       join ${invoices} on ${invoices.id} = ${invoiceLines.invoiceId}
-      left join ${productVariants} on ${productVariants.id} = ${invoiceLines.variantId}
-      left join ${productVariants} as by_code on ${invoiceLines.variantId} is null and ${byCode.code} = ${invoiceLines.code}
-      left join ${productFamilies} on ${productFamilies.id} = coalesce(${productVariants.familyId}, ${byCode.familyId})
+      ${catalogJoins(invoiceLines)}
       where ${invoiceLines.kind} <> 'shipping' and ${salesWhere(range)}
       group by 1 order by 3 desc, 1`);
     const rows = raw.map((r) => ({ category: r.category, units: num(r.units), amount: num(r.amount) }));
