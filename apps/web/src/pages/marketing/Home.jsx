@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { playOnView } from "../../lib/playOnView";
+import { CtaBand } from "../../components/marketing/CtaBand.jsx";
 import LottiePlayer from "../../components/ui/LottiePlayer";
 import {
   ArrowRight,
@@ -17,23 +18,6 @@ import {
 } from "lucide-react";
 
 gsap.registerPlugin(ScrollTrigger);
-
-/* ─── NOISE OVERLAY ─── */
-function NoiseOverlay() {
-  return (
-    <svg className="noise-overlay" width="100%" height="100%">
-      <filter id="noise">
-        <feTurbulence
-          type="fractalNoise"
-          baseFrequency="0.8"
-          numOctaves="4"
-          stitchTiles="stitch"
-        />
-      </filter>
-      <rect width="100%" height="100%" filter="url(#noise)" />
-    </svg>
-  );
-}
 
 /* ─── HERO ─── */
 function Hero() {
@@ -1035,81 +1019,21 @@ function PulsingWaveform() {
 
 /* ─── CTA SECTION ─── */
 function CTASection() {
-  const sectionRef = useRef(null);
-
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-cta-anim]",
-        { y: 40, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.8,
-          stagger: 0.1,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(sectionRef.current, tween);
-    }, sectionRef);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
   return (
-    <section ref={sectionRef} className="section-pad py-24 md:py-28">
-      <div className="max-w-4xl mx-auto text-center">
-        <span
-          data-cta-anim
-          className="font-mono text-xs text-navy/40 uppercase tracking-widest"
-        >
-          Partner With Us
-        </span>
-        <h2
-          data-cta-anim
-          className="mt-4 font-heading font-bold text-3xl md:text-5xl tracking-tight"
-        >
-          Get the best for your
-          <br />
-          <span className="font-drama italic text-brand-500">
-            patients.
-          </span>
-        </h2>
-        <p
-          data-cta-anim
-          className="mt-6 text-navy/50 text-lg max-w-xl mx-auto leading-relaxed"
-        >
+    <CtaBand
+      eyebrow="Partner With Us"
+      title="Get the best for your"
+      titleAccent="patients."
+      intro={
+        <>
           Whether you&apos;re treating TMJ disorders, sleep breathing
           conditions, or both — we&apos;re the lab that understands your
           protocol.
-        </p>
-        <div data-cta-anim className="mt-10 flex flex-wrap items-center justify-center gap-4">
-          <Link
-            to="/contact"
-            className="btn-magnetic group px-8 py-4 rounded-full bg-accent-500 text-white font-semibold"
-          >
-            <span className="btn-bg bg-accent-600 rounded-full" />
-            <span className="relative z-10 flex items-center gap-2">
-              Contact Our Lab
-              <ArrowRight
-                size={16}
-                className="group-hover:translate-x-1 transition-transform"
-              />
-            </span>
-          </Link>
-          <Link
-            to="/products"
-            className="px-8 py-4 rounded-full border border-surface-300 text-navy/70 font-medium hover:bg-surface-200/60 transition-colors duration-300"
-          >
-            View All Products
-          </Link>
-        </div>
-      </div>
-    </section>
+        </>
+      }
+      primary={{ label: "Contact Our Lab", to: "/contact" }}
+      secondary={{ label: "View All Products", to: "/products" }}
+    />
   );
 }
 
@@ -1122,7 +1046,6 @@ function wait(ms) {
 export function HomePage() {
   return (
     <>
-      <NoiseOverlay />
       <Hero />
       <Features />
       <Philosophy />

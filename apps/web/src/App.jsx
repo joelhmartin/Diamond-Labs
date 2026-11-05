@@ -96,6 +96,18 @@ function ScrollToTop() {
   return null;
 }
 
+/* Film-grain texture shared by every marketing page (moved here from Home). */
+function NoiseOverlay() {
+  return (
+    <svg className="noise-overlay" width="100%" height="100%">
+      <filter id="noise">
+        <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="4" stitchTiles="stitch" />
+      </filter>
+      <rect width="100%" height="100%" filter="url(#noise)" />
+    </svg>
+  );
+}
+
 /* Marketing layout: Navbar + page + Footer + floating cart */
 function MarketingLayout() {
   const { pathname } = useLocation();
@@ -139,6 +151,7 @@ function MarketingLayout() {
 
   return (
     <>
+      <NoiseOverlay />
       <Navbar />
       <main>
         <Outlet />
