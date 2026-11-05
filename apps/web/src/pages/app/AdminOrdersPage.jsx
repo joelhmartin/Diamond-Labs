@@ -8,7 +8,7 @@ import { sourceLabel } from "../../lib/staff.js";
 import { moveBulkActions } from "../../lib/lab-board.js";
 import { pageParams } from "../../lib/data-table/server.js";
 import { DataTable } from "../../components/ui/data-table/index.js";
-import { FlagBadges, DueLabel } from "../../components/lab/board-columns.jsx";
+import { FlagBadges, DueLabel, PAN_COLUMN } from "../../components/lab/board-columns.jsx";
 import { useDataTable } from "../../hooks/useDataTable.js";
 
 const opt = (list, label) => list.map((x) => ({ value: x.id, label: label(x) }));
@@ -43,6 +43,7 @@ const COLUMNS = [
     id: "source", header: "Source", exportValue: (o) => sourceLabel(o.source),
     cell: (o) => <span className="text-xs">{sourceLabel(o.source)}<div className="font-mono text-navy/40">{o.reference ?? ""}</div></span>,
   },
+  PAN_COLUMN,
   { id: "practice", header: "Practice", cell: (o) => o.practice, exportValue: (o) => o.practice ?? "" },
   {
     id: "items", header: "Items", className: "max-w-xs truncate text-navy/70", exportValue: (o) => o.deviceSummary ?? "",
@@ -89,7 +90,7 @@ export function AdminOrdersPage() {
         table={table}
         columns={COLUMNS}
         bulkActions={bulkActions}
-        searchPlaceholder="Order #, case #, practice, item…"
+        searchPlaceholder="Order #, pan, case #, practice…"
         itemLabel="orders"
         exportFileName="orders.csv"
         emptyText="No orders match."

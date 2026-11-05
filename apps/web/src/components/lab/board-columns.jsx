@@ -73,6 +73,13 @@ export function QuickMoveButtons({ card, busy, onMove }) {
   );
 }
 
+/** The pan number column, shared by the board table and the admin Orders list. */
+export const PAN_COLUMN = {
+  id: "pan", header: "Pan", sortValue: (c) => c.panNumber ?? "",
+  cell: (c) => <span className="font-mono text-xs">{c.panNumber ?? ""}</span>,
+  exportValue: (c) => c.panNumber ?? "",
+};
+
 /** DataTable columns for a lab order row. */
 export function boardColumns({ busyId, onMove }) {
   return [
@@ -83,6 +90,7 @@ export function boardColumns({ busyId, onMove }) {
       ),
       exportValue: (c) => c.orderNumber,
     },
+    PAN_COLUMN,
     { id: "practice", header: "Practice", sortValue: (c) => c.practice ?? "", cell: (c) => <span className="text-xs">{c.practice}</span> },
     { id: "device", header: "Device", cell: (c) => <span className="text-xs" title={c.deviceSummary}>{c.deviceSummary}</span>, exportValue: (c) => c.deviceSummary },
     {

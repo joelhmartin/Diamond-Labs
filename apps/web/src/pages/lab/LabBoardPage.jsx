@@ -211,7 +211,7 @@ export function LabBoardPage() {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-navy/30" />
           <input
             className={`${INPUT_BASE} pl-8 w-64`}
-            placeholder="Order #, case #, practice…"
+            placeholder="Order #, pan, case #, practice…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />

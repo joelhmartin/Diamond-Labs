@@ -1,6 +1,6 @@
 import api from "../config/api.js";
 import { eachRow } from "./data-table/bulk.js";
-import { LAB_BOARD_COLUMNS, LAB_STATUS_LABELS, allowedNextStatuses, reasonRequiredFor, formatUsDate } from "@my-app/shared";
+import { LAB_BOARD_COLUMNS, LAB_STATUS_LABELS, allowedNextStatuses, reasonRequiredFor, formatUsDate, LAB_DELIVERY_LABELS } from "@my-app/shared";
 
 const label = (s) => LAB_STATUS_LABELS[s] ?? s ?? "—";
 
@@ -92,6 +92,9 @@ export function describeEvent(e, { staffById = {}, departmentsById = {} } = {}) 
     case "assign": return e.to ? `${who}: assigned to ${staffById[e.to] ?? "a former staff member"}` : `${who}: unassigned`;
     case "department": return e.to ? `${who}: moved to ${departmentsById[e.to] ?? "a removed department"}` : `${who}: removed from its department`;
     case "due": return e.to ? `${who}: due date set to ${formatUsDate(e.to)}` : `${who}: due date cleared`;
+    case "pan": return e.to ? `${who}: pan number set to ${e.to}` : `${who}: pan number cleared`;
+    case "delivery": return e.to ? `${who}: delivery by ${LAB_DELIVERY_LABELS[e.to] ?? e.to}` : `${who}: delivery method cleared`;
+    case "enclosed": return `${who}: ${e.note ?? "enclosed items updated"}`;
     case "note": return `${who}: ${e.note ?? "note"}`;
     case "workflow": return e.from ? `${who}: workflow changed from ${e.from} to ${e.to}` : `${who}: workflow set to ${e.to}`;
     case "shipment": return `${who}: ${e.note ?? (e.to ? "shipping label bought" : "shipping label voided")}`;

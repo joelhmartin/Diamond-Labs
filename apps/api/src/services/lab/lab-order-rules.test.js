@@ -379,3 +379,49 @@ test("a remake takes the due date it is given", () => {
   const plan = planRemake({ original: shipped, originalLines: shippedLines, reason: "Cracked", orderNumber: 2, labOrderId: "lo-9", now, dueDate: "2026-10-26" });
   assert.equal(plan.labOrder.dueDate, "2026-10-26");
 });
+
+// ── Production desk: pan, delivery, enclosed items ─────────────────────────
+
+test("pan edit writes a pan event with from/to", () => {
+  const p = planFieldChange({ ...order, panNumber: "A1" }, "pan", "  B22 ", { byUserId: "u1", now });
+  assert.deepEqual(p.patch, { panNumber: "B22", version: 4, updatedAt: now });
+  assert.deepEqual(p.event, { labOrderId: "lo-1", type: "pan", from: "A1", to: "B22", byUserId: "u1", note: null, at: now });
+  assert.equal(planFieldChange({ ...order, panNumber: "A1" }, "pan", "", { now }).patch.panNumber, null);
+  assert.equal(planFieldChange({ ...order, panNumber: "A1" }, "pan", "A1", { now }), null);
+  assert.throws(() => planFieldChange(order, "pan", "x".repeat(31), { now }), isCode("INVALID"));
+});
+
+test("delivery edit takes only the shared methods", () => {
+  const p = planFieldChange(order, "delivery", "ups", { now });
+  assert.deepEqual([p.patch.deliveryMethod, p.event.type, p.event.from, p.event.to], ["ups", "delivery", null, "ups"]);
+  assert.throws(() => planFieldChange(order, "delivery", "drone", { now }), isCode("INVALID"));
+});
+
+test("enclosures edit stores sealed JSON and an event without the notes", () => {
+  const items = [{ kind: "digital", date: "2026-10-01", note: "Jane's scan" }];
+  const p = planFieldChange(order, "enclosures", items, { byUserId: "u1", now });
+  assert.equal(p.patch.enclosures, JSON.stringify(items));
+  assert.equal(p.event.type, "enclosed");
+  assert.equal(p.event.note, "Enclosed items updated");
+  assert.ok(!JSON.stringify(p.event).includes("Jane"));
+  assert.deepEqual([p.event.from, p.event.to], [null, null]);
+  const cleared = planFieldChange({ ...order, enclosures: p.patch.enclosures }, "enclosures", [], { now });
+  assert.equal(cleared.patch.enclosures, null);
+  assert.throws(() => planFieldChange(order, "enclosures", [{ kind: "model" }, { kind: "model" }], { now }), isCode("INVALID"));
+});
+
+test("same enclosures in a different order is no change", () => {
+  const stored = JSON.stringify([{ kind: "impression" }, { kind: "digital", note: "scan" }]);
+  const same = [{ kind: "digital", note: "scan" }, { kind: "impression" }];
+  assert.equal(planFieldChange({ ...order, enclosures: stored }, "enclosures", same, { now }), null);
+});
+
+test("shipped order refuses a pan edit", () => {
+  assert.throws(() => planFieldChange({ ...order, status: "shipped" }, "pan", "A1", { now }), isCode("INVALID"));
+});
+
+test("a board card carries the pan and delivery method", () => {
+  const card = presentBoardCard({ order: { ...order, panNumber: "A1", deliveryMethod: "fedex", source: "rx_case", sourceId: "c", receivedAt: now }, caseNumber: "RX-1", practiceName: "P", shopOrderNumber: null, shipping: null, clientName: null, assigneeName: null }, [], "2026-10-07");
+  assert.equal(card.panNumber, "A1");
+  assert.equal(card.deliveryMethod, "fedex");
+});

@@ -12,6 +12,7 @@ import { LegacyOrderPanel } from "../../components/lab/LegacyOrderPanel.jsx";
 import { ShippingPanel } from "../../components/lab/ShippingPanel.jsx";
 import { SchedulePanel } from "../../components/lab/SchedulePanel.jsx";
 import { Badge } from "../../components/ui/Badge.jsx";
+import { ProductionPanel } from "../../components/lab/ProductionPanel.jsx";
 import { errorText, blobErrorText, isStale, openInNewTab, openPdf } from "../../lib/requests.js";
 
 function moveLabel(from, to) {
@@ -343,6 +344,10 @@ export function LabOrderDetailPage() {
 
           <Panel title="Schedule">
             <SchedulePanel order={order} schedule={schedule ?? null} onChanged={load} />
+          </Panel>
+
+          <Panel title="Production">
+            <ProductionPanel order={order} onChanged={load} />
           </Panel>
 
           <Panel title="Lab notes (staff only)">

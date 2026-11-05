@@ -1,13 +1,13 @@
 import { and, asc, desc, eq, gte, ilike, inArray, lt, lte, notInArray, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { isOverdue, STAFF_ROLES, TERMINAL_LAB_STATUSES, caseSummary } from "@my-app/shared";
+import { isOverdue, STAFF_ROLES, TERMINAL_LAB_STATUSES, caseSummary, parseEnclosures } from "@my-app/shared";
 import { db } from "../../config/database.js";
 import { env } from "../../config/env.js";
 import {
   labOrders, labOrderLines, labOrderEvents, labDepartments, rxCases, rxCaseFiles, rxCaseLines, orders, users, shipments,
 } from "../../db/schema/index.js";
 import { createId } from "../../lib/id.js";
-import { pageOf, containsPattern } from "../../lib/list-query.js";
+import { pageOf, containsPattern, prefixPattern } from "../../lib/list-query.js";
 import { encryptField, decryptField } from "../../lib/crypto.js";
 import { sealOrder, openOrder } from "./lab-order-crypto.js";
 import { variantIdsForCodes } from "./lab-variants.js";
@@ -159,6 +159,7 @@ function boardWhere(f, now, scope = null) {
       ilike(rxCases.practiceName, like),
       ilike(client.name, like),
       ilike(orders.orderNumber, like),
+      ilike(labOrders.panNumber, prefixPattern(f.q)), // pans are looked up by their start; indexed
     ));
   }
   return conds.length ? and(...conds) : undefined;
@@ -326,6 +327,7 @@ export async function getLabOrderDetail(id, now = new Date()) {
   return {
     order: {
       ...orderFields,
+      enclosures: parseEnclosures(order.enclosures), // stored as sealed JSON text; the page gets the list
       departmentName: row.departmentName ?? null,
       assigneeName: row.assigneeName ?? null,
       clientName: row.clientName ?? null,

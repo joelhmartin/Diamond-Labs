@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { id, isoDate, pageQueryShape } from "./common.schema.js";
 import { LAB_ORDER_STATUSES, LAB_ORDER_SOURCES, LAB_BOARD_TILES } from "../lab/lab-order-status.js";
+import { LAB_ENCLOSED_KINDS, LAB_DELIVERY_METHODS, LAB_ENCLOSURE_NOTE_MAX, LAB_PAN_MAX } from "../lab/production-desk.js";
 import { ROLE_CHANGE_CHOICES } from "../constants/user-roles.js";
 import { workflowPreviewSchema } from "../workflows/workflow.schema.js";
 
@@ -14,11 +15,23 @@ export const labStatusChangeSchema = z.object({
   expectedVersion: version,
 });
 
+const enclosureItem = z.object({
+  kind: z.enum(LAB_ENCLOSED_KINDS),
+  date: isoDate.optional(),
+  note: z.string().max(LAB_ENCLOSURE_NOTE_MAX).optional(),
+});
+// One item per kind, so never more items than kinds.
+const enclosures = z.array(enclosureItem).max(LAB_ENCLOSED_KINDS.length)
+  .refine((l) => new Set(l.map((e) => e.kind)).size === l.length, "List each kind once.");
+
 export const labFieldChangeSchema = z.discriminatedUnion("field", [
   z.object({ field: z.literal("assign"), value: id.nullable(), expectedVersion: version }),
   z.object({ field: z.literal("department"), value: id.nullable(), expectedVersion: version }),
   z.object({ field: z.literal("due"), value: isoDate.nullable(), expectedVersion: version }),
   z.object({ field: z.literal("notes"), value: z.string().max(5000).nullable(), expectedVersion: version }),
+  z.object({ field: z.literal("pan"), value: z.string().max(LAB_PAN_MAX).nullable(), expectedVersion: version }),
+  z.object({ field: z.literal("delivery"), value: z.enum(LAB_DELIVERY_METHODS).nullable(), expectedVersion: version }),
+  z.object({ field: z.literal("enclosures"), value: enclosures.nullable(), expectedVersion: version }),
 ]);
 
 export const labRemakeSchema = z.object({ reason: reason.min(1), expectedVersion: version });

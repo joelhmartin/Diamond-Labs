@@ -16,7 +16,11 @@ export function BoardCard({ card, busy, onMove }) {
       </div>
       <div className="mt-1 truncate text-xs text-navy/60">{card.practice}</div>
       <div className="mt-0.5 truncate text-xs text-navy" title={card.deviceSummary}>{card.deviceSummary}</div>
-      {card.reference && <div className="mt-0.5 font-mono text-[10px] text-navy/40">{card.reference}</div>}
+      {(card.reference || card.panNumber) && (
+        <div className="mt-0.5 font-mono text-[10px] text-navy/40">
+          {[card.reference, card.panNumber && `Pan ${card.panNumber}`].filter(Boolean).join(" · ")}
+        </div>
+      )}
       <div className="mt-2 flex items-center justify-between text-[11px]">
         <DueLabel card={card} />
         <AssigneeInitials card={card} />
