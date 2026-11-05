@@ -53,7 +53,9 @@ const rowOf = (caseNumber) => screen.getByText(caseNumber).closest("tr");
 
 test("?case=<id> brings that case into view and highlights its row, even past the first page", async () => {
   mount("/doctor/cases?case=c25");
-  await waitFor(() => assert.equal(highlighted().length, 1));
+  // The list loads first; the hook then sets the search, which the table applies after its 300 ms debounce.
+  await screen.findByText("RX-001");
+  await waitFor(() => assert.equal(highlighted().length, 1), { timeout: 4000 });
   assert.match(highlighted()[0].textContent, /RX-025/);
 });
 
