@@ -23,7 +23,7 @@ function memoryStore() {
     async forMonth(_db, month) { return [...rows.values()].filter((r) => r.month === month); },
     async claim(_db, { clientUserId, month, closingCents, byUserId, runId }) {
       const existing = rows.get(key(clientUserId, month));
-      if (existing && !["failed", "no_email"].includes(existing.status)) return null;
+      if (existing && (!["failed", "no_email"].includes(existing.status) || existing.sentAt)) return null;
       const id = existing?.id ?? `s${++n}`;
       rows.set(key(clientUserId, month), { id, clientUserId, month, closingCents, status: "sending", sentAt: existing?.sentAt ?? null, sentBy: byUserId, runId });
       return id;
@@ -185,6 +185,28 @@ test("previousLabMonth is the lab-local month before", () => {
 test("the real store claims with ON CONFLICT DO NOTHING and re-takes only failed or no_email rows", () => {
   assert.match(source, /onConflictDoNothing\(/);
   assert.match(source, /RETRYABLE = \["failed", "no_email"\]/);
-  assert.match(source, /inArray\(statementSends\.status, RETRYABLE\)/);
+  assert.match(source, /inArray\(statementSends\.status, RETRYABLE\), isNull\(statementSends\.sentAt\)/);
   assert.doesNotMatch(source, /seazona\.service/);
+});
+
+test("send → forced re-send fails → bulk run sends nothing to that client", async () => {
+  const store = memoryStore();
+  await run(store);
+  const database = fakeTx({ selects: [[{ id: "d1", seazonaClientId: null }], [{ id: "d1", name: "Dr d1", email: "d1@x.test", role: "doctor", accountNumber: "d1", profile: null }], [INVOICES[0]], []] });
+  const out = await svc.sendStatementFor("d1", MONTH, { byUserId: "adm" }, { database, store, send: async () => false });
+  assert.equal(out.status, "failed");
+  assert.equal(store.rows.get(`d1|${MONTH}`).status, "failed");
+  const rows = await svc.previewStatementRun(MONTH, fakeTx({ selects: previewSelects() }), { store });
+  assert.equal(rows.find((r) => r.clientUserId === "d1").planned, "already_sent");
+  const again = await run(store);
+  assert.equal(again.send.mock.calls.length, 0);
+});
+
+test("a row that cannot be settled after a send does not stop the batch", async () => {
+  const store = memoryStore();
+  store.finish = async () => { throw new Error("db blip"); };
+  const { out, send } = await run(store);
+  assert.equal(send.mock.calls.length, 2);
+  assert.equal(out.sent, 2);
+  assert.ok([...store.rows.values()].every((r) => r.status === "sending"), "left sending: never re-taken");
 });

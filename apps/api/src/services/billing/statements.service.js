@@ -40,15 +40,16 @@ export async function loadStatementActivity(clientUserIds, database = db) {
     .from(invoices)
     .leftJoin(labOrders, eq(labOrders.id, invoices.labOrderId))
     .where(and(inArray(invoices.clientUserId, clientUserIds), ne(invoices.status, "draft")));
-  const ids = invs.map((i) => i.id);
-  const payments = ids.length
+  const payments = invs.length
     ? await database
         .select({
           invoiceId: invoicePayments.invoiceId, invoiceNumber: invoicePayments.invoiceNumber, appliedCents: invoicePayments.appliedCents,
           source: invoicePayments.source, paidOn: invoicePayments.paidOn, createdAt: invoicePayments.createdAt,
         })
         .from(invoicePayments)
-        .where(inArray(invoicePayments.invoiceId, ids))
+        // The same invoice filter as above by join, not an id list: no bind-parameter ceiling on a large ledger.
+        .innerJoin(invoices, eq(invoices.id, invoicePayments.invoiceId))
+        .where(and(inArray(invoices.clientUserId, clientUserIds), ne(invoices.status, "draft")))
     : [];
   return { invoices: invs, payments };
 }

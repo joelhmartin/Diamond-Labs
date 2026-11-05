@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { isoDateIn, LAB_TIMEZONE } from "@my-app/shared";
 import { db } from "../../config/database.js";
 import { users, doctorProfiles, statementSends } from "../../db/schema/index.js";
@@ -20,6 +20,8 @@ import { buildStatementModel, monthBounds } from "./statement-model.js";
  * directly, not the preference-aware notifier.
  */
 
+// A row is re-taken by the bulk run only when it never went out: a failed forced re-send of a
+// delivered month keeps its sent_at and stays "already sent".
 const RETRYABLE = ["failed", "no_email"];
 
 /** statement_sends access. The run takes it as a dependency so its idempotency can be tested without a database. */
@@ -41,7 +43,7 @@ export const statementSendsStore = {
     const [retaken] = await database
       .update(statementSends)
       .set({ status: "sending", closingCents, sentBy: byUserId, runId, updatedAt: new Date() })
-      .where(and(eq(statementSends.clientUserId, clientUserId), eq(statementSends.month, month), inArray(statementSends.status, RETRYABLE)))
+      .where(and(eq(statementSends.clientUserId, clientUserId), eq(statementSends.month, month), inArray(statementSends.status, RETRYABLE), isNull(statementSends.sentAt)))
       .returning({ id: statementSends.id });
     return retaken?.id ?? null;
   },
@@ -128,7 +130,7 @@ export function buildStatementCandidates({ doctors, activity, sends, month, gene
     rows.push({
       clientUserId: d.id, name: d.name ?? null, practice: d.practice ?? null, accountNumber: d.accountNumber ?? null, email: d.email || null,
       openingCents: model.openingCents, closingCents: model.closingCents, activityCount,
-      alreadySentAt: sent?.status === "sent" ? sent.sentAt ?? null : null, sendStatus: sent?.status ?? null,
+      alreadySentAt: sent?.sentAt ?? null, sendStatus: sent?.status ?? null, // any delivery, even before a failed re-send
     });
   }
   const plan = planStatementRun({ candidates: rows });
@@ -161,7 +163,12 @@ async function deliver({ sendId, to, clientUserId, month, monthLabel, closingCen
   } catch (err) {
     console.error(`[STATEMENT] send failed for ${clientUserId} ${month}: ${String(err?.message || err)}`);
   }
-  await store.finish(database, sendId, sent ? { status: "sent", sentAt: new Date() } : { status: "failed" });
+  try {
+    await store.finish(database, sendId, sent ? { status: "sent", sentAt: new Date() } : { status: "failed" });
+  } catch (err) {
+    // The row stays "sending", which the bulk run never re-takes: safe, and the batch carries on.
+    console.error(`[STATEMENT] could not settle send ${sendId}: ${String(err?.message || err)}`);
+  }
   try {
     await auditService.log({
       userId: byUserId ?? null, action: "statement.emailed", targetType: "user", targetId: clientUserId,
