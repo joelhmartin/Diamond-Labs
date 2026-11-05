@@ -10,6 +10,8 @@ export * from "./schemas/payment.schema.js";
 export * from "./schemas/catalog.schema.js";
 export * from "./schemas/price-lists.schema.js";
 export * from "./schemas/autopay.schema.js";
+export * from "./record-tags/schemas.js";
+export * from "./record-files/schemas.js";
 
 // Constants
 export * from "./constants/roles.js";
@@ -31,7 +33,9 @@ export { buildDigitalDevices, buildFormDevices, buildOrthoDevice, DEVICE_LABELS 
 
 // Lab
 export * from "./lab/lab-order-status.js";
+export * from "./lab/production-desk.js";
 export * from "./schemas/lab.schema.js";
+export * from "./schemas/lab-desk.schema.js";
 
 // Exports
 export * from "./exports/csv.js";
@@ -54,3 +58,5 @@ export * from "./business-calendar/index.js";
 
 // Workflows (generic module; rules live in apps/api/src/modules/workflows)
 export * from "./workflows/index.js";
+export * from "./barcode-lookup/schemas.js";
+export * from "./upload-intake/schemas.js";

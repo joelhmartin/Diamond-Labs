@@ -1,25 +1,29 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
-import { LAB_ORDER_STATUSES, LAB_STATUS_LABELS, formatLabDate } from "@my-app/shared";
+import { LAB_ORDER_STATUSES, LAB_STATUS_LABELS, LAB_ORDER_SOURCES, LAB_ORDER_SOURCE_LABELS, formatLabDate } from "@my-app/shared";
 import api from "../../config/api.js";
 import { labOrderPath } from "../../config/routes.js";
 import { sourceLabel } from "../../lib/staff.js";
-import { moveBulkActions } from "../../lib/lab-board.js";
+import { moveBulkActions, LAB_ORDER_TAG_TYPE } from "../../lib/lab-board.js";
 import { pageParams } from "../../lib/data-table/server.js";
 import { DataTable } from "../../components/ui/data-table/index.js";
-import { FlagBadges, DueLabel } from "../../components/lab/board-columns.jsx";
+import { FlagBadges, DueLabel, PAN_COLUMN, LABELS_COLUMN } from "../../components/lab/board-columns.jsx";
+import { MergeModal, mergeBulkAction } from "../../components/lab/MergeModal.jsx";
+import { tagBulkActions, useTagDefinitions } from "../../modules/record-tags/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
 
 const opt = (list, label) => list.map((x) => ({ value: x.id, label: label(x) }));
 
 /** Admin filters; departments and staff arrive after the first render. */
-function orderFilters(departments, staff) {
+function orderFilters(departments, staff, tagDefinitions) {
   return [
     { id: "status", label: "Status", type: "select", placeholder: "All statuses", options: LAB_ORDER_STATUSES.map((s) => ({ value: s, label: LAB_STATUS_LABELS[s] })) },
-    { id: "source", label: "Source", type: "select", placeholder: "Rx cases and shop", options: [{ value: "rx_case", label: "Rx cases" }, { value: "shop_order", label: "Shop orders" }] },
+    { id: "source", label: "Source", type: "select", placeholder: "All sources", options: LAB_ORDER_SOURCES.map((s) => ({ value: s, label: LAB_ORDER_SOURCE_LABELS[s] })) },
     { id: "departmentId", label: "Department", type: "select", placeholder: "All departments", options: opt(departments, (d) => d.name) },
     { id: "assigneeUserId", label: "Assignee", type: "select", placeholder: "Anyone", options: opt(staff, (s) => s.name) },
+    { id: "tagIds", label: "Labels", type: "multiselect", options: opt(tagDefinitions, (t) => t.label) },
+    { id: "starred", label: "Starred", type: "toggle" },
     { id: "rush", label: "Rush only", type: "toggle" },
     { id: "dueBefore", label: "Due by", type: "date" },
   ];
@@ -30,6 +34,8 @@ async function fetchPage({ page, pageSize, q, filters }) {
   const params = { ...pageParams({ page, pageSize, q }), includeClosed: "true" };
   for (const k of ["status", "source", "departmentId", "assigneeUserId", "dueBefore"]) if (filters[k]) params[k] = filters[k];
   if (filters.rush) params.rush = "true";
+  if (filters.starred) params.starred = "true";
+  if (filters.tagIds?.length) params.tagIds = filters.tagIds.join(",");
   const res = await api.get("/lab/orders", { params });
   return { rows: res.data.data.orders, total: res.data.data.total };
 }
@@ -43,6 +49,7 @@ const COLUMNS = [
     id: "source", header: "Source", exportValue: (o) => sourceLabel(o.source),
     cell: (o) => <span className="text-xs">{sourceLabel(o.source)}<div className="font-mono text-navy/40">{o.reference ?? ""}</div></span>,
   },
+  PAN_COLUMN,
   { id: "practice", header: "Practice", cell: (o) => o.practice, exportValue: (o) => o.practice ?? "" },
   {
     id: "items", header: "Items", className: "max-w-xs truncate text-navy/70", exportValue: (o) => o.deviceSummary ?? "",
@@ -57,6 +64,7 @@ const COLUMNS = [
       </span>
     ),
   },
+  LABELS_COLUMN,
   { id: "due", header: "Due", cell: (o) => <span className="text-xs"><DueLabel card={o} prefix={false} /></span>, exportValue: (o) => o.dueDate ?? "" },
   { id: "received", header: "Received", cell: (o) => <span className="text-navy/60">{formatLabDate(o.receivedAt) || "—"}</span>, exportValue: (o) => o.receivedAt ?? "" },
 ];
@@ -71,8 +79,21 @@ export function AdminOrdersPage() {
       .catch(() => { /* the department and assignee filters just stay empty */ });
   }, []);
 
-  const table = useDataTable({ mode: "server", fetchPage, filters: orderFilters(departments, staff), urlKey: "ord", getRowId: (o) => o.id });
-  const bulkActions = moveBulkActions(table.selection.selectedRows, { after: table.reload });
+  const { definitions: tagDefinitions } = useTagDefinitions(LAB_ORDER_TAG_TYPE);
+
+  const table = useDataTable({ mode: "server", fetchPage, filters: orderFilters(departments, staff, tagDefinitions), urlKey: "ord", getRowId: (o) => o.id });
+  const [mergeRows, setMergeRows] = useState(null);
+  const rows = table.selection.selectedRows;
+  const bulkActions = [
+    ...moveBulkActions(rows, { after: table.reload }),
+    ...tagBulkActions(rows, { recordType: LAB_ORDER_TAG_TYPE, definitions: tagDefinitions, after: table.reload, labelOf: (o) => `#${o.orderNumber}` }),
+    mergeBulkAction(setMergeRows),
+  ];
+  const merged = () => {
+    setMergeRows(null);
+    table.selection.clear();
+    table.reload();
+  };
 
   return (
     <div className="mx-auto max-w-7xl space-y-4 p-6 md:p-8">
@@ -89,11 +110,12 @@ export function AdminOrdersPage() {
         table={table}
         columns={COLUMNS}
         bulkActions={bulkActions}
-        searchPlaceholder="Order #, case #, practice, item…"
+        searchPlaceholder="Order #, pan, case #, practice…"
         itemLabel="orders"
         exportFileName="orders.csv"
         emptyText="No orders match."
       />
+      <MergeModal rows={mergeRows} onClose={() => setMergeRows(null)} onMerged={merged} />
     </div>
   );
 }

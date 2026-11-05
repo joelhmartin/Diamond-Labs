@@ -10,6 +10,10 @@ const READMES = {
   workflows: "./workflows/README.md",
   exports: "./exports/README.md",
   "exports (web)": "../../../web/src/modules/exports/README.md",
+  "record-tags": "./record-tags/README.md",
+  "record-files": "./record-files/README.md",
+  "barcode-lookup": "./barcode-lookup/README.md",
+  "upload-intake": "./upload-intake/README.md",
 };
 
 for (const [mod, rel] of Object.entries(READMES)) {

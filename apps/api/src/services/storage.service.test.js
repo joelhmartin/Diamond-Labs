@@ -46,3 +46,19 @@ test("neutralizes path-traversal in caseId — written path stays under .localfi
   // Cleanup: sanitized caseId "../../etc" → "____etc"
   rmSync(join(LOCAL_FILES_BASE, "rx-cases", "____etc"), { recursive: true, force: true });
 });
+
+import { uploadPrivateObject } from "./storage.service.js";
+
+test("uploadPrivateObject builds <prefix>/<owner>/<kind>/<uuid>-<name> with sanitized segments", async () => {
+  const res = await uploadPrivateObject({ prefix: "things", ownerId: "..", kind: "a/b", buffer: Buffer.from("x"), originalName: "n:a/me.txt" });
+  const path = res.gcsUrl.replace("file://", "");
+  const rel = path.slice(LOCAL_FILES_BASE.length + 1);
+  assert.match(rel, /^things\/__\/a_b\/[0-9a-f-]{36}-n_a_me\.txt$/);
+  rmSync(join(LOCAL_FILES_BASE, "things"), { recursive: true, force: true });
+});
+
+test("uploadCaseFile still writes under rx-cases/", async () => {
+  const res = await uploadCaseFile({ caseId: "case-wrap", kind: "scan", buffer: Buffer.from("x"), originalName: "a.stl" });
+  assert.ok(res.gcsUrl.startsWith(`file://${join(LOCAL_FILES_BASE, "rx-cases", "case-wrap", "scan")}/`));
+  rmSync(join(LOCAL_FILES_BASE, "rx-cases", "case-wrap"), { recursive: true, force: true });
+});

@@ -1,26 +1,30 @@
 import { and, asc, desc, eq, gte, ilike, inArray, lt, lte, notInArray, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { isOverdue, STAFF_ROLES, TERMINAL_LAB_STATUSES, caseSummary } from "@my-app/shared";
+import { isOverdue, STAFF_ROLES, TERMINAL_LAB_STATUSES, caseSummary, parseEnclosures } from "@my-app/shared";
 import { db } from "../../config/database.js";
 import { env } from "../../config/env.js";
 import {
   labOrders, labOrderLines, labOrderEvents, labDepartments, rxCases, rxCaseFiles, rxCaseLines, orders, users, shipments,
 } from "../../db/schema/index.js";
 import { createId } from "../../lib/id.js";
-import { pageOf, containsPattern } from "../../lib/list-query.js";
-import { encryptField, decryptField } from "../../lib/crypto.js";
-import { sealOrder, openOrder } from "./lab-order-crypto.js";
+import { pageOf, containsPattern, prefixPattern } from "../../lib/list-query.js";
+import { sealOrder, openOrder, sealEvent, openEvent } from "./lab-order-crypto.js";
 import { variantIdsForCodes } from "./lab-variants.js";
 import { decryptRxPhi } from "../rx/phi-crypto.js";
 import { shipmentSummaries } from "../shipping/shipments.service.js";
 import { allocateSequenceNumber } from "../sequence.service.js";
 import { devicesForCase } from "../rx/case-devices.js";
 import { compileNotesMulti } from "../rx/case-notes.js";
+import { filesFor } from "../../modules/record-files/index.js";
+import { LAB_ORDER_RECORD_TYPE } from "./lab-tags.js";
+import { tagsFor, starsFor, taggedWithAny, starredBy } from "../../modules/record-tags/index.js";
 import {
   LabOrderError, planRxRelease, planShopLabOrder, planRemake,
   assertFresh, planStatusChange, planFieldChange, presentBoardCard, rushFromCase,
   requestedDueDateOf, assertSchedulable, planWorkflowChange,
 } from "./lab-order-rules.js";
+import { materialsFor } from "./materials.service.js";
+import { requireReason } from "../billing/adjustment-reasons.service.js";
 import {
   defaultDueAt, saveSchedule, scheduleOf, schedulesOf, replanOrder, remakeSchedule, presentSchedule, scheduleFlags, assertWorkflowActive,
 } from "./lab-scheduling.js";
@@ -37,13 +41,6 @@ const client = alias(users, "client");
 const assignee = alias(users, "assignee");
 const actor = alias(users, "actor");
 
-function sealEvent(e) {
-  return { ...e, id: createId(), note: e.note == null ? null : encryptField(e.note) };
-}
-function openEvent(e) {
-  return { ...e, note: e.note == null ? null : decryptField(e.note) };
-}
-
 // Serialises order-number allocation (services/sequence.service.js).
 export const LAB_ORDER_NUMBER_LOCK = 7300421;
 
@@ -53,7 +50,7 @@ export function allocateOrderNumber(tx) {
   });
 }
 
-async function insertPlan(tx, { labOrder, lines, events }) {
+export async function insertPlan(tx, { labOrder, lines, events }) {
   await tx.insert(labOrders).values(sealOrder(labOrder));
   const inserted = lines.map((l) => ({ ...l, id: createId() }));
   if (inserted.length) await tx.insert(labOrderLines).values(inserted);
@@ -149,6 +146,9 @@ function boardWhere(f, now, scope = null) {
   if (f.dueBefore) conds.push(lte(labOrders.dueDate, f.dueBefore));
   if (f.dueOn) conds.push(eq(labOrders.dueDate, f.dueOn));
   if (f.tile) conds.push(tileCondition(f.tile, scope));
+  if (f.tagIds?.length) conds.push(taggedWithAny(LAB_ORDER_RECORD_TYPE, labOrders.id, f.tagIds));
+  // "Starred" is the viewer's own stars; with no viewer it matches nothing rather than everything.
+  if (f.starred) conds.push(f.viewerUserId ? starredBy(LAB_ORDER_RECORD_TYPE, labOrders.id, f.viewerUserId) : sql`false`);
   if (f.q) {
     // Order number, case number, practice, client and shop order number.
     // Patient names are encrypted and deliberately not searchable here.
@@ -159,6 +159,8 @@ function boardWhere(f, now, scope = null) {
       ilike(rxCases.practiceName, like),
       ilike(client.name, like),
       ilike(orders.orderNumber, like),
+      // Pans match by their start. Not index-backed: an ilike inside this OR can't use the pan btree index.
+      ilike(labOrders.panNumber, prefixPattern(f.q)),
     ));
   }
   return conds.length ? and(...conds) : undefined;
@@ -225,7 +227,15 @@ export async function listLabOrders(filters = {}, now = new Date(), database = d
     byOrder.get(l.labOrderId).push(l);
   }
   const plans = await schedulesOf(database, ids);
-  const cards = rows.map((r) => presentBoardCard(r, byOrder.get(r.order.id) ?? [], today, { plan: plans.get(r.order.id) ?? null, calendar }));
+  const [tags, starred] = await Promise.all([
+    tagsFor(LAB_ORDER_RECORD_TYPE, ids, database),
+    filters.viewerUserId ? starsFor(LAB_ORDER_RECORD_TYPE, ids, filters.viewerUserId, database) : new Set(),
+  ]);
+  const cards = rows.map((r) => ({
+    ...presentBoardCard(r, byOrder.get(r.order.id) ?? [], today, { plan: plans.get(r.order.id) ?? null, calendar }),
+    tags: tags.get(r.order.id) ?? [],
+    starred: starred.has(r.order.id),
+  }));
   return page ? { orders: cards, total } : { orders: cards, truncated: rows.length >= LIST_LIMIT };
 }
 
@@ -242,11 +252,32 @@ async function countLabOrders(where, database) {
 }
 
 /**
+ * A merge's links for the detail page, in one read: the orders merged INTO
+ * this one (`mergedFrom`, by order number) and the primary this one was
+ * merged into (`mergedInto`, or null). Ids and order numbers only.
+ */
+async function mergeLinksOf(database, order) {
+  const where = order.mergedIntoOrderId
+    ? or(eq(labOrders.mergedIntoOrderId, order.id), eq(labOrders.id, order.mergedIntoOrderId))
+    : eq(labOrders.mergedIntoOrderId, order.id);
+  const rows = await database
+    .select({ id: labOrders.id, orderNumber: labOrders.orderNumber, mergedIntoOrderId: labOrders.mergedIntoOrderId })
+    .from(labOrders)
+    .where(where)
+    .orderBy(asc(labOrders.orderNumber));
+  const into = order.mergedIntoOrderId ? rows.find((r) => r.id === order.mergedIntoOrderId) : null;
+  return {
+    mergedFrom: rows.filter((r) => r.mergedIntoOrderId === order.id).map(({ id, orderNumber }) => ({ id, orderNumber })),
+    mergedInto: into ? { id: into.id, orderNumber: into.orderNumber } : null,
+  };
+}
+
+/**
  * Everything the order detail page and the work ticket need. Decrypts the
  * case's PHI (patient name, form answers) — callers must never log the
  * result. Throws on a decrypt failure; routes turn that into a generic 500.
  */
-export async function getLabOrderDetail(id, now = new Date()) {
+export async function getLabOrderDetail(id, now = new Date(), { viewerUserId = null } = {}) {
   const [row] = await db
     .select({
       order: labOrders,
@@ -262,7 +293,7 @@ export async function getLabOrderDetail(id, now = new Date()) {
   if (!row) return null;
 
   const order = openOrder(row.order);
-  const [lines, eventRows, remakeOf] = await Promise.all([
+  const [lines, eventRows, remakeOf, recordFilesById, materialsByLine] = await Promise.all([
     db.select().from(labOrderLines).where(eq(labOrderLines.labOrderId, id)).orderBy(asc(labOrderLines.position)),
     db
       .select({ event: labOrderEvents, byName: actor.name })
@@ -273,6 +304,8 @@ export async function getLabOrderDetail(id, now = new Date()) {
     order.remakeOfOrderId
       ? db.select({ orderNumber: labOrders.orderNumber }).from(labOrders).where(eq(labOrders.id, order.remakeOfOrderId))
       : Promise.resolve([]),
+    filesFor(LAB_ORDER_RECORD_TYPE, [id]),
+    materialsFor(id),
   ]);
 
   let rxCase = null;
@@ -318,14 +351,22 @@ export async function getLabOrderDetail(id, now = new Date()) {
     legacy = { seazonaOrderId: order.sourceId, patientName: order.legacyPatient ?? null, caseId: c?.id ?? null, caseNumber: c?.caseNumber ?? null };
   }
 
+  const [tags, starred] = await Promise.all([
+    tagsFor(LAB_ORDER_RECORD_TYPE, [id]),
+    viewerUserId ? starsFor(LAB_ORDER_RECORD_TYPE, [id], viewerUserId) : new Set(),
+  ]);
   const shipment = order.shipmentId ? ((await shipmentSummaries([order.shipmentId])).get(order.shipmentId) ?? null) : null;
   const [plan, calendar] = await Promise.all([scheduleOf(db, id), getCalendar(db)]);
   const today = dateIn(calendar.timezone, now);
+  const { mergedFrom, mergedInto } = await mergeLinksOf(db, order);
 
-  const { legacyPatient: _openedPatient, ...orderFields } = order; // surfaced once, under `legacy`
+  // Patients are surfaced once each: a legacy order's under `legacy`, a staff order's under `staff`.
+  const { legacyPatient: _openedPatient, patientName: _staffPatient, ...orderFields } = order;
+  const staff = order.source === "staff" ? { patientName: order.patientName ?? null } : null;
   return {
     order: {
       ...orderFields,
+      enclosures: parseEnclosures(order.enclosures), // stored as sealed JSON text; the page gets the list
       departmentName: row.departmentName ?? null,
       assigneeName: row.assigneeName ?? null,
       clientName: row.clientName ?? null,
@@ -335,13 +376,22 @@ export async function getLabOrderDetail(id, now = new Date()) {
     schedule: presentSchedule(plan, order, today, calendar),
     // Also set for an order with no saved plan (due-date rule only), so the page can still show At risk.
     scheduleFlags: scheduleFlags(order, plan, today, calendar),
-    lines,
+    lines: lines.map((l) => ({ ...l, materials: materialsByLine.get(l.id) ?? [] })),
     events: eventRows.map(({ event, byName }) => ({ ...openEvent(event), byName: byName ?? null })),
     rxCase,
     files,
     shopOrder,
     legacy,
+    staff,
+    // Files attached to the order itself (record-files); `files` stays the Rx case's.
+    recordFiles: recordFilesById.get(id) ?? [],
     shipment,
+    // Labels on the order and the viewer's own star.
+    tags: tags.get(id) ?? [],
+    starred: starred.has(id),
+    // Merge links (merge.service.js): orders merged into this one, and the one this was merged into.
+    mergedFrom,
+    mergedInto,
   };
 }
 
@@ -461,7 +511,7 @@ export function changeField(id, { field, value, expectedVersion, byUserId = null
   });
 }
 
-export function remakeOrder(id, { reason, expectedVersion, byUserId = null }, database = db) {
+export function remakeOrder(id, { reason, reasonId, expectedVersion, byUserId = null }, database = db) {
   return database.transaction(async (tx) => {
     const [row] = await tx.select().from(labOrders).where(eq(labOrders.id, id));
     if (!row) throw new LabOrderError("NOT_FOUND", "Lab order not found.");
@@ -475,7 +525,12 @@ export function remakeOrder(id, { reason, expectedVersion, byUserId = null }, da
     const orderNumber = await allocateOrderNumber(tx);
     const now = new Date();
     const { dueDate, plan: schedule } = await remakeSchedule(tx, { originalId: id, originalLines, now });
-    const plan = planRemake({ original, originalLines, reason, orderNumber, labOrderId: createId(), byUserId, now, dueDate });
+    // A picked reason sets the draft's price (its percent, via remakeReasonId) and names the remake.
+    const picked = reasonId ? await requireReason(reasonId, "remake", tx) : null;
+    const plan = planRemake({
+      original, originalLines, reason, reasonId: picked?.id ?? null, reasonLabel: picked?.label,
+      orderNumber, labOrderId: createId(), byUserId, now, dueDate,
+    });
     // Bump the original's version so a stale tab can't act on it as if nothing happened.
     const [bumped] = await tx
       .update(labOrders)

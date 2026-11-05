@@ -197,6 +197,12 @@ Seazona's API has no paid flag and no payment list. The lab portal's Payments sc
    - **Credits:** an overpaid invoice is unclear and kept open, and the derived balance is never below zero, so no extra is carried as a credit; a credit staff hold on account is not in this export either. Staff apply credits by hand after cutover (as with `credit_balance_for_staff`).
    - Void invoices, invoices with no number, and negative or unreadable totals are left out (counted as `left out`), as the invoices step leaves them out. **An invoice number carried by more than one record is never credited:** this command leaves out every record with that number and prints the numbers (`invoice number(s) on more than one record`), so they are absent from the derived file. `load balances` from a derived file also settles NEITHER of two loaded invoices that share a number: both stay open at their totals and are reported as `invoice_number_duplicated`. (`readRecords` returns records in Seazona-id order, so every step reads them the same way.)
 
+## Legacy flags backfill: `panBackfilled` and `remakeBackfilled`
+
+The `orders` step maps Seazona's `isRemake` (true only for boolean `true` or the string `"true"`, from the summary or else the detail). `remakeOfOrderId` stays null: Seazona gives no link to the original, so a legacy remake shows the REMAKE banner and badge but no original. Legacy orders are never billed, so nothing downstream needs the link.
+
+Every `orders` run also backfills two flags on already-loaded legacy orders and reports the counts as `panBackfilled` and `remakeBackfilled` (a dry run reports what it would change). A pan is set only where it is null, and `is_remake` is set only from false to true; neither is ever overwritten or flipped back. Idempotent: a second run reports 0 for both. Because legacy remakes leave the partial unique index (`where is_remake = false`), insert-dedup keys on the Seazona source id across all legacy rows, so a re-run cannot double-insert them. At cutover, check `panBackfilled` against the loaded legacy orders that had a pan (cutover runbook, step 5b).
+
 ## Remakes of Seazona orders (R13a)
 
 A legacy (Seazona) order cannot be remade in this system: the button is hidden and the server refuses. Staff start a new Rx case for the job instead. Tell the lab before cutover that old cases needing a remake are re-keyed as new cases.

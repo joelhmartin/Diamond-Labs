@@ -38,6 +38,9 @@ export const labOrders = pgTable("lab_orders", {
   // Piece 5: a legacy (Seazona) order has no Rx case to read the patient from,
   // so its patient lives here. Encrypted (lab-orders.service sealOrder). Null otherwise.
   legacyPatient: text("legacy_patient"),
+  // Piece 6: a staff-entered order (source = "staff") has no Rx case either;
+  // its patient lives here. Encrypted (lab-order-crypto sealOrder). Null otherwise.
+  patientName: text("patient_name"),
   // The doctor (Rx) or the approved doctor the shop order was priced for;
   // null for a guest shop order.
   clientUserId: varchar("client_user_id", { length: 128 }),
@@ -55,6 +58,16 @@ export const labOrders = pgTable("lab_orders", {
   // Encrypted free text (see header).
   holdReason: text("hold_reason"),
   labNotes: text("lab_notes"),
+  // The bench's pan tag (piece 6); legacy orders carry Seazona's.
+  panNumber: varchar("pan_number", { length: 30 }),
+  // packages/shared LAB_DELIVERY_METHODS; null = not set.
+  deliveryMethod: varchar("delivery_method", { length: 20 }),
+  // Items sent in with the case: JSON text of [{ kind, date?, note? }], encrypted (the notes are free text).
+  enclosures: text("enclosures"),
+  // The adjustment_reasons row a remake was created from (its percent priced the draft); null otherwise.
+  remakeReasonId: varchar("remake_reason_id", { length: 128 }),
+  // Set on an order cancelled by a merge (piece 6): the primary it was merged into. Null otherwise.
+  mergedIntoOrderId: varchar("merged_into_order_id", { length: 128 }),
   // The current shipment (piece 4). One shipment can carry several orders
   // ("ship together"); voiding clears it. History lives in lab_order_events (type "shipment").
   shipmentId: varchar("shipment_id", { length: 128 }),
@@ -71,9 +84,11 @@ export const labOrders = pgTable("lab_orders", {
   // One ORIGINAL lab order per case / shop order. Remakes share the source.
   uniqueIndex("lab_orders_source_idx").on(t.source, t.sourceId).where(sql`is_remake = false`),
   index("lab_orders_source_lookup_idx").on(t.source, t.sourceId),
+  index("lab_orders_pan_idx").on(t.panNumber),
   index("lab_orders_status_idx").on(t.status),
   index("lab_orders_client_idx").on(t.clientUserId),
   index("lab_orders_shipment_idx").on(t.shipmentId),
+  index("lab_orders_merged_into_idx").on(t.mergedIntoOrderId),
 ]);
 
 /** Snapshotted at release: later catalog or case edits never change a job on the bench. */

@@ -36,6 +36,14 @@ export const invoiceEditSchema = z.object({
       taxable: z.boolean().default(false),
     }),
     z.object({ op: z.literal("remove"), lineId: id }),
+    // A discount: a reason (its default percent applies if none is given) and/or text, then a percent OR a fixed amount.
+    z.object({
+      op: z.literal("discount"),
+      reasonId: id.optional(),
+      text: z.string().trim().max(200).optional(),
+      percent: z.number().int().min(1).max(100).optional(),
+      amountCents: positiveCents.optional(),
+    }),
     z.object({ op: z.literal("notes"), notes: z.string().max(5000).nullable() }),
   ]),
 });

@@ -267,6 +267,34 @@
       "when": 1793908553338,
       "tag": "0037_wandering_galactus",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793909803845,
+      "tag": "0038_loving_morlun",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1793909807490,
+      "tag": "0039_seed_adjustment_reasons",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1793910286290,
+      "tag": "0040_bitter_tana_nile",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1793911124781,
+      "tag": "0041_goofy_albert_cleary",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,7 @@
-import { canRemake, allowedNextStatuses, reasonRequiredFor, isTerminalLabStatus, isOverdue, LAB_STATUS_LABELS } from "@my-app/shared";
+import {
+  canRemake, allowedNextStatuses, reasonRequiredFor, isTerminalLabStatus, isOverdue, LAB_STATUS_LABELS,
+  LAB_DELIVERY_METHODS, LAB_PAN_MAX, normalizeEnclosures, parseEnclosures,
+} from "@my-app/shared";
 import { canRelease } from "../rx/case-gates.js";
 import { scheduleFlags } from "./lab-schedule-flags.js";
 
@@ -61,7 +64,7 @@ export function requestedDueDateOf(caseRow = {}) {
   return parseDueDate(caseRow.dueDate) ?? parseDueDate(caseRow.formData?.dueDate);
 }
 
-function newOrder({ labOrderId, orderNumber, source, sourceId, clientUserId, now }) {
+export function newOrder({ labOrderId, orderNumber, source, sourceId, clientUserId, now }) {
   return {
     id: labOrderId, orderNumber, source, sourceId, clientUserId: clientUserId ?? null,
     status: "received", heldFrom: null, departmentId: null, assigneeUserId: null,
@@ -129,16 +132,20 @@ export function planShopLabOrder({ orderId, clientUserId = null, quoteLines, ord
  * reason is required — "why was this remade" is what the lab and invoicing
  * (piece 3) both ask. Whether it is charged is piece 3's concern.
  */
-export function planRemake({ original, originalLines, reason, orderNumber, labOrderId, byUserId = null, now, dueDate = null }) {
+export function planRemake({ original, originalLines, reason, reasonId = null, reasonLabel, orderNumber, labOrderId, byUserId = null, now, dueDate = null }) {
   if (original.source === "legacy") throw new LabOrderError("INVALID", "Seazona orders can't be remade here — start a new Rx case for the remake.");
   if (!canRemake(original)) throw new LabOrderError("INVALID", "Only a shipped order can be remade.");
-  const why = typeof reason === "string" ? reason.trim() : "";
+  // A picked reason (its label) and/or free text; at least one says why.
+  const why = [reasonLabel, reason].map((s) => (typeof s === "string" ? s.trim() : "")).filter(Boolean).join(" — ");
   if (!why) throw new LabOrderError("REASON_REQUIRED", "Say why this order is being remade.");
   const labOrder = {
     ...newOrder({ labOrderId, orderNumber, source: original.source, sourceId: original.sourceId, clientUserId: original.clientUserId, now }),
     isRemake: true,
     remakeOfOrderId: original.id,
     dueDate,
+    remakeReasonId: reasonId,
+    // A staff order's patient lives on the order itself (no Rx case to read it from).
+    ...(original.source === "staff" ? { patientName: original.patientName ?? null } : {}),
   };
   const lines = originalLines.map((l, position) => ({
     labOrderId, position, variantId: l.variantId ?? null, code: l.code ?? null, name: l.name,
@@ -197,8 +204,42 @@ const FIELDS = {
   department: { column: "departmentId", event: "department" },
   due: { column: "dueDate", event: "due" },
   notes: { column: "labNotes", event: "note" },
+  pan: { column: "panNumber", event: "pan" },
+  delivery: { column: "deliveryMethod", event: "delivery" },
+  // Stored as sealed JSON text (lab-order-crypto SECRET_ORDER_FIELDS); the event never carries the items.
+  enclosures: { column: "enclosures", event: "enclosed" },
 };
 export const LAB_FIELDS = Object.keys(FIELDS);
+
+/** The value to store for a field, validated; throws LabOrderError("INVALID"). */
+export function cleanFieldValue(field, rawValue) {
+  if (field === "enclosures") {
+    try {
+      const list = normalizeEnclosures(typeof rawValue === "string" && rawValue ? JSON.parse(rawValue) : rawValue || null);
+      return list.length ? JSON.stringify(list) : null;
+    } catch (err) {
+      throw new LabOrderError("INVALID", err instanceof SyntaxError ? "Enclosed items must be a list." : err.message);
+    }
+  }
+  let value = typeof rawValue === "string" ? rawValue.trim() : rawValue;
+  if (value === "" || value === undefined) value = null;
+  if (field === "due" && value !== null && !parseDueDate(value)) {
+    throw new LabOrderError("INVALID", "Due date must be a real date (YYYY-MM-DD).");
+  }
+  if (field === "pan" && value !== null && (typeof value !== "string" || value.length > LAB_PAN_MAX)) {
+    throw new LabOrderError("INVALID", `Pan numbers are limited to ${LAB_PAN_MAX} characters.`);
+  }
+  if (field === "delivery" && value !== null && !LAB_DELIVERY_METHODS.includes(value)) {
+    throw new LabOrderError("INVALID", "Unknown delivery method.");
+  }
+  return value;
+}
+
+/** What is stored for enclosures, in canonical form, so a reordered list compares equal. */
+function storedEnclosures(order) {
+  const list = parseEnclosures(order.enclosures);
+  return list.length ? JSON.stringify(list) : null;
+}
 
 /**
  * One field edit → patch + event, or null when nothing changes. A shipped or
@@ -211,17 +252,13 @@ export function planFieldChange(order, field, rawValue, { byUserId = null, now }
   if (field !== "notes" && isTerminalLabStatus(order.status)) {
     throw new LabOrderError("INVALID", `Order #${order.orderNumber} is ${label(order.status).toLowerCase()} — only its notes can change.`);
   }
-  let value = typeof rawValue === "string" ? rawValue.trim() : rawValue;
-  if (value === "" || value === undefined) value = null;
-  if (field === "due" && value !== null && !parseDueDate(value)) {
-    throw new LabOrderError("INVALID", "Due date must be a real date (YYYY-MM-DD).");
-  }
-  const before = order[spec.column] ?? null;
+  const value = cleanFieldValue(field, rawValue);
+  const before = field === "enclosures" ? storedEnclosures(order) : (order[spec.column] ?? null);
   if (before === value) return null;
   const patch = { [spec.column]: value, version: order.version + 1, updatedAt: now };
-  const event = field === "notes"
-    ? { labOrderId: order.id, type: "note", from: null, to: null, byUserId, note: "Lab notes updated", at: now }
-    : { labOrderId: order.id, type: spec.event, from: before, to: value, byUserId, note: null, at: now };
+  const event = { labOrderId: order.id, type: spec.event, from: before, to: value, byUserId, note: null, at: now };
+  if (field === "notes") Object.assign(event, { type: "note", from: null, to: null, note: "Lab notes updated" });
+  if (field === "enclosures") Object.assign(event, { from: null, to: null, note: "Enclosed items updated" });
   return { patch, event };
 }
 
@@ -275,13 +312,18 @@ export function presentBoardCard(row, lines = [], todayIso, { plan = null, calen
     orderNumber: o.orderNumber,
     source: o.source,
     sourceId: o.sourceId,
-    reference: o.source === "rx_case" ? (row.caseNumber ?? null) : o.source === "legacy" ? "Seazona" : (row.shopOrderNumber ?? null),
+    reference: o.source === "rx_case" ? (row.caseNumber ?? null)
+      : o.source === "legacy" ? "Seazona"
+      : o.source === "staff" ? null // typed in by staff: no case or shop order to point at
+      : (row.shopOrderNumber ?? null),
     status: o.status,
     heldFrom: o.heldFrom ?? null,
     version: o.version,
     practice: row.practiceName || row.clientName || row.shipping?.name || "—",
     deviceSummary: summariseLabLines(lines),
     dueDate: o.dueDate ?? null,
+    panNumber: o.panNumber ?? null,
+    deliveryMethod: o.deliveryMethod ?? null,
     rush: Boolean(o.rush),
     rushTier: o.rushTier ?? null,
     isRemake: Boolean(o.isRemake),

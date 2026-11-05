@@ -28,3 +28,7 @@ export { shipments, shipmentEvents } from "./shipments.js";
 export { statementSends, STATEMENT_SEND_STATUSES } from "./statement-sends.js";
 export { calendars, calendarHolidays } from "../../modules/business-calendar/schema.js";
 export { workflows, workflowStages, workflowAssignments, workflowPlans } from "../../modules/workflows/schema.js";
+export { tagDefinitions, recordTags, recordStars } from "../../modules/record-tags/schema.js";
+export { recordFiles } from "../../modules/record-files/schema.js";
+export { adjustmentReasons, labOrderLineMaterials } from "./production-desk.js";
+export { intakes } from "../../modules/upload-intake/schema.js";

@@ -48,6 +48,8 @@ Pre-check before the transaction: every plan table and column must exist live ("
 | rx_cases.seazona_push_error | phi | NULL (can echo the order payload, incl. patient name) |
 | client_prices.note | pii | NULL (free text about a client) |
 | lab_orders.hold_reason, lab_orders.lab_notes | phi | NULL (staff-typed free text, encrypted at rest; can name a patient) |
+| intakes.hints | phi | NULL (sealed JSON parsed from dropped file names; can name a patient) |
+| intakes.discard_reason | phi | NULL (sealed staff free text) |
 | lab_order_events.note | phi | NULL (staff-typed free text, encrypted at rest) |
 | lab_order_lines.name | phi | the catalog name for `code` (`product_variants.code` first, then `products.code`), else `Line`. Instruction lines carry doctor/staff-typed text, same rule as `rx_case_lines.name` |
 | lab_order_lines.source_label | phi | NULL (copies the doctor's free-form "Other" device text) |
@@ -57,6 +59,8 @@ Pre-check before the transaction: every plan table and column must exist live ("
 | invoices.legacy_patient | phi | NULL (Seazona's patient on an imported invoice; encrypted at rest) |
 | invoice_lines.legacy_description | phi | NULL (an imported Seazona line's text; can name a patient; encrypted) |
 | lab_orders.legacy_patient | phi | NULL (a legacy Seazona order's patient; encrypted) |
+| lab_orders.patient_name | phi | NULL (a staff-entered order's patient; encrypted) |
+| lab_orders.enclosures | phi | NULL (enclosed items with staff-typed notes, JSON; encrypted) |
 | invoice_payments.reference | pii | NULL (staff-typed check number / ACH trace) |
 | invoice_payments.note | phi | NULL (a credit's reason: staff free text, encrypted) |
 | shipments.ship_to | pii | a fixed placeholder address (practice or guest customer address snapshot) |
@@ -72,6 +76,7 @@ Pre-check before the transaction: every plan table and column must exist live ("
 | Table | Why |
 |---|---|
 | rx_case_files | Patient scans/photos/prescriptions/sleep studies; deleting rows removes every GCS reference (`gcs_url`, `original_name`). GCS objects are never touched. |
+| record_files | Generic attachments (record-files module); like rx_case_files, `original_name` and `storage_url` can identify a patient, so every row is deleted. Objects are never touched. |
 | sessions | Refresh-token hashes, IPs, user agents. |
 | kv_store | Magic links, MFA setup state, temp tokens, rate-limit counters. |
 | approval_tokens | One-click approval tokens. |
@@ -83,7 +88,10 @@ Pre-check before the transaction: every plan table and column must exist live ("
 - accounts (doctor/admin-owned): name, slug, logo_url (shopper-owned accounts get logo_url NULLed); all: owner. doctor_profiles: company name, address, phone, NPI, license. DEVIATION from the strictest reading (addresses/phones scrubbed): accepted as practice business data and public identifiers; only the free-text delivery notes go. A sole practitioner's practice address may also be a home address.
 - rx_cases: case_number, practice_name, device_key/category, first_device, records_method, physical_bite, form_type, due_date, rush, status. Non-identifying once names, DOB, contact and free text are gone. Clinical-ish (`physical_bite`) but not linkable to a person.
 - rx_code_overrides: only rows whose map_key is a KNOWN catalog-map key (from the DEVICE/MODIFICATION/ATTRIBUTE/LAB_SERVICE/GUARD/ORTHO tables, `known-map-keys.js`) are kept; every other row is DELETED. The key prefixes (`mod:`, `attr:`, `primary:`) are shared by stable slugs and by doctor-typed literals (`mod:<literal>`), so shape cannot tell them apart; this is the "not in the known set" fallback. Consequence: a real lab override on a key the tables no longer emit is also dropped. `note` and the rest of each kept row (except `seazona_name`, re-derived) are lab-staff mapping data.
+- intakes apart from the columns above: id, channel, status, parser key, promoted record type/id, who/when. Non-identifying.
 - lab_departments, and lab_orders / lab_order_lines / lab_order_events apart from the columns above: ids, source reference (rx case or shop order id, no patient data copied), status, dates, rush, remake links, assignee, version, codes, quantities, event types and from/to values. Non-identifying once the free text is gone.
+- adjustment_reasons, lab_order_line_materials, lab_orders.remake_reason_id, lab_orders.merged_into_order_id (production desk): the lab's reason labels and percents; materials and lot numbers name products, not people (spec ruling); a merged order points at its primary by id. Non-identifying.
+- tag_definitions, record_tags, record_stars (record-tags module): admin-typed label vocabulary, ids and timestamps only. Non-identifying.
 - shipments apart from the columns above (carrier, service, carrier tracking numbers, status, cents, parcel, the lab's own ship-from, dates); shipment_events status and dates; lab_orders.shipment_id and invoice_lines.shipment_id; invoices and invoice_lines apart from the columns above (numbers, status, dates, cents, codes, quantities, price sources); invoice_payments money columns, ids, sources and `paid_on`; autopay_attempts (allocations are invoice id/number/amount), orders money columns and transaction ids, order_items, catalog and product tables, memberships, app_theme, calendars and calendar_holidays (business hours, holidays, capacity numbers), workflows, workflow_stages, workflow_assignments and workflow_plans (stage templates, subject ids, plan dates and stage targets).
 - price_lists (name and description are staff text about the list, not a person), price_list_items and client_price_lists (ids, cents, positions, assignment stamps); statement_sends (ids, a month, a closing balance in cents, a status and send stamps).
 

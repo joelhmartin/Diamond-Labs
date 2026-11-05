@@ -76,6 +76,29 @@ test("invoices: without limit the response is unchanged (capped, truncated flag,
   assert.equal((await listInvoices({}, full)).truncated, true);
 });
 
+test("invoices: needsPrice finds drafts with an unpriced line OR no item line at all", () => {
+  const { sql } = render(invoiceListWhere({ needsPrice: true }));
+  assert.match(sql, /"status" = \$1/);
+  assert.match(sql, /exists \(select 1 from "invoice_lines" where "invoice_lines"\."invoice_id" = "invoices"\."id" and "invoice_lines"\."price_source" = 'unpriced'\)/);
+  assert.match(sql, /or not exists \(select 1 from "invoice_lines" where "invoice_lines"\."invoice_id" = "invoices"\."id" and "invoice_lines"\."kind" = 'item'\)/);
+});
+
+test("invoices: rows flag drafts with no item lines (noLines) under needsPrice, alongside unpriced ones", async () => {
+  const row = (n, status) => ({ ...invoiceRow(n), invoice: { ...invoiceRow(n).invoice, status } });
+  const db = recorder([
+    [row(4, "draft"), row(3, "draft"), row(2, "draft"), row(1, "issued")],
+    [{ id: "i3", priceSource: "unpriced" }, { id: "i2", priceSource: "client" }, { id: "i2", priceSource: "unpriced" }],
+    [],
+  ]);
+  const out = await listInvoices({}, db);
+  assert.deepEqual(out.invoices.map((i) => [i.invoiceNumber, i.needsPrice, i.noLines]), [
+    [4, true, true], // a lineless draft
+    [3, true, false],
+    [2, true, false],
+    [1, false, false], // not a draft: never "no lines"
+  ]);
+});
+
 test("invoices: q digits match the invoice number prefix", () => {
   const { sql, params } = render(invoiceListWhere({ q: "1004" }));
   assert.match(sql, /"invoice_number"::text like \$1/);

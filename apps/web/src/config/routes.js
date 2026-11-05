@@ -33,12 +33,16 @@ export const ROUTES = {
   ADMIN_AUTOPAY: "/admin/autopay",
   ADMIN_JOBS: "/admin/jobs",
   ADMIN_DEPARTMENTS: "/admin/lab/departments",
+  ADMIN_REASONS: "/admin/lab/adjustment-reasons",
   ADMIN_SHIPMENTS: "/admin/shipments",
   ADMIN_SCHEDULING: "/admin/scheduling",
+  ADMIN_LABELS: "/admin/labels",
 
   // Lab (admin + lab staff)
   LAB_BOARD: "/lab",
   LAB_CALENDAR: "/lab/calendar",
+  LAB_INTAKE: "/lab/intake",
+  LAB_ORDER_NEW: "/lab/orders/new", // declared before LAB_ORDER_DETAIL so "new" is never read as an id
   LAB_ORDER_DETAIL: "/lab/orders/:id",
   LAB_SHIPMENT_PRINT: "/lab/shipments/:id/print",
 

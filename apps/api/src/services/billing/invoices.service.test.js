@@ -43,6 +43,15 @@ test("a remake's draft copies the lines at no charge", async () => {
   assert.deepEqual(lines.map((l) => [l.unitCents, l.priceSource]), [[0, "remake"]]);
 });
 
+test("a remake from a 50% reason gets a draft priced at half (ruling R6)", async () => {
+  const reason = { id: "r1", appliesTo: "remake", label: "Change of occlusion", discountPercent: 50, active: true, position: 0 };
+  const tx = fakeTx({ selects: [[{ id: "v1", basePriceCents: 45000, taxable: false }], [{ variantId: "v1", priceCents: 40500 }], [], [{ max: null }], [reason]] });
+  await mod.createDraftForLabOrder(tx, { labOrder: { id: "lo3", clientUserId: "doc1", isRemake: true, remakeReasonId: "r1" }, lines: labLines.slice(0, 1) });
+  const [invoice, lines] = inserts(tx);
+  assert.equal(invoice.totalCents, 20250);
+  assert.deepEqual(lines.map((l) => [l.unitCents, l.priceSource]), [[20250, "remake"]]);
+});
+
 test("a paid shop order gets an issued invoice, paid in full by one shop_card ledger row", async () => {
   const tx = fakeTx({ selects: [[{ max: null }]] });
   const quote = {
@@ -78,6 +87,17 @@ test("an unpriced line holds the invoice at draft; the ship is not affected", as
   assert.deepEqual(out, { issued: false, reason: "unpriced" });
   assert.equal(tx.log.filter((l) => l.op === "set").length, 0);
   assert.equal(inserts(tx).at(-1).action, "invoice.issue_held");
+});
+
+test("a draft with no item lines (quick entry, no lines) is held, not issued at $0; the ship is not affected", async () => {
+  for (const lines of [[], [{ id: "s1", kind: "shipping", description: "UPS Ground", priceSource: "shipment", priceNote: null }]]) {
+    const tx = fakeTx({ selects: [[{ ...draftRow, totalCents: 0 }], lines] });
+    const out = await mod.issueForShippedLabOrder(tx, { labOrderId: "lo1", shippedAt: new Date(), byUserId: "tech1" });
+    assert.deepEqual(out, { issued: false, reason: "no_lines" });
+    assert.equal(tx.log.filter((l) => l.op === "set").length, 0, "still a draft, so it can be billed once lines are added");
+    const audit = inserts(tx).at(-1);
+    assert.deepEqual([audit.action, audit.metadata], ["invoice.issue_held", { invoiceNumber: 500001, reason: "no_lines" }]);
+  }
 });
 
 test("an already-issued invoice is left alone on ship", async () => {

@@ -46,3 +46,34 @@ test("an unreadable sealed patient shows no initials instead of failing the list
   assert.equal(list.length, 1);
   assert.equal(list[0].patientInitials, null);
 });
+
+test("a staff-entered order's invoice shows its sealed patient opened (detail) and as initials (list), with no shop lookup", async () => {
+  const { sealOrder } = await import("../lab/lab-order-crypto.js");
+  const sealedPatient = sealOrder({ patientName: "Jane Roe" }).patientName;
+  assert.match(sealedPatient, /^enc:v1:/, "fixture really is sealed");
+  const inv = sealInvoice({ id: "inv2", invoiceNumber: 2, kind: "order", status: "issued", clientUserId: "doc1", labOrderId: "lo2", totalCents: 5000, notes: null, voidReason: null, legacyPatient: null });
+
+  const list = await listClientInvoices(["doc1"], {}, fakeTx({ selects: [
+    [{ invoice: inv, labOrderNumber: 100050, caseNumber: null, patientFirst: null, patientLast: null, staffPatient: sealedPatient }],
+    [],
+  ] }));
+  assert.equal(list[0].patientInitials, "JR");
+  assert.ok(!JSON.stringify(list).includes("enc:v1:"));
+
+  const tx = fakeTx({ selects: [
+    [{ invoice: inv, clientName: "Dr Test", clientEmail: null, accountNumber: null, clientSeazonaClientId: null, profile: null }],
+    [], // paid sums
+    [], // lines
+    [], // ledger rows
+    [{ id: "lo2", orderNumber: 100050, source: "staff", sourceId: "lo2", status: "shipped", isRemake: false, patientName: sealedPatient }],
+    [{ orderNumber: "DOL-WRONG" }], // a shop lookup would wrongly read this
+  ] });
+  const detail = await getInvoiceDetail("inv2", {}, tx);
+  assert.deepEqual(
+    [detail.labOrder.patientName, detail.labOrder.caseNumber, detail.labOrder.shopOrderNumber, detail.labOrder.orderNumber],
+    ["Jane Roe", null, null, 100050],
+  );
+  assert.equal(tx.log.filter((l) => l.op === "select").length, 5, "no shop-order query for a staff order");
+  assert.equal(doctorInvoiceView(detail).patientName, "Jane Roe");
+  assert.ok(!JSON.stringify(detail).includes("enc:v1:"));
+});

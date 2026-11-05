@@ -41,9 +41,17 @@ test("a remake needs a reason", () => {
 
 test("board query strings become typed filters", () => {
   const q = labOrderListQuerySchema.parse({ rush: "true", includeClosed: "false", dueBefore: "2026-10-10", q: " RX " });
-  assert.deepEqual(q, { rush: true, includeClosed: false, dueBefore: "2026-10-10", q: "RX" });
-  assert.deepEqual(labOrderListQuerySchema.parse({}), { rush: false, includeClosed: false });
+  assert.deepEqual(q, { rush: true, starred: false, tagIds: [], includeClosed: false, dueBefore: "2026-10-10", q: "RX" });
+  assert.deepEqual(labOrderListQuerySchema.parse({}), { rush: false, starred: false, tagIds: [], includeClosed: false });
   assert.equal(labOrderListQuerySchema.safeParse({ status: "nope" }).success, false);
+});
+
+test("the board filters by labels (comma list, at most 20) and by the viewer's stars", () => {
+  assert.deepEqual(labOrderListQuerySchema.parse({ tagIds: "t1, t2,t1,", starred: "true" }).tagIds, ["t1", "t2"]);
+  assert.equal(labOrderListQuerySchema.parse({ starred: "true" }).starred, true);
+  const many = Array.from({ length: 21 }, (_, i) => `t${i}`).join(",");
+  assert.equal(labOrderListQuerySchema.safeParse({ tagIds: many }).success, false);
+  assert.equal(labOrderListQuerySchema.safeParse({ tagIds: many.split(",").slice(0, 20).join(",") }).success, true);
 });
 
 test("tile must be one of LAB_BOARD_TILES, and dueOn a real date", () => {
