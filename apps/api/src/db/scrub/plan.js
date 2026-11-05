@@ -278,6 +278,10 @@ export const SCRUB_PLAN = {
   // Lab orders (own-the-lab piece 2). Staff-typed free text (hold reason, lab notes,
   // event notes) can name a patient and is encrypted at rest in prod: replaced, never decrypted.
   lab_departments: { mode: "update", columns: { id: K, name: K, position: K, active: K, created_at: K, updated_at: K } },
+  // record-tags module: admin-typed label vocabulary + id references; no patient data.
+  tag_definitions: { mode: "update", columns: { id: K, record_type: K, label: K, color: K, position: K, active: K, created_at: K, updated_at: K } },
+  record_tags: { mode: "update", columns: { id: K, record_type: K, record_id: K, tag_id: K, created_by: K, created_at: K } },
+  record_stars: { mode: "update", columns: { record_type: K, record_id: K, user_id: K, created_at: K } },
   lab_orders: {
     mode: "update",
     columns: {
