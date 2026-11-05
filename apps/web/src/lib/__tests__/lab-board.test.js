@@ -27,6 +27,12 @@ test("filters become query params, dropping blanks", () => {
   assert.deepEqual(boardParams({ rush: false }), {});
 });
 
+test("boardParams includes tile and dueOn only when set", () => {
+  assert.deepEqual(boardParams({ tile: "at_risk", dueOn: "2026-11-12" }), { tile: "at_risk", dueOn: "2026-11-12" });
+  assert.deepEqual(boardParams({ tile: "", dueOn: " " }), {});
+  assert.deepEqual(boardParams({ tile: null }), {});
+});
+
 test("timeline rows read as sentences, naming people and rooms", () => {
   const ctx = { staffById: { t1: "Maria Lopez" }, departmentsById: { d1: "Acrylic" } };
   assert.equal(describeEvent({ type: "release", byName: null }, ctx), "System: released to the lab");

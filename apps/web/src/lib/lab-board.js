@@ -74,7 +74,7 @@ export function moveBulkActions(selectedRows, { post = defaultPost, after } = {}
 /** Board filter state → GET /lab/orders params. */
 export function boardParams(filters = {}) {
   const out = {};
-  for (const k of ["departmentId", "assigneeUserId", "q", "dueBefore"]) {
+  for (const k of ["departmentId", "assigneeUserId", "q", "dueBefore", "dueOn", "tile"]) {
     const v = typeof filters[k] === "string" ? filters[k].trim() : "";
     if (v) out[k] = v;
   }

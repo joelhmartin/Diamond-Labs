@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, RefreshCw, Search, AlertCircle, Truck, LayoutGrid, Rows3 } from "lucide-react";
-import { LAB_BOARD_COLUMNS, LAB_STATUS_LABELS, isTerminalLabStatus } from "@my-app/shared";
+import { useSearchParams } from "react-router-dom";
+import { Loader2, RefreshCw, Search, AlertCircle, Truck, LayoutGrid, Rows3, X } from "lucide-react";
+import { LAB_BOARD_COLUMNS, LAB_BOARD_TILES, LAB_STATUS_LABELS, formatUsDate, isTerminalLabStatus } from "@my-app/shared";
 import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { groupByStatus, boardParams } from "../../lib/lab-board.js";
@@ -9,11 +10,23 @@ import { ConfirmButton } from "../../components/ui/ConfirmButton.jsx";
 import { errorText, isStale } from "../../lib/requests.js";
 import { BoardCard } from "../../components/lab/BoardCard.jsx";
 import { BoardTableView } from "../../components/lab/BoardTableView.jsx";
+import { BoardTiles } from "../../components/lab/BoardTiles.jsx";
 import { SegmentedControl } from "../../components/ui/SegmentedControl.jsx";
 import { INPUT_BASE } from "../../components/lab/form-styles.js";
 
 const PAGE_STEP = 25;
 const VIEW_KEY = "lab.board.view";
+const TILE_NAMES = { past_due: "Past due", due_today: "Due today", due_tomorrow: "Due tomorrow", on_hold: "On hold", at_risk: "At risk" };
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function FilterChip({ label, onClear }) {
+  return (
+    <span className="flex items-center gap-1 rounded-full bg-navy/10 px-3 py-1 text-xs font-semibold text-navy">
+      {label}
+      <button type="button" aria-label={`Clear ${label}`} onClick={onClear} className="rounded-full p-0.5 hover:bg-navy/10"><X size={11} /></button>
+    </span>
+  );
+}
 
 function readView() {
   try {
@@ -65,6 +78,17 @@ export function LabBoardPage() {
   };
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState({ departmentId: "", assigneeUserId: "", rush: false, dueBefore: "", q: "" });
+  // The tile and a calendar day live in the URL so they can be linked to and survive a reload.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tile = LAB_BOARD_TILES.includes(searchParams.get("tile")) ? searchParams.get("tile") : "";
+  const dueOn = ISO_DATE.test(searchParams.get("dueOn") ?? "") ? searchParams.get("dueOn") : "";
+  const setUrlFilter = (key, value) => setSearchParams((p) => {
+    const next = new URLSearchParams(p);
+    if (value) next.set(key, value);
+    else next.delete(key);
+    return next;
+  }, { replace: true });
+  const [tiles, setTiles] = useState(null);
 
   // Only the newest request may write results: a slow response for an older
   // filter must not overwrite what the current filter shows.
@@ -72,7 +96,7 @@ export function LabBoardPage() {
   const load = useCallback(async () => {
     const seq = ++requestSeq.current;
     try {
-      const res = await api.get("/lab/orders", { params: boardParams(filters) });
+      const res = await api.get("/lab/orders", { params: boardParams({ ...filters, tile, dueOn }) });
       if (seq !== requestSeq.current) return;
       setCards(res.data.data.orders);
       setError(null);
@@ -82,9 +106,20 @@ export function LabBoardPage() {
     } finally {
       if (seq === requestSeq.current) setLoading(false);
     }
-  }, [filters]);
+  }, [filters, tile, dueOn]);
+
+  // The tile counts cover every open order, so they reload with Refresh and after moves, not on a filter change.
+  const loadTiles = useCallback(async () => {
+    try {
+      setTiles((await api.get("/lab/schedule/tiles")).data.data);
+    } catch {
+      /* the tiles are a convenience: a failure leaves the last counts and the board itself reports errors */
+    }
+  }, []);
+  const reloadAll = useCallback(() => Promise.all([load(), loadTiles()]), [load, loadTiles]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadTiles(); }, [loadTiles]);
 
   useEffect(() => {
     Promise.all([api.get("/lab/departments"), api.get("/lab/staff")])
@@ -103,10 +138,10 @@ export function LabBoardPage() {
     setBusyId(card.id);
     try {
       await api.post(`/lab/orders/${card.id}/status`, { to, expectedVersion: card.version });
-      await load();
+      await reloadAll();
     } catch (err) {
       addToast({ message: isStale(err) ? `${errorText(err)} The board has been refreshed.` : errorText(err), type: "error" });
-      if (isStale(err)) await load();
+      if (isStale(err)) await reloadAll();
     } finally {
       setBusyId(null);
     }
@@ -121,7 +156,7 @@ export function LabBoardPage() {
     } catch (err) {
       addToast({ message: errorText(err), type: "error" });
     }
-    await load();
+    await reloadAll();
   };
 
   const set = (patch) => setFilters((f) => ({ ...f, ...patch }));
@@ -156,7 +191,7 @@ export function LabBoardPage() {
           />
           <button
             type="button"
-            onClick={() => { setLoading(true); load(); }}
+            onClick={() => { setLoading(true); reloadAll(); }}
             className="flex items-center gap-1.5 rounded-full bg-surface-100 px-4 py-2 text-xs font-semibold text-navy hover:bg-surface-200"
           >
             <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> Refresh
@@ -164,7 +199,11 @@ export function LabBoardPage() {
         </div>
       </div>
 
+      <BoardTiles tiles={tiles} active={tile || null} onSelect={(key) => setUrlFilter("tile", key)} />
+
       <div className="mb-5 flex flex-wrap items-center gap-2">
+        {tile && <FilterChip label={TILE_NAMES[tile]} onClear={() => setUrlFilter("tile", null)} />}
+        {dueOn && <FilterChip label={`Due ${formatUsDate(dueOn)}`} onClear={() => setUrlFilter("dueOn", null)} />}
         <form
           onSubmit={(e) => { e.preventDefault(); set({ q: query }); }}
           className="relative"
@@ -205,7 +244,7 @@ export function LabBoardPage() {
           <Loader2 size={18} className="mr-2 animate-spin" /> Loading the board…
         </div>
       ) : view === "table" ? (
-        <BoardTableView columns={columns} busyId={busyId} onMove={move} onChanged={load} />
+        <BoardTableView columns={columns} busyId={busyId} onMove={move} onChanged={reloadAll} />
       ) : (
         <div className="grid auto-cols-[minmax(250px,1fr)] grid-flow-col gap-4 overflow-x-auto pb-4">
           {LAB_BOARD_COLUMNS.map((status) => (
