@@ -75,3 +75,20 @@ test("intake errors map to HTTP statuses; foreign errors are not swallowed", () 
   assert.equal(intakeErrorReply(new IntakeError("TOO_LARGE", "x")).status, 413);
   assert.equal(intakeErrorReply(new Error("boom")), null);
 });
+
+test("a failing onCreated hook does not turn a successful drop into an error", async () => {
+  const app = Fastify();
+  app.addHook("onRequest", async (req) => { req.user = { id: "u1" }; });
+  await app.register(multipart);
+  await app.register(intakeRoutes, {
+    staffGuard: [async () => {}],
+    onCreated: async () => { throw new Error("notify down"); },
+    service: { createIntakes: async () => ({ intakes: [{ id: "i1" }], refused: [] }) },
+  });
+  const orig = console.error;
+  console.error = () => {};
+  try {
+    const res = await app.inject({ method: "POST", url: "/intake", ...multipartBody([{ name: "f", filename: "a.stl", buffer: Buffer.from("a") }]) });
+    assert.equal(res.statusCode, 201);
+  } finally { console.error = orig; }
+});

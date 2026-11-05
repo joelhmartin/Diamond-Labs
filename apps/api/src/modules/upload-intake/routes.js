@@ -77,7 +77,14 @@ export async function intakeRoutes(fastify, { staffGuard, path = "/intake", onCr
     }
     return run(reply, async () => {
       const out = await service.createIntakes({ files, split, channel: "upload", byUserId: request.user?.id });
-      if (out.intakes.length) await onCreated?.(request, out.intakes);
+      // The drop already succeeded: a failing hook (notification, audit) must not turn it into a 500.
+      if (out.intakes.length) {
+        try {
+          await onCreated?.(request, out.intakes);
+        } catch (err) {
+          console.error("[upload-intake] onCreated hook failed", { intakeIds: out.intakes.map((i) => i.id), message: err?.message });
+        }
+      }
       return out;
     }, 201);
   });

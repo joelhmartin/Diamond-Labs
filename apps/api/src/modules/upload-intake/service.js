@@ -2,7 +2,7 @@ import { and, desc, eq, count, inArray } from "drizzle-orm";
 import { db as appDb } from "../../config/database.js";
 import { createId } from "../../lib/id.js";
 import { fieldSealer } from "../../lib/crypto.js";
-import { attachFiles, filesFor, relinkFiles } from "../record-files/index.js";
+import { attachFiles, filesFor, relinkFiles, recordFiles } from "../record-files/index.js";
 import { intakes } from "./schema.js";
 import { IntakeError, planIntakes } from "./rules.js";
 import { defaultParsers } from "./parsers.js";
@@ -41,12 +41,16 @@ export async function createIntakes({ files, split = "one", channel = "upload", 
       id: createId(), channel, status: "pending", parserKey: parser.key,
       hints: JSON.stringify(parser.parse(group)), createdBy: byUserId, createdAt: new Date(),
     };
-    await database.insert(intakes).values(secrets.seal(row));
+    // Files first, row second: a failed upload never leaves a pending row; a failed insert removes the files.
+    let attached;
     try {
-      const attached = await attachFiles({ recordType: INTAKE_RECORD_TYPE, recordId: row.id, files: group, byUserId, storage }, database);
+      attached = await attachFiles({ recordType: INTAKE_RECORD_TYPE, recordId: row.id, files: group, byUserId, storage }, database);
+      await database.insert(intakes).values(secrets.seal(row));
       created.push(toIntake(secrets.seal(row), attached));
     } catch (err) {
-      await database.delete(intakes).where(eq(intakes.id, row.id));
+      // Ids and the error only: file names can name a person.
+      console.error("[upload-intake] could not store a drop", { intakeId: row.id, code: err?.code, message: err?.message });
+      if (attached?.length) await database.delete(recordFiles).where(inArray(recordFiles.id, attached.map((f) => f.id))).catch(() => {});
       for (const f of group) refused.push({ name: f.originalName, message: `"${f.originalName}" could not be stored. Try again.` });
     }
   }

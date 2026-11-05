@@ -1,7 +1,7 @@
 import { inArray } from "drizzle-orm";
 import { db } from "../../config/database.js";
 import { users } from "../../db/schema/index.js";
-import { IntakeError, promoteIntake, intakeIdsThatExist } from "../../modules/upload-intake/index.js";
+import { IntakeError, promoteIntake, intakeIdsThatExist, INTAKE_RECORD_TYPE } from "../../modules/upload-intake/index.js";
 import { notify } from "../notify-seam.js";
 import { LabOrderError } from "./lab-order-rules.js";
 import { LAB_ORDER_RECORD_TYPE } from "./lab-tags.js";
@@ -11,7 +11,7 @@ import { LAB_ORDER_RECORD_TYPE } from "./lab-tags.js";
  * upload-intake module and lab orders. Intakes are a record-files record type
  * ("intake"); promoting one happens inside the staff order's transaction.
  */
-export const INTAKE_RECORD_TYPE = "intake";
+export { INTAKE_RECORD_TYPE };
 
 /** The ids (of `ids`) that are intakes (the file routes' record-type check). */
 export const intakeIdsThatExistForFiles = (ids, database = db) => intakeIdsThatExist(ids, database);

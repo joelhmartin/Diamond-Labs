@@ -58,7 +58,21 @@ test("a failed upload leaves no intake row behind and is reported by name", asyn
   const out = await createIntakes({ files: [file("a.stl")], split: "one", storage }, tx);
   assert.equal(out.intakes.length, 0);
   assert.deepEqual(out.refused.map((r) => r.name), ["a.stl"]);
-  assert.ok(tx.log.some((e) => e.op === "delete"));
+  assert.equal(intakeInserts(tx).length, 0, "no pending row when the upload fails");
+});
+
+test("a failed upload is logged without file names", async () => {
+  const logged = [];
+  const orig = console.error;
+  console.error = (...a) => logged.push(a);
+  try {
+    const storage = fakeStorage();
+    storage.upload = async () => { throw new Error("bucket down"); };
+    await createIntakes({ files: [file("jane-doe.stl")], split: "one", storage }, fakeTx());
+  } finally { console.error = orig; }
+  assert.equal(logged.length, 1);
+  assert.ok(!JSON.stringify(logged).includes("jane-doe"));
+  assert.match(JSON.stringify(logged), /bucket down/);
 });
 
 test("promote claims a pending intake and relinks its files", async () => {
