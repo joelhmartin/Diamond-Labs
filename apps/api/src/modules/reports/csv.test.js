@@ -1,7 +1,7 @@
 import { describe, test, expect, vi } from "vitest";
 import { createRegistry } from "./registry.js";
 import { createRunSlots } from "./runner.js";
-import { streamCsv, csvLine, neutralise } from "./csv.js";
+import { streamCsv } from "./csv.js";
 
 function fakeReply() {
   const r = { headers: {}, code: vi.fn(() => r), header(k, v) { r.headers[k] = v; return r; }, send(body) { r.body = body; return r; } };
@@ -21,16 +21,6 @@ function setup(def) {
 const db = { transaction: async (fn) => fn({ execute: async () => {} }) };
 const call = (reg, reply, extra = {}) =>
   streamCsv({ registry: reg, db, key: "r.one", query: {}, actor: { role: "staff" }, reply, slots: createRunSlots(), now: new Date("2026-11-05T15:00:00Z"), tz: "America/Chicago", ...extra });
-
-describe("csv helpers", () => {
-  test("RFC 4180 quoting", () => {
-    expect(csvLine(["a", 'b"c', "d,e", "f\ng", 5])).toBe('a,"b""c","d,e","f\ng",5\r\n');
-  });
-  test("neutralise prefixes = + - @ tab CR", () => {
-    for (const c of ["=", "+", "-", "@", "\t", "\r"]) expect(neutralise(`${c}x`)).toBe(`'${c}x`);
-    expect(neutralise("plain")).toBe("plain");
-  });
-});
 
 describe("streamCsv", () => {
   test("export streams all pages up to the cap", async () => {
@@ -70,6 +60,16 @@ describe("streamCsv", () => {
     const lines = (await drain(reply.body)).split("\r\n");
     expect(lines[1]).toBe("'=SUM(A1),-12.50");
     expect(lines[2]).toBe("Ann,0.05");
+  });
+
+  test("cells are RFC 4180 quoted by the shared encoder", async () => {
+    const reg = setup({
+      columns: [{ id: "a", label: 'A "x"', type: "text" }, { id: "n", label: "N", type: "int" }],
+      run: async () => ({ rows: [{ a: 'b"c,d', n: 5 }, { a: "e\nf", n: 0 }] }),
+    });
+    const reply = fakeReply();
+    await call(reg, reply);
+    expect(await drain(reply.body)).toBe('"A ""x""",N\r\n"b""c,d",5\r\n"e\nf",0\r\n');
   });
 
   test("errors before the first byte are thrown, not streamed", async () => {

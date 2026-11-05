@@ -2,40 +2,20 @@
  * Streamed CSV export. Server-paged reports are read page by page, each page
  * in its own short read-only transaction, so no connection is held while the
  * client downloads. Cell text comes from the shared csvValue so the file
- * matches the screen.
+ * matches the screen; each field is encoded by the shared csvField (via
+ * csvRow), the same encoder the browser's selected-rows export uses.
  */
 import { Readable } from "node:stream";
-import { csvValue } from "@my-app/shared";
+import { csvValue, csvRow, CSV_EOL } from "@my-app/shared";
 import { prepareRun, executePrepared, defaultRunSlots } from "./runner.js";
 
 export const CSV_ROW_CAP = 100000;
 export const CSV_PAGE_SIZE = 2000;
 
-// Text-ish columns can hold user-entered strings; numbers and formatted values cannot start a formula.
-const FORMULA_TYPES = new Set(["text", "link", "badge"]);
-const FORMULA_START = /^[=+\-@\t\r]/;
+/** One CSV record, CRLF terminated; fields go through the one shared encoder (quoting + formula neutralising). */
+const csvLine = (cells) => `${csvRow(cells)}${CSV_EOL}`;
 
-/** Stop a spreadsheet reading a text cell as a formula. */
-export function neutralise(text) {
-  return FORMULA_START.test(text) ? `'${text}` : text;
-}
-
-function quote(value) {
-  const s = String(value);
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-/** One RFC 4180 record, CRLF terminated. */
-export function csvLine(cells) {
-  return `${cells.map(quote).join(",")}\r\n`;
-}
-
-function cellOf(column, row) {
-  const value = csvValue(column, row[column.id]);
-  return FORMULA_TYPES.has(column.type) && typeof value === "string" ? neutralise(value) : value;
-}
-
-const rowsToCsv = (columns, rows) => rows.map((row) => csvLine(columns.map((c) => cellOf(c, row)))).join("");
+const rowsToCsv = (columns, rows) => rows.map((row) => csvLine(columns.map((c) => csvValue(c, row[c.id])))).join("");
 
 /**
  * Validate, run the first page (so a bad request or timeout is a normal JSON
