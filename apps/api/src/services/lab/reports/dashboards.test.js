@@ -87,7 +87,8 @@ test("sales.mtd is dollars with the invoice count as detail; previous is the sam
 test("insights.active-clients value excludes inactive, and the data carries declining and inactive counts", async () => {
   const recentAt = "2026-11-01T15:00:00Z";
   const oldAt = "2026-03-01T15:00:00Z";
-  const row = (id, recent, base, lastOrderAt) => ({ clientUserId: id, client: id, recent: String(recent), base: String(base), lastOrderAt, lastOrderDay: null });
+  // The SQL returns both; health bands on the lab day (lastOrderDay).
+  const row = (id, recent, base, lastOrderAt) => ({ clientUserId: id, client: id, recent: String(recent), base: String(base), lastOrderAt, lastOrderDay: lastOrderAt.slice(0, 10) });
   const tx = fakeTx({ executes: [[
     row("healthy", 6, 30, recentAt), // 6 vs 5/month
     row("declining", 1, 30, recentAt), // 1 vs 5/month

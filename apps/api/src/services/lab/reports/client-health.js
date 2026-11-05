@@ -40,6 +40,8 @@ export function healthWindows(asOf) {
 
 const received = (range) => labDayBetween(labOrders.receivedAt, range);
 const asIso = (v) => (v == null ? null : new Date(v).toISOString());
+/** A lab day ("YYYY-MM-DD") as UTC midnight, so instant arithmetic between two of them counts whole lab days. */
+const dayStart = (iso) => (iso == null ? null : new Date(`${iso}T00:00:00Z`));
 
 /**
  * One row per client who has ever ordered:
@@ -68,7 +70,10 @@ export async function clientHealthRows(db, { asOf }) {
     const recent = num(r.recent);
     const baseline = num(r.base) / 6;
     const lastOrderAt = asIso(r.lastOrderAt);
-    const { band, trend, isNew } = activityHealth({ recent, baseline, lastAt: lastOrderAt, asOf }, HEALTH_THRESHOLDS);
+    // Idle time in whole lab days (last order's lab day to today's), so "inactive" is
+    // "more than 90 lab days" exactly like clients.inactive, not 90×24h of wall-clock time.
+    const { band, trend, isNew } = activityHealth(
+      { recent, baseline, lastAt: dayStart(r.lastOrderDay ?? null), asOf: dayStart(w.today) }, HEALTH_THRESHOLDS);
     return {
       clientUserId: r.clientUserId, client: r.client, band, isNew, recent, baseline, trend,
       sales30Cents: sales.get(r.clientUserId) ?? 0,

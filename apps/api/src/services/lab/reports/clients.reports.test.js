@@ -54,8 +54,8 @@ test("clientHealthRows: baseline is days 31–210 divided by 6; recent is the la
 
 test("clientHealthRows bands declining, inactive and new", async () => {
   const tx = fakeTx({ executes: [[
-    healthRow({ clientUserId: "a", recent: "0", base: "12", lastOrderAt: "2026-09-01T15:00:00Z" }),
-    healthRow({ clientUserId: "b", recent: "0", base: "12", lastOrderAt: "2026-05-01T15:00:00Z" }),
+    healthRow({ clientUserId: "a", recent: "0", base: "12", lastOrderAt: "2026-09-01T15:00:00Z", lastOrderDay: "2026-09-01" }),
+    healthRow({ clientUserId: "b", recent: "0", base: "12", lastOrderAt: "2026-05-01T15:00:00Z", lastOrderDay: "2026-05-01" }),
     healthRow({ clientUserId: "c", recent: "2", base: "0", turnaround: null }),
   ], []] });
   const rows = await clientHealthRows(tx, { asOf: NOW });
@@ -66,6 +66,25 @@ test("clientHealthRows bands declining, inactive and new", async () => {
   assert.equal(by.c.isNew, true);
   assert.equal(by.c.avgTurnaroundDays, null);
   assert.equal(by.a.sales30Cents, 0);
+});
+
+test("inactive is MORE than 90 lab days in both Client Health and Inactive Clients", async () => {
+  // Last order Aug 6 16:00 Chicago (CDT); asOf Nov 4 17:00 Chicago (CST): 90 lab days, 90 days + 2 h of wall clock.
+  const asOf = new Date("2026-11-04T23:00:00Z");
+  const at90 = healthRow({ clientUserId: "d90", lastOrderAt: "2026-08-06T21:00:00Z", lastOrderDay: "2026-08-06" });
+  const at91 = healthRow({ clientUserId: "d91", lastOrderAt: "2026-08-05T21:00:00Z", lastOrderDay: "2026-08-05" });
+  const rows = await clientHealthRows(fakeTx({ executes: [[at90, at91], []] }), { asOf });
+  const by = Object.fromEntries(rows.map((r) => [r.clientUserId, r.band]));
+  assert.notEqual(by.d90, "inactive");
+  assert.equal(by.d91, "inactive");
+
+  // The report lists a client when its last order is on or before today − 91 = Aug 5.
+  const tx = fakeTx({ executes: [[{ clientUserId: "d91", client: "x", accountNumber: null, lastDay: "2026-08-05", lifetime: "0" }]] });
+  const out = await report("clients.inactive").run(tx, {}, null, { now: asOf, today: "2026-11-04" });
+  const [q] = executedSql(tx);
+  assert.ok(q.params.includes("2026-08-05"), "Aug 5 (91 days) is inside the cut");
+  assert.ok(!q.params.includes("2026-08-06"), "Aug 6 (90 days) is outside the cut");
+  assert.equal(out.rows[0].daysSince, 91);
 });
 
 test("health report excludes clients who never ordered", async () => {
