@@ -148,7 +148,7 @@
 - [ ] **Step 1: Utility pages.** Submit Case, Downloads, Videos and Coming Soon use the compact hero. Remove the overlapping grey fade and "Back to Home". Downloads becomes a plain list. Do not change the Submit Case behaviour.
 - [ ] **Step 2: Rx Instructions.** Image hero. Remove the private `playOnView` in favour of `lib/playOnView`. Keep the "Olmos Orthotic Rx (PDF)" and device names.
 - [ ] **Step 3: Certified Labs.**
-  - Title "Certified laboratories", intro "Seven laboratories in the US, Canada and Australia are certified to make these appliances."
+  - Title "Certified laboratories", intro "Laboratories in the US, Canada and Australia are certified to make these appliances."
   - The directory becomes per-country rows and keeps every lab, link and phone number.
   - Remove "Phase I · Phase II · Sleep".
   - Dr. Olmos stays named in the administration paragraph, with its link to his page.
@@ -176,7 +176,8 @@
   - Telemetry line becomes "Bite registration verified".
   - "Olmos-Method protocol" becomes "a documented clinical protocol".
   - Design panel becomes "CAD articulation to the parameters on your Rx. Every occlusal surface mapped."
-  - "50+ Certified Labs" becomes "7 Certified Labs".
+  - Stats: "100% Digital Workflow" becomes "19 Lab Team Members"; "50+ Certified Labs" becomes "3 Countries With Certified Labs". No lab count is stated.
+  - "Full digital workflow. No analog guesswork. Consistent..." becomes "Full digital workflow. Consistent, accurate appliances with fast turnaround."
 - [ ] **Step 3: Run** `pnpm --filter @my-app/web test`. Expected: the whole suite passes, guard test included.
 - [ ] **Step 4: Commit.**
 

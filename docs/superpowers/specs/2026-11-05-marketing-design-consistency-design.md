@@ -99,8 +99,8 @@ The palette is the committed default in `apps/web/src/index.css` (commit `274ab4
 
 ## Claims and copy
 
-- Replace "The only lab built around..." on every page. Certified Labs lists seven labs, so "only" contradicts the site.
-- Home "50+ Certified Labs" becomes "7 Certified Labs", per the directory.
+- Replace "The only lab built around..." on every page. The old Certified Labs page claims seven labs but its directory lists five, so "only" contradicts the site. No count is published until the lab confirms it.
+- Home stats: "100% Digital Workflow" becomes "19 Lab Team Members" and "50+ Certified Labs" becomes "3 Countries With Certified Labs" (US, Canada, Australia). No lab count is stated.
 - Remove filler stats: "100% Digital Workflow", "∞ Digital Reprints", "6 Pipeline Stages", "1 Lab, Every Protocol", "Olmos Series Certified".
 - Keep factual ones: 10 business days, FDA 510(k) on sleep appliances, Team counts.
 - Remove "every micron calculated", "No analog guesswork", "gold standard" and "System Operational".

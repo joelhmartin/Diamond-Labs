@@ -110,7 +110,7 @@ function CertifiedLabs() {
             <div>
               <SectionHeading
                 title="Part of the certified lab network"
-                intro="Diamond Orthotic Laboratory is one of 7 labs certified to fabricate Olmos Series appliances, in the US, Canada and Australia."
+                intro="Diamond Orthotic Laboratory is one of the laboratories in the US, Canada and Australia certified to fabricate Olmos Series appliances."
               />
               <Link to="/resources/certified-labs" className={`mt-6 ${textLink}`}>
                 See the certified labs <ArrowRight size={16} />

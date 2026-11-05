@@ -22,8 +22,9 @@ const read = (p) => readFileSync(p, "utf8");
 
 test("no banned copy appears on marketing pages", () => {
   const banned = /Olmos[- ]Method|Olmos Protocol|System Operational|555\) 123|every micron/i;
+  const bannedExtra = [/\b(seven|7) (certified )?(labs|laboratories)\b/i, /No analog guesswork/i];
   // Checkout.jsx is owned by feat/own-the-lab and has a (555) 123 form placeholder.
-  const hits = files.filter((p) => basename(p) !== "Checkout.jsx" && banned.test(read(p))).map((p) => p.replace(src, ""));
+  const hits = files.filter((p) => basename(p) !== "Checkout.jsx" && (banned.test(read(p)) || bannedExtra.some((r) => r.test(read(p))))).map((p) => p.replace(src, ""));
   assert.deepEqual(hits, []);
 });
 

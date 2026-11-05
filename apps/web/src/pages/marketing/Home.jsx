@@ -269,8 +269,8 @@ function TelemetryTypewriter() {
         </h3>
       </div>
       <p className="text-navy/50 text-sm mb-4">
-        Full digital workflow. No analog guesswork. Consistent, accurate
-        appliances with fast turnaround.
+        Full digital workflow. Consistent, accurate appliances with fast
+        turnaround.
       </p>
       <div className="flex-1 bg-navy/[0.03] rounded-2xl p-4 font-mono text-xs overflow-hidden">
         {lines.map((line, i) => (
@@ -624,10 +624,10 @@ function Philosophy() {
   }, []);
 
   const stats = [
-    { value: "100%", label: "Digital Workflow" },
+    { value: "19", label: "Lab Team Members" },
     { value: "<2wk", label: "Turnaround" },
     { value: "FDA", label: "510(k) Cleared" },
-    { value: "7", label: "Certified Labs" },
+    { value: "3", label: "Countries With Certified Labs" },
   ];
 
   return (

@@ -137,7 +137,7 @@ export function CertifiedLabsPage() {
         image="/images/ond-overview.webp"
         imageAlt="A Diamond-made nylon orthotic appliance"
         title="Certified laboratories"
-        intro="Seven laboratories in the US, Canada and Australia are certified to make these appliances."
+        intro="Laboratories in the US, Canada and Australia are certified to make these appliances."
       />
       <Standard />
       <Directory />
