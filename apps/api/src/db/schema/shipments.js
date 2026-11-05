@@ -54,6 +54,8 @@ export const shipments = pgTable("shipments", {
   index("shipments_status_idx").on(t.status),
   index("shipments_tracking_idx").on(t.trackingNumber),
   index("shipments_purchased_idx").on(t.purchasedAt),
+  // Reports (piece 9): shipments by ship day.
+  index("shipments_shipped_idx").on(t.shippedAt),
 ]);
 
 /** Append-only; drives the shipment timeline. source: carrier | staff */
