@@ -67,6 +67,7 @@ test("invoice PDFs: one shared handler; the doctor's practice's and never a draf
 });
 
 const receivables = read("../receivables.routes.js");
+const statementRun = read("../../services/billing/statement-run.service.js");
 
 test("AR, client statements and notices are admin-only and audited; nothing patient-bearing is emailed", () => {
   assert.match(receivables, /import \{ ADMIN \} from "\.\/admin-invoice\.routes\.js"/);
@@ -75,7 +76,8 @@ test("AR, client statements and notices are admin-only and audited; nothing pati
   const pdf = handlerSource(receivables, 'fastify.get("/admin/clients/:userId/statement.pdf",');
   assert.match(pdf, /statementPdfHandler\(\{/, "the one shared statement handler");
   assert.match(pdf, /clientUserId: request\.params\.userId/);
-  assert.match(handlerSource(receivables, 'fastify.post("/admin/clients/:userId/statement/email",'), /"statement\.emailed"/);
+  assert.match(handlerSource(receivables, 'fastify.post("/admin/clients/:userId/statement/email",'), /sendStatementFor\(request\.params\.userId, request\.body\.month, \{ byUserId: request\.user\.id/);
+  assert.match(statementRun, /action: "statement\.emailed"/);
   assert.match(handlerSource(admin, 'fastify.post("/admin/invoices/:id/email",'), /invoiceEmailHandler\(\)/);
   const mail = handler.slice(handler.indexOf("export function invoiceEmailHandler"));
   assert.match(mail, /"invoice\.emailed"/);
@@ -96,7 +98,20 @@ test("one statement handler serves both audiences; a doctor's covers their pract
 });
 
 test("the emailed statement notice covers the practice, like the doctor's own download", () => {
-  const body = handlerSource(receivables, 'fastify.post("/admin/clients/:userId/statement/email",');
-  assert.match(body, /statementFor\(request\.params\.userId, request\.body\.month, \{ clientUserIds: await practiceUserIds\(target\) \}\)/);
-  assert.match(receivables, /import \{ practiceUserIds \} from "\.\.\/services\/billing\/ledger\.service\.js"/);
+  // The single send lives in the statement-run service (it also writes statement_sends).
+  assert.match(statementRun, /statementFor\(clientUserId, month, \{ clientUserIds: await practiceUserIds\(target, database\) \}, database\)/);
+  assert.match(statementRun, /import \{ practiceUserIds \} from "\.\/ledger\.service\.js"/);
+});
+
+const runRoutes = read("../statement-run.routes.js");
+
+test("the monthly statement run is admin-only, validated, limited to closed months and registered", () => {
+  const get = handlerSource(runRoutes, 'fastify.get("/admin/statements/run",');
+  const post = handlerSource(runRoutes, 'fastify.post("/admin/statements/run",');
+  assert.match(get, /preHandler: \[\.\.\.ADMIN, validateQuery\(statementQuerySchema\)\]/);
+  assert.match(post, /preHandler: \[\.\.\.ADMIN, validate\(statementRunSchema\)\]/);
+  for (const body of [get, post]) assert.match(body, /if \(openMonth\(request\.(query|body)\.month\)\) return openMonthReply\(reply\)/);
+  assert.match(runRoutes, /ERROR_CODES\.STATEMENT_MONTH_OPEN/);
+  assert.match(post, /runStatements\(\{ month: request\.body\.month, clientUserIds: request\.body\.clientUserIds, byUserId: request\.user\.id/);
+  assert.match(index, /await fastify\.register\(statementRunRoutes, \{ prefix: "\/api\/v1" \}\)/);
 });

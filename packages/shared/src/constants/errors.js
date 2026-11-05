@@ -50,6 +50,7 @@ export const ERROR_CODES = {
   ALREADY_REFUNDED: { code: "ALREADY_REFUNDED", status: 409, message: "This transaction has already been refunded or voided." },
   REFUND_FAILED: { code: "REFUND_FAILED", status: 502, message: "The refund could not be completed. Please try again." },
   PRICE_CHANGED: { code: "PRICE_CHANGED", status: 409, message: "Prices changed — please review your order." },
+  STATEMENT_MONTH_OPEN: { code: "STATEMENT_MONTH_OPEN", status: 422, message: "Statements can only be sent for a month that has ended." },
   REFUND_UNCERTAIN: { code: "REFUND_UNCERTAIN", status: 409, message: "The reversal's outcome could not be confirmed — it may have already gone through. Do NOT retry; verify the transaction in Authorize.net and reconcile manually." },
 
   // General

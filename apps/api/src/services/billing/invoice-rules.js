@@ -461,3 +461,16 @@ export function planManualPayment({ openInvoices, amountCents, allocations, paid
   }
   return planned;
 }
+
+/**
+ * An account-level credit (a write-off not tied to one invoice) → its
+ * allocations. It is a manual payment's allocation (oldest-first or the
+ * invoices staff chose) dated today, with a required reason. A credit larger
+ * than the open balance is OVERPAY: there is no unapplied-credit model.
+ */
+export function planAccountCredit({ openInvoices, amountCents, allocations, reason, todayIso }) {
+  const why = trimmed(reason);
+  if (!why) throw new InvoiceError("REASON_REQUIRED", "Say why this credit is being given.");
+  const planned = planManualPayment({ openInvoices, amountCents, allocations, paidOn: todayIso, todayIso });
+  return { allocations: planned, reason: why };
+}

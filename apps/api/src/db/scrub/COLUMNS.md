@@ -90,6 +90,7 @@ Pre-check before the transaction: every plan table and column must exist live ("
 - adjustment_reasons, lab_order_line_materials, lab_orders.remake_reason_id (production desk): the lab's reason labels and percents; materials and lot numbers name products, not people (spec ruling). Non-identifying.
 - tag_definitions, record_tags, record_stars (record-tags module): admin-typed label vocabulary, ids and timestamps only. Non-identifying.
 - shipments apart from the columns above (carrier, service, carrier tracking numbers, status, cents, parcel, the lab's own ship-from, dates); shipment_events status and dates; lab_orders.shipment_id and invoice_lines.shipment_id; invoices and invoice_lines apart from the columns above (numbers, status, dates, cents, codes, quantities, price sources); invoice_payments money columns, ids, sources and `paid_on`; autopay_attempts (allocations are invoice id/number/amount), orders money columns and transaction ids, order_items, catalog and product tables, memberships, app_theme, calendars and calendar_holidays (business hours, holidays, capacity numbers), workflows, workflow_stages, workflow_assignments and workflow_plans (stage templates, subject ids, plan dates and stage targets).
+- price_lists (name and description are staff text about the list, not a person), price_list_items and client_price_lists (ids, cents, positions, assignment stamps); statement_sends (ids, a month, a closing balance in cents, a status and send stamps).
 
 ## Not in the schema
 

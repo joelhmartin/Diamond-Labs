@@ -19,7 +19,8 @@ const labLines = [
 test("a released lab order gets a draft invoice priced from the client's prices", async () => {
   const tx = fakeTx({ selects: [
     [{ id: "v1", basePriceCents: 45000, taxable: false }], // variants
-    [{ variantId: "v1", priceCents: 40500 }], // client prices
+    [{ variantId: "v1", priceCents: 40500 }], // client overrides
+    [], // assigned price lists (none)
     [{ max: 500010 }], // invoice number
   ] });
   const out = await mod.createDraftForLabOrder(tx, { labOrder: { id: "lo1", clientUserId: "doc1", isRemake: false }, lines: labLines, byUserId: "staff1" });
@@ -34,7 +35,7 @@ test("a released lab order gets a draft invoice priced from the client's prices"
 });
 
 test("a remake's draft copies the lines at no charge", async () => {
-  const tx = fakeTx({ selects: [[{ id: "v1", basePriceCents: 45000, taxable: false }], [], [{ max: null }]] });
+  const tx = fakeTx({ selects: [[{ id: "v1", basePriceCents: 45000, taxable: false }], [], [], [{ max: null }]] });
   await mod.createDraftForLabOrder(tx, { labOrder: { id: "lo2", clientUserId: "doc1", isRemake: true }, lines: labLines.slice(0, 1) });
   const [invoice, lines] = inserts(tx);
   assert.equal(invoice.totalCents, 0);
@@ -44,7 +45,7 @@ test("a remake's draft copies the lines at no charge", async () => {
 
 test("a remake from a 50% reason gets a draft priced at half (ruling R6)", async () => {
   const reason = { id: "r1", appliesTo: "remake", label: "Change of occlusion", discountPercent: 50, active: true, position: 0 };
-  const tx = fakeTx({ selects: [[{ id: "v1", basePriceCents: 45000, taxable: false }], [{ variantId: "v1", priceCents: 40500 }], [{ max: null }], [reason]] });
+  const tx = fakeTx({ selects: [[{ id: "v1", basePriceCents: 45000, taxable: false }], [{ variantId: "v1", priceCents: 40500 }], [], [{ max: null }], [reason]] });
   await mod.createDraftForLabOrder(tx, { labOrder: { id: "lo3", clientUserId: "doc1", isRemake: true, remakeReasonId: "r1" }, lines: labLines.slice(0, 1) });
   const [invoice, lines] = inserts(tx);
   assert.equal(invoice.totalCents, 20250);
@@ -99,7 +100,8 @@ test("a lab order released before invoicing existed is drafted on ship, then iss
     [{ id: "lo1", source: "rx_case", clientUserId: "doc1", isRemake: false }],
     [labLines[0]],
     [{ id: "v1", basePriceCents: 45000, taxable: false }],
-    [],
+    [], // client overrides
+    [], // assigned price lists
     [{ max: null }],
     [draftRow],
     [{ id: "l1", description: "DDSO", priceSource: "base", priceNote: null }],

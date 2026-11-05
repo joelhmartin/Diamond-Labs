@@ -325,6 +325,13 @@ test("server mode bulk actions get the rows from the latest fetch, not the ones 
   assert.deepEqual(run.mock.calls[0][0].map((r) => [r.id, r.version]), [["r1", 2], ["r2", 2]]);
 });
 
+test("resultToast: success, partial (warning) or none done (error), longer when something failed", async () => {
+  const { resultToast } = await import("./index.js");
+  assert.deepEqual(resultToast({ ok: 2, failed: [] }), { message: "2 done", type: "success", duration: 4000 });
+  assert.deepEqual(resultToast({ ok: 1, failed: [{ id: "a", message: "x" }] }), { message: "1 done, 1 failed: a x", type: "warning", duration: 8000 });
+  assert.equal(resultToast({ ok: 0, failed: [{ id: "a", message: "x" }] }).type, "error");
+});
+
 test("a bulk action with choices shows a select and passes the picked value to run", async () => {
   const run = vi.fn(async () => {});
   mount(<Harness bulkActions={[{ id: "set", label: "Set status", choices: [{ value: "a", label: "Alpha" }, { value: "b", label: "Beta" }], run }]} />);

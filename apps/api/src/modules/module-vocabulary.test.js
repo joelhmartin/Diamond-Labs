@@ -16,6 +16,15 @@ const ROOTS = [
   ...["record-tags", "record-files", "barcode-lookup", "upload-intake"].map((m) =>
     fileURLToPath(new URL(`../../../../packages/shared/src/${m}`, import.meta.url)),
   ),
+  fileURLToPath(new URL("../../../../packages/shared/src/exports", import.meta.url)),
+];
+// The exports dirs are also free of the word "invoice" (the invoice source is
+// app glue in apps/api/src/exports).
+const INVOICE_WORD = /invoice/i;
+const EXPORT_ROOTS = [
+  fileURLToPath(new URL("./exports", import.meta.url)),
+  fileURLToPath(new URL("../../../web/src/modules/exports", import.meta.url)),
+  fileURLToPath(new URL("../../../../packages/shared/src/exports", import.meta.url)),
 ];
 
 function* walk(dir) {
@@ -35,6 +44,18 @@ test("generic modules contain no lab vocabulary", () => {
       if (file === SELF) continue;
       readFileSync(file, "utf8").split("\n").forEach((line, i) => {
         if (BANNED.test(line)) hits.push(`${path.relative(root, file)}:${i + 1}: ${line.trim()}`);
+      });
+    }
+  }
+  assert.deepEqual(hits, []);
+});
+
+test("the exports module does not mention invoices", () => {
+  const hits = [];
+  for (const root of EXPORT_ROOTS) {
+    for (const file of walk(root)) {
+      readFileSync(file, "utf8").split("\n").forEach((line, i) => {
+        if (INVOICE_WORD.test(line)) hits.push(`${path.relative(root, file)}:${i + 1}: ${line.trim()}`);
       });
     }
   }

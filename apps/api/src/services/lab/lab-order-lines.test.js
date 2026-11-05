@@ -100,7 +100,7 @@ test("remove deletes the invoice line linked by labOrderLineId", async () => {
 test("a remake order's added line is priced as remake", async () => {
   const h = harness({
     orderRow: order({ isRemake: true }),
-    rest: [[variant], [draftInvoice], [variant], [{ variantId: "v1", priceCents: 40500 }], [invoiceLine]],
+    rest: [[variant], [draftInvoice], [variant], [{ variantId: "v1", priceCents: 40500 }], [], [invoiceLine]],
   });
   await changeLines("lo1", { edit: { op: "add", variantId: "v1", qty: 2 }, expectedVersion: 3, byUserId: "staff1" }, h.database);
   const added = inserts(h.tx).find((v) => v && "priceSource" in v);
@@ -113,7 +113,7 @@ test("a line added later to a 50% remake is priced at 50% off (ruling R6)", asyn
   const reason = { id: "r1", appliesTo: "remake", label: "Change of occlusion", discountPercent: 50, active: true, position: 0 };
   const h = harness({
     orderRow: order({ isRemake: true, remakeReasonId: "r1" }),
-    rest: [[variant], [draftInvoice], [variant], [{ variantId: "v1", priceCents: 40500 }], [reason], [invoiceLine]],
+    rest: [[variant], [draftInvoice], [variant], [{ variantId: "v1", priceCents: 40500 }], [], [reason], [invoiceLine]],
   });
   await changeLines("lo1", { edit: { op: "add", variantId: "v1", qty: 1 }, expectedVersion: 3, byUserId: "staff1" }, h.database);
   const added = inserts(h.tx).find((v) => v && "priceSource" in v);

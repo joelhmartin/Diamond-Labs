@@ -85,7 +85,7 @@ test("an intake id is refused until intake promotion exists (the whole create ro
 
 test("lines come from the catalog and are priced for the client", async () => {
   const v1 = { id: "v1", code: "2608", name: "DDSO Nylon", basePriceCents: 45000, taxable: false };
-  const tx = fakeTx({ selects: [doctor, [v1], [{ max: 100049 }], [v1], [{ variantId: "v1", priceCents: 40500 }], [{ max: 500010 }]] });
+  const tx = fakeTx({ selects: [doctor, [v1], [{ max: 100049 }], [v1], [{ variantId: "v1", priceCents: 40500 }], [], [{ max: 500010 }]] });
   await createStaffOrder({ input: { ...quick, lines: [{ variantId: "v1", qty: 2, name: "nope" }] }, byUserId: "staff1" }, fakeDb(tx));
   assert.deepEqual(sched.defaultDueAt.mock.calls[0][1].variantIds, ["v1"], "the workflow is picked from the ordered variants");
   const [, benchLines, , invoice, invoiceLines] = inserts(tx);
@@ -96,7 +96,7 @@ test("lines come from the catalog and are priced for the client", async () => {
 
 test("price preview prices catalog lines for the client without writing", async () => {
   const v1 = { id: "v1", code: "2608", name: "DDSO Nylon", basePriceCents: 45000, taxable: false };
-  const tx = fakeTx({ selects: [[v1], [v1], [{ variantId: "v1", priceCents: 40500 }]] });
+  const tx = fakeTx({ selects: [[v1], [v1], [{ variantId: "v1", priceCents: 40500 }], []] });
   const out = await previewPrices({ clientUserId: "doc1", lines: [{ variantId: "v1", qty: 1 }] }, tx);
   assert.deepEqual(out.map((l) => [l.description, l.unitCents, l.priceSource]), [["DDSO Nylon", 40500, "client"]]);
   assert.equal(tx.log.filter((l) => l.op === "insert" || l.op === "update").length, 0);
