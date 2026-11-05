@@ -15,7 +15,7 @@ import {
 import { CONTACT_SUBJECTS } from "@my-app/shared";
 import { PageHero } from "../../components/marketing/PageHero";
 import { Reveal } from "../../components/marketing/Reveal";
-import { SectionHeading } from "../../components/marketing/SectionHeading";
+import { HeroStage } from "../../components/marketing/HeroStage";
 
 const SOCIALS = [
   { icon: Facebook, href: "https://facebook.com/diamondorthotic", label: "Facebook" },
@@ -233,52 +233,58 @@ function ContactInfo() {
   ];
 
   return (
-    <div>
-      <SectionHeading title="Get in touch" />
-      <p className="mt-3 text-navy/70 text-sm leading-relaxed max-w-sm">
-        Whether you have questions about our products, need help with case
-        submission, or want to learn about our digital workflow — we&apos;re
-        here to help.
-      </p>
+    <div className="relative overflow-hidden rounded-[2.5rem] md:rounded-[3rem] bg-navy">
+      <HeroStage />
+      <div className="relative z-10 p-8 md:p-12">
+        <h2 className="font-heading font-bold text-3xl md:text-4xl tracking-tight text-on-dark">Get in touch</h2>
+        <p className="mt-3 text-on-dark/75 leading-relaxed max-w-sm">
+          Whether you have questions about our products, need help with case
+          submission, or want to learn about our digital workflow — we&apos;re
+          here to help.
+        </p>
 
-      <div className="mt-8 space-y-4">
-        {items.map((item, i) => (
-          <div key={i} className="flex items-start gap-4">
-            <div className="w-10 h-10 rounded-xl bg-brand-500/10 flex items-center justify-center flex-shrink-0">
-              <item.icon size={16} className="text-brand-700" />
-            </div>
-            <div>
-              <span className="text-xs text-navy/70">{item.label}</span>
-              <p className={`text-sm font-medium text-navy ${item.mono ? "font-mono" : ""}`}>
-                {item.href ? (
-                  <a href={item.href} className="hover:underline">
-                    {item.value}
-                  </a>
-                ) : (
-                  item.value
-                )}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Social links */}
-      <div className="mt-8 pt-6 border-t border-surface-300/30">
-        <span className="text-xs text-navy/70">Follow us</span>
-        <div className="mt-3 flex items-center gap-3">
-          {SOCIALS.map((s) => (
-            <a
-              key={s.label}
-              href={s.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-10 h-10 rounded-xl bg-surface-100 border border-surface-300/50 flex items-center justify-center text-navy/70 hover:text-brand-700 hover:border-brand-700/40 transition-all duration-300"
-              aria-label={s.label}
+        <ul className="mt-8 space-y-3">
+          {items.map((item) => (
+            <li
+              key={item.label}
+              className="flex items-center gap-4 rounded-2xl bg-white/[0.07] border border-white/10 backdrop-blur-sm p-4"
             >
-              <s.icon size={16} />
-            </a>
+              <span className="grid place-items-center w-12 h-12 rounded-2xl bg-brand-500/20 text-brand-300 flex-shrink-0">
+                <item.icon size={20} aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <span className="block text-xs text-on-dark/70">{item.label}</span>
+                <span className={`block font-medium text-on-dark ${item.mono ? "font-mono" : ""}`}>
+                  {item.href ? (
+                    <a href={item.href} className="hover:underline">
+                      {item.value}
+                    </a>
+                  ) : (
+                    item.value
+                  )}
+                </span>
+              </div>
+            </li>
           ))}
+        </ul>
+
+        {/* Social links */}
+        <div className="mt-8 pt-6 border-t border-white/15">
+          <span className="text-xs text-on-dark/70">Follow us</span>
+          <div className="mt-3 flex items-center gap-3">
+            {SOCIALS.map((s) => (
+              <a
+                key={s.label}
+                href={s.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-11 h-11 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-on-dark/85 hover:bg-white/20 transition-all duration-300"
+                aria-label={s.label}
+              >
+                <s.icon size={18} />
+              </a>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -290,16 +296,16 @@ export function ContactPage() {
   return (
     <>
       <PageHero
-        variant="image"
-        title="Contact the lab"
+        title="Contact"
+        titleAccent="the lab."
         intro="Questions about a product, a case in progress or setting up an account. Call, email or use the form."
-        image="/images/hero.webp"
-        imageAlt="A white sleep appliance with blue connectors on a dark surface"
+        product="/images/onp-clear.webp"
+        productAlt="An ONP appliance on a blue dental model"
       />
       <Reveal className="section-pad py-16 md:py-24">
-        <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16">
+        <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-10 items-start">
           <ContactInfo />
-          <div className="bg-white card-radius p-6 md:p-8 border border-surface-300/50 shadow-sm">
+          <div className="bg-white rounded-[2.5rem] md:rounded-[3rem] p-6 md:p-10 border border-surface-300/60 shadow-xl shadow-navy/10">
             <ContactForm />
           </div>
         </div>

@@ -106,7 +106,7 @@ function Hero() {
 
         <div
           data-hero-anim
-          className="mt-10 md:mt-12 flex flex-wrap items-center gap-x-5 gap-y-2 md:gap-x-8 text-on-dark/40 text-xs font-mono font-medium"
+          className="mt-10 md:mt-12 flex flex-wrap items-center gap-x-5 gap-y-2 md:gap-x-8 text-on-dark/70 text-xs font-mono font-medium"
         >
           <span>Quality</span>
           <span className="w-1 h-1 rounded-full bg-white/20" />
@@ -149,19 +149,22 @@ function DiagnosticShuffler() {
 
   const cards = [
     {
-      label: "Protocol Assessment",
-      status: "Complete",
+      label: "Diamond Digital Sleep Orthotic",
+      status: "Sleep",
       color: "bg-brand-500",
+      image: "/images/ddso-post-iso.webp",
     },
     {
-      label: "Digital Articulation Review",
-      status: "In Progress",
+      label: "Olmos Neuromuscular Device",
+      status: "TMD",
       color: "bg-accent-500",
+      image: "/images/ond-overview.webp",
     },
     {
-      label: "Clinical Verification",
-      status: "Pending",
+      label: "Olmos Neuromuscular Positioner",
+      status: "TMD",
       color: "bg-emerald-500",
+      image: "/images/onp-nylon4.webp",
     },
   ];
 
@@ -173,7 +176,7 @@ function DiagnosticShuffler() {
           Clinical Protocol Expertise
         </h3>
       </div>
-      <p className="text-navy/50 text-sm mb-6">
+      <p className="text-navy/70 text-sm mb-6">
         We understand the clinical protocol, not just the fabrication.
       </p>
       <div className="relative flex-1" style={{ minHeight: "140px" }}>
@@ -194,13 +197,14 @@ function DiagnosticShuffler() {
             <div className="flex items-center justify-between" style={{ visibility: pos === 0 ? "visible" : "hidden" }}>
               <div className="flex items-center gap-3">
                 <span
-                  className={`w-2 h-2 rounded-full ${cards[idx].color}`}
+                  className={`w-2 h-2 rounded-full flex-shrink-0 ${cards[idx].color}`}
                 />
+                <img src={cards[idx].image} alt="" className="h-9 w-12 object-contain" />
                 <span className="text-sm font-medium text-navy/80">
                   {cards[idx].label}
                 </span>
               </div>
-              <span className="text-xs font-mono text-navy/40">
+              <span className="text-xs font-mono text-navy/70">
                 {cards[idx].status}
               </span>
             </div>
@@ -217,14 +221,13 @@ function TelemetryTypewriter() {
   const [currentLine, setCurrentLine] = useState("");
   const [charIndex, setCharIndex] = useState(0);
   const feedMessages = [
-    "▸ Intraoral scan received — case #4012",
-    "▸ CAD articulation parameters loaded",
-    "▸ Bite registration verified",
-    "▸ Material: Nylon PA12 — biocompatible",
-    "▸ 3D print queue: position 2 of 8",
-    "▸ Quality control: dimensional check passed",
-    "▸ Appliance shipped — tracking generated",
-    "▸ Digital workflow cycle: 4.2 days avg",
+    "▸ Intraoral scan — STL and native files accepted",
+    "▸ Digital bite registration",
+    "▸ CAD articulation to the parameters on your Rx",
+    "▸ Printed in biocompatible PA12 nylon",
+    "▸ Dimensional check against the design file",
+    "▸ Shipped with tracking, care kit and instructions",
+    "▸ Case archived digitally for reprint",
   ];
   const lineIndex = useRef(0);
 
@@ -258,13 +261,13 @@ function TelemetryTypewriter() {
           Digital-First Precision
         </h3>
       </div>
-      <p className="text-navy/50 text-sm mb-4">
+      <p className="text-navy/70 text-sm mb-4">
         Full digital workflow. Consistent, accurate appliances with fast
         turnaround.
       </p>
-      <div className="flex-1 bg-navy/[0.03] rounded-2xl p-4 font-mono text-xs overflow-hidden">
+      <div className="flex-1 min-h-[9rem] bg-navy/[0.03] rounded-2xl p-4 font-mono text-xs overflow-hidden">
         {lines.map((line, i) => (
-          <div key={i} className="text-navy/40 leading-relaxed truncate">
+          <div key={i} className="text-navy/70 leading-relaxed">
             {line}
           </div>
         ))}
@@ -296,7 +299,7 @@ function TMJSleepCard() {
           TMJ + Sleep Under One Roof
         </h3>
       </div>
-      <p className="text-navy/50 text-sm mb-4">
+      <p className="text-navy/70 text-sm mb-4">
         Dual specialization in TMD orthotics and FDA-cleared sleep appliances.
         One lab, every case.
       </p>
@@ -323,7 +326,7 @@ function TMJSleepCard() {
               <line x1="43" y1="25" x2="47" y2="25" stroke="rgb(var(--navy))" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
             <span className={`mt-2 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all duration-500 ${
-              phase === 0 ? "bg-brand-500 text-white" : "bg-surface-200/60 text-navy/30"
+              phase === 0 ? "bg-brand-500 text-white" : "bg-surface-200/60 text-navy/70"
             }`}>
               TMD
             </span>
@@ -332,7 +335,7 @@ function TMJSleepCard() {
           {/* Divider */}
           <div className="flex flex-col items-center gap-1">
             <div className="w-px h-12 bg-navy/10" />
-            <span className="text-[9px] font-mono text-navy/20">+</span>
+            <span className="text-[9px] font-mono text-navy/70">+</span>
             <div className="w-px h-12 bg-navy/10" />
           </div>
 
@@ -356,7 +359,7 @@ function TMJSleepCard() {
               <path d="M18 58 Q38 48 58 58" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
             </svg>
             <span className={`mt-2 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all duration-500 ${
-              phase === 1 ? "bg-accent-500 text-white" : "bg-surface-200/60 text-navy/30"
+              phase === 1 ? "bg-accent-500 text-white" : "bg-surface-200/60 text-navy/70"
             }`}>
               Sleep
             </span>
@@ -366,7 +369,7 @@ function TMJSleepCard() {
         {/* "One Roof" bar */}
         <div className="mt-4 w-full flex items-center gap-2">
           <div className="flex-1 h-px bg-navy/10" />
-          <span className="text-[9px] font-mono text-navy/25 uppercase tracking-widest">One Lab · Every Case</span>
+          <span className="text-[9px] font-mono text-navy/70 uppercase tracking-widest">One Lab · Every Case</span>
           <div className="flex-1 h-px bg-navy/10" />
         </div>
       </div>
@@ -427,7 +430,7 @@ function TurnaroundTimeline() {
           2-Week Turnaround
         </h3>
       </div>
-      <p className="text-navy/50 text-sm mb-4">
+      <p className="text-navy/70 text-sm mb-4">
         From scan to delivery in 10 business days or less. No shortcuts — just
         an efficient digital pipeline.
       </p>
@@ -436,7 +439,7 @@ function TurnaroundTimeline() {
         <div className="space-y-2">
           <div>
             <div className="flex items-center justify-between mb-1.5 px-0.5">
-              <span className="text-[10px] font-mono text-navy/30 uppercase">Week 1</span>
+              <span className="text-[10px] font-mono text-navy/70 uppercase">Week 1</span>
             </div>
             <div className="grid grid-cols-5 gap-1">
               {week1.map((day, i) => {
@@ -453,7 +456,7 @@ function TurnaroundTimeline() {
                         ? "bg-brand-500 text-white ring-2 ring-brand-500/30 scale-105"
                         : isFilled
                         ? "bg-brand-500/80 text-white"
-                        : "bg-surface-200/60 text-navy/30"
+                        : "bg-surface-200/60 text-navy/70"
                     }`}
                   >
                     {day}
@@ -464,7 +467,7 @@ function TurnaroundTimeline() {
           </div>
           <div>
             <div className="flex items-center justify-between mb-1.5 px-0.5">
-              <span className="text-[10px] font-mono text-navy/30 uppercase">Week 2</span>
+              <span className="text-[10px] font-mono text-navy/70 uppercase">Week 2</span>
             </div>
             <div className="grid grid-cols-5 gap-1">
               {week2.map((day, i) => {
@@ -481,7 +484,7 @@ function TurnaroundTimeline() {
                         ? "bg-brand-500 text-white ring-2 ring-brand-500/30 scale-105"
                         : isFilled
                         ? "bg-brand-500/80 text-white"
-                        : "bg-surface-200/60 text-navy/30"
+                        : "bg-surface-200/60 text-navy/70"
                     }`}
                   >
                     {day}
@@ -499,7 +502,7 @@ function TurnaroundTimeline() {
               activeLabel === "Arrived!"
                 ? "bg-emerald-500 text-white"
                 : activeLabel
-                ? "bg-brand-500/10 text-brand-500"
+                ? "bg-brand-500/10 text-brand-700"
                 : "bg-transparent text-transparent"
             }`}
           >
@@ -541,13 +544,13 @@ function Features() {
     <section ref={sectionRef} className="section-pad py-24 md:py-28">
       <div className="max-w-6xl mx-auto">
         <div className="mb-12 md:mb-16">
-          <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
+          <span className="font-mono text-xs text-navy/70 uppercase tracking-widest">
             Why Diamond
           </span>
           <h2 className="mt-3 font-heading font-bold text-3xl md:text-4xl tracking-tight text-balance">
             Built for the protocol.
             <br />
-            <span className="text-brand-500">Not just the appliance.</span>
+            <span className="text-brand-700">Not just the appliance.</span>
           </h2>
         </div>
 
@@ -648,7 +651,7 @@ function Philosophy() {
         <div className="max-w-6xl mx-auto">
           {/* Top label */}
           <div data-phil className="mb-6">
-            <span className="font-mono text-[10px] font-semibold text-on-dark/25 uppercase tracking-[0.2em]">
+            <span className="font-mono text-[10px] font-semibold text-on-dark/60 uppercase tracking-[0.2em]">
               Our Philosophy
             </span>
           </div>
@@ -667,7 +670,7 @@ function Philosophy() {
 
           {/* Supporting text */}
           <div data-phil className="mt-10 md:mt-14 max-w-xl">
-            <p className="text-on-dark/40 text-sm md:text-base font-medium leading-relaxed">
+            <p className="text-on-dark/70 text-sm md:text-base font-medium leading-relaxed">
               Every orthotic we fabricate follows a documented clinical protocol
               and is quality-checked before it leaves our lab. Digital cases
               are designed in CAD, and printed appliances are SLS-printed to
@@ -683,7 +686,7 @@ function Philosophy() {
                   <span className="block font-heading font-bold text-3xl md:text-4xl text-on-dark tracking-tight">
                     {s.value}
                   </span>
-                  <span className="block font-mono text-[10px] font-semibold text-on-dark/30 uppercase tracking-wider mt-1">
+                  <span className="block font-mono text-[10px] font-semibold text-on-dark/60 uppercase tracking-wider mt-1">
                     {s.label}
                   </span>
                 </div>
@@ -767,7 +770,7 @@ function Protocol() {
     {
       step: "03",
       title: "Fabricate",
-      desc: "3D printed in clinical-grade materials. Quality verified. Shipped with tracking and care kit.",
+      desc: "Printed appliances are made in biocompatible nylon. Quality verified. Shipped with tracking and care kit.",
       Icon: Printer,
       animation: <PulsingWaveform />,
     },
@@ -787,13 +790,13 @@ function Protocol() {
             <div className="section-pad w-full max-w-6xl mx-auto">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
                 <div>
-                  <span className="font-mono text-brand-500 text-sm mb-4 block">
+                  <span className="font-mono text-brand-700 text-sm mb-4 block">
                     {step.step}
                   </span>
                   <h3 className="font-heading font-bold text-4xl md:text-6xl tracking-tight mb-4">
                     {step.title}
                   </h3>
-                  <p className="text-navy/50 text-lg max-w-md leading-relaxed">
+                  <p className="text-navy/70 text-lg max-w-md leading-relaxed">
                     {step.desc}
                   </p>
                 </div>
