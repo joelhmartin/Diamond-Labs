@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { id, isoDate, pageQueryShape } from "./common.schema.js";
 import { LAB_ORDER_STATUSES, LAB_ORDER_SOURCES, LAB_BOARD_TILES } from "../lab/lab-order-status.js";
+import { LAB_ENCLOSED_KINDS, LAB_DELIVERY_METHODS, LAB_ENCLOSURE_NOTE_MAX, LAB_PAN_MAX } from "../lab/production-desk.js";
 import { ROLE_CHANGE_CHOICES } from "../constants/user-roles.js";
 import { workflowPreviewSchema } from "../workflows/workflow.schema.js";
 
@@ -14,14 +15,37 @@ export const labStatusChangeSchema = z.object({
   expectedVersion: version,
 });
 
+const enclosureItem = z.object({
+  kind: z.enum(LAB_ENCLOSED_KINDS),
+  date: isoDate.optional(),
+  note: z.string().max(LAB_ENCLOSURE_NOTE_MAX).optional(),
+});
+
+// Production-desk field pieces, shared by the field edit below and staff order entry (lab-desk.schema.js).
+/** One item per kind, so never more items than kinds. */
+export const labEnclosuresSchema = z.array(enclosureItem).max(LAB_ENCLOSED_KINDS.length)
+  .refine((l) => new Set(l.map((e) => e.kind)).size === l.length, "List each kind once.");
+export const labPanSchema = z.string().max(LAB_PAN_MAX);
+export const labDeliveryMethodSchema = z.enum(LAB_DELIVERY_METHODS);
+export const labNotesSchema = z.string().max(5000);
+export const labVersionSchema = version;
+
 export const labFieldChangeSchema = z.discriminatedUnion("field", [
   z.object({ field: z.literal("assign"), value: id.nullable(), expectedVersion: version }),
   z.object({ field: z.literal("department"), value: id.nullable(), expectedVersion: version }),
   z.object({ field: z.literal("due"), value: isoDate.nullable(), expectedVersion: version }),
-  z.object({ field: z.literal("notes"), value: z.string().max(5000).nullable(), expectedVersion: version }),
+  z.object({ field: z.literal("notes"), value: labNotesSchema.nullable(), expectedVersion: version }),
+  z.object({ field: z.literal("pan"), value: labPanSchema.nullable(), expectedVersion: version }),
+  z.object({ field: z.literal("delivery"), value: labDeliveryMethodSchema.nullable(), expectedVersion: version }),
+  z.object({ field: z.literal("enclosures"), value: labEnclosuresSchema.nullable(), expectedVersion: version }),
 ]);
 
-export const labRemakeSchema = z.object({ reason: reason.min(1), expectedVersion: version });
+// Why: a picked reason (reasonId) and/or free text; at least one is required.
+export const labRemakeSchema = z.object({
+  reasonId: id.optional(),
+  reason: reason.optional(),
+  expectedVersion: version,
+}).refine((b) => Boolean(b.reasonId) || Boolean(b.reason), { message: "Say why this order is being remade.", path: ["reason"] });
 
 export const labDepartmentCreateSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -34,12 +58,22 @@ export const labDepartmentUpdateSchema = z.object({
   active: z.boolean().optional(),
 }).refine((o) => Object.keys(o).length > 0, "Nothing to change.");
 
+/** A query-string id list: "a,b" or a repeated key; blanks and repeats dropped; at most `max`. */
+const idListOf = (max) => z
+  .union([z.string(), z.array(z.string())])
+  .optional()
+  .transform((v) => [...new Set([].concat(v ?? []).flatMap((s) => s.split(",")).map((s) => s.trim()).filter(Boolean))])
+  .pipe(z.array(id).max(max));
+const idList = idListOf(100);
+
 export const labOrderListQuerySchema = z.object({
   status: z.enum(LAB_ORDER_STATUSES).optional(),
   source: z.enum(LAB_ORDER_SOURCES).optional(),
   departmentId: id.optional(),
   assigneeUserId: id.optional(),
   rush: flag,
+  tagIds: idListOf(20), // labels: an order with any of them
+  starred: flag, // only the viewer's starred orders
   dueBefore: isoDate.optional(),
   dueOn: isoDate.optional(),
   tile: z.enum(LAB_BOARD_TILES).optional(),
@@ -59,12 +93,6 @@ export const labWorkflowChangeSchema = z.object({
   expectedVersion: version,
 });
 
-/** `variantIds` arrives as "a,b" or as a repeated query key. */
-const idList = z
-  .union([z.string(), z.array(z.string())])
-  .optional()
-  .transform((v) => [...new Set([].concat(v ?? []).flatMap((s) => s.split(",")).map((s) => s.trim()).filter(Boolean))])
-  .pipe(z.array(id).max(100));
 
 /** A dry run of the due-date rules, for staff order entry. */
 export const labSchedulePreviewQuerySchema = z.object({

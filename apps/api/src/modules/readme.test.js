@@ -15,6 +15,10 @@ const READMES = {
   sms: "./sms/README.md",
   "notifications (web)": "../../../web/src/modules/notifications/README.md",
   "messaging (web)": "../../../web/src/modules/messaging/README.md",
+  "record-tags": "./record-tags/README.md",
+  "record-files": "./record-files/README.md",
+  "barcode-lookup": "./barcode-lookup/README.md",
+  "upload-intake": "./upload-intake/README.md",
 };
 
 for (const [mod, rel] of Object.entries(READMES)) {

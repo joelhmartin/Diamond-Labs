@@ -34,10 +34,13 @@ test("a release claims the case before inserting, so a double click can't make t
 
 test("hold reasons, lab notes and event notes are sealed on write and opened on read", () => {
   const crypto = readFileSync(new URL("./lab-order-crypto.js", import.meta.url), "utf8");
-  assert.match(crypto, /SECRET_ORDER_FIELDS = \["holdReason", "labNotes", "legacyPatient"\]/);
+  assert.match(crypto, /SECRET_ORDER_FIELDS = \["holdReason", "labNotes", "legacyPatient", "enclosures", "patientName"\]/);
   assert.match(source, /from "\.\/lab-order-crypto\.js"/);
-  assert.match(source, /encryptField/);
-  assert.match(source, /decryptField/);
+  // Event notes are sealed/opened by sealEvent/openEvent, which live beside the order sealer.
+  assert.match(source, /sealEvent/);
+  assert.match(source, /openEvent/);
+  assert.match(crypto, /encryptField/);
+  assert.match(crypto, /decryptField/);
 });
 
 test("stored values are opened before the planners compare old vs new", () => {
@@ -131,6 +134,16 @@ test("a search looks through shipped history; the board's shipped window only ap
 test("a calendar day click (dueOn) is not trimmed by the shipped window, so it matches the calendar count", () => {
   const body = source.slice(source.indexOf("function boardWhere"), source.indexOf("export async function listLabOrders"));
   assert.match(body, /!f\.includeClosed && !f\.q && !f\.dueOn/);
+});
+
+test("the board filters by labels and by the viewer's stars, and cards carry both", () => {
+  const where = source.slice(source.indexOf("function boardWhere"), source.indexOf("export const LIST_LIMIT"));
+  assert.match(where, /taggedWithAny\(LAB_ORDER_RECORD_TYPE, labOrders\.id, f\.tagIds\)/);
+  assert.match(where, /starredBy\(LAB_ORDER_RECORD_TYPE, labOrders\.id, f\.viewerUserId\)/);
+  assert.match(where, /sql`false`/, "starred with no viewer matches nothing");
+  const list = source.slice(source.indexOf("export async function listLabOrders"), source.indexOf("async function countLabOrders"));
+  assert.match(list, /tagsFor\(LAB_ORDER_RECORD_TYPE/);
+  assert.match(list, /starsFor\(LAB_ORDER_RECORD_TYPE, ids, filters\.viewerUserId/);
 });
 
 test("Admin > Orders is newest-received-first and says when the cap trimmed it; the board keeps rush/due order", () => {

@@ -33,6 +33,23 @@ test("boardParams includes tile and dueOn only when set", () => {
   assert.deepEqual(boardParams({ tile: null }), {});
 });
 
+test("boardParams joins tagIds with commas and drops empty", () => {
+  assert.deepEqual(boardParams({ tagIds: ["t1", "t2"] }), { tagIds: "t1,t2" });
+  assert.deepEqual(boardParams({ tagIds: [] }), {});
+  assert.deepEqual(boardParams({ tagIds: ["", "t1", " "] }), { tagIds: "t1" });
+  assert.deepEqual(boardParams({ starred: true, tile: "past_due" }), { starred: "true", tile: "past_due" });
+  assert.deepEqual(boardParams({ starred: false }), {});
+});
+
+test("a label event reads as a sentence with the label", () => {
+  assert.equal(describeEvent({ type: "label", to: "Rush check", note: "Label added", byName: "Ana" }), "Ana: Label added — Rush check");
+  assert.equal(describeEvent({ type: "label", to: "Rush check", note: "Label removed", byName: null }), "System: Label removed — Rush check");
+});
+
+test("a merge event reads its note", () => {
+  assert.equal(describeEvent({ type: "merge", note: "Merged #101, #102 into this order", byName: "Ana" }), "Ana: Merged #101, #102 into this order");
+});
+
 test("timeline rows read as sentences, naming people and rooms", () => {
   const ctx = { staffById: { t1: "Maria Lopez" }, departmentsById: { d1: "Acrylic" } };
   assert.equal(describeEvent({ type: "release", byName: null }, ctx), "System: released to the lab");

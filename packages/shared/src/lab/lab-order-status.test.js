@@ -183,7 +183,9 @@ test("a manual shipment shows what staff typed, with no link", () => {
 });
 
 test("lab orders come from an Rx case, a shop order, or Seazona history", () => {
-  assert.deepEqual(LAB_ORDER_SOURCES, ["rx_case", "shop_order", "legacy"]);
+  assert.deepEqual(LAB_ORDER_SOURCES, ["rx_case", "shop_order", "legacy", "staff"]);
+  assert.equal(LAB_ORDER_SOURCE_LABELS.staff, "Staff entry");
+  assert.equal(canRemake({ status: "shipped", source: "staff" }), true);
   for (const s of LAB_ORDER_SOURCES) assert.ok(LAB_ORDER_SOURCE_LABELS[s], s);
   assert.equal(LAB_ORDER_SOURCE_LABELS.legacy, "Seazona history");
 });

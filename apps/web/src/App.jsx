@@ -43,6 +43,7 @@ import { AdminLabAlertsPage } from "./pages/app/AdminLabAlertsPage.jsx";
 import { NotificationsPage } from "./pages/app/NotificationsPage.jsx";
 import { AdminOrdersPage } from "./pages/app/AdminOrdersPage.jsx";
 import { AdminDepartmentsPage } from "./pages/app/AdminDepartmentsPage.jsx";
+import { AdminAdjustmentReasonsPage } from "./pages/app/AdminAdjustmentReasonsPage.jsx";
 import { ShipmentsPage } from "./pages/lab/ShipmentsPage.jsx";
 import { ShipmentLabelPrintPage } from "./pages/lab/ShipmentLabelPrintPage.jsx";
 import { MyCasesPage } from "./pages/doctor/MyCasesPage.jsx";
@@ -61,6 +62,9 @@ import { LabPickupsPage } from "./pages/lab/LabPickupsPage.jsx";
 import { ThreadPage } from "./pages/doctor/ThreadPage.jsx";
 import { OrdersCalendarPage } from "./pages/lab/OrdersCalendarPage.jsx";
 import { AdminSchedulingPage } from "./pages/app/AdminSchedulingPage.jsx";
+import { AdminLabelsPage } from "./pages/app/AdminLabelsPage.jsx";
+import { NewLabOrderPage } from "./pages/lab/NewLabOrderPage.jsx";
+import { IntakePage } from "./pages/lab/IntakePage.jsx";
 
 // Marketing pages
 import { HomePage } from "./pages/marketing/Home.jsx";
@@ -249,6 +253,7 @@ function AppRoutes() {
           <Route path="/admin/exports" element={<AdminExportsPage />} />
           <Route path="/admin/orders" element={<AdminOrdersPage />} />
           <Route path="/admin/lab/departments" element={<AdminDepartmentsPage />} />
+          <Route path="/admin/lab/adjustment-reasons" element={<AdminAdjustmentReasonsPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />
           <Route path="/admin/users/:userId/pricing" element={<AdminClientPricingPage />} />
           <Route path="/admin/autopay" element={<AdminAutoPayPage />} />
@@ -256,10 +261,13 @@ function AppRoutes() {
           <Route path="/admin/notifications" element={<AdminLabAlertsPage />} />
           <Route path="/admin/rx-mapping" element={<AdminRxMappingPage />} />
           <Route path="/admin/scheduling" element={<AdminSchedulingPage />} />
+          <Route path="/admin/labels" element={<AdminLabelsPage />} />
         </Route>
         <Route element={<RequireStaff />}>
           <Route path="/lab" element={<LabBoardPage />} />
           <Route path="/lab/calendar" element={<OrdersCalendarPage />} />
+          <Route path="/lab/intake" element={<IntakePage />} />
+          <Route path="/lab/orders/new" element={<NewLabOrderPage />} />
           <Route path="/lab/orders/:id" element={<LabOrderDetailPage />} />
           <Route path="/lab/messages" element={<LabMessagesPage />} />
           <Route path="/lab/messages/:id" element={<LabThreadPage />} />

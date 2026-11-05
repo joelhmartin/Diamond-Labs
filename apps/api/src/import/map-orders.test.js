@@ -2,7 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { isoDateIn, LAB_TIMEZONE } from "@my-app/shared";
-import { mapLegacyOrder, planOrders } from "./map-orders.js";
+import { mapLegacyOrder, planOrders, planLegacyFlagBackfill } from "./map-orders.js";
 
 const load = (n) => JSON.parse(readFileSync(new URL(`../../test-fixtures/seazona/${n}`, import.meta.url), "utf8"));
 const summaries = load("orders.json");
@@ -82,4 +82,70 @@ test("a live-shaped order with no number of its own takes its invoice's number",
   const { order } = mapLegacyOrder({ summary: { ...rest, invoiceNumber: "23019" }, ownerUserId: "u-2001" });
   assert.equal(order.orderNumber, 23019);
   assert.equal(mapLegacyOrder({ summary: { ...rest, invoiceNumber: "INV-1" } }).problem, "order_number_not_numeric");
+});
+
+test("mapLegacyOrder maps panNumber", () => {
+  const base = byId("ord-1");
+  assert.equal(mapLegacyOrder({ summary: { ...base, panNumber: "  P-4471 " } }).order.panNumber, "P-4471");
+  assert.equal(mapLegacyOrder({ summary: base, detail: { panNumber: "D-9" } }).order.panNumber, "D-9", "falls back to the detail");
+  assert.equal(mapLegacyOrder({ summary: { ...base, panNumber: "A" }, detail: { panNumber: "D-9" } }).order.panNumber, "A", "the summary wins");
+  assert.equal(mapLegacyOrder({ summary: { ...base, panNumber: "x".repeat(40) } }).order.panNumber.length, 30);
+  assert.equal(mapLegacyOrder({ summary: { ...base, panNumber: 123 } }).order.panNumber, "123");
+});
+
+test("blank pan maps to null", () => {
+  const base = byId("ord-1");
+  assert.equal(mapLegacyOrder({ summary: { ...base, panNumber: "   " } }).order.panNumber, null);
+  assert.equal(mapLegacyOrder({ summary: base }).order.panNumber, null);
+});
+
+test("mapLegacyOrder maps isRemake true", () => {
+  const base = byId("ord-1");
+  for (const v of [true, "true"]) {
+    const { order } = mapLegacyOrder({ summary: { ...base, isRemake: v } });
+    assert.equal(order.isRemake, true);
+    assert.equal(order.remakeOfOrderId, null, "Seazona gives no link to the original");
+  }
+  assert.equal(mapLegacyOrder({ summary: base, detail: { isRemake: true } }).order.isRemake, true, "falls back to the detail");
+});
+
+test("isRemake missing or false maps to false", () => {
+  const base = byId("ord-1");
+  for (const v of [undefined, null, false, "false", "yes", 1, ""]) {
+    assert.equal(mapLegacyOrder({ summary: { ...base, isRemake: v } }).order.isRemake, false);
+  }
+  assert.equal(mapLegacyOrder({ summary: { ...base, isRemake: false }, detail: { isRemake: true } }).order.isRemake, false, "the summary's answer wins");
+});
+
+test("backfill fills only null pans", () => {
+  const existing = [
+    { id: "lo-1", sourceId: "ord-1", panNumber: null, isRemake: false },
+    { id: "lo-2", sourceId: "ord-2", panNumber: "KEEP", isRemake: false },
+    { id: "lo-3", sourceId: "ord-3", panNumber: null, isRemake: false },
+    { id: "lo-x", sourceId: "ord-gone", panNumber: null, isRemake: false },
+  ];
+  const recs = [
+    { seazonaId: "ord-1", payload: { panNumber: " 77 " } },
+    { seazonaId: "ord-2", payload: { panNumber: "OVERWRITE" } },
+    { seazonaId: "ord-3", payload: {} },
+  ];
+  const plan = planLegacyFlagBackfill(existing, recs, new Map([["ord-3", { panNumber: "D3" }]]));
+  assert.deepEqual(plan.pan, [{ id: "lo-1", panNumber: "77" }, { id: "lo-3", panNumber: "D3" }]);
+  assert.deepEqual(plan.remake, []);
+});
+
+test("backfill sets is_remake only on rows that are false and whose payload is true", () => {
+  const existing = [
+    { id: "lo-1", sourceId: "a", panNumber: "p", isRemake: false },
+    { id: "lo-2", sourceId: "b", panNumber: "p", isRemake: true },
+    { id: "lo-3", sourceId: "c", panNumber: "p", isRemake: false },
+  ];
+  const recs = [
+    { seazonaId: "a", payload: { isRemake: true } },
+    { seazonaId: "b", payload: { isRemake: false } }, // never flips true -> false
+    { seazonaId: "c", payload: { isRemake: false } },
+  ];
+  const plan = planLegacyFlagBackfill(existing, recs, new Map());
+  assert.deepEqual(plan.remake, ["lo-1"]);
+  assert.deepEqual(plan.pan, []);
 });

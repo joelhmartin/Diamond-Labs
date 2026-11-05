@@ -54,3 +54,22 @@ test("pdf renders with a schedule", async () => {
   assert.match(text, /DUE WED 10\/21/);
   assert.doesNotMatch(pdfText(await renderTicketPdf(buildTicketModel(detail, { generatedAt: new Date() }))), /Schedule/);
 });
+
+test("pdf renders with every addition present", async () => {
+  const rich = {
+    ...detail,
+    order: { ...detail.order, panNumber: "P-4471", deliveryMethod: "fedex", enclosures: [{ kind: "bite" }] },
+    lines: [{ id: "l1", qty: 1, code: "2608", name: "DDSO Nylon", arch: "Upper", noteOnly: false, materials: [{ material: "Acrylic", lotNumber: "L77" }] }],
+    tags: [{ label: "VIP" }], mergedFrom: [{ orderNumber: 123 }], recordFiles: [{ kind: "photo", originalName: "bite.jpg" }],
+  };
+  const text = pdfText(await renderTicketPdf(buildTicketModel(rich, { generatedAt: new Date() })));
+  assert.match(text, /P-4471/);
+  assert.match(text, /FedEx/);
+  assert.match(text, /Enclosed/);
+  assert.match(text, /\[x\] Bite/);
+  assert.match(text, /Acrylic .{1,3} lot L77/);
+  assert.match(text, /VIP/);
+  assert.match(text, /Merged from #123/);
+  assert.match(text, /photo: bite\.jpg/);
+  assert.match(text, /DUE WED 10\/21/);
+});

@@ -5,7 +5,7 @@ import { rxCases, rxCaseFiles, rxCaseLines } from "../db/schema/index.js";
 import { createId } from "../lib/id.js";
 import { env } from "../config/env.js";
 import { eq, desc, and, asc } from "drizzle-orm";
-import { ERROR_CODES, rxCaseSubmitSchema, rxFormSubmitSchema, buildFormDevices, doctorCaseView } from "@my-app/shared";
+import { ERROR_CODES, MAX_FILE_SIZE_BYTES, rxCaseSubmitSchema, rxFormSubmitSchema, buildFormDevices, doctorCaseView } from "@my-app/shared";
 import { seedLines } from "../services/rx/case-lines.service.js";
 import { loadOverrides } from "../services/rx/code-overrides.service.js";
 import { summariseLines } from "../services/rx/case-gates.js";
@@ -17,8 +17,7 @@ import { sendRxSubmissionReceived } from "../services/email.service.js";
 import { notify } from "../services/notify-seam.js";
 
 // ─── Upload guards ────────────────────────────────────────────────────────────
-// 75 MB per file — intraoral STL / 3D-scan files are large.
-const MAX_FILE_SIZE_BYTES = 75 * 1024 * 1024;
+// Per-file size limit (75 MB — intraoral STL / 3D-scan files are large) is shared: MAX_FILE_SIZE_BYTES from @my-app/shared.
 // Sane total-file cap to prevent abuse; individual file-kind names gate further.
 const MAX_FILES = 12;
 // Cumulative cap across all files in a single submission, scaled to the per-file

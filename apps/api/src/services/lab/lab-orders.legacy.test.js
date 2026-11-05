@@ -18,6 +18,8 @@ test("getLabOrderDetail's legacy block returns the sealed patient opened, and th
   assert.match(order.legacyPatient, /^enc:v1:/, "fixture really is sealed");
   const tx = fakeTx({ selects: [
     [{ order, departmentName: null, assigneeName: null, clientName: "Dr Test" }],
+    [], // record files on the order (filesFor is async: its select is awaited before Promise.all subscribes to the others)
+    [], // materials (materialsFor is async too, so it follows filesFor)
     [], // lines
     [], // events
     [{ id: "case1", caseNumber: "RX-1" }], // the linked portal case
@@ -35,8 +37,44 @@ test("getLabOrderDetail's legacy block returns the sealed patient opened, and th
   assert.deepEqual([detail.legacy.seazonaOrderId, detail.legacy.caseId, detail.legacy.caseNumber], ["ord-9", "case1", "RX-1"]);
   assert.equal("legacyPatient" in detail.order, false);
   assert.ok(!JSON.stringify(detail).includes("enc:v1:"));
-  assert.equal(chains.length, 7, "order, lines, events, case; then the saved plan, calendar and holidays");
+  assert.equal(chains.length, 11, "order, files, lines, events, materials, case; then the labels, the saved plan, calendar and holidays, then the merge links");
+  assert.deepEqual([detail.mergedFrom, detail.mergedInto], [[], null]);
   assert.equal(detail.schedule, null, "a legacy order has no plan");
   assert.deepEqual(detail.scheduleFlags, { behind: false, lateStage: null, atRisk: false }, "flags exist without a plan; no due date, so not at risk");
-  assert.ok(chains[3].includes("orderBy") && chains[3].indexOf("orderBy") < chains[3].indexOf("limit"), "the case lookup is ordered before it is limited");
+  assert.ok(chains[5].includes("orderBy") && chains[5].indexOf("orderBy") < chains[5].indexOf("limit"), "the case lookup is ordered before it is limited");
+});
+
+test("getLabOrderDetail returns a staff order's patient opened under `staff`, and the order's own files", async () => {
+  const order = sealOrder({
+    id: "lo2", orderNumber: 2, source: "staff", sourceId: "lo2", status: "received", dueDate: "2026-11-19", shipmentId: null, remakeOfOrderId: null,
+    holdReason: null, labNotes: null, legacyPatient: null, patientName: "Jane Roe",
+  });
+  assert.match(order.patientName, /^enc:v1:/, "fixture really is sealed");
+  const file = { id: "f1", recordType: "lab_order", recordId: "lo2", kind: "scan", originalName: "upper.stl", contentType: null, size: 10, createdAt: new Date(), storageUrl: "internal" };
+  // filesFor is an async function, so its select is awaited first, before Promise.all subscribes to lines and events.
+  const tx = fakeTx({ selects: [[{ order, departmentName: null, assigneeName: null, clientName: "Dr Test" }], [file], [], [], []] });
+  holder.db = tx;
+  const detail = await getLabOrderDetail("lo2");
+  assert.deepEqual(detail.staff, { patientName: "Jane Roe" });
+  assert.equal("patientName" in detail.order, false);
+  assert.deepEqual(detail.recordFiles.map((f) => [f.id, f.originalName]), [["f1", "upper.stl"]]);
+  assert.equal("storageUrl" in detail.recordFiles[0], false, "the storage url never leaves the server");
+  assert.ok(!JSON.stringify(detail).includes("enc:v1:"));
+});
+
+test("getLabOrderDetail returns merge links: the orders merged in, and the primary a merged order points at", async () => {
+  const order = sealOrder({
+    id: "lo3", orderNumber: 3, source: "staff", sourceId: "lo3", status: "cancelled", dueDate: null, shipmentId: null, remakeOfOrderId: null,
+    holdReason: null, labNotes: null, legacyPatient: null, patientName: null, mergedIntoOrderId: "lo9",
+  });
+  const links = [
+    { id: "lo1", orderNumber: 1, mergedIntoOrderId: "lo3" },
+    { id: "lo9", orderNumber: 9, mergedIntoOrderId: null },
+  ];
+  // order, files, materials, lines, events, labels, plan, calendar, holidays, then the merge links.
+  const tx = fakeTx({ selects: [[{ order, departmentName: null, assigneeName: null, clientName: null }], [], [], [], [], [], [], [], [], links] });
+  holder.db = tx;
+  const detail = await getLabOrderDetail("lo3");
+  assert.deepEqual(detail.mergedFrom, [{ id: "lo1", orderNumber: 1 }]);
+  assert.deepEqual(detail.mergedInto, { id: "lo9", orderNumber: 9 });
 });

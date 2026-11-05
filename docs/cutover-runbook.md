@@ -176,6 +176,17 @@ pnpm --filter @my-app/api import:parity $T $S --balances <path> --file-id <final
 - **An `invoices` run after `balances` that would insert invoices refuses** (they would load unsettled, their full totals owed). That happens only when new invoices reached the raw store or a `client_not_loaded` client was fixed. If inserting them is right, re-run with `--allow-after-balances`, then **re-run `balances` with the same `--balances` and `--file-id`** (idempotent; it settles only the new ones) **before parity**. The run prints this as `NEXT:`.
 - **Parity must exit 0**: clean, or every remaining difference accepted by the user (`--accept <kind>,<kind>`). Record the saved report id and `report.accepted` here: report id ___ · accepted ___ . Check `report.accepted`, not only the exit code. Otherwise: rollback (step 8).
 
+## 5b. Production desk re-entry (before unfreeze)
+
+The production desk adds labels, enclosed items, remake reasons and slip data. Legacy data carries none of it except the pan and remake flags, which the `orders` load backfills.
+
+- [ ] Confirm the live `import:load orders` run reported `panBackfilled` equal to the loaded legacy orders that had a pan, and `remakeBackfilled` equal to the legacy orders Seazona flagged as remakes. Legacy remakes have no `remakeOfOrderId` (Seazona gives no link); that is expected.
+- [ ] Admin > Labels: recreate Labzona's label list (names and colours).
+- [ ] Re-apply labels to open orders: filter Labzona's Active list by label, then select the rows here and use the bulk "Label..." action.
+- [ ] Admin > Reasons: add the remaining Labzona remake codes with their percents.
+- [ ] Enclosed items are entered as each open case is next touched. There is nothing to bulk-load.
+- [ ] Stars and materials: nothing to re-enter.
+
 ## 6. Smoke (operator + one lab admin)
 
 - Log in as a lab admin and as a test doctor.

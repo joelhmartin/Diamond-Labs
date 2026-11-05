@@ -8,7 +8,11 @@ import { allocateSequenceNumber, INVOICE_NUMBER_LOCK } from "../sequence.service
 import { priceLabOrderLines } from "../pricing.service.js";
 import * as auditService from "../audit.service.js";
 import { sealInvoice, openInvoice, sealLine, openLine } from "./invoice-crypto.js";
-import { planDraftInvoice, planShopInvoice, asRemakeLines, hasUnpriced, planIssue, planVoid, InvoiceError, assertShipmentCharge, planShipmentLine, planShipmentLineRemoval } from "./invoice-rules.js";
+import { remakePercentFor } from "./adjustment-reasons.service.js";
+import {
+  planDraftInvoice, planShopInvoice, asRemakeLines, hasUnpriced, hasNoItems, planIssue, planVoid, InvoiceError, assertShipmentCharge,
+  planShipmentLine, planShipmentLineRemoval, assertLinkedDraft, planLinkedLineAdd, planLinkedLineQty, planLinkedLineRemove,
+} from "./invoice-rules.js";
 
 /**
  * Invoice writes. Every function here runs inside the CALLER's transaction:
@@ -46,6 +50,16 @@ export async function loadLines(tx, invoiceId) {
 }
 
 /**
+ * How far off a remake is priced: its reason's default percent (adjustment_reasons),
+ * 100 when it has no reason or the reason has none. THE one place both remake pricing
+ * paths (createDraftForLabOrder, syncDraftLine) read it, so they cannot disagree.
+ */
+async function remakePercent(tx, labOrder) {
+  if (!labOrder.remakeReasonId) return 100;
+  return (await remakePercentFor(labOrder.remakeReasonId, tx)) ?? 100;
+}
+
+/**
  * A new lab order (Rx release or remake) → its draft invoice. `lines` are the
  * lab order's inserted lines (with ids). A remake is priced at zero.
  */
@@ -55,7 +69,7 @@ export async function createDraftForLabOrder(tx, { labOrder, lines, byUserId = n
     invoiceId: createId(),
     invoiceNumber: await allocateInvoiceNumber(tx),
     labOrder,
-    pricedLines: labOrder.isRemake ? asRemakeLines(priced) : priced,
+    pricedLines: labOrder.isRemake ? asRemakeLines(priced, await remakePercent(tx, labOrder)) : priced,
     now: new Date(),
     taxRateBps: PRICING.taxRateBps,
   });
@@ -96,8 +110,10 @@ async function invoiceForLabOrder(tx, labOrderId) {
 
 /**
  * A lab order moved to shipped → issue its draft, due on the lab-local ship
- * date plus INVOICE_TERMS_DAYS. An unpriced line holds it at draft (it shows
- * under Admin › Invoices "Needs a price"). A lab order released before
+ * date plus INVOICE_TERMS_DAYS. An unpriced line, or no item line at all (a
+ * quick-entry order shipped with no lines — issuing it would bill $0 for good,
+ * one invoice per order), holds it at draft (it shows under Admin › Invoices
+ * "Needs a price or lines"). A lab order released before
  * invoicing existed is drafted first, so no shipped Rx job escapes billing.
  * Callers run this in a savepoint (lab-orders.service billingFollowUp): the
  * ship itself must commit whatever happens here.
@@ -118,6 +134,10 @@ export async function issueForShippedLabOrder(tx, { labOrderId, shippedAt, byUse
   }
   if (invoice.status !== "draft") return { issued: false, reason: invoice.status };
   const lines = await loadLines(tx, invoice.id);
+  if (hasNoItems(lines)) {
+    await auditInvoice(tx, "invoice.issue_held", invoice, byUserId, { reason: "no_lines" });
+    return { issued: false, reason: "no_lines" };
+  }
   if (hasUnpriced(lines)) {
     await auditInvoice(tx, "invoice.issue_held", invoice, byUserId, { reason: "unpriced" });
     return { issued: false, reason: "unpriced" };
@@ -160,6 +180,8 @@ export async function commitPatch(tx, invoice, patch) {
  */
 export async function applyLinePlan(tx, invoice, plan, byUserId) {
   if (plan.op.insert) await tx.insert(invoiceLines).values(sealLine({ ...plan.op.insert, id: createId() }));
+  // A plan may add several lines at once (a discount split into taxable and non-taxable parts).
+  for (const row of plan.op.inserts ?? []) await tx.insert(invoiceLines).values(sealLine({ ...row, id: createId() }));
   if (plan.op.update) await tx.update(invoiceLines).set(sealLine(plan.op.update.values)).where(eq(invoiceLines.id, plan.op.update.id));
   if (plan.op.delete) await tx.delete(invoiceLines).where(eq(invoiceLines.id, plan.op.delete));
   const updated = await commitPatch(tx, invoice, plan.patch);
@@ -183,6 +205,40 @@ export async function addShipmentLine(tx, { labOrderId, shipmentId, description,
   });
   await applyLinePlan(tx, invoice, plan, byUserId);
   return { added: true, invoiceNumber: invoice.invoiceNumber };
+}
+
+/**
+ * Mirror one bench line edit onto the order's draft, in the CALLER's
+ * transaction (lab-order-lines.service changeLines). `op` is "add" | "qty" |
+ * "remove"; `line` is the bench line as it is after the edit; `labOrder`
+ * carries id, clientUserId and isRemake (an added line on a remake is priced
+ * as a remake). An issued invoice refuses with INVALID_TRANSITION before
+ * anything is read or written, and the caller's transaction rolls the bench
+ * change back. Nothing is mirrored for a note-only line (never billed), an
+ * order with no invoice yet (shipping drafts it from the bench lines), or a
+ * line staff already removed from the draft.
+ */
+export async function syncDraftLine(tx, { labOrder, op, line, byUserId = null }) {
+  if (line.noteOnly) return { synced: false, reason: "note_only" };
+  const invoice = await invoiceForLabOrder(tx, labOrder.id);
+  if (!invoice) return { synced: false, reason: "no_invoice" };
+  assertLinkedDraft(invoice);
+  const opts = { now: new Date(), taxRateBps: PRICING.taxRateBps };
+  let plan;
+  if (op === "add") {
+    const priced = await priceLabOrderLines([line], labOrder.clientUserId, tx);
+    const [pricedLine] = labOrder.isRemake ? asRemakeLines(priced, await remakePercent(tx, labOrder)) : priced;
+    plan = planLinkedLineAdd(invoice, await loadLines(tx, invoice.id), pricedLine, opts);
+  } else if (op === "qty") {
+    plan = planLinkedLineQty(invoice, await loadLines(tx, invoice.id), line.id, line.qty, opts);
+  } else if (op === "remove") {
+    plan = planLinkedLineRemove(invoice, await loadLines(tx, invoice.id), line.id, opts);
+  } else {
+    throw new InvoiceError("INVALID", `Unknown line sync: ${op}`);
+  }
+  if (!plan) return { synced: false, reason: "no_line" };
+  await applyLinePlan(tx, invoice, plan, byUserId);
+  return { synced: true, invoiceNumber: invoice.invoiceNumber };
 }
 
 /**

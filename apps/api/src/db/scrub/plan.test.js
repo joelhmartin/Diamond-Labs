@@ -65,7 +65,7 @@ const MUST_SCRUB = {
   kv_store: ["key", "value"],
   autopay_enrollments: ["payment_profile_id", "paused_reason"],
   doctor_profiles: ["delivery_notes"],
-  lab_orders: ["hold_reason", "lab_notes", "legacy_patient"],
+  lab_orders: ["hold_reason", "lab_notes", "legacy_patient", "enclosures"],
   lab_order_events: ["note"],
   lab_order_lines: ["name", "source_label"],
   invoices: ["notes", "void_reason", "legacy_patient"],
