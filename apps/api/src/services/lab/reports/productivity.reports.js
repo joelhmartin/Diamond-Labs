@@ -14,7 +14,7 @@ import {
   ORDER_LINK, beforeCoverage, catalogJoins, clientName, isClient, isLiveOrder, labDayBetween, labDayText, labMonthText, labToday, num, orderAndPage,
   rowsOf, turnaroundDaysSql,
 } from "./lab-metrics.js";
-import { assigneeJoin, assigneeName, orderJoins, statusBadge, unitsJoin } from "./order-metrics.js";
+import { assigneeJoin, assigneeName, orderJoins, shippedInSql, statusBadge, unitsJoin } from "./order-metrics.js";
 import { int, sumOf, sums, uncategorizedSql } from "./report-helpers.js";
 
 const GROUP = "productivity";
@@ -97,7 +97,7 @@ const ordersCompleted = {
       select ${labOrders.assigneeUserId} as "assigneeUserId", ${assigneeName} as "assignee", count(*) as "orders",
         coalesce(sum(u.units), 0) as "units", count(*) filter (where ${labOrders.rush}) as "rush", avg(${turnaroundDaysSql}) as "avgDays"
       from ${labOrders} ${assigneeJoin} ${unitsJoin}
-      where ${labOrders.status} = 'shipped' and ${labDayBetween(labOrders.shippedAt, range)}
+      where ${shippedInSql(range)}
       group by ${labOrders.assigneeUserId}, assignee.name
       order by 3 desc, 2`);
     const rows = raw.map((r) => ({
@@ -273,7 +273,7 @@ const turnaround = {
       from (
         select ${labMonthText(labOrders.shippedAt)} as month, coalesce(cat.category, ${uncategorizedSql}) as category, ${turnaroundDaysSql} as days
         from ${labOrders} ${firstCategory}
-        where ${labOrders.status} = 'shipped' and ${labOrders.shippedAt} is not null and ${labDayBetween(labOrders.shippedAt, range)}
+        where ${shippedInSql(range)}
       ) x
       group by grouping sets ((x.month, x.category), ())
       order by 6, 1, 2`);

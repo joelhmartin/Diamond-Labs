@@ -1,7 +1,8 @@
 import { test, afterEach } from "vitest";
 import assert from "node:assert/strict";
 import { fakeTx } from "../../../test/fake-tx.js";
-import { executedSql } from "../../../test/sql-text.js";
+import { executedSql, renderSql } from "../../../test/sql-text.js";
+import { shippedInSql } from "./order-metrics.js";
 import { OPERATIONS_REPORTS } from "./operations.reports.js";
 import { PRODUCTIVITY_REPORTS } from "./productivity.reports.js";
 import { DEPARTMENT_REPORTS } from "./departments.reports.js";
@@ -80,6 +81,10 @@ test("turnaround shapes rows and the summary and asks Postgres for percentile_co
   assert.match(text, /greatest\(0, \(lab_orders\.shipped_at at time zone 'America\/Chicago'\)::date - \(lab_orders\.received_at at time zone 'America\/Chicago'\)::date\)/); // clamped like turnaroundDays()
   assert.match(text, /lab_orders\.shipped_at >= /);
   assert.match(text, /grouping sets \(\(x\.month, x\.category\), \(\)\)/);
+  // The one shipped-in-range rule (order-metrics shippedInSql), the same filter the turnaround tiles use.
+  const noParams = (s) => s.replace(/\$\d+/g, "$");
+  const shipped = noParams(renderSql(shippedInSql(range("2026-10-01", "2026-10-31"))).text);
+  assert.ok(noParams(text).includes(`where ${shipped}`), "turnaround filters with shippedInSql");
   assert.deepEqual(out.rows, [{ month: "2026-10", category: "Night guards", orders: 3, avgDays: 12, medianDays: 4 }]);
   assert.deepEqual(out.summary, { month: "All", orders: 3, avgDays: 12, medianDays: 4 });
 });
