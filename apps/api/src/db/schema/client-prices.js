@@ -6,6 +6,8 @@ import { pgTable, varchar, text, integer, timestamp, index, uniqueIndex } from "
 //           imported — from a Seazona price-list export
 //           inferred — last price actually billed (filled by the piece-5
 //                      migration); used, but flagged until reviewedAt is set
+//           copied   — copied from another client (piece 10); stamped reviewed
+// An override beats every price list assigned to the client (price-lists.js).
 export const clientPrices = pgTable("client_prices", {
   id: varchar("id", { length: 128 }).primaryKey(),
   clientUserId: varchar("client_user_id", { length: 128 }).notNull(),

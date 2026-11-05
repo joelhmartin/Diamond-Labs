@@ -5,6 +5,8 @@
  * statements and the work ticket all use them.)
  */
 
+import { saveBlob } from "./download.js";
+
 export function errorText(err) {
   return err?.response?.data?.error?.message || err?.message || "Something went wrong.";
 }
@@ -64,18 +66,6 @@ export function openPdf(api, path, params) {
   });
 }
 
-/** Save a Blob to the person's disk as `filename` (a temporary <a download>). */
-export function downloadBlob(filename, blob) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
 /** The filename in a Content-Disposition header, or null. */
 export function dispositionFilename(header) {
   const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(header || "");
@@ -99,5 +89,5 @@ export async function saveFile(api, path, params, fallbackName) {
   } catch (err) {
     throw new Error(await blobErrorText(err));
   }
-  downloadBlob(dispositionFilename(res.headers?.["content-disposition"]) || fallbackName, res.data);
+  saveBlob(dispositionFilename(res.headers?.["content-disposition"]) || fallbackName, res.data);
 }

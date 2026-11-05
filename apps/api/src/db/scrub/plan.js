@@ -275,17 +275,58 @@ export const SCRUB_PLAN = {
       created_at: K, updated_at: K,
     },
   },
+  // Price lists (piece 10): named templates of variant prices and which clients carry them.
+  // The description is staff text about the list itself (not a person), so it is kept.
+  price_lists: {
+    mode: "update",
+    columns: { id: K, name: K, description: K, archived_at: K, created_at: K, updated_at: K, created_by: K },
+  },
+  price_list_items: {
+    mode: "update",
+    columns: { id: K, price_list_id: K, variant_id: K, price_cents: K, updated_at: K, updated_by: K },
+  },
+  client_price_lists: {
+    mode: "update",
+    columns: { id: K, client_user_id: K, price_list_id: K, position: K, assigned_at: K, assigned_by: K },
+  },
+  // Statement notice ledger (piece 10): ids, a month, a closing balance and a status only.
+  statement_sends: {
+    mode: "update",
+    columns: {
+      id: K, client_user_id: K, month: K, closing_cents: K, status: K,
+      sent_at: K, sent_by: K, run_id: K, created_at: K, updated_at: K,
+    },
+  },
   // Lab orders (own-the-lab piece 2). Staff-typed free text (hold reason, lab notes,
   // event notes) can name a patient and is encrypted at rest in prod: replaced, never decrypted.
   lab_departments: { mode: "update", columns: { id: K, name: K, position: K, active: K, created_at: K, updated_at: K } },
+  // production-desk (piece 6): the lab's own reason vocabulary and product/lot names; no patient data.
+  adjustment_reasons: { mode: "update", columns: { id: K, applies_to: K, label: K, discount_percent: K, active: K, position: K, created_at: K, updated_at: K } },
+  lab_order_line_materials: { mode: "update", columns: { id: K, lab_order_id: K, lab_order_line_id: K, position: K, material: K, lot_number: K, created_by: K, created_at: K } },
+  // record-tags module: admin-typed label vocabulary + id references; no patient data.
+  tag_definitions: { mode: "update", columns: { id: K, record_type: K, label: K, color: K, position: K, active: K, created_at: K, updated_at: K } },
+  record_tags: { mode: "update", columns: { id: K, record_type: K, record_id: K, tag_id: K, created_by: K, created_at: K } },
+  record_stars: { mode: "update", columns: { record_type: K, record_id: K, user_id: K, created_at: K } },
+  // record_files (record-files module): like rx_case_files, the file name and storage url can identify a patient, so rows are deleted (GCS objects are never touched).
+  record_files: {
+    mode: "delete",
+    columns: {
+      id: K, record_type: K, record_id: K, kind: K, original_name: gone("phi"), storage_url: gone("phi"),
+      content_type: K, size: K, created_by: K, created_at: K,
+    },
+  },
   lab_orders: {
     mode: "update",
     columns: {
       id: K, order_number: K, source: K, source_id: K, client_user_id: K, status: K, held_from: K,
-      department_id: K, assignee_user_id: K, due_date: K, rush: K, rush_tier: K, is_remake: K, remake_of_order_id: K,
+      department_id: K, assignee_user_id: K, due_date: K, rush: K, rush_tier: K, is_remake: K, remake_of_order_id: K, remake_reason_id: K,
+      merged_into_order_id: K,
       hold_reason: phi("NULL"),
       lab_notes: phi("NULL"),
       legacy_patient: phi("NULL"), // a Seazona order's patient (encrypted)
+      patient_name: phi("NULL"), // a staff-entered order's patient (encrypted)
+      enclosures: phi("NULL"), // enclosed items with staff-typed notes (encrypted JSON)
+      pan_number: K, delivery_method: K,
       shipment_id: K,
       version: K, received_at: K, started_at: K, shipped_at: K, cancelled_at: K, created_at: K, updated_at: K,
     },
@@ -300,6 +341,14 @@ export const SCRUB_PLAN = {
       arch: K, qty: K, note_only: K,
       source_label: phi("NULL"), // copies the doctor's free-form "Other" device text
       created_at: K,
+    },
+  },
+  // intakes (upload-intake module): hints (parsed from dropped file names) and discard_reason are sealed free text that can name a patient.
+  intakes: {
+    mode: "update",
+    columns: {
+      id: K, channel: K, status: K, parser_key: K, hints: phi("NULL"), promoted_record_type: K, promoted_record_id: K,
+      created_by: K, created_at: K, decided_by: K, decided_at: K, discard_reason: phi("NULL"),
     },
   },
   lab_order_events: {
@@ -368,6 +417,26 @@ export const SCRUB_PLAN = {
     },
   },
   app_theme: { mode: "update", columns: { id: K, tokens: K, updated_by: K, updated_at: K } },
+  // Business calendar: weekday/holiday/capacity settings, nothing personal.
+  calendars: {
+    mode: "update",
+    columns: { key: K, timezone: K, lead_days: K, closed_weekdays: K, capacity_basis: K, capacity_by_weekday: K, updated_by: K, updated_at: K },
+  },
+  calendar_holidays: { mode: "update", columns: { id: K, calendar_key: K, date: K, label: K } },
+  // Workflows: template definitions, assignments (subject ids) and plan snapshots (dates, stage targets); nothing personal.
+  workflows: {
+    mode: "update",
+    columns: { id: K, key: K, name: K, total_days: K, rush_workflow_key: K, is_default: K, active: K, position: K, created_at: K, updated_at: K },
+  },
+  workflow_stages: { mode: "update", columns: { id: K, workflow_id: K, position: K, key: K, label: K, day_offset: K, milestone: K } },
+  workflow_assignments: { mode: "update", columns: { subject_type: K, subject_id: K, workflow_key: K, updated_at: K } },
+  workflow_plans: {
+    mode: "update",
+    columns: {
+      record_type: K, record_id: K, workflow_key: K, workflow_name: K, start_date: K, due_date: K, direction: K, stages: K,
+      created_at: K, updated_at: K,
+    },
+  },
   products: {
     mode: "update",
     columns: {

@@ -1,15 +1,16 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Mail } from "lucide-react";
 import { AGING_BUCKETS } from "@my-app/shared";
 import api from "../../config/api.js";
 import { ROUTES } from "../../config/routes.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { ConfirmButton } from "../../components/ui/ConfirmButton.jsx";
+import { AccountCreditModal } from "../../components/admin/AccountCreditModal.jsx";
+import { MonthlyStatementsPanel } from "../../components/admin/MonthlyStatementsPanel.jsx";
 import { StatementDownload } from "../../components/billing/StatementDownload.jsx";
 import { DataTable } from "../../components/ui/data-table/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
-import { eachRow } from "../../lib/data-table/bulk.js";
 import { formatCents } from "../../lib/money.js";
 import { errorText } from "../../lib/requests.js";
 import { dateText, labToday, recentMonths } from "../../lib/invoices.js";
@@ -24,7 +25,7 @@ const searchFn = (r, q) =>
 
 const dollars = (cents) => (cents / 100).toFixed(2);
 
-function receivableColumns({ lastMonth, emailStatement }) {
+function receivableColumns({ lastMonth, emailStatement, openCredit }) {
   return [
     {
       id: "client", header: "Client", sortValue: (r) => clientName(r).toLowerCase(),
@@ -54,6 +55,7 @@ function receivableColumns({ lastMonth, emailStatement }) {
             onConfirm={() => emailStatement(r)}>
             Email statement
           </ConfirmButton>
+          <button type="button" onClick={() => openCredit(r)} className="rounded-full bg-surface-100 px-3 py-1.5 text-xs font-semibold text-navy">Account credit…</button>
         </div>
       ),
     },
@@ -81,6 +83,8 @@ export function AdminReceivablesPage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [creditFor, setCreditFor] = useState(null);
+  const [statementsOpen, setStatementsOpen] = useState(false);
   const lastMonth = recentMonths(labToday(), 2)[1];
 
   // The whole aged list loads once; "Past due only" is a table filter, and the footer totals follow it.
@@ -100,24 +104,17 @@ export function AdminReceivablesPage() {
 
   const table = useDataTable({ mode: "client", rows: data?.rows ?? [], searchFn, filters: FILTERS, getRowId, loading, error, reload: load });
 
-  const sendStatement = async (row) => {
-    const res = await api.post(`/admin/clients/${row.clientUserId}/statement/email`, { month: lastMonth.value });
-    if (!res.data.data.sent) throw new Error("The notice could not be sent.");
-  };
+  // One client, now (an explicit re-send is allowed). The whole month goes out from "Monthly statements".
   const emailStatement = async (row) => {
     try {
-      await sendStatement(row);
+      const res = await api.post(`/admin/clients/${row.clientUserId}/statement/email`, { month: lastMonth.value });
+      if (!res.data.data.sent) throw new Error("The notice could not be sent.");
       addToast({ message: `${lastMonth.label} statement notice sent to ${clientName(row)}.`, type: "success" });
     } catch (err) {
       addToast({ message: errorText(err), type: "error" });
     }
   };
-  const bulkActions = [{
-    id: "email-statements", label: "Email statements", confirmLabel: `Click again: email ${lastMonth.label} statements`,
-    run: (rows) => eachRow(rows, sendStatement, clientName),
-  }];
-
-  const columns = receivableColumns({ lastMonth, emailStatement });
+  const columns = receivableColumns({ lastMonth, emailStatement, openCredit: setCreditFor });
   const footer = table.matchingRows.length > 0 ? <TotalsRow rows={table.matchingRows} columnCount={columns.length + 1} /> : null;
 
   return (
@@ -127,21 +124,31 @@ export function AdminReceivablesPage() {
           <h1 className="font-heading text-3xl font-bold tracking-tight text-navy">Accounts receivable</h1>
           <p className="mt-1 text-sm text-navy/50">As of {data ? dateText(data.asOf) : "…"} · aged by due date</p>
         </div>
-        <button type="button" onClick={load} className="flex items-center gap-1.5 rounded-full bg-surface-100 px-4 py-2 text-xs font-semibold text-navy hover:bg-surface-200">
-          <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => setStatementsOpen((v) => !v)} aria-expanded={statementsOpen}
+            className="flex items-center gap-1.5 rounded-full bg-brand-500 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-600">
+            <Mail size={12} /> Monthly statements
+          </button>
+          <button type="button" onClick={load} className="flex items-center gap-1.5 rounded-full bg-surface-100 px-4 py-2 text-xs font-semibold text-navy hover:bg-surface-200">
+            <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> Refresh
+          </button>
+        </div>
       </div>
+
+      {statementsOpen && <MonthlyStatementsPanel onClose={() => setStatementsOpen(false)} />}
 
       <DataTable
         table={table}
         columns={columns}
-        bulkActions={bulkActions}
         footer={footer}
         searchPlaceholder="Practice, doctor, or account #"
         itemLabel="clients"
         exportFileName="receivables.csv"
         emptyText={table.filters.pastDue ? "Nothing past due." : "No open balances."}
       />
+      {creditFor && (
+        <AccountCreditModal clientUserId={creditFor.clientUserId} clientName={clientName(creditFor)} onClose={() => setCreditFor(null)} onRecorded={load} />
+      )}
     </div>
   );
 }

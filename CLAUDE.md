@@ -217,3 +217,7 @@ VITE_AUTHORIZE_NET_CLIENT_KEY=          # public client key from the merchant po
 - 3D models: `apps/web/public/models/` (OBJ+MTL for 4 products)
 - Downloads: `apps/web/public/downloads/` (PDFs)
 - Reports: apps/api/src/modules/reports (generic), services/lab/reports (lab definitions)
+- Exports module: `apps/api/src/modules/exports/` (generic; app sources in `apps/api/src/exports/`, screen in `apps/web/src/modules/exports/`; see its README)
+- Production desk glue (mounts the generic modules): `apps/api/src/routes/lab-desk.routes.js` (lookup at `/api/v1/lab/lookup`, intake at `/api/v1/lab/intake`, tags, record files)
+- Price lists: `apps/api/src/services/price-lists.service.js` (resolution stays in `lib/pricing.js` + `services/pricing.service.js`)
+- Generic modules (no lab vocabulary, each with a README incl. "Wiring it into another app"): `apps/api/src/modules/`, `apps/web/src/modules/`, `packages/shared/src/<module>/`. Scheduling worked example (the glue): `apps/api/src/services/lab/lab-scheduling.js`, `apps/api/src/services/lab/lab-schedule-queries.js`, `apps/api/src/routes/lab-scheduling.routes.js`, `apps/api/src/db/migrations/0036_seed_lab_scheduling.sql`, `apps/web/src/pages/app/AdminSchedulingPage.jsx`, `apps/web/src/pages/lab/OrdersCalendarPage.jsx`

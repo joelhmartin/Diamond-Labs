@@ -3,41 +3,23 @@
  * has one, else its cell when the cell is a plain string or number (rendered
  * nodes export blank). `export: false` leaves a column out.
  */
-import { downloadBlob } from "../requests.js";
+import { csvRow, CSV_EOL } from "@my-app/shared";
+import { saveBlob } from "../download.js";
 
 export function toCsv(rows, columns) {
   const cols = columns.filter((c) => c.export !== false);
-  const header = cols.map((c) => quote(typeof c.header === "string" ? c.header : c.id));
-  const lines = rows.map((row) => cols.map((c) => quote(cellValue(c, row))).join(","));
-  return [header.join(","), ...lines].join("\r\n");
+  const header = csvRow(cols.map((c) => (typeof c.header === "string" ? c.header : c.id)));
+  const lines = rows.map((row) => csvRow(cols.map((c) => cellValue(c, row))));
+  return [header, ...lines].join(CSV_EOL);
 }
 
 function cellValue(column, row) {
   const v = column.exportValue ? column.exportValue(row) : column.cell(row);
-  if (v == null) return "";
-  if (typeof v === "number" || typeof v === "boolean") return String(v);
-  if (typeof v === "string") return neutralize(v);
-  return "";
-}
-
-const FORMULA_START = /^[=+\-@\t\r]/;
-const PLAIN_NUMBER = /^[-+]?\d[\d,]*(\.\d+)?$/;
-
-/**
- * Spreadsheet formula injection: Excel/Sheets run a cell that starts with
- * = + - @ (or a tab/CR before one). Prefix those with ' so they open as text.
- * Plain numbers ("-12.50" from an exportValue) can't be formulas and stay as-is.
- */
-function neutralize(s) {
-  return FORMULA_START.test(s) && !PLAIN_NUMBER.test(s) ? `'${s}` : s;
-}
-
-/** RFC 4180: wrap in quotes when the field holds a comma, quote or line break; double inner quotes. */
-function quote(s) {
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  // Rendered nodes (objects) export blank.
+  return typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? v : null;
 }
 
 export function downloadCsv(filename, csv) {
   // The BOM makes Excel read the file as UTF-8 (accented names).
-  downloadBlob(filename, new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
+  saveBlob(filename, new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
 }

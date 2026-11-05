@@ -21,7 +21,8 @@ export function fakeTx({ selects = [], updates = [], executes = null } = {}) {
   const tx = {
     log,
     execute: async (q) => { log.push({ op: "execute", q }); return executes ? executes.shift() ?? [] : q; },
-    select: () => { log.push({ op: "select" }); return chain(selects); },
+    // A select entry records its builder calls by name (`calls`), so a test can see e.g. a row lock ("for").
+    select: () => { const entry = { op: "select", calls: [] }; log.push(entry); return chain(selects, (m) => entry.calls.push(m)); },
     selectDistinct: () => { log.push({ op: "select" }); return chain(selects); },
     update: () => {
       const entry = { op: "update" };

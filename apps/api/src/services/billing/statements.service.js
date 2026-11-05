@@ -55,7 +55,6 @@ export function statementActivityFilters(clientUserIds, { through } = {}) {
  * (statementActivityFilters).
  */
 export async function loadStatementActivity(clientUserIds, database = db, { through } = {}) {
-  const everyClient = clientUserIds === null;
   const { invoiceScope: scope, paymentBound } = statementActivityFilters(clientUserIds, { through });
   const invs = await database
     .select({
@@ -66,15 +65,17 @@ export async function loadStatementActivity(clientUserIds, database = db, { thro
     .from(invoices)
     .leftJoin(labOrders, eq(labOrders.id, invoices.labOrderId))
     .where(scope);
-  const ids = invs.map((i) => i.id);
-  if (!ids.length) return { invoices: invs, payments: [] };
-  const paymentCols = {
-    invoiceId: invoicePayments.invoiceId, invoiceNumber: invoicePayments.invoiceNumber, appliedCents: invoicePayments.appliedCents,
-    source: invoicePayments.source, paidOn: invoicePayments.paidOn, createdAt: invoicePayments.createdAt,
-  };
-  const payments = everyClient
-    ? await database.select(paymentCols).from(invoicePayments).innerJoin(invoices, eq(invoices.id, invoicePayments.invoiceId)).where(and(scope, paymentBound))
-    : await database.select(paymentCols).from(invoicePayments).where(and(inArray(invoicePayments.invoiceId, ids), paymentBound));
+  const payments = invs.length
+    ? await database
+        .select({
+          invoiceId: invoicePayments.invoiceId, invoiceNumber: invoicePayments.invoiceNumber, appliedCents: invoicePayments.appliedCents,
+          source: invoicePayments.source, paidOn: invoicePayments.paidOn, createdAt: invoicePayments.createdAt,
+        })
+        .from(invoicePayments)
+        // The same invoice filter as above by join, not an id list: no bind-parameter ceiling on a large ledger.
+        .innerJoin(invoices, eq(invoices.id, invoicePayments.invoiceId))
+        .where(and(scope, paymentBound))
+    : [];
   return { invoices: invs, payments };
 }
 

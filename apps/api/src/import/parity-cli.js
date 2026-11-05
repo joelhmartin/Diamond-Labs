@@ -16,7 +16,8 @@ import { parseArgs, intFlag, listFlag } from "./cli-args.js";
 import { ImportRefusal } from "./import-errors.js";
 import { assertNotCloudRun } from "./targets.js";
 import { openTargetSession } from "./cli-session.js";
-import { readExport, parseColumnsFlag } from "./export-table.js";
+import { readExport, parseColumnsFlag, isBalanceFile } from "./export-table.js";
+import { derivedFileInfo } from "./payments-export.js";
 import { enforceSeeds } from "./seed-check.js";
 import { readSeazonaSide, readAppSide, readOnly } from "./parity-queries.js";
 import { buildParity, applyAccepted, exportBalances, exportCreditCents, DIFFERENCE_KINDS } from "./parity.js";
@@ -35,12 +36,14 @@ async function exportSide(raw, flags, app) {
   const kind = flags.balances === "per-client" ? "client" : flags.balances === "per-invoice" ? "invoice" : null;
   if (!kind) throw new ImportRefusal("--balances must be per-invoice or per-client.");
   const stored = flags["file-id"] ? await raw.readFile(flags["file-id"]) : null;
-  if (!stored || stored.kind !== `balances_${kind}`) throw new ImportRefusal(`No ${flags.balances} export stored with id ${flags["file-id"]}.`);
+  if (!isBalanceFile(stored, kind)) throw new ImportRefusal(`No ${flags.balances} export stored with id ${flags["file-id"]}.`);
   const { rows, problems } = readExport(stored.bytes, { kind, columns: flags.columns ? parseColumnsFlag(flags.columns) : {} });
   return {
     balanceByAccount: exportBalances(rows, flags.balances, app.accountByInvoiceNumber),
     exportCreditCents: exportCreditCents(rows),
     exportProblems: problems,
+    // A payments_derived file is our inference, not the lab's report: parity labels it and raises "balance export is derived".
+    exportDerived: derivedFileInfo(stored),
   };
 }
 

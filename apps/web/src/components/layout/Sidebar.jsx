@@ -20,6 +20,14 @@ import {
   Landmark,
   Truck,
   BarChart3,
+  Download,
+  Tags,
+  CalendarDays,
+  CalendarClock,
+  Tag,
+  FilePlus,
+  Inbox,
+  ListChecks,
 } from "lucide-react";
 import { brand } from "../../config/brand.js";
 import { isStaffRole } from "@my-app/shared";
@@ -38,6 +46,9 @@ const staffItems = [
   // The lab dashboards (Pulse first); `end: false` keeps it active on /lab/dashboard/:key.
   { label: "Lab dashboard", to: ROUTES.LAB_DASHBOARD_HOME, icon: LayoutDashboard, end: false },
   { label: "Production", to: ROUTES.LAB_BOARD,      icon: LayoutGrid },
+  { label: "Calendar",   to: ROUTES.LAB_CALENDAR,   icon: CalendarDays },
+  { label: "Intake",     to: ROUTES.LAB_INTAKE,     icon: Inbox },
+  { label: "New order",  to: ROUTES.LAB_ORDER_NEW,  icon: FilePlus },
   { label: "Rx Cases",   to: ROUTES.ADMIN_RX_CASES, icon: ClipboardCheck },
   { label: "Shipments",  to: ROUTES.ADMIN_SHIPMENTS, icon: Truck },
   { label: "Reports",    to: ROUTES.REPORTS,         icon: BarChart3 },
@@ -47,12 +58,17 @@ const adminItems = [
   { label: "Invoices",   to: ROUTES.ADMIN_INVOICES,    icon: FileText },
   { label: "Receivables", to: ROUTES.ADMIN_RECEIVABLES, icon: Landmark },
   { label: "Payments",   to: ROUTES.ADMIN_PAYMENTS,    icon: CreditCard },
+  { label: "Exports",    to: ROUTES.ADMIN_EXPORTS,     icon: Download },
   { label: "AutoPay",    to: ROUTES.ADMIN_AUTOPAY,     icon: Repeat },
   { label: "Jobs",       to: ROUTES.ADMIN_JOBS,        icon: Clock },
   { label: "Orders",     to: ROUTES.ADMIN_ORDERS,      icon: ClipboardList },
   { label: "Departments", to: ROUTES.ADMIN_DEPARTMENTS, icon: Building2 },
+  { label: "Reasons",    to: ROUTES.ADMIN_REASONS,     icon: ListChecks },
   { label: "Users",      to: ROUTES.ADMIN_USERS,       icon: UserCog },
   { label: "Products",   to: ROUTES.ADMIN_PRODUCTS,    icon: Package },
+  { label: "Price lists", to: ROUTES.ADMIN_PRICE_LISTS, icon: Tags },
+  { label: "Scheduling", to: ROUTES.ADMIN_SCHEDULING, icon: CalendarClock },
+  { label: "Labels",     to: ROUTES.ADMIN_LABELS,     icon: Tag },
   { label: "Rx Mapping", to: ROUTES.ADMIN_RX_MAPPING,  icon: FlaskConical },
 ];
 

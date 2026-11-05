@@ -19,6 +19,14 @@ const rxDetail = {
   shopOrder: null,
 };
 
+test("a staff-entered order prints its own patient and says it was staff entry", () => {
+  const m = buildTicketModel({ ...rxDetail, rxCase: null, staff: { patientName: "John Roe" } }, { generatedAt });
+  const h = Object.fromEntries(m.header);
+  assert.equal(h.Patient, "John Roe");
+  assert.equal(h.Entry, "Staff entry");
+  assert.equal(h["Shop order"], undefined);
+});
+
 // Review Focus 4 (the printed half).
 test("rush and remake are banners a technician can't miss", () => {
   const m = buildTicketModel(rxDetail, { generatedAt });
@@ -42,7 +50,7 @@ test("the bench gets the patient, practice, doctor, dates and the barcode text",
 
 test("devices print as lines; instructions print separately; files and notes are listed", () => {
   const m = buildTicketModel(rxDetail, { generatedAt, answerGroups: [{ title: "DDSO", items: [{ label: "Modifications", value: "Wrap distal" }] }] });
-  assert.deepEqual(m.lines, [{ qty: "1", code: "2608", name: "DDSO Nylon", arch: "Upper" }]);
+  assert.deepEqual(m.lines, [{ qty: "1", code: "2608", name: "DDSO Nylon", arch: "Upper", materials: [] }]);
   assert.deepEqual(m.instructions, ["Wrap distal of last molars"]);
   assert.equal(m.buildNotes, "[DDSO] Occlusal Contact: TRIPOD");
   assert.equal(m.comments, "Thin as possible");
@@ -63,7 +71,7 @@ test("a shop order ticket has no patient and prints the ship-to", () => {
   assert.equal(h.Patient, "—");
   assert.equal(h["Shop order"], "DOL-ABC");
   assert.equal(h.Practice, "Pat Smith");
-  assert.deepEqual(m.lines, [{ qty: "3", code: "—", name: "Bite registration kit", arch: "" }]);
+  assert.deepEqual(m.lines, [{ qty: "3", code: "—", name: "Bite registration kit", arch: "", materials: [] }]);
   assert.deepEqual(m.shipTo, ["Pat Smith", "1 Main St", "Austin, TX 78701"]);
 });
 
@@ -89,4 +97,72 @@ test("a legacy order's ticket names the Seazona order and its patient", () => {
   }, { generatedAt: new Date("2026-11-01T15:00:00Z") });
   assert.deepEqual(m.header.find((h) => h[0] === "Seazona order"), ["Seazona order", "ord-1"]);
   assert.deepEqual(m.header.find((h) => h[0] === "Patient"), ["Patient", "Test Patient"]);
+});
+
+const scheduled = {
+  ...rxDetail,
+  schedule: {
+    workflowName: "10-day Printed",
+    stages: [
+      { key: "check-in", label: "Check in", targetAt: "2026-10-07", reached: true },
+      { key: "qc", label: "Quality check", targetAt: "2026-10-19", reached: false },
+    ],
+  },
+};
+
+test("ticket model includes the due badge and stage schedule", () => {
+  const m = buildTicketModel({ ...scheduled, order: { ...scheduled.order, dueDate: "2026-11-12" } }, { generatedAt });
+  assert.equal(m.dueBadge, "DUE THU 11/12", "2026-11-12 is a Thursday");
+  assert.deepEqual(Object.fromEntries(m.header).Workflow, "10-day Printed");
+  assert.deepEqual(m.schedule, [
+    { label: "Check in", target: "10/07/2026", reached: true },
+    { label: "Quality check", target: "10/19/2026", reached: false },
+  ]);
+  assert.equal(buildTicketModel({ ...scheduled, order: { ...scheduled.order, dueDate: "2026-11-11" } }, { generatedAt }).dueBadge, "DUE WED 11/11");
+});
+
+test("no plan: no Schedule section and no Workflow row", () => {
+  const m = buildTicketModel({ ...rxDetail, schedule: null }, { generatedAt });
+  assert.deepEqual(m.schedule, []);
+  assert.equal(m.header.some(([k]) => k === "Workflow"), false);
+  assert.equal(buildTicketModel({ ...rxDetail, order: { ...rxDetail.order, dueDate: null } }, { generatedAt }).dueBadge, null);
+});
+
+const extras = {
+  ...rxDetail,
+  order: { ...rxDetail.order, panNumber: "P-4471", deliveryMethod: "ups", enclosures: [{ kind: "digital", date: "2026-10-05" }, { kind: "model", note: "upper only" }] },
+  lines: [
+    { id: "l1", qty: 1, code: "2608", name: "DDSO Nylon", arch: "Upper", noteOnly: false, materials: [{ material: "Acrylic", lotNumber: "L77" }, { material: "Liner", lotNumber: null }] },
+  ],
+  tags: [{ label: "VIP" }, { label: "Call doctor" }],
+  mergedFrom: [{ orderNumber: 123 }, { orderNumber: 124 }],
+  recordFiles: [{ kind: "photo", originalName: "bite.jpg" }],
+};
+
+test("pan, delivery, enclosed items, labels and merged-from print as the shared formatters write them", () => {
+  const m = buildTicketModel(extras, { generatedAt });
+  assert.equal(m.pan, "P-4471");
+  assert.equal(m.delivery, "UPS");
+  assert.deepEqual(m.enclosed, ["Digital (10/05/2026)", "Model (upper only)"]);
+  assert.deepEqual(m.labels, ["VIP", "Call doctor"]);
+  assert.equal(m.mergedFrom, "#123, #124");
+  assert.equal(m.dueBadge, "DUE WED 10/21", "piece 7's badge is kept");
+});
+
+test("materials attach to their line", () => {
+  assert.deepEqual(buildTicketModel(extras, { generatedAt }).lines[0].materials, ["Acrylic · lot L77", "Liner"]);
+});
+
+test("record files are listed beside the Rx files", () => {
+  assert.deepEqual(buildTicketModel(extras, { generatedAt }).files, ["scan: upper.stl", "photo: bite.jpg"]);
+});
+
+test("no pan prints no pan block", () => {
+  const m = buildTicketModel(rxDetail, { generatedAt });
+  assert.equal(m.pan, null);
+  assert.equal(m.delivery, null);
+  assert.deepEqual(m.enclosed, []);
+  assert.deepEqual(m.labels, []);
+  assert.equal(m.mergedFrom, null);
+  assert.deepEqual(m.lines[0].materials, []);
 });

@@ -27,6 +27,29 @@ test("filters become query params, dropping blanks", () => {
   assert.deepEqual(boardParams({ rush: false }), {});
 });
 
+test("boardParams includes tile and dueOn only when set", () => {
+  assert.deepEqual(boardParams({ tile: "at_risk", dueOn: "2026-11-12" }), { tile: "at_risk", dueOn: "2026-11-12" });
+  assert.deepEqual(boardParams({ tile: "", dueOn: " " }), {});
+  assert.deepEqual(boardParams({ tile: null }), {});
+});
+
+test("boardParams joins tagIds with commas and drops empty", () => {
+  assert.deepEqual(boardParams({ tagIds: ["t1", "t2"] }), { tagIds: "t1,t2" });
+  assert.deepEqual(boardParams({ tagIds: [] }), {});
+  assert.deepEqual(boardParams({ tagIds: ["", "t1", " "] }), { tagIds: "t1" });
+  assert.deepEqual(boardParams({ starred: true, tile: "past_due" }), { starred: "true", tile: "past_due" });
+  assert.deepEqual(boardParams({ starred: false }), {});
+});
+
+test("a label event reads as a sentence with the label", () => {
+  assert.equal(describeEvent({ type: "label", to: "Rush check", note: "Label added", byName: "Ana" }), "Ana: Label added — Rush check");
+  assert.equal(describeEvent({ type: "label", to: "Rush check", note: "Label removed", byName: null }), "System: Label removed — Rush check");
+});
+
+test("a merge event reads its note", () => {
+  assert.equal(describeEvent({ type: "merge", note: "Merged #101, #102 into this order", byName: "Ana" }), "Ana: Merged #101, #102 into this order");
+});
+
 test("timeline rows read as sentences, naming people and rooms", () => {
   const ctx = { staffById: { t1: "Maria Lopez" }, departmentsById: { d1: "Acrylic" } };
   assert.equal(describeEvent({ type: "release", byName: null }, ctx), "System: released to the lab");
@@ -38,6 +61,8 @@ test("timeline rows read as sentences, naming people and rooms", () => {
   assert.equal(describeEvent({ type: "due", to: "2026-10-21", byName: "Ana" }, ctx), "Ana: due date set to 10/21/2026");
   assert.equal(describeEvent({ type: "due", to: null, byName: "Ana" }, ctx), "Ana: due date cleared");
   assert.equal(describeEvent({ type: "note", note: "Lab notes updated", byName: "Ana" }, ctx), "Ana: Lab notes updated");
+  assert.equal(describeEvent({ type: "workflow", from: "10d-printed", to: "7d-1-device", byName: "Ana" }, ctx), "Ana: workflow changed from 10d-printed to 7d-1-device");
+  assert.equal(describeEvent({ type: "workflow", from: null, to: "7d-1-device", byName: "Ana" }, ctx), "Ana: workflow set to 7d-1-device");
 });
 
 test("a labelled card offers only → Shipped (anything else would strand its label)", () => {

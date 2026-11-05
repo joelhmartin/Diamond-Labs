@@ -76,6 +76,29 @@ test("invoices: without limit the response is unchanged (capped, truncated flag,
   assert.equal((await listInvoices({}, full)).truncated, true);
 });
 
+test("invoices: needsPrice finds drafts with an unpriced line OR no item line at all", () => {
+  const { sql } = render(invoiceListWhere({ needsPrice: true }));
+  assert.match(sql, /"status" = \$1/);
+  assert.match(sql, /exists \(select 1 from "invoice_lines" where "invoice_lines"\."invoice_id" = "invoices"\."id" and "invoice_lines"\."price_source" = 'unpriced'\)/);
+  assert.match(sql, /or not exists \(select 1 from "invoice_lines" where "invoice_lines"\."invoice_id" = "invoices"\."id" and "invoice_lines"\."kind" = 'item'\)/);
+});
+
+test("invoices: rows flag drafts with no item lines (noLines) under needsPrice, alongside unpriced ones", async () => {
+  const row = (n, status) => ({ ...invoiceRow(n), invoice: { ...invoiceRow(n).invoice, status } });
+  const db = recorder([
+    [row(4, "draft"), row(3, "draft"), row(2, "draft"), row(1, "issued")],
+    [{ id: "i3", priceSource: "unpriced" }, { id: "i2", priceSource: "client" }, { id: "i2", priceSource: "unpriced" }],
+    [],
+  ]);
+  const out = await listInvoices({}, db);
+  assert.deepEqual(out.invoices.map((i) => [i.invoiceNumber, i.needsPrice, i.noLines]), [
+    [4, true, true], // a lineless draft
+    [3, true, false],
+    [2, true, false],
+    [1, false, false], // not a draft: never "no lines"
+  ]);
+});
+
 test("invoices: q digits match the invoice number prefix", () => {
   const { sql, params } = render(invoiceListWhere({ q: "1004" }));
   assert.match(sql, /"invoice_number"::text like \$1/);
@@ -92,10 +115,10 @@ test("invoices: q text matches practice and doctor name case-insensitively, wild
 
 // ── Lab orders ──────────────────────────────────────────────────────────────
 test("lab orders: limit/offset page the list, total counts all matches over the same WHERE", async () => {
-  const db = recorder([[]], [[{ n: 1234 }]]);
+  const db = recorder([[], [], []], [[{ n: 1234 }]]); // calendar, holidays, rows
   const out = await listLabOrders({ limit: 50, offset: 100, q: "100" }, new Date(), db);
   assert.deepEqual(out, { orders: [], total: 1234 });
-  const rows = db.queries.find((q) => !db.countQueries.includes(q));
+  const rows = db.queries.find((q) => !db.countQueries.includes(q) && arg(q, "limit") === 50);
   const [count] = db.countQueries;
   assert.equal(arg(rows, "limit"), 50);
   assert.equal(arg(rows, "offset"), 100);
@@ -103,12 +126,38 @@ test("lab orders: limit/offset page the list, total counts all matches over the 
 });
 
 test("lab orders: without limit the board's response is unchanged (LIST_LIMIT cap, truncated, no count)", async () => {
-  const db = recorder([[]]);
+  const db = recorder([[], [], []]); // calendar, holidays, rows
   const out = await listLabOrders({}, new Date(), db);
   assert.deepEqual(out, { orders: [], truncated: false });
-  assert.equal(arg(db.queries[0], "limit"), LIST_LIMIT);
-  assert.equal(db.queries[0].some(([m]) => m === "offset"), false);
+  const rows = db.queries.find((q) => arg(q, "limit") === LIST_LIMIT);
+  assert.ok(rows);
+  assert.equal(rows.some(([m]) => m === "offset"), false);
   assert.equal(db.countQueries.length, 0, "no count(*)");
+});
+
+test("lab orders: an at_risk tile with no matching orders returns no rows, not every row", async () => {
+  const db = recorder([[], [], [], []]); // calendar, holidays, open orders (none), rows
+  await listLabOrders({ tile: "at_risk" }, new Date(), db);
+  const rows = db.queries.find((q) => arg(q, "limit") === LIST_LIMIT);
+  assert.match(render(arg(rows, "where")).sql, /false/);
+});
+
+test("lab orders: a tile means open work only, and dueOn / past_due filter on the due date", async () => {
+  const where = async (filters) => {
+    const lab = { key: "default", timezone: "America/Chicago", leadDays: 13, closedWeekdays: [0, 6], capacityBasis: "none", capacityByWeekday: {} };
+    const db = recorder([[lab], [], [], []]);
+    await listLabOrders(filters, new Date("2026-11-06T15:00:00Z"), db);
+    return render(arg(db.queries.find((q) => arg(q, "limit") === LIST_LIMIT), "where"));
+  };
+  const past = await where({ tile: "past_due" });
+  assert.match(past.sql, /"status" not in/);
+  assert.match(past.sql, /"due_date" < \$/);
+  assert.ok(past.params.includes("2026-11-06"), "today is the calendar's day");
+  const tomorrow = await where({ tile: "due_tomorrow" });
+  assert.ok(tomorrow.params.includes("2026-11-09"), "Friday's tomorrow is Monday");
+  const on = await where({ dueOn: "2026-11-12" });
+  assert.match(on.sql, /"due_date" = \$/);
+  assert.ok(on.params.includes("2026-11-12"));
 });
 
 // ── Shipments ───────────────────────────────────────────────────────────────

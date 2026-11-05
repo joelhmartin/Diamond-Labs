@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { INVOICE_LINE_KINDS, LINE_KIND_LABELS, PRICE_SOURCE_LABELS, parseMoneyInput } from "@my-app/shared";
+import api from "../../config/api.js";
 import { ConfirmButton } from "../ui/ConfirmButton.jsx";
 import { formatCents, toDecimalString } from "../../lib/money.js";
 
@@ -88,6 +89,65 @@ export function DraftLinesEditor({ lines, onEdit, busy }) {
           Add line
         </button>
       </div>
+      <AddDiscount busy={busy} onEdit={onEdit} />
+    </div>
+  );
+}
+
+/**
+ * "Add discount": a reason from the lab's list (its default percent prefills), optional text,
+ * then a percent of the items OR a fixed amount. The server turns a percent into cents.
+ */
+function AddDiscount({ busy, onEdit }) {
+  const [reasons, setReasons] = useState([]);
+  const [reasonId, setReasonId] = useState("");
+  const [text, setText] = useState("");
+  const [mode, setMode] = useState("percent");
+  const [value, setValue] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    api.get("/lab/adjustment-reasons", { params: { appliesTo: "discount" } })
+      .then((res) => { if (live) setReasons(res.data.data.reasons ?? []); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+
+  const pick = (id) => {
+    setReasonId(id);
+    const r = reasons.find((x) => x.id === id);
+    if (r?.discountPercent != null) { setMode("percent"); setValue(String(r.discountPercent)); }
+  };
+  const percent = mode === "percent" && /^\d{1,3}$/.test(value.trim()) ? Number(value) : null;
+  const amountCents = mode === "amount" ? parseMoneyInput(value) : null;
+  const sized = mode === "percent" ? percent != null && percent >= 1 && percent <= 100 : amountCents != null && amountCents > 0;
+  const described = Boolean(reasonId) || Boolean(text.trim());
+
+  const add = async () => {
+    const ok = await onEdit({
+      op: "discount",
+      ...(reasonId ? { reasonId } : {}),
+      ...(text.trim() ? { text: text.trim() } : {}),
+      ...(mode === "percent" ? { percent } : { amountCents }),
+    });
+    if (ok) { setReasonId(""); setText(""); setValue(""); }
+  };
+
+  return (
+    <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-dashed border-surface-300 p-3">
+      <select className={INPUT} value={reasonId} onChange={(e) => pick(e.target.value)} aria-label="Discount reason">
+        <option value="">Discount reason…</option>
+        {reasons.map((r) => <option key={r.id} value={r.id}>{r.label}{r.discountPercent != null ? ` (${r.discountPercent}%)` : ""}</option>)}
+      </select>
+      <input className={`${INPUT} min-w-[10rem] flex-1`} placeholder="Note (optional with a reason)" value={text} onChange={(e) => setText(e.target.value)} aria-label="Discount note" maxLength={200} />
+      <select className={INPUT} value={mode} onChange={(e) => { setMode(e.target.value); setValue(""); }} aria-label="Discount type">
+        <option value="percent">% of items</option>
+        <option value="amount">$ amount</option>
+      </select>
+      <input className={`${INPUT} w-24`} inputMode="decimal" placeholder={mode === "percent" ? "10" : "0.00"} value={value} onChange={(e) => setValue(e.target.value)} aria-label="Discount value" />
+      <button type="button" className={`${PILL} bg-surface-100 text-navy hover:bg-surface-200 disabled:opacity-50`} disabled={busy || !described || !sized} onClick={add}>
+        Add discount
+      </button>
     </div>
   );
 }

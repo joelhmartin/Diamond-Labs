@@ -62,6 +62,33 @@ test("a re-run skips orders already loaded", async () => {
   assert.equal(report.counts.alreadyLoaded, 4);
 });
 
+test("a re-run with an isRemake order already loaded inserts nothing (existing covers every legacy row)", async () => {
+  const withRemake = known.map((o, i) => (i === 0 ? { ...o, isRemake: true } : o));
+  const existing = withRemake.map((o, i) => ({ id: `lo-${i}`, sourceId: o.id, number: Number(o.orderNumber), clientUserId: "u-x", panNumber: null, isRemake: i === 0 }));
+  const tx = db(existing);
+  const report = await loadOrders({ raw: rawWith(withRemake), db: tx, live: true, target: "rehearsal", starts: {}, lock: lock() });
+  assert.equal(tx.log.some((e) => e.op === "insert"), false);
+  assert.equal(report.counts.alreadyLoaded, 4);
+  assert.equal(report.counts.remakeBackfilled, 0);
+  assert.equal(report.counts.panBackfilled, 0);
+});
+
+test("legacy flags backfill: live run fills null pans and flips is_remake on, guarded and counted", async () => {
+  const flagged = known.map((o) => (o.id === "ord-1" ? { ...o, panNumber: "P-1" } : o.id === "ord-3" ? { ...o, isRemake: true } : o));
+  const existing = flagged.map((o, i) => ({ id: `lo-${i}`, sourceId: o.id, number: Number(o.orderNumber), clientUserId: "u-x", panNumber: null, isRemake: false }));
+  const tx = fakeTx({ selects: [[{ n: 0 }], [{ n: 0 }], users, existing, []], updates: [[{ id: "lo-0" }], [{ id: "lo-2" }]] });
+  const report = await loadOrders({ raw: rawWith(flagged), db: tx, live: true, target: "rehearsal", starts: {}, lock: lock() });
+  assert.equal(report.counts.panBackfilled, 1);
+  assert.equal(report.counts.remakeBackfilled, 1);
+  assert.equal(tx.log.filter((e) => e.op === "insert" && e.values?.source === "legacy").length, 0);
+  const sets = tx.log.filter((e) => e.op === "set").map((e) => e.values);
+  assert.equal(sets.length, 2);
+  assert.equal(sets[1].isRemake, true);
+
+  const dry = await loadOrders({ raw: rawWith(flagged), db: fakeTx({ selects: [[{ n: 0 }], [{ n: 0 }], users, existing, []] }), live: false, target: "rehearsal", starts: {} });
+  assert.deepEqual([dry.counts.panBackfilled, dry.counts.remakeBackfilled], [1, 1], "a dry run reports the plan only");
+});
+
 test("a client with two eligible doctors loads its orders unowned and is reported by client id", async () => {
   const tx = db([], [...users, doctor("u-2001b", "c-2001", "2001")]);
   const report = await loadOrders({ raw: rawWith(known), db: tx, live: true, target: "rehearsal", starts: {}, lock: lock() });

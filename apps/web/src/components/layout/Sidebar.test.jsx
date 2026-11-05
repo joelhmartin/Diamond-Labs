@@ -24,7 +24,7 @@ test("staff see Lab dashboard first in the Lab section, linking to the lab dashb
   const lab = sectionLinks("Lab");
   assert.equal(lab[0].textContent, "Lab dashboard");
   assert.ok(lab[0].getAttribute("href").endsWith("/lab/dashboard"));
-  assert.deepEqual(lab.map((a) => a.textContent), ["Lab dashboard", "Production", "Rx Cases", "Shipments", "Reports"]);
+  assert.deepEqual(lab.map((a) => a.textContent), ["Lab dashboard", "Production", "Calendar", "Intake", "New order", "Rx Cases", "Shipments", "Reports"]);
 });
 
 test("admins see the same Lab section, then Admin", () => {

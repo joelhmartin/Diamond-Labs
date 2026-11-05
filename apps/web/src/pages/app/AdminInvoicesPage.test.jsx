@@ -38,3 +38,19 @@ test("AdminInvoicesPage keeps status, needsPrice, clientUserId and q in the URL 
   assert.equal(sp.get("inv.q"), "smile");
   assert.ok(screen.getByText(/One client/i), "the client filter shows as a removable chip");
 });
+
+test("AdminInvoicesPage labels a held draft by why: no lines vs. needs a price", async () => {
+  const base = { kind: "order", status: "draft", clientName: "Dr A", practice: null, labOrderNumber: null, issuedAt: null, dueDate: null, totalCents: 0, balanceCents: 0 };
+  get.mockResolvedValue({ data: { data: { total: 2, invoices: [
+    { ...base, id: "i1", invoiceNumber: 500001, needsPrice: true, noLines: true },
+    { ...base, id: "i2", invoiceNumber: 500002, needsPrice: true, noLines: false },
+  ] } } });
+  render(
+    <MemoryRouter initialEntries={["/admin/invoices"]}>
+      <ToastProvider><AdminInvoicesPage /></ToastProvider>
+    </MemoryRouter>,
+  );
+  await waitFor(() => assert.ok(screen.getByText("No lines")));
+  assert.ok(screen.getAllByText("Needs a price").length >= 1);
+  assert.ok(screen.getAllByText(/Needs a price or lines/).length >= 1, "the filter names both reasons");
+});

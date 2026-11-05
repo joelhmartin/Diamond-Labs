@@ -1,9 +1,24 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
+import { LAB_BOARD_TILES } from "../lab/lab-order-status.js";
 import {
   labStatusChangeSchema, labFieldChangeSchema, labRemakeSchema, labOrderListQuerySchema,
-  labDepartmentUpdateSchema, rxReleaseSchema, userRoleChangeSchema,
+  labDepartmentUpdateSchema, rxReleaseSchema, userRoleChangeSchema, labWorkflowChangeSchema, labSchedulePreviewQuerySchema,
 } from "./lab.schema.js";
+
+test("a workflow change names a workflow key and the version the client saw", () => {
+  assert.deepEqual(labWorkflowChangeSchema.parse({ workflowKey: "7d-1-device", expectedVersion: 2 }), { workflowKey: "7d-1-device", keepDueDate: false, expectedVersion: 2 });
+  assert.equal(labWorkflowChangeSchema.safeParse({ workflowKey: "7d-1-device" }).success, false);
+  assert.equal(labWorkflowChangeSchema.safeParse({ workflowKey: null, expectedVersion: 2 }).success, false);
+  assert.equal(labWorkflowChangeSchema.safeParse({ workflowKey: "Not A Key", expectedVersion: 2 }).success, false);
+});
+
+test("the schedule preview reads variant ids as a list or a comma string", () => {
+  assert.deepEqual(labSchedulePreviewQuerySchema.parse({}), { variantIds: [], rush: false, workflowKey: null, requestedDueDate: null });
+  assert.deepEqual(labSchedulePreviewQuerySchema.parse({ variantIds: "v1, v2,v1", rush: "true" }).variantIds, ["v1", "v2"]);
+  assert.deepEqual(labSchedulePreviewQuerySchema.parse({ variantIds: ["v1", "v3"] }).variantIds, ["v1", "v3"]);
+  assert.equal(labSchedulePreviewQuerySchema.safeParse({ requestedDueDate: "11/20/2026" }).success, false);
+});
 
 test("a status change needs a known status and the version the client saw", () => {
   assert.ok(labStatusChangeSchema.safeParse({ to: "in_production", expectedVersion: 3 }).success);
@@ -26,9 +41,25 @@ test("a remake needs a reason", () => {
 
 test("board query strings become typed filters", () => {
   const q = labOrderListQuerySchema.parse({ rush: "true", includeClosed: "false", dueBefore: "2026-10-10", q: " RX " });
-  assert.deepEqual(q, { rush: true, includeClosed: false, dueBefore: "2026-10-10", q: "RX" });
-  assert.deepEqual(labOrderListQuerySchema.parse({}), { rush: false, includeClosed: false });
+  assert.deepEqual(q, { rush: true, starred: false, tagIds: [], includeClosed: false, dueBefore: "2026-10-10", q: "RX" });
+  assert.deepEqual(labOrderListQuerySchema.parse({}), { rush: false, starred: false, tagIds: [], includeClosed: false });
   assert.equal(labOrderListQuerySchema.safeParse({ status: "nope" }).success, false);
+});
+
+test("the board filters by labels (comma list, at most 20) and by the viewer's stars", () => {
+  assert.deepEqual(labOrderListQuerySchema.parse({ tagIds: "t1, t2,t1,", starred: "true" }).tagIds, ["t1", "t2"]);
+  assert.equal(labOrderListQuerySchema.parse({ starred: "true" }).starred, true);
+  const many = Array.from({ length: 21 }, (_, i) => `t${i}`).join(",");
+  assert.equal(labOrderListQuerySchema.safeParse({ tagIds: many }).success, false);
+  assert.equal(labOrderListQuerySchema.safeParse({ tagIds: many.split(",").slice(0, 20).join(",") }).success, true);
+});
+
+test("tile must be one of LAB_BOARD_TILES, and dueOn a real date", () => {
+  assert.deepEqual(LAB_BOARD_TILES, ["past_due", "due_today", "due_tomorrow", "on_hold", "at_risk"]);
+  for (const tile of LAB_BOARD_TILES) assert.equal(labOrderListQuerySchema.parse({ tile }).tile, tile);
+  assert.equal(labOrderListQuerySchema.safeParse({ tile: "overdue" }).success, false);
+  assert.equal(labOrderListQuerySchema.parse({ dueOn: "2026-11-12" }).dueOn, "2026-11-12");
+  assert.equal(labOrderListQuerySchema.safeParse({ dueOn: "11/12/2026" }).success, false);
 });
 
 test("a department update must change something", () => {

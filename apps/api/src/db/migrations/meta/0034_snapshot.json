@@ -1,5 +1,5 @@
 {
-  "id": "6d72c23e-7be7-492a-a367-dba78aaded90",
+  "id": "64c51e79-947a-4cc4-bece-3dcd4541d340",
   "prevId": "ec1ffbfa-193f-418c-8c76-cec86c8482d5",
   "version": "7",
   "dialect": "postgresql",
@@ -778,6 +778,132 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.calendar_holidays": {
+      "name": "calendar_holidays",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "varchar(128)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "calendar_key": {
+          "name": "calendar_key",
+          "type": "varchar(60)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "date": {
+          "name": "date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "varchar(80)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "calendar_holidays_key_date_idx": {
+          "name": "calendar_holidays_key_date_idx",
+          "columns": [
+            {
+              "expression": "calendar_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "date",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.calendars": {
+      "name": "calendars",
+      "schema": "",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "varchar(60)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "timezone": {
+          "name": "timezone",
+          "type": "varchar(60)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'UTC'"
+        },
+        "lead_days": {
+          "name": "lead_days",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "closed_weekdays": {
+          "name": "closed_weekdays",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "capacity_basis": {
+          "name": "capacity_basis",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'none'"
+        },
+        "capacity_by_weekday": {
+          "name": "capacity_by_weekday",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.client_prices": {
       "name": "client_prices",
       "schema": "",
@@ -1341,21 +1467,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "invoice_lines_variant_idx": {
-          "name": "invoice_lines_variant_idx",
-          "columns": [
-            {
-              "expression": "variant_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {},
@@ -1527,36 +1638,6 @@
           "columns": [
             {
               "expression": "refunds_transaction_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "invoice_payments_paid_on_idx": {
-          "name": "invoice_payments_paid_on_idx",
-          "columns": [
-            {
-              "expression": "paid_on",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "invoice_payments_created_at_idx": {
-          "name": "invoice_payments_created_at_idx",
-          "columns": [
-            {
-              "expression": "created_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1774,48 +1855,6 @@
           "columns": [
             {
               "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "invoices_status_issued_idx": {
-          "name": "invoices_status_issued_idx",
-          "columns": [
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "issued_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "invoices_client_issued_idx": {
-          "name": "invoices_client_issued_idx",
-          "columns": [
-            {
-              "expression": "client_user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "issued_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2146,42 +2185,6 @@
             },
             {
               "expression": "to_value",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "lab_order_events_at_idx": {
-          "name": "lab_order_events_at_idx",
-          "columns": [
-            {
-              "expression": "at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "lab_order_events_type_at_idx": {
-          "name": "lab_order_events_type_at_idx",
-          "columns": [
-            {
-              "expression": "type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2561,106 +2564,6 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "lab_orders_received_idx": {
-          "name": "lab_orders_received_idx",
-          "columns": [
-            {
-              "expression": "received_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "lab_orders_shipped_idx": {
-          "name": "lab_orders_shipped_idx",
-          "columns": [
-            {
-              "expression": "shipped_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "shipped_at is not null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "lab_orders_client_received_idx": {
-          "name": "lab_orders_client_received_idx",
-          "columns": [
-            {
-              "expression": "client_user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "received_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "lab_orders_open_due_idx": {
-          "name": "lab_orders_open_due_idx",
-          "columns": [
-            {
-              "expression": "due_date",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "status not in ('shipped', 'cancelled')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "lab_orders_department_idx": {
-          "name": "lab_orders_department_idx",
-          "columns": [
-            {
-              "expression": "department_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "department_id is not null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "lab_orders_assignee_idx": {
-          "name": "lab_orders_assignee_idx",
-          "columns": [
-            {
-              "expression": "assignee_user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "assignee_user_id is not null",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -4611,21 +4514,6 @@
           "columns": [
             {
               "expression": "purchased_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "shipments_shipped_idx": {
-          "name": "shipments_shipped_idx",
-          "columns": [
-            {
-              "expression": "shipped_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

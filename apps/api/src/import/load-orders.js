@@ -1,9 +1,9 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { labOrders, labOrderLines } from "../db/schema/index.js";
 import { sealOrder } from "../services/lab/lab-order-crypto.js";
 import { variantIdsForCodes } from "../services/lab/lab-variants.js";
 import { loadOwners } from "./owners.js";
-import { planOrders } from "./map-orders.js";
+import { planOrders, planLegacyFlagBackfill } from "./map-orders.js";
 import { insertMissing } from "./load-writer.js";
 import { enforceSeeds } from "./seed-check.js";
 import { reattachOwners, planAttach, stillUnowned } from "./reattach.js";
@@ -36,8 +36,14 @@ async function run({ raw, db, live, target, starts, guard }) {
   const details = new Map((await raw.records("order_detail")).map((r) => [r.seazonaId, r.payload]));
   const seeds = await enforceSeeds({ raw, db, target, live, starts, orderSummaries: summaries });
   const owners = await loadOwners(db);
+  // Every legacy row, whatever its is_remake: this feeds existingSourceIds, which keeps re-runs
+  // idempotent now that legacy remakes sit outside the partial unique index
+  // (lab_orders_source_idx where is_remake = false). Never filter it by is_remake.
   const existing = await db
-    .select({ sourceId: labOrders.sourceId, number: labOrders.orderNumber, clientUserId: labOrders.clientUserId })
+    .select({
+      id: labOrders.id, sourceId: labOrders.sourceId, number: labOrders.orderNumber, clientUserId: labOrders.clientUserId,
+      panNumber: labOrders.panNumber, isRemake: labOrders.isRemake,
+    })
     .from(labOrders)
     .where(eq(labOrders.source, "legacy"));
   const existingSourceIds = new Set(existing.map((r) => r.sourceId));
@@ -47,6 +53,9 @@ async function run({ raw, db, live, target, starts, guard }) {
   });
   const reattach = reattachPlan(existing, summaries, owners.byClient);
   plan.counts.reattached = [...reattach.values()].reduce((n, ids) => n + ids.length, 0); // planned; a live run overwrites with what changed
+  const flags = planLegacyFlagBackfill(existing, summaries, details);
+  plan.counts.panBackfilled = flags.pan.length; // planned; a live run overwrites with what changed
+  plan.counts.remakeBackfilled = flags.remake.length;
   const clientOf = clientIdByOrder(summaries);
   const waiting = stillUnowned(existing.map((r) => ({ clientUserId: r.clientUserId, clientId: clientOf.get(r.sourceId) ?? null })), owners.byClient);
   plan.counts.loadedStillUnowned = waiting.records;
@@ -75,8 +84,40 @@ async function run({ raw, db, live, target, starts, guard }) {
   }
   report.written = { orders: written, conflicts };
   if (dropped.length) report.problems.push(problem("order_not_loaded_conflict", dropped));
+  Object.assign(plan.counts, await backfillLegacyFlags(db, flags, guard));
   plan.counts.reattached = await reattachLegacyOrders(db, reattach, guard);
   return report;
+}
+
+/**
+ * Fill pan_number (where still null) and set is_remake (where still false) on
+ * already-loaded legacy orders, in batches of BATCH. The WHERE repeats the
+ * planner's guards, so a pan staff typed meanwhile is never overwritten and a
+ * remake is never flipped back. Returns what actually changed.
+ */
+export async function backfillLegacyFlags(db, flags, guard) {
+  let panBackfilled = 0;
+  let remakeBackfilled = 0;
+  for (let i = 0; i < flags.pan.length; i += BATCH) {
+    const batch = flags.pan.slice(i, i + BATCH);
+    guard();
+    const cases = sql.join(batch.map((r) => sql`when ${r.id} then ${r.panNumber}`), sql` `);
+    const rows = await db.update(labOrders)
+      .set({ panNumber: sql`case ${labOrders.id} ${cases} end`, version: sql`${labOrders.version} + 1`, updatedAt: new Date() })
+      .where(and(eq(labOrders.source, "legacy"), isNull(labOrders.panNumber), inArray(labOrders.id, batch.map((r) => r.id))))
+      .returning({ id: labOrders.id });
+    panBackfilled += rows.length;
+  }
+  for (let i = 0; i < flags.remake.length; i += BATCH) {
+    const batch = flags.remake.slice(i, i + BATCH);
+    guard();
+    const rows = await db.update(labOrders)
+      .set({ isRemake: true, version: sql`${labOrders.version} + 1`, updatedAt: new Date() })
+      .where(and(eq(labOrders.source, "legacy"), eq(labOrders.isRemake, false), inArray(labOrders.id, batch)))
+      .returning({ id: labOrders.id });
+    remakeBackfilled += rows.length;
+  }
+  return { panBackfilled, remakeBackfilled };
 }
 
 /** Seazona order id → its client id (string), null when the order has none. One pass, then O(1) lookups. */

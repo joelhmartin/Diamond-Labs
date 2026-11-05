@@ -32,6 +32,21 @@ function mapLines(labOrderId, detail) {
   });
 }
 
+const PAN_MAX = 30;
+
+/** Seazona's pan number: summary first, then detail; trimmed, cut to the column, blank → null. */
+export function legacyPan(summary, detail) {
+  const raw = summary?.panNumber ?? detail?.panNumber;
+  if (raw == null || typeof raw === "object") return null;
+  return String(raw).trim().slice(0, PAN_MAX) || null;
+}
+
+/** True only for boolean true or the string "true" (summary first, then detail). Seazona gives no link to the original. */
+export function legacyIsRemake(summary, detail) {
+  const raw = summary?.isRemake ?? detail?.isRemake;
+  return raw === true || raw === "true";
+}
+
 export function mapLegacyOrder({ summary, detail = null, ownerUserId = null }) {
   const orderNumber = recordNumber(summary, ORDER_NUMBER_FIELDS) ?? recordNumber(detail, ORDER_NUMBER_FIELDS);
   if (!orderNumber) return { problem: "order_number_not_numeric" };
@@ -46,7 +61,8 @@ export function mapLegacyOrder({ summary, detail = null, ownerUserId = null }) {
     legacyPatient: firstString(summary, ["patientName", "patient"]),
     clientUserId: ownerUserId ?? null, status: mapped.status, heldFrom: mapped.heldFrom,
     departmentId: null, assigneeUserId: null, dueDate: dayOf(summary.due), rush: false, rushTier: null,
-    isRemake: false, remakeOfOrderId: null, holdReason: null, labNotes: null, shipmentId: null, version: 1,
+    panNumber: legacyPan(summary, detail),
+    isRemake: legacyIsRemake(summary, detail), remakeOfOrderId: null, holdReason: null, labNotes: null, shipmentId: null, version: 1,
     receivedAt,
     startedAt: mapped.status === "received" ? null : receivedAt,
     shippedAt: mapped.status === "shipped" ? terminalAt : null,
@@ -54,6 +70,31 @@ export function mapLegacyOrder({ summary, detail = null, ownerUserId = null }) {
     createdAt: receivedAt, updatedAt: receivedAt,
   };
   return { order, lines: mapLines(id, detail) };
+}
+
+/**
+ * Legacy flags for orders ALREADY loaded: the pan where it is still null, and
+ * is_remake where it is false but Seazona says true. Never overwrites a set
+ * pan and never flips true → false (the live update repeats both guards).
+ * existing: [{ id, sourceId, panNumber, isRemake }]; summaries: raw order
+ * records; details: Seazona order id → detail payload.
+ * Returns { pan: [{ id, panNumber }], remake: [id] }.
+ */
+export function planLegacyFlagBackfill(existing, summaries, details) {
+  const payloadOf = new Map(summaries.map((r) => [r.seazonaId, r.payload]));
+  const pan = [];
+  const remake = [];
+  for (const row of existing) {
+    const summary = payloadOf.get(row.sourceId);
+    if (!summary) continue;
+    const detail = details.get(row.sourceId) ?? null;
+    if (row.panNumber == null) {
+      const p = legacyPan(summary, detail);
+      if (p) pan.push({ id: row.id, panNumber: p });
+    }
+    if (!row.isRemake && legacyIsRemake(summary, detail)) remake.push(row.id);
+  }
+  return { pan, remake };
 }
 
 const isOpen = (status) => status !== "shipped" && status !== "cancelled";

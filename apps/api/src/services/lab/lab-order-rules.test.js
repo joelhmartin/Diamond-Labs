@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   LabOrderError, summariseLabLines, parseDueDate, rushFromCase, planRxRelease, planShopLabOrder, planRemake,
   assertFresh, planStatusChange, planFieldChange, initialsFor, presentBoardCard, planShipmentLink, planShipmentUnlink,
+  planWorkflowChange, requestedDueDateOf,
 } from "./lab-order-rules.js";
 
 const now = new Date("2026-10-07T15:00:00Z");
@@ -92,6 +93,15 @@ test("a case's own dueDate column wins over the form answer", () => {
   assert.equal(junk.labOrder.dueDate, null);
 });
 
+test("planRxRelease uses the dueDate it is given", () => {
+  const given = planRxRelease({ caseRow, lines, orderNumber: 1, labOrderId: "x", now, dueDate: "2026-11-16" });
+  assert.equal(given.labOrder.dueDate, "2026-11-16", "the scheduled date, not the form's");
+  const cleared = planRxRelease({ caseRow, lines, orderNumber: 1, labOrderId: "x", now, dueDate: null });
+  assert.equal(cleared.labOrder.dueDate, null);
+  assert.equal(requestedDueDateOf(caseRow), "2026-10-21", "the doctor's requested date the caller schedules from");
+  assert.equal(requestedDueDateOf({ dueDate: "junk", formData: { dueDate: "2026-02-30" } }), null);
+});
+
 // Review Focus 5.
 test("a guest's shop order with a codeless item still makes a lab order — checkout already charged the card", () => {
   const plan = planShopLabOrder({
@@ -150,6 +160,19 @@ test("only a shipped order can be remade, and only with a reason", () => {
   assert.throws(() => planRemake({ original: shipped, originalLines: [], reason: "   ", orderNumber: 1, labOrderId: "x", now }), isCode("REASON_REQUIRED"));
 });
 
+test("remake with only reasonId is accepted and the note carries the label", () => {
+  const plan = planRemake({ original: shipped, originalLines: shippedLines, reasonId: "r1", reasonLabel: "Lab error", orderNumber: 100300, labOrderId: "lo-9", now });
+  assert.equal(plan.labOrder.remakeReasonId, "r1");
+  assert.equal(plan.events[0].note, "Remake of #100245: Lab error");
+});
+
+test("remake with a label and free text carries both; neither is refused", () => {
+  const plan = planRemake({ original: shipped, originalLines: shippedLines, reasonId: "r1", reasonLabel: "Lab error", reason: "cracked", orderNumber: 1, labOrderId: "lo-9", now });
+  assert.equal(plan.events[0].note, "Remake of #100245: Lab error — cracked");
+  const free = planRemake({ original: shipped, originalLines: shippedLines, reason: "cracked", orderNumber: 1, labOrderId: "lo-9", now });
+  assert.equal(free.labOrder.remakeReasonId, null);
+  assert.throws(() => planRemake({ original: shipped, originalLines: [], reasonId: "r1", orderNumber: 1, labOrderId: "x", now }), isCode("REASON_REQUIRED"));
+});
 
 const order = {
   id: "lo-1", orderNumber: 100245, status: "received", heldFrom: null, holdReason: null, version: 3,
@@ -311,12 +334,41 @@ test("unlinking a voided shipment clears only that shipment", () => {
   assert.equal(planShipmentUnlink({ ...labelled, shipmentId: "other" }, ship, { now }), null);
 });
 
+test("presentBoardCard carries behind and atRisk; legacy orders without a plan are never behind", () => {
+  const row = (over) => ({ order: { ...order, source: "rx_case", receivedAt: now, status: "in_production", dueDate: "2026-11-30", ...over }, caseNumber: "RX-1", practiceName: "Lee Dental" });
+  const plan = {
+    workflowKey: "10d", workflowName: "10-day Printed", direction: "forward",
+    stages: [{ key: "qc", label: "Quality check", milestone: "quality_check", targetAt: "2026-11-05" }],
+  };
+  const withPlan = presentBoardCard(row({}), [], "2026-11-06", { plan });
+  assert.deepEqual([withPlan.behind, withPlan.atRisk, withPlan.workflowName], [true, true, "10-day Printed"]);
+
+  const onTrack = presentBoardCard(row({}), [], "2026-11-02", { plan });
+  assert.deepEqual([onTrack.behind, onTrack.atRisk], [false, false]);
+
+  // No plan: never behind, but a due date two business days out (or past) still puts it at risk.
+  const legacy = presentBoardCard(row({ status: "received", dueDate: "2026-11-05" }), [], "2026-11-06", { calendar: undefined });
+  assert.deepEqual([legacy.behind, legacy.atRisk, legacy.workflowName], [false, true, null]);
+  assert.equal(presentBoardCard(row({ dueDate: "2026-12-30" }), [], "2026-11-06").atRisk, false);
+  assert.equal(presentBoardCard(row({ status: "shipped", dueDate: "2026-10-01" }), [], "2026-11-06", { plan }).atRisk, false, "shipped is neither");
+});
+
 test("a board card says when its order has a label", () => {
   const row = { order: { ...order, status: "ready_to_ship", shipmentId: "sh1", source: "rx_case", receivedAt: now }, caseNumber: "RX-1", practiceName: "Lee Dental", assigneeName: null };
   assert.equal(presentBoardCard(row, [], "2026-10-07").labelled, true);
   assert.equal(presentBoardCard({ ...row, order: { ...row.order, shipmentId: null } }, [], "2026-10-07").labelled, false);
   assert.equal(presentBoardCard(row, [], "2026-10-07").shipmentId, "sh1");
   assert.equal(presentBoardCard({ ...row, order: { ...row.order, shipmentId: null } }, [], "2026-10-07").shipmentId, null);
+});
+
+test("a staff order's board card has no reference and never shows its patient", () => {
+  const card = presentBoardCard({
+    order: { id: "lo", orderNumber: 100050, source: "staff", sourceId: "lo", status: "received", version: 1, patientName: "Jane Roe" },
+    clientName: "Dr. Example", shopOrderNumber: "DOL-STRAY",
+  }, [], "2026-11-06");
+  assert.equal(card.reference, null);
+  assert.equal(card.practice, "Dr. Example");
+  assert.ok(!JSON.stringify(card).includes("Jane Roe"));
 });
 
 test("a labelled order already shipped gets the normal refusal, not 'void the label'", () => {
@@ -328,4 +380,71 @@ test("a legacy order's board card says where it came from and never shows a pati
   assert.equal(card.reference, "Seazona");
   assert.equal(card.practice, "Dr. Example");
   assert.ok(!JSON.stringify(card).includes("Test Patient"));
+});
+
+// ── Scheduling ─────────────────────────────────────────────────────────────
+
+const newPlan = { workflowKey: "7d-1-device", workflowName: "7-day 1-device", startDate: "2026-10-07", dueAt: "2026-10-16", direction: "forward", stages: [] };
+
+test("planWorkflowChange refuses a shipped order", () => {
+  for (const status of ["shipped", "cancelled"]) {
+    assert.throws(() => planWorkflowChange({ ...order, status }, { fromKey: "a", plan: newPlan, now }), isCode("INVALID"), status);
+  }
+});
+
+test("planWorkflowChange moves the due date to the plan's and logs the workflow switch", () => {
+  const { patch, event } = planWorkflowChange(order, { fromKey: "10d-printed", plan: newPlan, byUserId: "staff-1", now });
+  assert.deepEqual(patch, { dueDate: "2026-10-16", version: 4, updatedAt: now });
+  assert.deepEqual(event, { labOrderId: "lo-1", type: "workflow", from: "10d-printed", to: "7d-1-device", byUserId: "staff-1", note: null, at: now });
+});
+
+test("a remake takes the due date it is given", () => {
+  const plan = planRemake({ original: shipped, originalLines: shippedLines, reason: "Cracked", orderNumber: 2, labOrderId: "lo-9", now, dueDate: "2026-10-26" });
+  assert.equal(plan.labOrder.dueDate, "2026-10-26");
+});
+
+// ── Production desk: pan, delivery, enclosed items ─────────────────────────
+
+test("pan edit writes a pan event with from/to", () => {
+  const p = planFieldChange({ ...order, panNumber: "A1" }, "pan", "  B22 ", { byUserId: "u1", now });
+  assert.deepEqual(p.patch, { panNumber: "B22", version: 4, updatedAt: now });
+  assert.deepEqual(p.event, { labOrderId: "lo-1", type: "pan", from: "A1", to: "B22", byUserId: "u1", note: null, at: now });
+  assert.equal(planFieldChange({ ...order, panNumber: "A1" }, "pan", "", { now }).patch.panNumber, null);
+  assert.equal(planFieldChange({ ...order, panNumber: "A1" }, "pan", "A1", { now }), null);
+  assert.throws(() => planFieldChange(order, "pan", "x".repeat(31), { now }), isCode("INVALID"));
+});
+
+test("delivery edit takes only the shared methods", () => {
+  const p = planFieldChange(order, "delivery", "ups", { now });
+  assert.deepEqual([p.patch.deliveryMethod, p.event.type, p.event.from, p.event.to], ["ups", "delivery", null, "ups"]);
+  assert.throws(() => planFieldChange(order, "delivery", "drone", { now }), isCode("INVALID"));
+});
+
+test("enclosures edit stores sealed JSON and an event without the notes", () => {
+  const items = [{ kind: "digital", date: "2026-10-01", note: "Jane's scan" }];
+  const p = planFieldChange(order, "enclosures", items, { byUserId: "u1", now });
+  assert.equal(p.patch.enclosures, JSON.stringify(items));
+  assert.equal(p.event.type, "enclosed");
+  assert.equal(p.event.note, "Enclosed items updated");
+  assert.ok(!JSON.stringify(p.event).includes("Jane"));
+  assert.deepEqual([p.event.from, p.event.to], [null, null]);
+  const cleared = planFieldChange({ ...order, enclosures: p.patch.enclosures }, "enclosures", [], { now });
+  assert.equal(cleared.patch.enclosures, null);
+  assert.throws(() => planFieldChange(order, "enclosures", [{ kind: "model" }, { kind: "model" }], { now }), isCode("INVALID"));
+});
+
+test("same enclosures in a different order is no change", () => {
+  const stored = JSON.stringify([{ kind: "impression" }, { kind: "digital", note: "scan" }]);
+  const same = [{ kind: "digital", note: "scan" }, { kind: "impression" }];
+  assert.equal(planFieldChange({ ...order, enclosures: stored }, "enclosures", same, { now }), null);
+});
+
+test("shipped order refuses a pan edit", () => {
+  assert.throws(() => planFieldChange({ ...order, status: "shipped" }, "pan", "A1", { now }), isCode("INVALID"));
+});
+
+test("a board card carries the pan and delivery method", () => {
+  const card = presentBoardCard({ order: { ...order, panNumber: "A1", deliveryMethod: "fedex", source: "rx_case", sourceId: "c", receivedAt: now }, caseNumber: "RX-1", practiceName: "P", shopOrderNumber: null, shipping: null, clientName: null, assigneeName: null }, [], "2026-10-07");
+  assert.equal(card.panNumber, "A1");
+  assert.equal(card.deliveryMethod, "fedex");
 });

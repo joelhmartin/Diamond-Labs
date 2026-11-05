@@ -6,6 +6,7 @@ import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { ConfirmButton } from "../../components/ui/ConfirmButton.jsx";
 import { DataTable } from "../../components/ui/data-table/index.js";
+import { ScanBox } from "../../modules/barcode-lookup/index.js";
 import { CarriersPanel } from "../../components/lab/CarriersPanel.jsx";
 import { labOrderPath, shipmentPrintPath } from "../../config/routes.js";
 import { errorText } from "../../lib/requests.js";
@@ -128,6 +129,7 @@ export function ShipmentsPage() {
     <div className="mx-auto max-w-6xl space-y-5 p-6 md:p-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <h1 className="font-heading text-3xl font-bold tracking-tight text-navy">Shipments</h1>
+        <ScanBox lookupPath="/lab/lookup" placeholder="Scan order, invoice or pan…" />
         <ConfirmButton
           onConfirm={() => act(() => api.post("/lab/shipments/mark-all-shipped"), (d) => `${d.shipped} shipped${d.failed ? `, ${d.failed} failed (see logs)` : ""}`)}
           disabled={busy}

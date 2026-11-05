@@ -23,17 +23,45 @@ function drawBarcode(doc, text, right, top) {
   doc.fillColor("#000").font("Helvetica").fontSize(8).text(text, left, top + BAR_HEIGHT + 2, { width, align: "center" });
 }
 
+/** A boxed label (the due-day badge) at x, y; sets the font back to the body face. */
+function drawBadge(doc, text, x, y) {
+  doc.font("Helvetica-Bold").fontSize(11);
+  const w = doc.widthOfString(text) + 16;
+  doc.roundedRect(x, y, w, 20, 4).lineWidth(1.2).stroke("#000");
+  doc.fillColor("#000").text(text, x + 8, y + 5, { lineBreak: false });
+  doc.font("Helvetica");
+}
+
 export function renderTicketPdf(model) {
   return renderPdf(model.title, (doc, width) => {
     doc.font("Helvetica-Bold").fontSize(22).text(`Order #${model.orderNumber}`, MARGIN, MARGIN, { width: width / 2 });
+    if (model.dueBadge) drawBadge(doc, model.dueBadge, MARGIN + doc.widthOfString(`Order #${model.orderNumber}`) + 12, MARGIN + 3);
     doc.font("Helvetica").fontSize(9).text("WORK TICKET", MARGIN, MARGIN + 26);
+    if (model.pan) {
+      doc.font("Helvetica-Bold").fontSize(22);
+      doc.text(`Pan ${model.pan}`, MARGIN, MARGIN + 38, { lineBreak: false });
+      doc.font("Helvetica");
+    }
     drawBarcode(doc, model.barcodeText, doc.page.width - MARGIN, MARGIN);
 
-    keyValueGrid(doc, model.header, { top: banners(doc, model.banners, MARGIN + BAR_HEIGHT + 22) });
+    keyValueGrid(doc, model.header, { top: banners(doc, [...model.banners, ...model.labels], MARGIN + BAR_HEIGHT + 22 + (model.pan ? 14 : 0)) });
 
     section(doc, "Devices & lines");
     if (model.lines.length === 0) paragraph(doc, "—");
-    for (const l of model.lines) paragraph(doc, `${l.qty} ×   ${l.code}   ${l.name}${l.arch ? `   (${l.arch})` : ""}`);
+    for (const l of model.lines) {
+      paragraph(doc, `${l.qty} ×   ${l.code}   ${l.name}${l.arch ? `   (${l.arch})` : ""}`);
+      for (const m of l.materials) doc.font("Helvetica").fontSize(8).text(m, MARGIN + 24, doc.y, { width: width - 24 });
+    }
+    if (model.enclosed.length) {
+      section(doc, "Enclosed");
+      for (const e of model.enclosed) paragraph(doc, `[x] ${e}`);
+    }
+    if (model.mergedFrom) paragraph(doc, `Merged from ${model.mergedFrom}`);
+    if (model.schedule.length) {
+      section(doc, "Schedule");
+      // The standard fonts have no ballot-box glyphs, so the tick is plain ASCII.
+      for (const st of model.schedule) paragraph(doc, `${st.reached ? "[x]" : "[ ]"} ${st.label} — ${st.target}`);
+    }
     if (model.instructions.length) {
       section(doc, "Instructions");
       for (const t of model.instructions) paragraph(doc, `• ${t}`);

@@ -1,35 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Loader2, AlertCircle, Printer, FileText, RotateCcw, Zap, PauseCircle, Clock } from "lucide-react";
-import { LAB_STATUS_LABELS, LAB_ORDER_SOURCE_LABELS, allowedNextStatuses, canRemake, reasonRequiredFor, groupRxAnswers, getRxForm } from "@my-app/shared";
+import { ArrowLeft, Loader2, AlertCircle, FileText, PauseCircle } from "lucide-react";
+import { LAB_STATUS_LABELS, allowedNextStatuses, reasonRequiredFor, groupRxAnswers, getRxForm } from "@my-app/shared";
 import api from "../../config/api.js";
 import { useToast } from "../../components/ui/Toast.jsx";
-import { Modal } from "../../components/ui/Modal.jsx";
 import { ROUTES, labOrderPath } from "../../config/routes.js";
-import { describeEvent } from "../../lib/lab-board.js";
-import { INPUT } from "../../components/lab/form-styles.js";
 import { LegacyOrderPanel } from "../../components/lab/LegacyOrderPanel.jsx";
 import { ShippingPanel } from "../../components/lab/ShippingPanel.jsx";
+import { SchedulePanel } from "../../components/lab/SchedulePanel.jsx";
+import { ProductionPanel } from "../../components/lab/ProductionPanel.jsx";
+import { LinesEditor } from "../../components/lab/LinesEditor.jsx";
+import { RemakeModal } from "../../components/lab/RemakeModal.jsx";
+import { Panel } from "../../components/lab/Panel.jsx";
+import { OrderHeader } from "../../components/lab/OrderHeader.jsx";
+import { StatusPanel } from "../../components/lab/StatusPanel.jsx";
+import { WorkPanel } from "../../components/lab/WorkPanel.jsx";
+import { LabNotesPanel } from "../../components/lab/LabNotesPanel.jsx";
+import { RxAnswersPanel } from "../../components/lab/RxAnswersPanel.jsx";
+import { TimelinePanel } from "../../components/lab/TimelinePanel.jsx";
+import { ReasonModal } from "../../components/lab/ReasonModal.jsx";
+import { LabelsPanel } from "../../components/lab/LabelsPanel.jsx";
+import { MergedPanel } from "../../components/lab/MergedPanel.jsx";
+import { FileList } from "../../modules/record-files/index.js";
 import { errorText, blobErrorText, isStale, openInNewTab, openPdf } from "../../lib/requests.js";
-
-function moveLabel(from, to) {
-  if (to === "on_hold") return "Put on hold";
-  if (to === "cancelled") return "Cancel order";
-  if (from === "on_hold") return `Resume — ${LAB_STATUS_LABELS[to]}`;
-  return `→ ${LAB_STATUS_LABELS[to]}`;
-}
-
-function Panel({ title, children, action }) {
-  return (
-    <section className="rounded-2xl border border-surface-300/50 bg-white p-5">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="font-heading text-sm font-bold text-navy">{title}</h2>
-        {action}
-      </div>
-      {children}
-    </section>
-  );
-}
 
 export function LabOrderDetailPage() {
   const { id } = useParams();
@@ -42,15 +35,10 @@ export function LabOrderDetailPage() {
   const [busy, setBusy] = useState(false);
   const [staff, setStaff] = useState([]);
   const [departments, setDepartments] = useState([]);
-  const [notes, setNotes] = useState("");
-  const [due, setDue] = useState("");
-  // Hold / cancel / remake all need a reason: one dialog, not window.prompt.
-  const [reasonFor, setReasonFor] = useState(null); // { kind: "status"|"remake", to?, title, submit }
-  const [reasonText, setReasonText] = useState("");
+  // Hold / cancel all need a reason: one dialog, not window.prompt.
+  const [reasonFor, setReasonFor] = useState(null); // { title, submit(reason) }
+  const [remaking, setRemaking] = useState(false); // the remake dialog (reason picker + note)
 
-  // What the inputs last mirrored from the server, so a reload only resets
-  // text the user is typing when the server value (or the order) changed.
-  const synced = useRef({ id: null, labNotes: null, dueDate: null });
   const requestSeq = useRef(0);
   const shownId = useRef(null);
 
@@ -59,11 +47,6 @@ export function LabOrderDetailPage() {
     try {
       const res = await api.get(`/lab/orders/${id}`);
       if (seq !== requestSeq.current) return;
-      const { order: o } = res.data.data;
-      const s = synced.current;
-      if (s.id !== o.id || s.labNotes !== (o.labNotes ?? "")) setNotes(o.labNotes ?? "");
-      if (s.id !== o.id || s.dueDate !== (o.dueDate ?? "")) setDue(o.dueDate ?? "");
-      synced.current = { id: o.id, labNotes: o.labNotes ?? "", dueDate: o.dueDate ?? "" };
       shownId.current = id;
       setDetail(res.data.data);
       setError(null);
@@ -128,34 +111,26 @@ export function LabOrderDetailPage() {
     );
   }
 
-  const { order, lines, events, rxCase, files, shopOrder, shipment, legacy } = detail;
+  const { order, lines, events, rxCase, files, shopOrder, shipment, legacy, schedule, scheduleFlags, staff: staffEntry, tags, starred, mergedFrom, mergedInto } = detail;
   const moves = allowedNextStatuses(order.status, { heldFrom: order.heldFrom, labelled: Boolean(order.shipmentId) });
   const answerGroups = rxCase ? groupRxAnswers(getRxForm(rxCase.formType), rxCase.formData) : [];
   const devices = lines.filter((l) => !l.noteOnly);
   const instructions = lines.filter((l) => l.noteOnly);
   const closed = order.status === "shipped" || order.status === "cancelled";
 
-  const askReason = (title, submit) => { setReasonText(""); setReasonFor({ title, submit }); };
-  const submitReason = async () => {
-    const reason = reasonText.trim();
-    if (!reason) return;
-    const { submit } = reasonFor;
-    setReasonFor(null);
-    await submit(reason);
-  };
   const doMove = (to, reason) =>
     act(() => api.post(`/lab/orders/${order.id}/status`, { to, reason, expectedVersion: order.version }), `Order #${order.orderNumber}: ${LAB_STATUS_LABELS[to]}`);
   const move = (to) => {
     if (!reasonRequiredFor(to)) return doMove(to);
-    askReason(to === "on_hold" ? "Why is this order on hold?" : "Why is this order being cancelled?", (reason) => doMove(to, reason));
+    setReasonFor({ title: to === "on_hold" ? "Why is this order on hold?" : "Why is this order being cancelled?", submit: (reason) => doMove(to, reason) });
   };
   const setField = (field, value) =>
     act(() => api.patch(`/lab/orders/${order.id}`, { field, value, expectedVersion: order.version }));
-  const remake = () =>
-    askReason("Why is this order being remade?", async (reason) => {
-      const res = await act(() => api.post(`/lab/orders/${order.id}/remake`, { reason, expectedVersion: order.version }));
-      if (res) navigate(labOrderPath(res.data.data.labOrder.id));
-    });
+  const submitRemake = async (why) => {
+    setRemaking(false);
+    const res = await act(() => api.post(`/lab/orders/${order.id}/remake`, { ...why, expectedVersion: order.version }));
+    if (res) navigate(labOrderPath(res.data.data.labOrder.id));
+  };
   const printTicket = () =>
     openPdf(api, `/lab/orders/${order.id}/ticket.pdf`).catch(async (err) => addToast({ message: await blobErrorText(err), type: "error" }));
   const openFile = (fileId) =>
@@ -168,34 +143,10 @@ export function LabOrderDetailPage() {
         <ArrowLeft size={12} /> Board
       </Link>
 
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-heading text-3xl font-bold tracking-tight text-navy">Order #{order.orderNumber}</h1>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-navy/60">
-            <span className="rounded-full bg-navy px-3 py-1 text-xs font-bold uppercase tracking-wider text-white">{LAB_STATUS_LABELS[order.status]}</span>
-            {order.rush && <span className="flex items-center gap-1 rounded-full bg-red-500/10 px-3 py-1 text-xs font-bold uppercase text-red-700"><Zap size={11} /> Rush{order.rushTier ? ` — ${order.rushTier}` : ""}</span>}
-            {order.isRemake && (
-              <span className="flex items-center gap-1 rounded-full bg-violet-500/10 px-3 py-1 text-xs font-bold uppercase text-violet-700">
-                <RotateCcw size={11} /> Remake{order.remakeOfOrderNumber ? ` of #${order.remakeOfOrderNumber}` : ""}
-              </span>
-            )}
-            {order.overdue && <span className="flex items-center gap-1 text-xs font-semibold text-red-600"><Clock size={11} /> Overdue</span>}
-            {rxCase && <Link to={`/admin/rx-cases/${rxCase.id}`} className="font-mono text-xs text-brand-600 hover:underline">{rxCase.caseNumber}</Link>}
-            {shopOrder && <span className="font-mono text-xs">{shopOrder.orderNumber}</span>}
-            {legacy && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">{LAB_ORDER_SOURCE_LABELS.legacy}</span>}
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={printTicket} className="flex items-center gap-1.5 rounded-full bg-navy px-4 py-2 text-sm font-semibold text-white hover:bg-navy/90">
-            <Printer size={14} /> Work ticket
-          </button>
-          {canRemake(order) && (
-            <button type="button" disabled={busy} onClick={remake} className="flex items-center gap-1.5 rounded-full border border-navy/20 bg-white px-4 py-2 text-sm font-semibold text-navy hover:border-navy/40 disabled:opacity-40">
-              <RotateCcw size={14} /> Remake
-            </button>
-          )}
-        </div>
-      </div>
+      <OrderHeader
+        order={order} rxCase={rxCase} shopOrder={shopOrder} legacy={legacy} scheduleFlags={scheduleFlags}
+        busy={busy} onPrint={printTicket} onRemake={() => setRemaking(true)}
+      />
 
       {lookupError && (
         <div className="mb-5 flex items-center gap-2 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -212,21 +163,7 @@ export function LabOrderDetailPage() {
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="space-y-5 lg:col-span-2">
           <Panel title="Lines">
-            <table className="w-full text-left text-sm">
-              <thead className="text-[10px] font-mono uppercase tracking-widest text-navy/40">
-                <tr><th className="py-1">Qty</th><th>Code</th><th>Item</th><th>Arch</th></tr>
-              </thead>
-              <tbody>
-                {devices.map((l) => (
-                  <tr key={l.id} className="border-t border-surface-300/40">
-                    <td className="py-1.5">{l.qty}</td>
-                    <td className="font-mono text-xs">{l.code ?? "—"}</td>
-                    <td>{l.name}</td>
-                    <td className="text-navy/60">{l.arch ?? ""}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <LinesEditor order={order} lines={devices} onChanged={load} />
             {instructions.length > 0 && (
               <ul className="mt-3 list-disc pl-5 text-sm text-navy/80">
                 {instructions.map((l) => <li key={l.id}>{l.sourceLabel || l.name}</li>)}
@@ -238,25 +175,7 @@ export function LabOrderDetailPage() {
           {rxCase?.buildNotes && <Panel title="Build notes"><p className="whitespace-pre-wrap text-sm text-navy">{rxCase.buildNotes}</p></Panel>}
           {rxCase?.generalComments && <Panel title="Doctor's comments"><p className="whitespace-pre-wrap text-sm text-navy">{rxCase.generalComments}</p></Panel>}
 
-          {answerGroups.length > 0 && (
-            <Panel title="Prescription">
-              <div className="space-y-4">
-                {answerGroups.map((g) => (
-                  <div key={g.id}>
-                    <h3 className="mb-1 text-xs font-bold uppercase tracking-wider text-navy/50">{g.title}</h3>
-                    <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-                      {g.items.map((i) => (
-                        <div key={i.key} className="contents">
-                          <dt className="text-navy/50">{i.label}</dt>
-                          <dd className="text-navy">{i.value}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </div>
-                ))}
-              </div>
-            </Panel>
-          )}
+          <RxAnswersPanel groups={answerGroups} />
 
           {shopOrder?.shipping && (
             <Panel title="Ship to">
@@ -267,81 +186,36 @@ export function LabOrderDetailPage() {
             </Panel>
           )}
 
-          <Panel title="Timeline">
-            <ol className="space-y-2 text-sm">
-              {events.map((e) => (
-                <li key={e.id} className="flex gap-3">
-                  <span className="w-36 flex-shrink-0 text-xs text-navy/40">{new Date(e.at).toLocaleString()}</span>
-                  <span className="text-navy">{describeEvent(e, { staffById, departmentsById })}</span>
-                </li>
-              ))}
-            </ol>
-          </Panel>
+          <TimelinePanel events={events} staffById={staffById} departmentsById={departmentsById} />
         </div>
 
         <div className="space-y-5">
+          <MergedPanel mergedFrom={mergedFrom ?? []} mergedInto={mergedInto ?? null} />
+
           <ShippingPanel order={order} shipment={shipment} onChanged={load} />
 
-          <Panel title="Status">
-            <div className="flex flex-col gap-2">
-              {moves.length === 0 && <p className="text-sm text-navy/50">This order is closed.</p>}
-              {moves.map((to) => (
-                <button
-                  key={to}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => move(to)}
-                  className={`rounded-full px-4 py-2 text-sm font-semibold disabled:opacity-40 ${
-                    to === "cancelled" ? "bg-red-50 text-red-700 hover:bg-red-100"
-                      : to === "on_hold" ? "bg-amber-50 text-amber-800 hover:bg-amber-100"
-                      : "bg-brand-500 text-white hover:bg-brand-600"
-                  }`}
-                >
-                  {moveLabel(order.status, to)}
-                </button>
-              ))}
-            </div>
+          <StatusPanel order={order} moves={moves} busy={busy} onMove={move} />
+
+          <LabelsPanel order={order} tags={tags ?? []} starred={Boolean(starred)} onChanged={load} />
+
+          <WorkPanel
+            order={order} staff={staff} departments={departments} busy={busy} closed={closed} onField={setField}
+            practice={rxCase?.practiceName || order.clientName || shopOrder?.shipping?.name}
+            patient={rxCase?.patientName || legacy?.patientName || staffEntry?.patientName}
+          />
+
+          <Panel title="Schedule">
+            <SchedulePanel order={order} schedule={schedule ?? null} onChanged={load} />
           </Panel>
 
-          <Panel title="Work">
-            <div className="space-y-3 text-sm">
-              <label className="block">
-                <span className="text-xs text-navy/50">Assigned to</span>
-                <select className={INPUT} disabled={busy || closed} value={order.assigneeUserId ?? ""} onChange={(e) => setField("assign", e.target.value || null)}>
-                  <option value="">Nobody</option>
-                  {/* Former staff stay visible (as inactive) rather than reading as "Nobody". */}
-                  {order.assigneeUserId && !staff.some((s) => s.id === order.assigneeUserId) && (
-                    <option value={order.assigneeUserId} disabled>{order.assigneeName || "Former staff"} (inactive)</option>
-                  )}
-                  {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-xs text-navy/50">Department</span>
-                <select className={INPUT} disabled={busy || closed} value={order.departmentId ?? ""} onChange={(e) => setField("department", e.target.value || null)}>
-                  <option value="">None</option>
-                  {departments.filter((d) => d.active || d.id === order.departmentId).map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
-              </label>
-              <div>
-                <span className="text-xs text-navy/50">Due date</span>
-                <div className="flex gap-2">
-                  <input type="date" className={INPUT} disabled={busy || closed} value={due} onChange={(e) => setDue(e.target.value)} />
-                  <button type="button" disabled={busy || closed || due === (order.dueDate ?? "")} onClick={() => setField("due", due || null)} className="rounded-lg bg-surface-100 px-3 text-xs font-semibold text-navy disabled:opacity-40">Save</button>
-                </div>
-              </div>
-              <div className="text-xs text-navy/50">
-                Practice: <span className="text-navy">{rxCase?.practiceName || order.clientName || shopOrder?.shipping?.name || "—"}</span><br />
-                {(rxCase?.patientName || legacy?.patientName) && <>Patient: <span className="text-navy">{rxCase?.patientName || legacy?.patientName}</span></>}
-              </div>
-            </div>
+          <Panel title="Production">
+            <ProductionPanel order={order} onChanged={load} />
           </Panel>
 
-          <Panel title="Lab notes (staff only)">
-            <textarea className={`${INPUT} min-h-[100px]`} maxLength={5000} value={notes} onChange={(e) => setNotes(e.target.value)} />
-            <button type="button" disabled={busy || notes === (order.labNotes ?? "")} onClick={() => setField("notes", notes)} className="mt-2 rounded-full bg-navy px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-40">
-              Save notes
-            </button>
+          <LabNotesPanel order={order} busy={busy} onSave={(notes) => setField("notes", notes)} />
+
+          <Panel title="Order files">
+            <FileList recordType="lab_order" recordId={order.id} canEdit={!closed} />
           </Panel>
 
           {files.length > 0 && (
@@ -361,23 +235,8 @@ export function LabOrderDetailPage() {
         </div>
       </div>
 
-      <Modal open={!!reasonFor} onClose={() => setReasonFor(null)} title={reasonFor?.title}>
-        <textarea
-          autoFocus
-          className={`${INPUT} min-h-[90px]`}
-          value={reasonText}
-          onChange={(e) => setReasonText(e.target.value)}
-          maxLength={500}
-        />
-        <div className="mt-4 flex justify-end gap-2">
-          <button type="button" onClick={() => setReasonFor(null)} className="rounded-full bg-surface-100 px-4 py-2 text-sm font-semibold text-navy hover:bg-surface-200">
-            Never mind
-          </button>
-          <button type="button" disabled={!reasonText.trim()} onClick={submitReason} className="rounded-full bg-navy px-4 py-2 text-sm font-semibold text-white hover:bg-navy/90 disabled:opacity-40">
-            Confirm
-          </button>
-        </div>
-      </Modal>
+      <RemakeModal open={remaking} onClose={() => setRemaking(false)} onSubmit={submitRemake} />
+      <ReasonModal request={reasonFor} onClose={() => setReasonFor(null)} />
     </div>
   );
 }

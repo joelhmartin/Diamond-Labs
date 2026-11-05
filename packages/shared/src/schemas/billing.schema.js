@@ -36,6 +36,14 @@ export const invoiceEditSchema = z.object({
       taxable: z.boolean().default(false),
     }),
     z.object({ op: z.literal("remove"), lineId: id }),
+    // A discount: a reason (its default percent applies if none is given) and/or text, then a percent OR a fixed amount.
+    z.object({
+      op: z.literal("discount"),
+      reasonId: id.optional(),
+      text: z.string().trim().max(200).optional(),
+      percent: z.number().int().min(1).max(100).optional(),
+      amountCents: positiveCents.optional(),
+    }),
     z.object({ op: z.literal("notes"), notes: z.string().max(5000).nullable() }),
   ]),
 });
@@ -56,6 +64,18 @@ export const manualPaymentSchema = z.object({
   { message: "Allocations must add up to the payment.", path: ["allocations"] },
 );
 
+export const accountCreditSchema = z.object({
+  amountCents: positiveCents,
+  reason,
+  // Omit to apply oldest-first.
+  allocations: z.array(z.object({ invoiceId: id, amountCents: positiveCents })).min(1).max(200).optional(),
+}).refine(
+  (p) => !p.allocations || p.allocations.reduce((s, a) => s + a.amountCents, 0) === p.amountCents,
+  { message: "Allocations must add up to the credit.", path: ["allocations"] },
+);
+
 export const statementQuerySchema = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Use YYYY-MM.") });
+// The monthly statement run: everyone due (omit clientUserIds), or only these clients.
+export const statementRunSchema = statementQuerySchema.extend({ clientUserIds: z.array(id).min(1).max(5000).optional() });
 export const receivablesQuerySchema = z.object({ pastDueOnly: flag });
 export const clientInvoicesQuerySchema = z.object({ open: flag });

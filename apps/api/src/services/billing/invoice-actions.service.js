@@ -11,8 +11,9 @@ import { paidCentsByInvoice, openInvoicesForClient } from "./ledger.service.js";
 import { auditInvoice, loadLines, applyLinePlan, commitPatch } from "./invoices.service.js";
 import { openInvoice, sealLedgerRow } from "./invoice-crypto.js";
 import {
-  InvoiceError, assertFreshInvoice, planLineEdit, planIssue, planVoid, planCredit, planManualPayment, deriveBalance,
+  InvoiceError, assertFreshInvoice, planLineEdit, planDiscountLine, planIssue, planVoid, planCredit, planManualPayment, deriveBalance,
 } from "./invoice-rules.js";
+import { requireReason } from "./adjustment-reasons.service.js";
 import { verifyAllocations, recordPaymentAndAllocations } from "../payment-recording.service.js";
 
 /**
@@ -25,14 +26,14 @@ import { verifyAllocations, recordPaymentAndAllocations } from "../payment-recor
  * (ids and amounts only; reasons live encrypted on the rows).
  */
 
-async function lockInvoice(tx, id) {
+export async function lockInvoice(tx, id) {
   const [row] = await tx.select().from(invoices).where(eq(invoices.id, id)).for("update");
   if (!row) throw new InvoiceError("NOT_FOUND", "Invoice not found.");
   return openInvoice(row);
 }
 
 /** Run fn holding the card-payment lock on each invoice; a held lock is a 409 LOCKED. */
-async function underInvoiceLocks(invoiceIds, fn) {
+export async function underInvoiceLocks(invoiceIds, fn) {
   try {
     return await withInvoiceLocks(redis, invoiceIds, fn);
   } catch (err) {
@@ -43,12 +44,29 @@ async function underInvoiceLocks(invoiceIds, fn) {
   }
 }
 
+/**
+ * A discount edit → its plan. The reason (if any) must be an active discount reason; its label
+ * names the line and its default percent applies when the request gives neither percent nor amount.
+ */
+async function discountPlan(tx, invoice, lines, edit, opts) {
+  const reason = edit.reasonId ? await requireReason(edit.reasonId, "discount", tx) : null;
+  const noSize = edit.percent == null && edit.amountCents == null;
+  return planDiscountLine(invoice, lines, {
+    label: reason?.label, text: edit.text, amountCents: edit.amountCents,
+    percent: edit.percent ?? (noSize ? reason?.discountPercent ?? undefined : undefined),
+  }, opts);
+}
+
 /** One draft edit: qty, an overridden price (with a reason), a free-form line, a removal, or notes. */
 export function editDraft(id, { edit, expectedVersion, byUserId }, database = db) {
   return database.transaction(async (tx) => {
     const invoice = await lockInvoice(tx, id);
     assertFreshInvoice(invoice, expectedVersion);
-    const plan = planLineEdit(invoice, await loadLines(tx, id), edit, { now: new Date(), taxRateBps: PRICING.taxRateBps });
+    const opts = { now: new Date(), taxRateBps: PRICING.taxRateBps };
+    const lines = await loadLines(tx, id);
+    const plan = edit.op === "discount"
+      ? await discountPlan(tx, invoice, lines, edit, opts)
+      : planLineEdit(invoice, lines, edit, opts);
     return applyLinePlan(tx, invoice, plan, byUserId);
   });
 }
@@ -120,7 +138,7 @@ export function recordCredit(id, { amountCents, reason, byUserId }, database = d
  * then written through recordPaymentAndAllocations like every card payment:
  * ledger rows, a "recorded, not charged" receipt, an audit entry.
  */
-async function loadPayingClient(clientUserId, database) {
+export async function loadPayingClient(clientUserId, database) {
   const [client] = await database
     .select({ id: users.id, email: users.email, name: users.name, role: users.role, seazonaClientId: users.seazonaClientId })
     .from(users)

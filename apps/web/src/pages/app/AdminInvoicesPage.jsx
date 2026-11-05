@@ -13,7 +13,8 @@ const STATUS_WORDS = { draft: "Drafts", issued: "Issued", void: "Void" };
 
 const FILTERS = [
   { id: "status", label: "Status", type: "select", placeholder: "All statuses", options: INVOICE_STATUSES.map((s) => ({ value: s, label: STATUS_WORDS[s] })) },
-  { id: "needsPrice", label: "Needs a price", type: "toggle" },
+  // Drafts that shipping holds: an unpriced line, or no item line at all.
+  { id: "needsPrice", label: "Needs a price or lines", type: "toggle" },
   // Set by the Receivables "Invoices" link; shown as a removable chip.
   { id: "clientUserId", label: "One client", type: "chip" },
 ];
@@ -52,7 +53,7 @@ function invoiceColumns(today) {
         return (
           <>
             <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_TONES[label]}`}>{label}</span>
-            {r.needsPrice && <span className="ml-1 rounded-full bg-red-500/10 px-2 py-1 text-[11px] font-semibold text-red-700">Needs a price</span>}
+            {r.needsPrice && <span className="ml-1 rounded-full bg-red-500/10 px-2 py-1 text-[11px] font-semibold text-red-700">{r.noLines ? "No lines" : "Needs a price"}</span>}
           </>
         );
       },

@@ -34,6 +34,12 @@ test("legacy vocabulary: a price source, a ledger source, and the opening-balanc
   assert.equal(LEGACY_LINE_DESCRIPTION, "Carried over from Seazona");
 });
 
+test("a list-priced line has its own price source and label", () => {
+  assert.ok(PRICE_SOURCES.includes("list"));
+  assert.equal(PRICE_SOURCE_LABELS.list, "Price list");
+  for (const s of PRICE_SOURCES) assert.ok(s.length <= 10, `invoice_lines.price_source is varchar(10): ${s}`);
+});
+
 test("only a legacy invoice keyed opening:<client> is an opening balance", () => {
   assert.equal(isOpeningBalanceInvoice({ kind: "legacy", legacySeazonaInvoiceId: `${OPENING_BALANCE_PREFIX}1324` }), true);
   assert.equal(isOpeningBalanceInvoice({ kind: "legacy", legacySeazonaInvoiceId: "8f2c-uuid" }), false);

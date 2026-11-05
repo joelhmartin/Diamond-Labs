@@ -74,7 +74,7 @@ export default async function adminCatalogRoutes(fastify) {
 
   fastify.get("/admin/clients/:userId/prices", admin, async (req, reply) => {
     if (!(await requireClient(req.params.userId, reply))) return reply;
-    return { data: { prices: await clientPricesService.listForClient(req.params.userId) } };
+    return { data: await clientPricesService.priceViewForClient(req.params.userId) };
   });
 
   fastify.put("/admin/clients/:userId/prices/:variantId", withBody(clientPriceUpsertSchema), async (req, reply) => {

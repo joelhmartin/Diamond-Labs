@@ -359,3 +359,23 @@ test("no exportAll, no toolbar export button", () => {
   fireEvent.click(rowOf("Row 01"), { metaKey: true });
   assert.ok(screen.getByRole("button", { name: /Export CSV/ }));
 });
+
+test("resultToast: success, partial (warning) or none done (error), longer when something failed", async () => {
+  const { resultToast } = await import("./index.js");
+  assert.deepEqual(resultToast({ ok: 2, failed: [] }), { message: "2 done", type: "success", duration: 4000 });
+  assert.deepEqual(resultToast({ ok: 1, failed: [{ id: "a", message: "x" }] }), { message: "1 done, 1 failed: a x", type: "warning", duration: 8000 });
+  assert.equal(resultToast({ ok: 0, failed: [{ id: "a", message: "x" }] }).type, "error");
+});
+
+test("a bulk action with choices shows a select and passes the picked value to run", async () => {
+  const run = vi.fn(async () => {});
+  mount(<Harness bulkActions={[{ id: "set", label: "Set status", choices: [{ value: "a", label: "Alpha" }, { value: "b", label: "Beta" }], run }]} />);
+  fireEvent.click(rowOf("Row 01"), { metaKey: true });
+  const go = screen.getByRole("button", { name: "Set status" });
+  assert.equal(go.disabled, true);
+  fireEvent.change(screen.getByLabelText("Set status choice"), { target: { value: "b" } });
+  assert.equal(go.disabled, false);
+  await act(async () => fireEvent.click(go));
+  assert.deepEqual(run.mock.calls[0][0].map((r) => r.id), ["r1"]);
+  assert.equal(run.mock.calls[0][1], "b");
+});

@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { priceLines } from "../../lib/pricing.js";
 import {
   InvoiceError, addDaysIso, computeTotals, hasUnpriced, asRemakeLines, planDraftInvoice, planShopInvoice,
-  assertFreshInvoice, planLineEdit, planIssue, planVoid, deriveBalance, canActOnInvoice, planCredit, planManualPayment,
-  planShipmentLine, planShipmentLineRemoval,
+  assertFreshInvoice, planLineEdit, planIssue, planVoid, deriveBalance, canActOnInvoice, planCredit, planManualPayment, planAccountCredit,
+  planShipmentLine, planShipmentLineRemoval, planLinkedLineAdd, planLinkedLineRemove, planLinkedLineQty, planDiscountLine,
+  hasNoItems,
 } from "./invoice-rules.js";
 import { invoiceErrorReply } from "./invoice-errors.js";
 
@@ -74,6 +75,79 @@ test("a lab order's draft prices each line and keeps unpriced ones visible", () 
 test("a remake's lines are free unless staff edit them", () => {
   const out = asRemakeLines([{ description: "DDSO", qty: 1, unitCents: 40500, priceSource: "client" }]);
   assert.deepEqual(out.map((l) => [l.unitCents, l.priceSource]), [[0, "remake"]]);
+});
+
+test("asRemakeLines with 100 is free", () => {
+  const out = asRemakeLines([{ description: "A", qty: 1, unitCents: 1999, priceSource: "client" }], 100);
+  assert.deepEqual(out.map((l) => [l.unitCents, l.priceSource]), [[0, "remake"]]);
+});
+
+test("asRemakeLines with 50 halves 1999 to 1000", () => {
+  const out = asRemakeLines([{ description: "A", qty: 1, unitCents: 1999, priceSource: "client" }], 50);
+  assert.deepEqual(out.map((l) => [l.unitCents, l.priceSource]), [[1000, "remake"]]);
+});
+
+test("discount at 10% of 12345 item subtotal is -1235 adjustment", () => {
+  const lines = [line({ lineCents: 12345, unitCents: 12345 }), line({ id: "s", kind: "shipping", lineCents: 900, unitCents: 900 })];
+  const plan = planDiscountLine(draft(), lines, { label: "Courtesy", percent: 10 }, { now, ...TAX });
+  assert.equal(plan.op.inserts[0].kind, "adjustment");
+  assert.equal(plan.op.inserts[0].unitCents, -1235);
+  assert.equal(plan.op.inserts[0].lineCents, -1235);
+  assert.equal(plan.op.inserts[0].description, "Courtesy");
+  assert.equal(plan.patch.subtotalCents, 12345 - 1235);
+  assert.equal(plan.patch.version, 3);
+});
+
+test("discount with amountCents uses it negated", () => {
+  const plan = planDiscountLine(draft(), [line()], { label: "Family", amountCents: 2500 }, { now, ...TAX });
+  assert.equal(plan.op.inserts[0].unitCents, -2500);
+});
+
+test("discount needs a reason or text", () => {
+  assert.throws(() => planDiscountLine(draft(), [line()], { percent: 10 }, { now, ...TAX }), isCode("REASON_REQUIRED"));
+  const ok = planDiscountLine(draft(), [line()], { text: " Loyal client ", percent: 10 }, { now, ...TAX });
+  assert.equal(ok.op.inserts[0].description, "Loyal client");
+});
+
+test("stacked discounts come off the net and can never push the items below zero", () => {
+  const first = planDiscountLine(draft(), [line()], { label: "a", percent: 100 }, { now, ...TAX });
+  const after100 = [line(), ...first.op.inserts.map((l) => ({ ...l, id: "d1" }))];
+  assert.throws(() => planDiscountLine(draft(), after100, { label: "b", percent: 50 }, { now, ...TAX }), isCode("INVALID"));
+  const sixty = planDiscountLine(draft(), [line()], { label: "a", percent: 60 }, { now, ...TAX });
+  const afterSixty = [line(), ...sixty.op.inserts.map((l) => ({ ...l, id: "d1" }))];
+  const second = planDiscountLine(draft(), afterSixty, { label: "b", percent: 60 }, { now, ...TAX });
+  assert.equal(second.op.inserts[0].unitCents, -2400, "60% of the 4000 left, not of the 10000 gross");
+  assert.equal(second.patch.subtotalCents, 10000 - 6000 - 2400);
+  assert.throws(() => planDiscountLine(draft(), afterSixty, { label: "b", amountCents: 4001 }, { now, ...TAX }), isCode("INVALID"));
+});
+
+test("a discount on a taxable item discounts the tax too: $100 at 10% off is $90 + $7.20", () => {
+  const plan = planDiscountLine(draft(), [line({ taxable: true })], { label: "Courtesy", percent: 10 }, { now, ...TAX });
+  assert.equal(plan.op.inserts.length, 1);
+  assert.deepEqual([plan.op.inserts[0].unitCents, plan.op.inserts[0].taxable], [-1000, true]);
+  assert.equal(plan.patch.subtotalCents, 9000);
+  assert.equal(plan.patch.taxCents, 720);
+  assert.equal(plan.patch.totalCents, 9720);
+});
+
+test("a mixed taxable/non-taxable draft splits the discount pro-rata, summing exactly", () => {
+  const lines = [line({ id: "t", unitCents: 3333, lineCents: 3333, taxable: true }), line({ id: "n", position: 1, unitCents: 6667, lineCents: 6667 })];
+  const plan = planDiscountLine(draft(), lines, { label: "Family", percent: 33 }, { now, ...TAX });
+  const [taxableLine, plainLine] = plan.op.inserts;
+  assert.equal(taxableLine.taxable, true);
+  assert.equal(plainLine.taxable, false);
+  const total = 3300; // 33% of 10000
+  assert.equal(-(taxableLine.unitCents + plainLine.unitCents), total);
+  assert.equal(-taxableLine.unitCents, Math.round((total * 3333) / 10000));
+  assert.equal(plan.patch.taxCents, Math.round(((3333 + taxableLine.unitCents) * 800) / 10000));
+});
+
+test("discount needs exactly one of percent or amountCents, within the item subtotal", () => {
+  assert.throws(() => planDiscountLine(draft(), [line()], { label: "x" }, { now, ...TAX }), isCode("INVALID"));
+  assert.throws(() => planDiscountLine(draft(), [line()], { label: "x", percent: 10, amountCents: 5 }, { now, ...TAX }), isCode("INVALID"));
+  assert.throws(() => planDiscountLine(draft(), [line()], { label: "x", percent: 101 }, { now, ...TAX }), isCode("INVALID"));
+  assert.throws(() => planDiscountLine(draft(), [line()], { label: "x", amountCents: 10001 }, { now, ...TAX }), isCode("INVALID"));
+  assert.throws(() => planDiscountLine(draft({ status: "issued" }), [line()], { label: "x", percent: 10 }, { now, ...TAX }), isCode("INVALID_TRANSITION"));
 });
 
 test("addDaysIso crosses months and leap days, and refuses junk", () => {
@@ -310,4 +384,122 @@ test("a manual payment is refused against an ownerless open invoice", () => {
   assert.throws(() => planManualPayment({ openInvoices: open, amountCents: 1000, paidOn: "2026-02-01", todayIso: "2026-02-02" }), (e) => isCode("INVALID_TRANSITION")(e) && /no client yet/.test(e.message));
   const owned = [{ ...open[0], clientUserId: "doc1" }];
   assert.equal(planManualPayment({ openInvoices: owned, amountCents: 1000, paidOn: "2026-02-01", todayIso: "2026-02-02" }).length, 1);
+});
+
+// ── Lines linked to lab order lines (production desk: bench edits mirrored onto the draft) ──
+
+const linked = line({ id: "il1", labOrderLineId: "lol1", unitCents: 4000, lineCents: 4000, taxable: true });
+const shipping = line({ id: "il2", position: 1, kind: "shipping", unitCents: 1200, lineCents: 1200, shipmentId: "s1" });
+const issuedRefusal = (e) => isCode("INVALID_TRANSITION")(e) && e.message === "Invoice already issued — edit it with a credit.";
+
+test("a linked add appends the priced line, keeps the link and recomputes totals", () => {
+  const priced = { labOrderLineId: "lol2", variantId: "v2", code: "2608", description: "DDSO Nylon", qty: 2, unitCents: 1500, priceSource: "client", taxable: false };
+  const p = planLinkedLineAdd(draft(), [linked, shipping], priced, { now, ...TAX });
+  assert.deepEqual(
+    [p.op.insert.position, p.op.insert.labOrderLineId, p.op.insert.lineCents, p.op.insert.priceSource, p.op.insert.kind],
+    [2, "lol2", 3000, "client", "item"],
+  );
+  assert.deepEqual([p.patch.subtotalCents, p.patch.taxCents, p.patch.shippingCents, p.patch.totalCents, p.patch.version], [7000, 320, 1200, 8520, 3]);
+  assert.deepEqual(p.audit, { op: "add", labOrderLineId: "lol2", qty: 2, unitCents: 1500 });
+});
+
+test("a linked qty change updates the linked line; remove deletes the line linked by labOrderLineId", () => {
+  const q = planLinkedLineQty(draft(), [linked, shipping], "lol1", 3, { now, ...TAX });
+  assert.deepEqual(q.op.update, { id: "il1", values: { qty: 3, lineCents: 12000 } });
+  assert.equal(q.patch.totalCents, 12000 + 960 + 1200);
+  assert.deepEqual(q.audit, { op: "update", lineId: "il1", labOrderLineId: "lol1", qty: 3 });
+  const r = planLinkedLineRemove(draft(), [linked, shipping], "lol1", { now, ...TAX });
+  assert.equal(r.op.delete, "il1");
+  assert.deepEqual([r.patch.subtotalCents, r.patch.totalCents], [0, 1200]);
+  assert.deepEqual(r.audit, { op: "remove", lineId: "il1", labOrderLineId: "lol1" });
+});
+
+test("a linked line no longer on the invoice (staff removed it there) mirrors nothing", () => {
+  assert.equal(planLinkedLineQty(draft(), [shipping], "lol1", 3, { now, ...TAX }), null);
+  assert.equal(planLinkedLineRemove(draft(), [shipping], "lol1", { now, ...TAX }), null);
+});
+
+test("linked edits are refused once the invoice is issued", () => {
+  const issued = draft({ status: "issued" });
+  assert.throws(() => planLinkedLineAdd(issued, [], { description: "x", qty: 1, unitCents: 1, priceSource: "base" }, { now, ...TAX }), issuedRefusal);
+  assert.throws(() => planLinkedLineQty(issued, [linked], "lol1", 2, { now, ...TAX }), issuedRefusal);
+  assert.throws(() => planLinkedLineRemove(issued, [linked], "lol1", { now, ...TAX }), issuedRefusal);
+  assert.throws(() => planLinkedLineRemove(draft({ status: "void" }), [linked], "lol1", { now, ...TAX }), isCode("INVALID_TRANSITION"));
+});
+
+test("credit spreads oldest-first across open invoices", () => {
+  const plan = planAccountCredit({ openInvoices: open, amountCents: 25000, reason: " goodwill ", todayIso: "2026-10-15" });
+  assert.deepEqual(plan, {
+    allocations: [
+      { invoiceId: "a", invoiceNumber: "500001", amountCents: 20000 },
+      { invoiceId: "b", invoiceNumber: "500002", amountCents: 5000 },
+    ],
+    reason: "goodwill",
+  });
+  const chosen = planAccountCredit({ openInvoices: open, amountCents: 3000, allocations: [{ invoiceId: "b", amountCents: 3000 }], reason: "x", todayIso: "2026-10-15" });
+  assert.deepEqual(chosen.allocations, [{ invoiceId: "b", invoiceNumber: "500002", amountCents: 3000 }]);
+});
+
+test("credit larger than the open balance is OVERPAY", () => {
+  assert.throws(() => planAccountCredit({ openInvoices: open, amountCents: 50001, reason: "x", todayIso: "2026-10-15" }), isCode("OVERPAY"));
+  assert.throws(
+    () => planAccountCredit({ openInvoices: open, amountCents: 20001, allocations: [{ invoiceId: "a", amountCents: 20001 }], reason: "x", todayIso: "2026-10-15" }),
+    isCode("OVERPAY"),
+  );
+});
+
+test("reason is required", () => {
+  for (const reason of [undefined, "", "   "]) {
+    assert.throws(() => planAccountCredit({ openInvoices: open, amountCents: 100, reason, todayIso: "2026-10-15" }), isCode("REASON_REQUIRED"));
+  }
+});
+
+// ── A discount must stay covered after any item edit ───────────────────────
+const discountRefusal = (e) => e instanceof InvoiceError && e.code === "INVALID" && e.message === "Remove the discount first.";
+const withDiscount = (items, d) => {
+  const plan = planDiscountLine(draft(), items, d, { now, ...TAX });
+  return [...items, ...plan.op.inserts.map((l, i) => ({ ...l, id: `d${i}` }))];
+};
+
+test("removing a discounted item refuses when the discount would be left uncovered (staff and bench)", () => {
+  const a = line({ id: "a", labOrderLineId: "la", unitCents: 10000, lineCents: 10000 });
+  const b = line({ id: "b", position: 1, labOrderLineId: "lb", unitCents: 5000, lineCents: 5000 });
+  const lines = withDiscount([a, b], { label: "Courtesy", amountCents: 8000 });
+  assert.throws(() => planLineEdit(draft(), lines, { op: "remove", lineId: "a" }, { now, ...TAX }), discountRefusal);
+  assert.throws(() => planLinkedLineRemove(draft(), lines, "la", { now, ...TAX }), discountRefusal);
+  // Removing the small one still leaves 10000 − 8000 ≥ 0: allowed.
+  assert.equal(planLineEdit(draft(), lines, { op: "remove", lineId: "b" }, { now, ...TAX }).patch.subtotalCents, 2000);
+});
+
+test("reducing qty or price below the discount refuses (staff and bench)", () => {
+  const a = line({ id: "a", labOrderLineId: "la", qty: 3, unitCents: 10000, lineCents: 30000 });
+  const lines = withDiscount([a], { label: "Courtesy", amountCents: 25000 });
+  assert.throws(() => planLineEdit(draft(), lines, { op: "update", lineId: "a", qty: 2 }, { now, ...TAX }), discountRefusal);
+  assert.throws(() => planLinkedLineQty(draft(), lines, "la", 2, { now, ...TAX }), discountRefusal);
+  assert.throws(() => planLineEdit(draft(), lines, { op: "update", lineId: "a", unitCents: 5000, reason: "match quote" }, { now, ...TAX }), discountRefusal);
+  assert.equal(planLinkedLineQty(draft(), lines, "la", 3, { now, ...TAX }).patch.subtotalCents, 5000, "no change in coverage is fine");
+});
+
+test("removing taxable items while a taxable discount credit stays refuses even when the overall net is positive", () => {
+  const taxed = line({ id: "t", labOrderLineId: "lt", taxable: true, unitCents: 10000, lineCents: 10000 });
+  const plain = line({ id: "n", position: 1, labOrderLineId: "ln", taxable: false, unitCents: 90000, lineCents: 90000 });
+  const lines = withDiscount([taxed, plain], { label: "Courtesy", percent: 50 }); // 50000 off: 5000 taxable, 45000 not
+  assert.ok(lines.some((l) => l.kind === "adjustment" && l.taxable), "a taxable credit exists");
+  assert.throws(() => planLineEdit(draft(), lines, { op: "remove", lineId: "t" }, { now, ...TAX }), discountRefusal);
+  assert.throws(() => planLinkedLineRemove(draft(), lines, "lt", { now, ...TAX }), discountRefusal);
+});
+
+test("with no discount, item edits are unaffected — even down to an empty draft", () => {
+  const a = line({ id: "a", labOrderLineId: "la" });
+  assert.equal(planLineEdit(draft(), [a], { op: "remove", lineId: "a" }, { now, ...TAX }).patch.totalCents, 0);
+  assert.equal(planLinkedLineRemove(draft(), [a], "la", { now, ...TAX }).patch.totalCents, 0);
+  assert.equal(planLinkedLineQty(draft(), [a], "la", 2, { now, ...TAX }).patch.subtotalCents, 20000);
+  assert.equal(planLineEdit(draft(), [a], { op: "update", lineId: "a", unitCents: 1, reason: "promo" }, { now, ...TAX }).patch.subtotalCents, 1);
+});
+
+test("hasNoItems: true for an empty draft or one with only shipping/adjustment lines", () => {
+  assert.equal(hasNoItems([]), true);
+  assert.equal(hasNoItems([line({ kind: "shipping" }), line({ kind: "adjustment", unitCents: 500 })]), true);
+  assert.equal(hasNoItems([line()]), false);
+  assert.equal(hasNoItems([line({ kind: undefined })]), false, "a line with no kind is an item");
 });

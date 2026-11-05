@@ -32,7 +32,8 @@ import { parseArgs, intFlag } from "./cli-args.js";
 import { ImportRefusal } from "./import-errors.js";
 import { assertNotCloudRun } from "./targets.js";
 import { openTargetSession } from "./cli-session.js";
-import { readExport, parseColumnsFlag } from "./export-table.js";
+import { readExport, parseColumnsFlag, isBalanceFile } from "./export-table.js";
+import { derivedFileInfo, derivedLine } from "./payments-export.js";
 import { loadClients } from "./load-clients.js";
 import { loadInvoices } from "./load-invoices.js";
 import { loadBalances } from "./load-balances.js";
@@ -91,10 +92,12 @@ async function parsedExport({ raw, flags, opts, deps }) {
   }
   if (!fileId) throw new ImportRefusal("balances needs --file <export.xls> (first time) or --file-id <id>.");
   const stored = await raw.readFile(fileId);
-  if (!stored || stored.kind !== `balances_${kind}`) throw new ImportRefusal(`No ${opts.mode} export stored with id ${fileId}.`);
+  if (!isBalanceFile(stored, kind)) throw new ImportRefusal(`No ${opts.mode} export stored with id ${fileId}.`);
   const parsed = readExport(stored.bytes, { kind, columns: opts.columns });
   if (parsed.problems.length) deps.print(["Balance export problems (row numbers and keys only):", ...problemLines(parsed.problems)]);
-  return { parsed, fileId };
+  const derived = derivedFileInfo(stored);
+  if (derived) deps.print([derivedLine(derived)]);
+  return { parsed, fileId, derived };
 }
 
 const STEPS = {
@@ -105,9 +108,9 @@ const STEPS = {
   }),
   orders: (c) => loadOrders({ raw: c.raw, db: c.db, live: c.live, target: c.target, starts: c.opts.starts, lock: c.lock }),
   async balances(c) {
-    const { parsed, fileId } = await parsedExport(c);
+    const { parsed, fileId, derived } = await parsedExport(c);
     return loadBalances({
-      raw: c.raw, db: c.db, live: c.live, target: c.target, mode: c.opts.mode, parsed, fileId, starts: c.opts.starts, cutoverAt: c.opts.cutoverAt,
+      raw: c.raw, db: c.db, live: c.live, target: c.target, mode: c.opts.mode, parsed, fileId, derived, starts: c.opts.starts, cutoverAt: c.opts.cutoverAt,
       // The app's own paid sum (paid-cents.js, the one ledger.service.js delegates to), run against the TARGET db.
       paidCents: paidCentsFor, acceptExportProblems: c.flags["accept-export-problems"] === true, lock: c.lock,
     });
