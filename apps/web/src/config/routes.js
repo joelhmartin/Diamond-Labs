@@ -17,10 +17,13 @@ export const ROUTES = {
   // Admin
   ADMIN: "/admin",
   ADMIN_PRODUCTS: "/admin/products",
+  ADMIN_PRICE_LISTS: "/admin/price-lists",
+  ADMIN_PRICE_LIST_DETAIL: "/admin/price-lists/:id",
   ADMIN_INVOICES: "/admin/invoices",
   ADMIN_INVOICE_DETAIL: "/admin/invoices/:id",
   ADMIN_RECEIVABLES: "/admin/receivables",
   ADMIN_PAYMENTS: "/admin/payments",
+  ADMIN_EXPORTS: "/admin/exports",
   ADMIN_ORDERS: "/admin/orders",
   ADMIN_USERS: "/admin/users",
   ADMIN_CLIENT_PRICING: "/admin/users/:userId/pricing",

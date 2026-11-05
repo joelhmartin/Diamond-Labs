@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
-import { RefreshCw, KeyRound, Send, CheckCircle, Loader2, CreditCard } from "lucide-react";
+import { RefreshCw, KeyRound, Send, CheckCircle, Loader2, CreditCard, Tags, Copy } from "lucide-react";
 import { Link } from "react-router-dom";
 import api from "../../config/api.js";
 import { useAuth } from "../../hooks/useAuth.js";
 import { roleToggleFor } from "@my-app/shared";
 import { DoctorPaymentDrawer } from "../../components/admin/DoctorPaymentDrawer.jsx";
 import { useToast } from "../../components/ui/Toast.jsx";
-import { DataTable } from "../../components/ui/data-table/index.js";
+import { AssignPriceListModal } from "../../components/admin/AssignPriceListModal.jsx";
+import { CopyPricesModal } from "../../components/admin/CopyPricesModal.jsx";
+import { DataTable, resultToast } from "../../components/ui/data-table/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
 import { errorText } from "../../lib/requests.js";
 
@@ -150,6 +152,8 @@ export function AdminUsersPage() {
   const [data, setData] = useState({ users: [], summary: null });
   const [busyId, setBusyId] = useState(null);
   const [paymentsUser, setPaymentsUser] = useState(null); // { userId, name, email, accountNumber }
+  const [assignIds, setAssignIds] = useState(null); // client ids the "Assign price list…" modal is open for
+  const [copyIds, setCopyIds] = useState(null); // target client ids the "Copy prices from…" modal is open for
 
   const load = async () => {
     try {
@@ -203,10 +207,22 @@ export function AdminUsersPage() {
     addToast({ message: `Sent ${sent}/${requested} ${plural(kind)}`, type: sent < requested ? "warning" : "success" });
     table.selection.clear();
   };
+  // A bulk modal finished: toast its { ok, failed } like BulkBar does, close it, clear the selection.
+  const modalDone = (close) => (result) => {
+    addToast(resultToast(result));
+    close(null);
+    table.selection.clear();
+  };
+  const assignDone = modalDone(setAssignIds);
+  const copyDone = modalDone(setCopyIds);
   const n = table.selection.count;
   const bulkActions = [
     { id: "invite", label: "Send invitations", confirmLabel: `Click again to send ${n} ${plural("invitation")}`, icon: <Send size={12} />, run: bulkSend("invitation") },
     { id: "reset", label: "Send password resets", confirmLabel: `Click again to send ${n} ${plural("password-reset")}`, icon: <KeyRound size={12} />, run: bulkSend("password-reset") },
+    // Opens the modal; the modal posts and reports { ok, failed } (non-clients land in failed).
+    { id: "assign-list", label: "Assign price list…", icon: <Tags size={12} />, run: (rows) => setAssignIds(rows.map((u) => u.id)) },
+    // The modal previews the per-client diff and applies; the selected users are the copy targets.
+    { id: "copy-prices", label: "Copy prices from…", icon: <Copy size={12} />, run: (rows) => setCopyIds(rows.map((u) => u.id)) },
   ];
 
   return (
@@ -243,6 +259,8 @@ export function AdminUsersPage() {
         emptyText="No users match."
       />
 
+      {assignIds && <AssignPriceListModal clientUserIds={assignIds} onDone={assignDone} onClose={() => setAssignIds(null)} />}
+      {copyIds && <CopyPricesModal targetIds={copyIds} onDone={copyDone} onClose={() => setCopyIds(null)} />}
       {paymentsUser && <DoctorPaymentDrawer doctor={paymentsUser} onClose={() => setPaymentsUser(null)} />}
 
       <p className="mt-6 text-[11px] font-mono text-navy/30 text-center">

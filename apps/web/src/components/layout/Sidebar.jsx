@@ -19,6 +19,8 @@ import {
   Building2,
   Landmark,
   Truck,
+  Download,
+  Tags,
   CalendarDays,
   CalendarClock,
 } from "lucide-react";
@@ -46,12 +48,14 @@ const adminItems = [
   { label: "Invoices",   to: ROUTES.ADMIN_INVOICES,    icon: FileText },
   { label: "Receivables", to: ROUTES.ADMIN_RECEIVABLES, icon: Landmark },
   { label: "Payments",   to: ROUTES.ADMIN_PAYMENTS,    icon: CreditCard },
+  { label: "Exports",    to: ROUTES.ADMIN_EXPORTS,     icon: Download },
   { label: "AutoPay",    to: ROUTES.ADMIN_AUTOPAY,     icon: Repeat },
   { label: "Jobs",       to: ROUTES.ADMIN_JOBS,        icon: Clock },
   { label: "Orders",     to: ROUTES.ADMIN_ORDERS,      icon: ClipboardList },
   { label: "Departments", to: ROUTES.ADMIN_DEPARTMENTS, icon: Building2 },
   { label: "Users",      to: ROUTES.ADMIN_USERS,       icon: UserCog },
   { label: "Products",   to: ROUTES.ADMIN_PRODUCTS,    icon: Package },
+  { label: "Price lists", to: ROUTES.ADMIN_PRICE_LISTS, icon: Tags },
   { label: "Scheduling", to: ROUTES.ADMIN_SCHEDULING, icon: CalendarClock },
   { label: "Rx Mapping", to: ROUTES.ADMIN_RX_MAPPING,  icon: FlaskConical },
 ];

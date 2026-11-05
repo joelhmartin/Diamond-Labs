@@ -21,8 +21,10 @@ export {
   productFamilies, productOptions, productOptionValues, productVariants, productVariantOptionValues,
 } from "./catalog.js";
 export { clientPrices } from "./client-prices.js";
+export { priceLists, priceListItems, clientPriceLists } from "./price-lists.js";
 export { labDepartments, labOrders, labOrderLines, labOrderEvents } from "./lab-orders.js";
 export { invoices, invoiceLines } from "./invoices.js";
 export { shipments, shipmentEvents } from "./shipments.js";
+export { statementSends, STATEMENT_SEND_STATUSES } from "./statement-sends.js";
 export { calendars, calendarHolidays } from "../../modules/business-calendar/schema.js";
 export { workflows, workflowStages, workflowAssignments, workflowPlans } from "../../modules/workflows/schema.js";

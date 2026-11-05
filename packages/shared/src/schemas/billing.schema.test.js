@@ -1,7 +1,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
-  invoiceEditSchema, invoiceVoidSchema, invoiceCreditSchema, manualPaymentSchema, statementQuerySchema, invoiceListQuerySchema,
+  invoiceEditSchema, invoiceVoidSchema, invoiceCreditSchema, manualPaymentSchema, statementQuerySchema, statementRunSchema, invoiceListQuerySchema,
 } from "./billing.schema.js";
 
 const ok = (schema, v) => schema.safeParse(v).success;
@@ -36,6 +36,9 @@ test("statements are asked for by month; list filters coerce", () => {
   assert.ok(ok(statementQuerySchema, { month: "2026-10" }));
   assert.ok(!ok(statementQuerySchema, { month: "2026-13" }));
   assert.ok(!ok(statementQuerySchema, {}));
+  assert.ok(ok(statementRunSchema, { month: "2026-10" }));
+  assert.ok(ok(statementRunSchema, { month: "2026-10", clientUserIds: ["a"] }));
+  assert.ok(!ok(statementRunSchema, { month: "2026-10", clientUserIds: [] }));
   const q = invoiceListQuerySchema.parse({ needsPrice: "true", number: "500123" });
   assert.equal(q.needsPrice, true);
   assert.equal(q.number, 500123);

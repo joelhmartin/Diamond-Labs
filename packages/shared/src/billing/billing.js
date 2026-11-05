@@ -7,11 +7,11 @@
 export const INVOICE_STATUSES = ["draft", "issued", "void"];
 export const INVOICE_KINDS = ["order", "shop", "legacy"];
 export const INVOICE_LINE_KINDS = ["item", "shipping", "fee", "adjustment"];
-export const PRICE_SOURCES = ["client", "base", "manual", "remake", "unpriced", "shipment", "legacy"];
+export const PRICE_SOURCES = ["client", "list", "base", "manual", "remake", "unpriced", "shipment", "legacy"];
 
 export const LINE_KIND_LABELS = { item: "Item", shipping: "Shipping", fee: "Fee", adjustment: "Adjustment" };
 export const PRICE_SOURCE_LABELS = {
-  client: "Client price", base: "Base price", manual: "Manual", remake: "Remake (no charge)", unpriced: "Needs a price", shipment: "Shipping label",
+  client: "Client price", list: "Price list", base: "Base price", manual: "Manual", remake: "Remake (no charge)", unpriced: "Needs a price", shipment: "Shipping label",
   legacy: "Seazona",
 };
 

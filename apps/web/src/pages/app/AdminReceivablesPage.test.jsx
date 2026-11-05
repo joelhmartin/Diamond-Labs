@@ -33,14 +33,13 @@ test("past-due filter hides current-only clients and the totals row follows it",
   assert.ok(screen.getByText("Total (1 clients)"));
 });
 
-test('bulk "Email statements" posts once per selected client and reports failures', async () => {
-  post.mockResolvedValueOnce({ data: { data: { sent: true } } }).mockRejectedValueOnce(new Error("boom"));
+test('"Monthly statements" replaces the old per-row bulk email and opens the run panel', async () => {
   mount();
   await screen.findByText("Alpha Dental");
   for (const box of screen.getAllByLabelText("Select row")) fireEvent.click(box);
-  fireEvent.click(await screen.findByRole("button", { name: "Email statements" }));
-  fireEvent.click(await screen.findByRole("button", { name: /click again/i }));
-  await waitFor(() => assert.equal(post.mock.calls.length, 2));
-  assert.deepEqual(post.mock.calls.map((c) => c[0]).sort(), ["/admin/clients/c1/statement/email", "/admin/clients/c2/statement/email"]);
-  await screen.findByText(/1 done, 1 failed/);
+  assert.equal(screen.queryByRole("button", { name: "Email statements" }), null);
+  get.mockResolvedValue({ data: { data: [] } });
+  fireEvent.click(screen.getByRole("button", { name: "Monthly statements" }));
+  await waitFor(() => assert.ok(get.mock.calls.some((c) => c[0] === "/admin/statements/run")));
+  assert.ok(await screen.findByRole("button", { name: "Send 0 statements" }));
 });
