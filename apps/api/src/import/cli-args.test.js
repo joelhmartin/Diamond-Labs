@@ -31,3 +31,11 @@ test("boolean flags take no value; repeated flags and non-digit numbers are refu
   for (const bad of ["1e3", "0x10", " 5", "5 ", "-1", ""]) assert.throws(() => intFlag({ approved: bad }, "approved"), ImportRefusal);
   assert.equal(intFlag({ approved: "007" }, "approved"), 7);
 });
+
+test("a repeatable flag collects every value in order (and is always a list)", () => {
+  const o = { allowed: ["file", "live"], booleans: ["live"], repeatable: ["file"] };
+  assert.deepEqual(parseArgs(["--file", "a.xls", "--file=b.xls"], o).flags, { file: ["a.xls", "b.xls"] });
+  assert.deepEqual(parseArgs(["--file", "a.xls"], o).flags, { file: ["a.xls"] });
+  assert.throws(() => parseArgs(["--file"], o), /--file needs a value/);
+  assert.throws(() => parseArgs(["--live", "--live"], o), /more than once/);
+});

@@ -42,7 +42,7 @@ export function settlementRow(inv, cents, mode) {
 
 const emptyDiffs = () => ({
   credits: 0, unmatched: 0, overTotal: 0, negativeTotal: 0, openOnVoid: 0, skippedRealPayments: 0,
-  leftOpenExportProblem: 0, unownedOpening: 0, accountWithoutClient: 0,
+  leftOpenExportProblem: 0, unownedOpening: 0, accountWithoutClient: 0, absentFromDerived: 0, duplicateNumber: 0,
 });
 const sumRows = (rows) => rows.reduce((n, r) => n + r.cents, 0);
 
@@ -67,11 +67,22 @@ const reconcile = (exportRows, loadedOpenCents, diffs) => {
  * parse (bad balance, duplicate key). Those invoices stay UNSETTLED at their
  * full total: an unreadable balance is never read as zero.
  */
-export function planInvoiceSettlements({ legacyInvoices, exportRows, existingTransactionIds, paidByInvoice = new Map(), leftOpenKeys = new Set() }) {
+/*
+ * `missingMeansOpen`: the rows come from a DERIVED file (payments_derived), not
+ * the lab's own report. A lab export lists only what is owed, so an absent
+ * invoice owes nothing; a derived file lists every invoice it knew, so an
+ * absent one (loaded after the file was derived) is unknown: it stays open at
+ * its full total and is reported (`absentFromDerived`). With a derived file, an
+ * invoice number carried by more than one loaded history invoice settles NEITHER
+ * record: both stay open and are reported (`duplicateNumber`).
+ */
+export function planInvoiceSettlements({ legacyInvoices, exportRows, existingTransactionIds, paidByInvoice = new Map(), leftOpenKeys = new Set(), missingMeansOpen = false }) {
   const open = new Map(exportRows.map((r) => [r.key, r.cents]));
   const byNumber = new Map(history(legacyInvoices).map((i) => [i.invoiceNumber, i]));
+  const numberCount = new Map();
+  for (const i of history(legacyInvoices)) numberCount.set(i.invoiceNumber, (numberCount.get(i.invoiceNumber) ?? 0) + 1);
   const out = {
-    rows: [], credits: [], unmatched: [], overTotal: [], negativeTotal: [], openOnVoid: [], hasPayments: [], leftOpen: [],
+    rows: [], credits: [], unmatched: [], overTotal: [], negativeTotal: [], openOnVoid: [], hasPayments: [], leftOpen: [], absentFromDerived: [], duplicateNumber: [],
     alreadySettled: 0, openByClient: new Map(),
   };
   const diffs = emptyDiffs();
@@ -91,6 +102,8 @@ export function planInvoiceSettlements({ legacyInvoices, exportRows, existingTra
     const owed = open.get(inv.invoiceNumber) ?? 0;
     const unsettled = (list, category) => { list.push(inv.invoiceNumber); book(inv, inv.totalCents); diffs[category] += owed - inv.totalCents; };
     if (inv.totalCents < 0) { unsettled(out.negativeTotal, "negativeTotal"); continue; }
+    if (missingMeansOpen && (numberCount.get(inv.invoiceNumber) ?? 0) > 1) { unsettled(out.duplicateNumber, "duplicateNumber"); continue; }
+    if (missingMeansOpen && !open.has(inv.invoiceNumber)) { unsettled(out.absentFromDerived, "absentFromDerived"); continue; }
     if (leftOpenKeys.has(String(inv.invoiceNumber))) { unsettled(out.leftOpen, "leftOpenExportProblem"); continue; }
     if (owed > inv.totalCents) { unsettled(out.overTotal, "overTotal"); continue; }
     if (owed < 0) out.credits.push({ invoiceNumber: inv.invoiceNumber, clientUserId: inv.clientUserId, cents: owed });

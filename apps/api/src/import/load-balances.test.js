@@ -30,6 +30,27 @@ test("per-invoice live: settlement rows are written once", async () => {
   assert.equal(again.log.some((e) => e.op === "insert"), false);
 });
 
+test("a derived (payments_derived) file: an invoice it does not list stays open and is reported, with the file's provenance", async () => {
+  const derived = { maxInvoiceNumber: 1, invoiceRecords: 1, derivedRows: 1, sourceFiles: 1, unclear: "credit-definite", derivedAt: "2026-11-05T12:00:00.000Z" };
+  const tx = fakeTx({ selects: [legacyRows, []] });
+  const report = await loadBalances({ ...base, db: tx, live: true, mode: "per-invoice", parsed, derived });
+  const rows = tx.log.filter((e) => e.op === "insert").flatMap((e) => e.values);
+  assert.deepEqual(rows.map((r) => [r.transactionId, r.appliedCents]), [["legacy:inv-1", 600]], "invoice 2 (newer than the file) is NOT settled as paid");
+  assert.deepEqual(report.problems.find((p) => p.kind === "invoice_absent_from_derived_file"), { kind: "invoice_absent_from_derived_file", count: 1, seazonaIds: ["2"] });
+  assert.equal(report.counts.openCents, 900);
+  assert.deepEqual(report.derivedFile, derived);
+});
+
+test("a derived file never settles an invoice number two loaded invoices share: invoice_number_duplicated", async () => {
+  const twins = [...legacyRows, { ...legacyRows[1], id: "id-2b", legacySeazonaInvoiceId: "inv-2b", totalCents: 300 }];
+  const tx = fakeTx({ selects: [twins, []] });
+  const both = { rows: [{ key: 1, cents: 400, line: 2 }, { key: 2, cents: 0, line: 3 }], problems: [] };
+  const report = await loadBalances({ ...base, db: tx, live: true, mode: "per-invoice", parsed: both, derived: {} });
+  const rows = tx.log.filter((e) => e.op === "insert").flatMap((e) => e.values);
+  assert.deepEqual(rows.map((r) => r.transactionId), ["legacy:inv-1"]);
+  assert.deepEqual(report.problems.find((p) => p.kind === "invoice_number_duplicated"), { kind: "invoice_number_duplicated", count: 2, seazonaIds: ["2", "2"] });
+});
+
 test("a dry run writes nothing and the report carries counts and ids only", async () => {
   const tx = fakeTx({ selects: [legacyRows, []] });
   const report = await loadBalances({ ...base, db: tx, live: false, mode: "per-invoice", parsed });
@@ -202,7 +223,7 @@ test("the report reconciles to the cent: export = loaded open + every difference
   const r = report.reconciliation;
   assert.deepEqual(r.differences, {
     credits: -250, unmatched: 123, overTotal: 700, negativeTotal: 500, openOnVoid: 50, skippedRealPayments: 300 - 900,
-    leftOpenExportProblem: 0, unownedOpening: 600, accountWithoutClient: 0,
+    leftOpenExportProblem: 0, unownedOpening: 600, accountWithoutClient: 0, absentFromDerived: 0, duplicateNumber: 0,
   });
   assert.equal(r.exportCents, 400 - 250 + 1700 + 50 + 600 + 300 + 123);
   assert.equal(r.exportCents, r.loadedOpenCents + Object.values(r.differences).reduce((n, c) => n + c, 0));
@@ -220,7 +241,7 @@ test("per-client reconciles too, including unowned and unknown accounts and cred
   const report = await loadBalances({ ...base, db: tx, live: false, mode: "per-client", parsed: p });
   const r = report.reconciliation;
   assert.equal(r.loadedOpenCents, 900, "' AB1 ' and 'ab1' are the same account");
-  assert.deepEqual(r.differences, { credits: 0, unmatched: 0, overTotal: 0, negativeTotal: 0, openOnVoid: 0, skippedRealPayments: 0, leftOpenExportProblem: 0, unownedOpening: 300, accountWithoutClient: 70 - 5 });
+  assert.deepEqual(r.differences, { credits: 0, unmatched: 0, overTotal: 0, negativeTotal: 0, openOnVoid: 0, skippedRealPayments: 0, leftOpenExportProblem: 0, unownedOpening: 300, accountWithoutClient: 70 - 5, absentFromDerived: 0, duplicateNumber: 0 });
   assert.equal(r.exportCents, 900 + 300 + 70 - 5);
 });
 

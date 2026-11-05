@@ -1,37 +1,62 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import path from "node:path";
 
-// Generic modules (apps/api/src/modules, apps/web/src/modules) are written to
-// be lifted into another app, so they must not speak this app's domain. Glue
-// that knows the domain lives under services/ and pages/, never here.
+// Generic modules must stay reusable: no lab vocabulary in code, comments,
+// READMEs or test names. Lab words live only in glue files outside these dirs.
 const BANNED = /\b(lab|doctor|patient|dental|rx)\b/i;
 const SELF = fileURLToPath(import.meta.url);
-const API_MODULES = fileURLToPath(new URL(".", import.meta.url));
-const WEB_MODULES = fileURLToPath(new URL("../../../web/src/modules/", import.meta.url));
+const ROOTS = [
+  fileURLToPath(new URL(".", import.meta.url)),
+  fileURLToPath(new URL("../../../web/src/modules", import.meta.url)),
+  fileURLToPath(new URL("../../../../packages/shared/src/business-calendar", import.meta.url)),
+  fileURLToPath(new URL("../../../../packages/shared/src/workflows", import.meta.url)),
+  fileURLToPath(new URL("../../../../packages/shared/src/exports", import.meta.url)),
+  fileURLToPath(new URL("../../../../packages/shared/src/notifications", import.meta.url)),
+  fileURLToPath(new URL("../../../../packages/shared/src/messaging", import.meta.url)),
+];
+// The exports dirs are also free of the word "invoice" (the invoice source is
+// app glue in apps/api/src/exports).
+const INVOICE_WORD = /invoice/i;
+const EXPORT_ROOTS = [
+  fileURLToPath(new URL("./exports", import.meta.url)),
+  fileURLToPath(new URL("../../../web/src/modules/exports", import.meta.url)),
+  fileURLToPath(new URL("../../../../packages/shared/src/exports", import.meta.url)),
+];
 
-function walk(dir, out = []) {
-  if (!existsSync(dir)) return out;
+function* walk(dir) {
+  if (!existsSync(dir)) return;
   for (const name of readdirSync(dir)) {
     if (name === "node_modules") continue;
-    const p = join(dir, name);
-    if (statSync(p).isDirectory()) walk(p, out);
-    else if (p !== SELF) out.push(p);
+    const full = path.join(dir, name);
+    if (statSync(full).isDirectory()) yield* walk(full);
+    else yield full;
   }
-  return out;
 }
 
-test("generic modules contain no domain words", () => {
-  const files = [...walk(API_MODULES), ...walk(WEB_MODULES)];
-  assert.ok(files.length > 0, "module discovery looks broken");
+test("generic modules contain no lab vocabulary", () => {
   const hits = [];
-  for (const file of files) {
-    readFileSync(file, "utf8").split("\n").forEach((line, i) => {
-      const m = line.match(BANNED);
-      if (m) hits.push(`${file}:${i + 1}: "${m[0]}"`);
-    });
+  for (const root of ROOTS) {
+    for (const file of walk(root)) {
+      if (file === SELF) continue;
+      readFileSync(file, "utf8").split("\n").forEach((line, i) => {
+        if (BANNED.test(line)) hits.push(`${path.relative(root, file)}:${i + 1}: ${line.trim()}`);
+      });
+    }
   }
-  assert.deepEqual(hits, [], `domain words in generic modules:\n${hits.join("\n")}`);
+  assert.deepEqual(hits, []);
+});
+
+test("the exports module does not mention invoices", () => {
+  const hits = [];
+  for (const root of EXPORT_ROOTS) {
+    for (const file of walk(root)) {
+      readFileSync(file, "utf8").split("\n").forEach((line, i) => {
+        if (INVOICE_WORD.test(line)) hits.push(`${path.relative(root, file)}:${i + 1}: ${line.trim()}`);
+      });
+    }
+  }
+  assert.deepEqual(hits, []);
 });

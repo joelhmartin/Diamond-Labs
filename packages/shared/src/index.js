@@ -8,6 +8,7 @@ export * from "./schemas/rx.schema.js";
 export * from "./schemas/theme.schema.js";
 export * from "./schemas/payment.schema.js";
 export * from "./schemas/catalog.schema.js";
+export * from "./schemas/price-lists.schema.js";
 export * from "./schemas/autopay.schema.js";
 
 // Constants
@@ -34,6 +35,10 @@ export * from "./schemas/lab.schema.js";
 export * from "./lab/logistics.js";
 export * from "./schemas/logistics.schema.js";
 
+// Exports
+export * from "./exports/csv.js";
+export * from "./schemas/exports.schema.js";
+
 // Money (integer cents)
 export * from "./money.js";
 
@@ -52,3 +57,8 @@ export * from "./notifications/schemas.js";
 
 // Messaging (generic module)
 export * from "./messaging/schemas.js";
+// Business calendar (generic module; rules live in apps/api/src/modules/business-calendar)
+export * from "./business-calendar/index.js";
+
+// Workflows (generic module; rules live in apps/api/src/modules/workflows)
+export * from "./workflows/index.js";

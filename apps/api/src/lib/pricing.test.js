@@ -1,6 +1,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { priceLines, priceLabLines, unitPriceFor, assertQuotedTotal, PricingError } from "./pricing.js";
+import { priceLines, priceLabLines, unitPriceFor, assertQuotedTotal, resolveClientPrices, liveLists, PricingError } from "./pricing.js";
+import { asRemakeLines } from "../services/billing/invoice-rules.js";
 
 const config = { taxRateBps: 800, shippingFlatCents: 1200, maxQty: 999 };
 const v = (id, over = {}) => ({
@@ -121,4 +122,85 @@ test("lab lines: client price, else base; unknown or unpriced variants are flagg
     ["d", 1200, "base", 1, true],
   ]);
   assert.equal(out[0].description, "DDSO Nylon");
+});
+
+// --- Price lists (piece 10): one resolution path, R1 precedence ---
+
+const list = (listId, entries, name = `List ${listId}`) => ({ listId, name, items: new Map(entries) });
+
+test("client override beats every list", () => {
+  const out = resolveClientPrices({
+    overrides: new Map([["a", 1500]]),
+    lists: [list("L1", [["a", 1200], ["b", 400]]), list("L2", [["a", 1100]])],
+  });
+  assert.deepEqual(out.get("a"), { cents: 1500, source: "client", listId: null, listName: null });
+  assert.deepEqual(out.get("b"), { cents: 400, source: "list", listId: "L1", listName: "List L1" });
+});
+
+test("first assigned list with an item wins; a later list fills variants the first lacks", () => {
+  const out = resolveClientPrices({
+    overrides: new Map(),
+    lists: [list("L1", [["a", 1200]], "Standard"), list("L2", [["a", 900], ["b", 300]], "Remake")],
+  });
+  assert.deepEqual(out.get("a"), { cents: 1200, source: "list", listId: "L1", listName: "Standard" });
+  assert.deepEqual(out.get("b"), { cents: 300, source: "list", listId: "L2", listName: "Remake" });
+  assert.equal(out.has("c"), false, "no list item and no override: base applies downstream");
+});
+
+test("a list price of $0.00 is a real price", () => {
+  const out = resolveClientPrices({ overrides: new Map(), lists: [list("L1", [["a", 0]])] });
+  assert.equal(out.get("a").cents, 0);
+});
+
+test("unitPriceFor takes a resolved { cents, source } and passes the source through", () => {
+  assert.deepEqual(unitPriceFor(variants.get("a"), { cents: 1200, source: "list" }), { cents: 1200, source: "list" });
+  assert.deepEqual(unitPriceFor(variants.get("a"), { cents: 1500, source: "client" }), { cents: 1500, source: "client" });
+  assert.deepEqual(unitPriceFor(variants.get("nop"), { cents: 700, source: "list" }), { cents: 700, source: "list" });
+  assert.deepEqual(unitPriceFor(variants.get("a"), undefined), { cents: 2000, source: "base" });
+});
+
+test("priceLabLines marks a list-priced line priceSource \"list\"", () => {
+  const out = priceLabLines({
+    lines: [
+      { id: "x", variantId: "a", code: "Ca", name: "Item a", qty: 1, noteOnly: false },
+      { id: "y", variantId: "b", code: "Cb", name: "Item b", qty: 1, noteOnly: false },
+    ],
+    variants,
+    clientPrices: new Map([["a", { cents: 1700, source: "list" }]]),
+  });
+  assert.deepEqual(out.map((l) => [l.unitCents, l.priceSource]), [[1700, "list"], [500, "base"]]);
+});
+
+test("a remake stays $0 even when list-priced", () => {
+  const priced = priceLabLines({
+    lines: [{ id: "x", variantId: "a", code: "Ca", name: "Item a", qty: 1, noteOnly: false }],
+    variants,
+    clientPrices: new Map([["a", { cents: 1700, source: "list" }]]),
+  });
+  assert.equal(priced[0].priceSource, "list");
+  const remade = asRemakeLines(priced);
+  assert.equal(remade[0].unitCents, 0);
+  assert.equal(remade[0].priceSource, "remake");
+});
+
+test("a list edit between quote and checkout is PRICE_CHANGED, not a silent charge", () => {
+  const lines = [{ variantId: "b", qty: 2 }];
+  const priceWith = (listCents) => {
+    const resolved = resolveClientPrices({ overrides: new Map(), lists: [list("L1", [["b", listCents]])] });
+    return priceLines({ lines, variants, clientPrices: resolved, config });
+  };
+  const quoted = priceWith(400);
+  assert.equal(quoted.lines[0].priceSource, "list");
+  const atCheckout = priceWith(450);           // staff edited the list after the quote
+  assert.equal(code(() => assertQuotedTotal(quoted.totalCents / 100, atCheckout)), "PRICE_CHANGED");
+  assert.doesNotThrow(() => assertQuotedTotal(quoted.totalCents / 100, priceWith(400)));
+});
+
+test("liveLists keeps assignment order and drops archived and unknown lists", () => {
+  const byId = new Map([
+    ["L1", { listId: "L1", name: "Gold", archived: false, items: new Map() }],
+    ["L2", { listId: "L2", name: "Old", archived: true, items: new Map() }],
+    ["L3", { listId: "L3", name: "Silver", archived: false, items: new Map() }],
+  ]);
+  assert.deepEqual(liveLists(["L3", "L2", "L1", "LX"], byId).map((l) => l.listId), ["L3", "L1"]);
 });

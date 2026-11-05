@@ -22,6 +22,10 @@ import {
   BellRing,
   MessageSquare,
   PackageOpen,
+  Download,
+  Tags,
+  CalendarDays,
+  CalendarClock,
 } from "lucide-react";
 import { brand } from "../../config/brand.js";
 import { isStaffRole } from "@my-app/shared";
@@ -39,6 +43,7 @@ const mainItems = [
 
 const staffItems = [
   { label: "Production", to: ROUTES.LAB_BOARD,      icon: LayoutGrid },
+  { label: "Calendar",   to: ROUTES.LAB_CALENDAR,   icon: CalendarDays },
   { label: "Rx Cases",   to: ROUTES.ADMIN_RX_CASES, icon: ClipboardCheck },
   { label: "Shipments",  to: ROUTES.ADMIN_SHIPMENTS, icon: Truck },
   { label: "Messages",   to: ROUTES.LAB_MESSAGES,    icon: MessageSquare, badge: <MessagesBadge className="ml-auto" /> },
@@ -49,6 +54,7 @@ const adminItems = [
   { label: "Invoices",   to: ROUTES.ADMIN_INVOICES,    icon: FileText },
   { label: "Receivables", to: ROUTES.ADMIN_RECEIVABLES, icon: Landmark },
   { label: "Payments",   to: ROUTES.ADMIN_PAYMENTS,    icon: CreditCard },
+  { label: "Exports",    to: ROUTES.ADMIN_EXPORTS,     icon: Download },
   { label: "AutoPay",    to: ROUTES.ADMIN_AUTOPAY,     icon: Repeat },
   { label: "Jobs",       to: ROUTES.ADMIN_JOBS,        icon: Clock },
   { label: "Lab alerts", to: ROUTES.ADMIN_LAB_ALERTS,  icon: BellRing },
@@ -56,6 +62,8 @@ const adminItems = [
   { label: "Departments", to: ROUTES.ADMIN_DEPARTMENTS, icon: Building2 },
   { label: "Users",      to: ROUTES.ADMIN_USERS,       icon: UserCog },
   { label: "Products",   to: ROUTES.ADMIN_PRODUCTS,    icon: Package },
+  { label: "Price lists", to: ROUTES.ADMIN_PRICE_LISTS, icon: Tags },
+  { label: "Scheduling", to: ROUTES.ADMIN_SCHEDULING, icon: CalendarClock },
   { label: "Rx Mapping", to: ROUTES.ADMIN_RX_MAPPING,  icon: FlaskConical },
 ];
 

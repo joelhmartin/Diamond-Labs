@@ -11,6 +11,8 @@ import { describeEvent } from "../../lib/lab-board.js";
 import { INPUT } from "../../components/lab/form-styles.js";
 import { LegacyOrderPanel } from "../../components/lab/LegacyOrderPanel.jsx";
 import { ShippingPanel } from "../../components/lab/ShippingPanel.jsx";
+import { SchedulePanel } from "../../components/lab/SchedulePanel.jsx";
+import { Badge } from "../../components/ui/Badge.jsx";
 import { errorText, blobErrorText, isStale, openInNewTab, openPdf } from "../../lib/requests.js";
 
 function moveLabel(from, to) {
@@ -129,7 +131,7 @@ export function LabOrderDetailPage() {
     );
   }
 
-  const { order, lines, events, rxCase, files, shopOrder, shipment, legacy } = detail;
+  const { order, lines, events, rxCase, files, shopOrder, shipment, legacy, schedule, scheduleFlags } = detail;
   const moves = allowedNextStatuses(order.status, { heldFrom: order.heldFrom, labelled: Boolean(order.shipmentId) });
   const answerGroups = rxCase ? groupRxAnswers(getRxForm(rxCase.formType), rxCase.formData) : [];
   const devices = lines.filter((l) => !l.noteOnly);
@@ -180,6 +182,8 @@ export function LabOrderDetailPage() {
                 <RotateCcw size={11} /> Remake{order.remakeOfOrderNumber ? ` of #${order.remakeOfOrderNumber}` : ""}
               </span>
             )}
+            {scheduleFlags?.behind && <Badge color="red">Behind</Badge>}
+            {scheduleFlags?.atRisk && <Badge color="yellow">At risk</Badge>}
             {order.overdue && <span className="flex items-center gap-1 text-xs font-semibold text-red-600"><Clock size={11} /> Overdue</span>}
             {rxCase && <Link to={`/admin/rx-cases/${rxCase.id}`} className="font-mono text-xs text-brand-600 hover:underline">{rxCase.caseNumber}</Link>}
             {shopOrder && <span className="font-mono text-xs">{shopOrder.orderNumber}</span>}
@@ -336,6 +340,10 @@ export function LabOrderDetailPage() {
                 {(rxCase?.patientName || legacy?.patientName) && <>Patient: <span className="text-navy">{rxCase?.patientName || legacy?.patientName}</span></>}
               </div>
             </div>
+          </Panel>
+
+          <Panel title="Schedule">
+            <SchedulePanel order={order} schedule={schedule ?? null} onChanged={load} />
           </Panel>
 
           <Panel title="Lab notes (staff only)">

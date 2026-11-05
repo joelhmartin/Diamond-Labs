@@ -25,14 +25,14 @@ import { verifyAllocations, recordPaymentAndAllocations } from "../payment-recor
  * (ids and amounts only; reasons live encrypted on the rows).
  */
 
-async function lockInvoice(tx, id) {
+export async function lockInvoice(tx, id) {
   const [row] = await tx.select().from(invoices).where(eq(invoices.id, id)).for("update");
   if (!row) throw new InvoiceError("NOT_FOUND", "Invoice not found.");
   return openInvoice(row);
 }
 
 /** Run fn holding the card-payment lock on each invoice; a held lock is a 409 LOCKED. */
-async function underInvoiceLocks(invoiceIds, fn) {
+export async function underInvoiceLocks(invoiceIds, fn) {
   try {
     return await withInvoiceLocks(redis, invoiceIds, fn);
   } catch (err) {
@@ -120,7 +120,7 @@ export function recordCredit(id, { amountCents, reason, byUserId }, database = d
  * then written through recordPaymentAndAllocations like every card payment:
  * ledger rows, a "recorded, not charged" receipt, an audit entry.
  */
-async function loadPayingClient(clientUserId, database) {
+export async function loadPayingClient(clientUserId, database) {
   const [client] = await database
     .select({ id: users.id, email: users.email, name: users.name, role: users.role, seazonaClientId: users.seazonaClientId })
     .from(users)

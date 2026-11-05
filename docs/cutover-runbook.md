@@ -187,6 +187,30 @@ pnpm --filter @my-app/api import:parity $T $S --balances <path> --file-id <final
 - Run the tracking job dry (`docs/shipping-operations.md`).
 - Run the shop repair dry (`{"dryRun":true}`, step 7's call): its `missing` count must equal the number of shop orders paid between T1 and the new revision going live in step 4.5 (`select count(*) from orders where status = 'paid' and created_at >= '<T1>' and created_at < '<new revision live>'`; orders placed after that already got their lab order at checkout). A mismatch means T1 is wrong: stop and fix `LAB_SHOP_REPAIR_SINCE` before the live run.
 
+### Re-enter price lists (lab admin, before unfreeze)
+
+Seazona's API never exposed price lists or who is on them, so the load brought none. Keep Labzona's PriceList screen and its Same Pricing report open beside the new app.
+
+- (a) **Admin › Price lists › New list**: create the 3 lists, named as in Labzona.
+- (b) Fill each list's prices: in the list editor enter only the prices that differ from the base price, reading Labzona's PriceList screen, then turn on the **Only priced in this list** filter to check the list holds just those. Do not set every product to its base price: a full-sheet list hides any later list for its clients and freezes them at today's base prices when base prices change.
+- (c) Assign clients from **Admin › Users**: filter or search by practice, select the clients, run **Assign price list…** and pick the list. Repeat per list.
+- (d) Open **Price lists › Same pricing** and compare the group sizes with Labzona's Same Pricing report. A group that does not match is re-checked (list items and assignments) before unfreeze.
+- (e) `statement_sends` starts empty, so the first **Receivables › Monthly statements** run after cutover sends to every client due one. That is correct only for the month after Labzona's last statement run: pick that month in the panel, not one Labzona already sent.
+
+## 6b. Scheduling re-entry (before unfreeze)
+
+Scheduling seeds a default calendar and eight starter workflows (migration 0036); staff finish the setup in Admin › Scheduling:
+
+- Confirm the calendar timezone. It is seeded as `America/Chicago`, but the audit shows a California address, so check which zone due dates should be read in. Changing it is not only a setting: invoices, statements, the ledger, slip timestamps and the calendar page's starting date all read `LAB_TIMEZONE` in `packages/shared/src/lab/lab-order-status.js`, so a different zone also needs that constant changed and a deploy (ruling R-F). There is deliberately no timezone field in the admin UI.
+- Enter the coming year's holidays.
+- Set capacity limits if wanted (basis and per-weekday limits); the seed has none.
+- Correct each of the 8 workflows' stages and day offsets against Labzona's Workflow screen. The seeded stages are editable defaults.
+- Link the rush variants (each workflow's rush workflow).
+- Mark one workflow as the default.
+- Assign workflows to products in Admin › Scheduling › Assignments.
+
+Notes: imported Seazona orders keep their existing due date and have no stage plan. With no default workflow and no product assignment, a newly released order gets a due date 13 business days out (the calendar lead time).
+
 ## 7. Unfreeze
 
 **Unset the flag; never set it to an empty value** (an empty string fails env validation and the revision never becomes ready):

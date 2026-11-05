@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { priceLines } from "../../lib/pricing.js";
 import {
   InvoiceError, addDaysIso, computeTotals, hasUnpriced, asRemakeLines, planDraftInvoice, planShopInvoice,
-  assertFreshInvoice, planLineEdit, planIssue, planVoid, deriveBalance, canActOnInvoice, planCredit, planManualPayment,
+  assertFreshInvoice, planLineEdit, planIssue, planVoid, deriveBalance, canActOnInvoice, planCredit, planManualPayment, planAccountCredit,
   planShipmentLine, planShipmentLineRemoval,
 } from "./invoice-rules.js";
 import { invoiceErrorReply } from "./invoice-errors.js";
@@ -310,4 +310,31 @@ test("a manual payment is refused against an ownerless open invoice", () => {
   assert.throws(() => planManualPayment({ openInvoices: open, amountCents: 1000, paidOn: "2026-02-01", todayIso: "2026-02-02" }), (e) => isCode("INVALID_TRANSITION")(e) && /no client yet/.test(e.message));
   const owned = [{ ...open[0], clientUserId: "doc1" }];
   assert.equal(planManualPayment({ openInvoices: owned, amountCents: 1000, paidOn: "2026-02-01", todayIso: "2026-02-02" }).length, 1);
+});
+
+test("credit spreads oldest-first across open invoices", () => {
+  const plan = planAccountCredit({ openInvoices: open, amountCents: 25000, reason: " goodwill ", todayIso: "2026-10-15" });
+  assert.deepEqual(plan, {
+    allocations: [
+      { invoiceId: "a", invoiceNumber: "500001", amountCents: 20000 },
+      { invoiceId: "b", invoiceNumber: "500002", amountCents: 5000 },
+    ],
+    reason: "goodwill",
+  });
+  const chosen = planAccountCredit({ openInvoices: open, amountCents: 3000, allocations: [{ invoiceId: "b", amountCents: 3000 }], reason: "x", todayIso: "2026-10-15" });
+  assert.deepEqual(chosen.allocations, [{ invoiceId: "b", invoiceNumber: "500002", amountCents: 3000 }]);
+});
+
+test("credit larger than the open balance is OVERPAY", () => {
+  assert.throws(() => planAccountCredit({ openInvoices: open, amountCents: 50001, reason: "x", todayIso: "2026-10-15" }), isCode("OVERPAY"));
+  assert.throws(
+    () => planAccountCredit({ openInvoices: open, amountCents: 20001, allocations: [{ invoiceId: "a", amountCents: 20001 }], reason: "x", todayIso: "2026-10-15" }),
+    isCode("OVERPAY"),
+  );
+});
+
+test("reason is required", () => {
+  for (const reason of [undefined, "", "   "]) {
+    assert.throws(() => planAccountCredit({ openInvoices: open, amountCents: 100, reason, todayIso: "2026-10-15" }), isCode("REASON_REQUIRED"));
+  }
 });

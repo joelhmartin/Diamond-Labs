@@ -1,12 +1,10 @@
-import { eq } from "drizzle-orm";
-import { db } from "../config/database.js";
-import { users } from "../db/schema/index.js";
 import { validate, validateQuery } from "../middleware/validate.js";
-import { ERROR_CODES, receivablesQuerySchema, statementQuerySchema } from "@my-app/shared";
-import * as auditService from "../services/audit.service.js";
-import { sendStatementNotice } from "../services/email.service.js";
-import { listReceivables, statementFor } from "../services/billing/statements.service.js";
-import { practiceUserIds } from "../services/billing/ledger.service.js";
+import { ERROR_CODES, receivablesQuerySchema, statementQuerySchema, accountCreditSchema } from "@my-app/shared";
+import { paymentsPaused } from "../middleware/payments-paused.js";
+import { recordAccountCredit } from "../services/billing/account-credit.service.js";
+import { invoiceErrorReply } from "../services/billing/invoice-errors.js";
+import { listReceivables } from "../services/billing/statements.service.js";
+import { sendStatementFor } from "../services/billing/statement-run.service.js";
 import { statementPdfHandler } from "./invoice-detail.handler.js";
 import { ADMIN } from "./admin-invoice.routes.js";
 
@@ -21,19 +19,28 @@ export default async function receivablesRoutes(fastify) {
     scope: (request) => ({ clientUserId: request.params.userId }),
   }));
 
-  // Staff-triggered, never automatic: a short notice with the closing balance and a portal link.
-  // The balance is the practice's, the same figure the doctor's own statement download shows
-  // (the admin PDF and AR rows stay per user).
+  // Account credit: one amount spread over the practice's open invoices. Reason is required and
+  // sealed on the ledger rows; no email goes out.
+  fastify.post("/admin/clients/:userId/account-credit", { preHandler: [...ADMIN, paymentsPaused, validate(accountCreditSchema)] }, async (request, reply) => {
+    try {
+      const data = await recordAccountCredit({ clientUserId: request.params.userId, ...request.body, byUserId: request.user.id });
+      return reply.code(201).send({ data });
+    } catch (err) {
+      const r = invoiceErrorReply(err);
+      if (r) return reply.code(r.status).send(r.body);
+      throw err;
+    }
+  });
+
+  // Staff-triggered: a short notice with the closing balance and a portal link. The balance is the
+  // practice's, the same figure the doctor's own statement download shows (the admin PDF and AR rows
+  // stay per user). Writes statement_sends; an explicit re-send overwrites sent_at.
   fastify.post("/admin/clients/:userId/statement/email", { preHandler: [...ADMIN, validate(statementQuerySchema)] }, async (request, reply) => {
-    const [target] = await db.select({ id: users.id, seazonaClientId: users.seazonaClientId }).from(users).where(eq(users.id, request.params.userId));
-    if (!target) return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
-    const out = await statementFor(request.params.userId, request.body.month, { clientUserIds: await practiceUserIds(target) });
+    const out = await sendStatementFor(request.params.userId, request.body.month, { byUserId: request.user.id, ipAddress: request.ip });
     if (!out) return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
-    if (!out.client.email) {
+    if (out.status === "no_email") {
       return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "This client has no email address on file." } });
     }
-    const sent = await sendStatementNotice({ to: out.client.email, monthLabel: out.model.period.label, closingCents: out.model.closingCents });
-    auditService.logSafe({ userId: request.user.id, action: "statement.emailed", targetType: "user", targetId: request.params.userId, metadata: { month: request.body.month, closingCents: out.model.closingCents, sent }, ipAddress: request.ip });
-    return { data: { sent } };
+    return { data: { sent: out.status === "sent" } };
   });
 }
