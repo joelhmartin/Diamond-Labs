@@ -2,6 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AlertCircle, ArrowDown, ArrowUp, ChevronRight, Loader2 } from "lucide-react";
 import { Pagination } from "../Pagination.jsx";
 import { errorText } from "../../../lib/requests.js";
+import { groupRows } from "../../../lib/data-table/table-state.js";
 import { DataTableToolbar } from "./DataTableToolbar.jsx";
 import { BulkBar } from "./BulkBar.jsx";
 
@@ -34,6 +35,7 @@ export function DataTable({
   selectable = true,
   dense = false,
   paginated = true,
+  groupBy,
 }) {
   const { selection, registerColumns } = table;
   const [openId, setOpenId] = useState(null);
@@ -62,6 +64,67 @@ export function DataTable({
   const colSpan = columns.length + (selectable ? 1 : 0) + (renderExpanded ? 1 : 0);
   const cellPad = dense ? "px-4 py-2" : "px-4 py-3";
 
+  const renderRow = (row) => {
+    const id = table.getRowId(row);
+    const selected = selection.isSelected(id);
+    const canSelect = table.isRowSelectable(row);
+    const open = openId === id;
+    const expanded = open ? renderExpanded?.(row) : null;
+    return (
+      <Fragment key={id}>
+        <tr
+          onClick={(e) => handleRowClick(e, row)}
+          onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }}
+          aria-selected={selectable ? selected : undefined}
+          className={[
+            "border-t border-surface-300/40 transition-colors",
+            selected ? "bg-brand-500/5" : "hover:bg-surface-50/60",
+            shiftHeld && "select-none",
+            (onRowClick || selectable) && "cursor-pointer",
+            rowClassName?.(row),
+          ].filter(Boolean).join(" ")}
+        >
+          {selectable && (
+            <td className={`${cellPad} w-10`}>
+              <input
+                type="checkbox"
+                aria-label="Select row"
+                checked={selected}
+                disabled={!canSelect}
+                onChange={() => {}}
+                onClick={(e) => selection.click(row, { shiftKey: e.shiftKey, metaKey: true })}
+                className="accent-brand-500"
+              />
+            </td>
+          )}
+          {renderExpanded && (
+            <td className={`${cellPad} w-8`}>
+              <button
+                type="button"
+                aria-label={open ? "Collapse row" : "Expand row"}
+                aria-expanded={open}
+                onClick={() => setOpenId(open ? null : id)}
+                className="rounded-md p-0.5 text-navy/40 hover:bg-surface-200 hover:text-navy"
+              >
+                <ChevronRight size={14} className={`transition-transform ${open ? "rotate-90" : ""}`} />
+              </button>
+            </td>
+          )}
+          {columns.map((col) => (
+            <td key={col.id} className={`${cellPad} text-sm text-navy ${ALIGN[col.align ?? "left"]} ${col.className ?? ""}`}>
+              {col.cell(row)}
+            </td>
+          ))}
+        </tr>
+        {expanded != null && (
+          <tr className="border-t border-surface-300/40 bg-surface-50/40">
+            <td colSpan={colSpan} className="px-4 py-4">{expanded}</td>
+          </tr>
+        )}
+      </Fragment>
+    );
+  };
+
   return (
     <div className="space-y-3">
       {hasSelection ? (
@@ -84,66 +147,14 @@ export function DataTable({
             <TableHead table={table} columns={columns} selectable={selectable} expandable={Boolean(renderExpanded)} />
             <tbody className={table.loading && table.rows.length > 0 ? "opacity-60 transition-opacity" : undefined}>
               <BodyState table={table} colSpan={colSpan} emptyText={emptyText} />
-              {table.rows.map((row) => {
-                const id = table.getRowId(row);
-                const selected = selection.isSelected(id);
-                const canSelect = table.isRowSelectable(row);
-                const open = openId === id;
-                const expanded = open ? renderExpanded?.(row) : null;
-                return (
-                  <Fragment key={id}>
-                    <tr
-                      onClick={(e) => handleRowClick(e, row)}
-                      onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }}
-                      aria-selected={selectable ? selected : undefined}
-                      className={[
-                        "border-t border-surface-300/40 transition-colors",
-                        selected ? "bg-brand-500/5" : "hover:bg-surface-50/60",
-                        shiftHeld && "select-none",
-                        (onRowClick || selectable) && "cursor-pointer",
-                        rowClassName?.(row),
-                      ].filter(Boolean).join(" ")}
-                    >
-                      {selectable && (
-                        <td className={`${cellPad} w-10`}>
-                          <input
-                            type="checkbox"
-                            aria-label="Select row"
-                            checked={selected}
-                            disabled={!canSelect}
-                            onChange={() => {}}
-                            onClick={(e) => selection.click(row, { shiftKey: e.shiftKey, metaKey: true })}
-                            className="accent-brand-500"
-                          />
-                        </td>
-                      )}
-                      {renderExpanded && (
-                        <td className={`${cellPad} w-8`}>
-                          <button
-                            type="button"
-                            aria-label={open ? "Collapse row" : "Expand row"}
-                            aria-expanded={open}
-                            onClick={() => setOpenId(open ? null : id)}
-                            className="rounded-md p-0.5 text-navy/40 hover:bg-surface-200 hover:text-navy"
-                          >
-                            <ChevronRight size={14} className={`transition-transform ${open ? "rotate-90" : ""}`} />
-                          </button>
-                        </td>
-                      )}
-                      {columns.map((col) => (
-                        <td key={col.id} className={`${cellPad} text-sm text-navy ${ALIGN[col.align ?? "left"]} ${col.className ?? ""}`}>
-                          {col.cell(row)}
-                        </td>
-                      ))}
-                    </tr>
-                    {expanded != null && (
-                      <tr className="border-t border-surface-300/40 bg-surface-50/40">
-                        <td colSpan={colSpan} className="px-4 py-4">{expanded}</td>
-                      </tr>
-                    )}
+              {groupBy
+                ? groupRows(table.rows, groupBy.key).map((group, i) => (
+                  <Fragment key={`group:${i}:${group.key}`}>
+                    <GroupHeader group={group} header={groupBy.header} colSpan={colSpan} selectable={selectable} selection={selection} isRowSelectable={table.isRowSelectable} getRowId={table.getRowId} />
+                    {group.rows.map(renderRow)}
                   </Fragment>
-                );
-              })}
+                ))
+                : table.rows.map(renderRow)}
             </tbody>
             {footer && <tfoot className="border-t border-surface-300/50">{footer}</tfoot>}
           </table>
@@ -151,6 +162,36 @@ export function DataTable({
       </div>
       {paginated && table.total > 0 && <Pagination {...table.pagination} itemLabel={itemLabel} />}
     </div>
+  );
+}
+
+function GroupHeader({ group, header, colSpan, selectable, selection, isRowSelectable, getRowId }) {
+  const boxRef = useRef(null);
+  const ids = group.rows.filter(isRowSelectable).map(getRowId);
+  const all = ids.length > 0 && ids.every((id) => selection.isSelected(id));
+  const some = !all && ids.some((id) => selection.isSelected(id));
+  useEffect(() => {
+    if (boxRef.current) boxRef.current.indeterminate = some;
+  }, [some]);
+  return (
+    <tr data-group={group.key} className="border-t border-surface-300/60 bg-surface-50">
+      <td colSpan={colSpan} className="px-4 py-2 text-xs font-semibold text-navy/70">
+        <span className="inline-flex items-center gap-3">
+          {selectable && (
+            <input
+              ref={boxRef}
+              type="checkbox"
+              aria-label={`Select group ${group.key}`}
+              checked={all}
+              disabled={ids.length === 0}
+              onChange={() => selection.toggleRows(group.rows, !all)}
+              className="accent-brand-500"
+            />
+          )}
+          {header ? header(group.key, group.rows) : group.key}
+        </span>
+      </td>
+    </tr>
   );
 }
 

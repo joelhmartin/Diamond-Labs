@@ -46,6 +46,22 @@ function compareKeys(a, b, sign) {
   return sign * collator.compare(String(a), String(b));
 }
 
+/**
+ * Consecutive rows sharing `keyFn(row)` → `[{ key, rows }]`, order preserved
+ * (a key that comes back later starts a new group). DataTable's `groupBy`
+ * groups the visible page, so rows arrive in their current sort order.
+ */
+export function groupRows(rows, keyFn) {
+  const groups = [];
+  for (const row of rows) {
+    const key = keyFn(row);
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.rows.push(row);
+    else groups.push({ key, rows: [row] });
+  }
+  return groups;
+}
+
 export const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 export const DEFAULT_PAGE_SIZE = 20;
 

@@ -30,6 +30,7 @@ import {
   FilePlus,
   Inbox,
   ListChecks,
+  Route,
 } from "lucide-react";
 import { brand } from "../../config/brand.js";
 import { isStaffRole } from "@my-app/shared";
@@ -54,6 +55,7 @@ const staffItems = [
   { label: "Shipments",  to: ROUTES.ADMIN_SHIPMENTS, icon: Truck },
   { label: "Messages",   to: ROUTES.LAB_MESSAGES,    icon: MessageSquare, badge: <MessagesBadge className="ml-auto" /> },
   { label: "Pickups",    to: ROUTES.LAB_PICKUPS,     icon: PackageOpen },
+  { label: "Deliveries", to: ROUTES.LAB_DELIVERIES,  icon: Route },
 ];
 
 const adminItems = [

@@ -45,6 +45,12 @@ export const pickupListQuerySchema = z.object({
   ...pageQueryShape,
 });
 
+/** GET /lab/deliveries: the route sheet's day range (the API defaults today (CT) .. +6). */
+export const labDeliveriesQuerySchema = z.object({
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+}).strict();
+
 export const labPickupListQuerySchema = z.object({
   // "open" is requested + scheduled (the desk's default view).
   status: z.enum([...PICKUP_STATUSES, "open"]).optional(),

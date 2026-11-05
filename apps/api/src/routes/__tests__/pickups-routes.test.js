@@ -48,6 +48,14 @@ test("pickup errors map to a reply: another practice's pickup is 404, a stale ve
   assert.equal(labRouteErrorReply(new PickupError("INVALID_TRANSITION", "x")).status, 422);
 });
 
+test("the deliveries route sheet is staff-only, validates its range and reads stops (no audit)", () => {
+  const body = handlerSource(source, 'fastify.get("/lab/deliveries",');
+  assert.match(body, /preHandler: \[\.\.\.STAFF, validateQuery\(labDeliveriesQuerySchema\)\]/);
+  assert.match(body, /deliveryRange\(request\.query/);
+  assert.match(body, /listStops\(db, range\)/);
+  assert.doesNotMatch(body, /audit\(/);
+});
+
 test("the routes are registered under /api/v1", () => {
   assert.match(index, /routes\/pickups\.routes\.js.*\{ prefix: "\/api\/v1" \}/);
 });

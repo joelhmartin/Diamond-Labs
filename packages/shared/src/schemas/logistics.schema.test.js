@@ -2,8 +2,15 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   pickupRequestSchema, labPickupRequestSchema, pickupScheduleSchema, pickupCompleteSchema,
-  pickupCancelSchema, pickupDoctorCancelSchema, pickupListQuerySchema, labPickupListQuerySchema,
+  pickupCancelSchema, pickupDoctorCancelSchema, pickupListQuerySchema, labPickupListQuerySchema, labDeliveriesQuerySchema,
 } from "./logistics.schema.js";
+
+test("the deliveries query takes an optional from/to date and nothing else", () => {
+  assert.deepEqual(labDeliveriesQuerySchema.parse({}), {});
+  assert.deepEqual(labDeliveriesQuerySchema.parse({ from: "2026-11-05", to: "2026-11-11" }), { from: "2026-11-05", to: "2026-11-11" });
+  assert.equal(labDeliveriesQuerySchema.safeParse({ from: "11/05/2026" }).success, false);
+  assert.equal(labDeliveriesQuerySchema.safeParse({ from: "2026-11-05", extra: 1 }).success, false);
+});
 
 const req = { earliestDate: "2026-11-09", latestDate: "2026-11-10", timePreference: "am", boxCount: 2 };
 

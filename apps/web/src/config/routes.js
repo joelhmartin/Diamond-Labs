@@ -51,6 +51,8 @@ export const ROUTES = {
   LAB_MESSAGES: "/lab/messages",
   LAB_THREAD: "/lab/messages/:id",
   LAB_PICKUPS: "/lab/pickups",
+  LAB_DELIVERIES: "/lab/deliveries",
+  LAB_DELIVERIES_PRINT: "/lab/deliveries/print",
 
   // Doctor
   DOCTOR_INVOICES: "/doctor/invoices",

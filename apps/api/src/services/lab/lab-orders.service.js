@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, ilike, inArray, lt, lte, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, isNotNull, lt, lte, notInArray, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { isOverdue, STAFF_ROLES, TERMINAL_LAB_STATUSES, caseSummary, parseEnclosures } from "@my-app/shared";
 import { db } from "../../config/database.js";
@@ -92,11 +92,28 @@ export async function releaseRxCase(tx, { caseRow, byUserId = null }) {
     variantIds: [...variantIdByCode.values()], requestedDueDate: requestedDueDateOf(caseRow), rush: rushFromCase(caseRow).rush, startAt: now,
   });
   const plan = planRxRelease({ caseRow, lines, variantIdByCode, orderNumber, labOrderId: createId(), byUserId, now, dueDate });
+  plan.labOrder.deliveryMethod = await latestDeliveryMethod(tx, caseRow.userId);
   const orderLines = await insertPlan(tx, { labOrder: plan.labOrder, lines: plan.lines, events: [plan.event] });
   await saveSchedule(tx, plan.labOrder.id, schedule);
   // The bill is drafted with the job: a failure here fails the release as a whole (staff retry).
   const invoice = await createDraftForLabOrder(tx, { labOrder: plan.labOrder, lines: orderLines, byUserId });
   return { labOrder: { id: plan.labOrder.id, orderNumber }, unknownCodes: plan.unknownCodes, invoice };
+}
+
+/**
+ * The client's most recent non-null delivery method across their lab orders
+ * (null when none): a released case carries it forward so staff set it once
+ * per practice habit, not per job. Shop orders don't call this (no guessed value).
+ */
+export async function latestDeliveryMethod(tx, clientUserId) {
+  if (!clientUserId) return null;
+  const [row] = await tx
+    .select({ deliveryMethod: labOrders.deliveryMethod })
+    .from(labOrders)
+    .where(and(eq(labOrders.clientUserId, clientUserId), isNotNull(labOrders.deliveryMethod)))
+    .orderBy(desc(labOrders.receivedAt), desc(labOrders.orderNumber))
+    .limit(1);
+  return row?.deliveryMethod ?? null;
 }
 
 /**

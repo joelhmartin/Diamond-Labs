@@ -1,18 +1,21 @@
 import {
   pickupRequestSchema, labPickupRequestSchema, pickupScheduleSchema, pickupCompleteSchema,
-  pickupCancelSchema, pickupDoctorCancelSchema, pickupListQuerySchema, labPickupListQuerySchema,
+  pickupCancelSchema, pickupDoctorCancelSchema, pickupListQuerySchema, labPickupListQuerySchema, labDeliveriesQuerySchema,
+  isoDateIn, LAB_TIMEZONE,
 } from "@my-app/shared";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireApprovedDoctor } from "../middleware/require-role.js";
 import { validate, validateQuery } from "../middleware/validate.js";
 import * as pickupsService from "../services/lab/pickups.service.js";
+import { listStops, deliveryRange } from "../services/lab/deliveries.service.js";
+import { db } from "../config/database.js";
 import { STAFF } from "./lab.routes.js";
 import { run, audit } from "./lab-route-helpers.js";
 
 /**
  * Pickups (spec "API routes → Pickups and deliveries"). Doctors request, list
  * (practice-wide) and cancel; staff list, enter for a client, schedule,
- * complete and cancel. Another practice's pickup is 404, a stale version 409.
+ * complete and cancel, and read the local-delivery route sheet. Another practice's pickup is 404, a stale version 409.
  * Audit metadata is ids, numbers and versions only: never notes or reasons.
  */
 const summary = (p) => ({ id: p.id, status: p.status, version: p.version });
@@ -66,6 +69,13 @@ export default async function pickupsRoutes(fastify) {
       const p = await pickupsService.completePickup(request.params.id, request.body, request.user);
       audit(request, "pickup.completed", p.id, { version: p.version }, "pickup");
       return summary(p);
+    }));
+
+  // The local-delivery route sheet: stops (day × practice) for from..to (default today in CT .. +6).
+  fastify.get("/lab/deliveries", { preHandler: [...STAFF, validateQuery(labDeliveriesQuerySchema)] }, (request, reply) =>
+    run(reply, async () => {
+      const range = deliveryRange(request.query ?? {}, isoDateIn(LAB_TIMEZONE));
+      return { ...range, stops: await listStops(db, range) };
     }));
 
   fastify.post("/lab/pickups/:id/cancel", { preHandler: [...STAFF, validate(pickupCancelSchema)] }, (request, reply) =>

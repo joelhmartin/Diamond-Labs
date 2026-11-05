@@ -59,6 +59,8 @@ import { LabThreadPage } from "./pages/lab/LabThreadPage.jsx";
 import { MessagesPage } from "./pages/doctor/MessagesPage.jsx";
 import { PickupsPage } from "./pages/doctor/PickupsPage.jsx";
 import { LabPickupsPage } from "./pages/lab/LabPickupsPage.jsx";
+import { DeliveriesPage } from "./pages/lab/DeliveriesPage.jsx";
+import { DeliveryRoutePrintPage } from "./pages/lab/DeliveryRoutePrintPage.jsx";
 import { ThreadPage } from "./pages/doctor/ThreadPage.jsx";
 import { OrdersCalendarPage } from "./pages/lab/OrdersCalendarPage.jsx";
 import { AdminSchedulingPage } from "./pages/app/AdminSchedulingPage.jsx";
@@ -272,15 +274,17 @@ function AppRoutes() {
           <Route path="/lab/messages" element={<LabMessagesPage />} />
           <Route path="/lab/messages/:id" element={<LabThreadPage />} />
           <Route path="/lab/pickups" element={<LabPickupsPage />} />
+          <Route path="/lab/deliveries" element={<DeliveriesPage />} />
           <Route path="/admin/shipments" element={<ShipmentsPage />} />
           <Route path="/admin/rx-cases" element={<AdminRxCasesPage />} />
           <Route path="/admin/rx-cases/:id" element={<AdminRxCaseDetailPage />} />
         </Route>
       </Route>
 
-      {/* Label print page: staff only, no app shell (prints on a 4×6 page) */}
+      {/* Print pages: staff only, no app shell (a 4×6 label; the letter-size route sheet) */}
       <Route element={<RequireStaff />}>
         <Route path="/lab/shipments/:id/print" element={<ShipmentLabelPrintPage />} />
+        <Route path="/lab/deliveries/print" element={<DeliveryRoutePrintPage />} />
       </Route>
 
       {/* Protected doctor routes */}
