@@ -1,4 +1,4 @@
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import { isoDateIn, LAB_TIMEZONE } from "@my-app/shared";
 import { db } from "../../config/database.js";
 import { invoices, invoicePayments, labOrders, users, doctorProfiles } from "../../db/schema/index.js";
@@ -29,27 +29,33 @@ export async function loadClient(clientUserId, database = db) {
   };
 }
 
-/** Every money event on these clients' invoices (statement-model's `activity`). Drafts carry none. */
+/**
+ * Every money event on these clients' invoices (statement-model's `activity`).
+ * Drafts carry none. `clientUserIds = null` means every client's invoices (the
+ * statements summary report); the payments are then joined, not listed by id,
+ * so the query does not grow with the invoice count.
+ */
 export async function loadStatementActivity(clientUserIds, database = db) {
+  const everyClient = clientUserIds === null;
+  const scope = and(everyClient ? isNotNull(invoices.clientUserId) : inArray(invoices.clientUserId, clientUserIds), ne(invoices.status, "draft"));
   const invs = await database
     .select({
-      id: invoices.id, invoiceNumber: invoices.invoiceNumber, status: invoices.status, totalCents: invoices.totalCents,
+      id: invoices.id, clientUserId: invoices.clientUserId, invoiceNumber: invoices.invoiceNumber, status: invoices.status, totalCents: invoices.totalCents,
       kind: invoices.kind, legacySeazonaInvoiceId: invoices.legacySeazonaInvoiceId,
       issuedAt: invoices.issuedAt, voidedAt: invoices.voidedAt, dueDate: invoices.dueDate, labOrderNumber: labOrders.orderNumber,
     })
     .from(invoices)
     .leftJoin(labOrders, eq(labOrders.id, invoices.labOrderId))
-    .where(and(inArray(invoices.clientUserId, clientUserIds), ne(invoices.status, "draft")));
+    .where(scope);
   const ids = invs.map((i) => i.id);
-  const payments = ids.length
-    ? await database
-        .select({
-          invoiceId: invoicePayments.invoiceId, invoiceNumber: invoicePayments.invoiceNumber, appliedCents: invoicePayments.appliedCents,
-          source: invoicePayments.source, paidOn: invoicePayments.paidOn, createdAt: invoicePayments.createdAt,
-        })
-        .from(invoicePayments)
-        .where(inArray(invoicePayments.invoiceId, ids))
-    : [];
+  if (!ids.length) return { invoices: invs, payments: [] };
+  const paymentCols = {
+    invoiceId: invoicePayments.invoiceId, invoiceNumber: invoicePayments.invoiceNumber, appliedCents: invoicePayments.appliedCents,
+    source: invoicePayments.source, paidOn: invoicePayments.paidOn, createdAt: invoicePayments.createdAt,
+  };
+  const payments = everyClient
+    ? await database.select(paymentCols).from(invoicePayments).innerJoin(invoices, eq(invoices.id, invoicePayments.invoiceId)).where(scope)
+    : await database.select(paymentCols).from(invoicePayments).where(inArray(invoicePayments.invoiceId, ids));
   return { invoices: invs, payments };
 }
 
@@ -81,13 +87,23 @@ export async function statementPdfFor(clientUserId, month, { clientUserIds } = {
  */
 export async function listReceivables({ pastDueOnly = false } = {}, database = db) {
   const open = await openReceivableInvoices(database);
-  const ids = [...new Set(open.map((i) => i.clientUserId).filter(Boolean))]; // an unowned legacy invoice has no client yet
-  const clients = ids.length
-    ? await database
-        .select({ id: users.id, name: users.name, accountNumber: users.seazonaAccountNumber, practice: doctorProfiles.companyName })
-        .from(users)
-        .leftJoin(doctorProfiles, eq(doctorProfiles.userId, users.id))
-        .where(inArray(users.id, ids))
-    : [];
-  return buildReceivables(open, new Map(clients.map((c) => [c.id, c])), isoDateIn(LAB_TIMEZONE, new Date()), { pastDueOnly });
+  const clients = await loadClientNames(open.map((i) => i.clientUserId), database);
+  return buildReceivables(open, clients, isoDateIn(LAB_TIMEZONE, new Date()), { pastDueOnly });
+}
+
+/**
+ * Many clients' name, practice and account number in one query (the bulk
+ * sibling of loadClient), keyed by user id. Null/blank ids (an unowned legacy
+ * invoice has no client yet) are skipped.
+ * @returns {Promise<Map<string, { id, name, accountNumber, practice }>>}
+ */
+export async function loadClientNames(clientUserIds, database = db) {
+  const ids = [...new Set(clientUserIds.filter(Boolean))];
+  if (!ids.length) return new Map();
+  const rows = await database
+    .select({ id: users.id, name: users.name, accountNumber: users.seazonaAccountNumber, practice: doctorProfiles.companyName })
+    .from(users)
+    .leftJoin(doctorProfiles, eq(doctorProfiles.userId, users.id))
+    .where(inArray(users.id, ids));
+  return new Map(rows.map((c) => [c.id, c]));
 }

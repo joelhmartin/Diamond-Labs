@@ -122,6 +122,10 @@ const envSchema = z.object({
   SHIPPING_CHARGE_POLICY: z.enum(["none", "carrier_cost", "flat"]).default("none"),
   SHIPPING_FLAT_CENTS: z.coerce.number().int().min(0).max(100000).default(0),
   SHIPPED_EMAIL_ENABLED: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
+  // Reports: the cutover day ("YYYY-MM-DD") from which product-level invoice
+  // detail is complete. Ranges starting earlier carry a coverage note
+  // (services/lab/reports/lab-metrics.js coverageNotice). Unset = no note.
+  REPORTS_COVERAGE_FROM: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD").optional(),
   // Shared secret for the HTTP job trigger. Required in production only.
   JOBS_TRIGGER_SECRET: z.string().optional(),
   // Opt-in dev-only in-process interval trigger (see jobs/triggers/interval.js).

@@ -9,6 +9,8 @@ export const INVOICE_KINDS = ["order", "shop", "legacy"];
 export const INVOICE_LINE_KINDS = ["item", "shipping", "fee", "adjustment"];
 export const PRICE_SOURCES = ["client", "base", "manual", "remake", "unpriced", "shipment", "legacy"];
 
+export const INVOICE_STATUS_LABELS = { draft: "Draft", issued: "Issued", void: "Void" };
+export const INVOICE_KIND_LABELS = { order: "Lab order", shop: "Shop", legacy: "Imported (Seazona)" };
 export const LINE_KIND_LABELS = { item: "Item", shipping: "Shipping", fee: "Fee", adjustment: "Adjustment" };
 export const PRICE_SOURCE_LABELS = {
   client: "Client price", base: "Base price", manual: "Manual", remake: "Remake (no charge)", unpriced: "Needs a price", shipment: "Shipping label",
@@ -45,6 +47,27 @@ export const isOpeningBalanceInvoice = (inv) =>
  * ("Seazona invoice — see archive") and the balancing adjustment line.
  */
 export const LEGACY_LINE_DESCRIPTION = "Carried over from Seazona";
+
+/**
+ * How a ledger row's money arrived (invoice_payments.source), as staff read it.
+ * AutoPay is the one nobody clicked, so it is named distinctly. Rows older than
+ * the column carry null: callers show nothing rather than guess.
+ */
+export const PAYMENT_SOURCE_LABELS = {
+  autopay: "AutoPay",
+  doctor_card: "Doctor — card",
+  doctor_hosted: "Doctor — card",
+  admin_card: "Admin — card",
+  admin_offline: "Offline",
+  admin_check: "Check",
+  admin_cash: "Cash",
+  admin_ach: "ACH",
+  admin_other: "Other (recorded)",
+  credit: "Credit",
+  refund: "Refund",
+  shop_card: "Shop checkout",
+  legacy_settlement: "Settled in Seazona",
+};
 
 export const AGING_BUCKETS = [
   { key: "current", label: "Current" },

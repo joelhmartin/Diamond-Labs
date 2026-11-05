@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { PARAM_TYPES, DATE_PRESETS, resolveDateRange, checkCustomRange } from "./params.js";
+import { PARAM_TYPES, DATE_PRESETS, resolveDateRange, checkCustomRange, daysBetween, monthsBetween } from "./params.js";
 
 const CHI = "America/Chicago";
 
@@ -68,4 +68,10 @@ test("custom range rejects from after to and spans over maxDays", () => {
   assert.equal(checkCustomRange({ from: "2026-01-01", to: "2026-01-31" }, { maxDays: 31 }), null);
   assert.match(checkCustomRange({ from: "2026-01-01", to: "2026-02-01" }, { maxDays: 31 }), /31/);
   assert.match(checkCustomRange({ from: "2026-02-30", to: "2026-03-01" }), /date/);
+});
+
+test("daysBetween and monthsBetween list every bucket, inclusive, across month and year ends", () => {
+  assert.deepEqual(daysBetween("2026-10-30", "2026-11-02"), ["2026-10-30", "2026-10-31", "2026-11-01", "2026-11-02"]);
+  assert.deepEqual(daysBetween("2026-11-02", "2026-11-01"), []);
+  assert.deepEqual(monthsBetween("2025-11-15", "2026-02-01"), ["2025-11", "2025-12", "2026-01", "2026-02"]);
 });

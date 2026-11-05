@@ -29,6 +29,26 @@ const addDays = (iso, n) => fromNum(toNum(iso) + n);
 /** Month may be out of 1..12 (Date.UTC rolls the year). */
 const ymd = (y, m, d) => fromNum(Date.UTC(y, m - 1, d) / DAY_MS);
 
+/** Every "YYYY-MM-DD" from `from` to `to`, inclusive (empty when from > to). For zero-filling day buckets. */
+export function daysBetween(from, to) {
+  const out = [];
+  for (let n = toNum(from), end = toNum(to); n <= end; n += 1) out.push(fromNum(n));
+  return out;
+}
+
+/** Every "YYYY-MM" from the month of `from` to the month of `to`, inclusive. */
+export function monthsBetween(from, to) {
+  const out = [];
+  let [y, m] = from.split("-").map(Number);
+  const [ty, tm] = to.split("-").map(Number);
+  while (y < ty || (y === ty && m <= tm)) {
+    out.push(`${y}-${String(m).padStart(2, "0")}`);
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+  }
+  return out;
+}
+
 /** "YYYY-MM-DD" of `now` as seen in `tz`. */
 export function localDay(now, tz = "UTC") {
   return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
