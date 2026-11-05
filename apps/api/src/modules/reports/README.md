@@ -52,6 +52,11 @@ A metric's `run` gets the same `{ now, today, tz }` (no `page`). Use
 `ctx.today` for "today" rather than reading the clock, so a run and its tests
 agree on the day.
 
+`featured: true` is read by the web index (`ReportsIndexPage`), which lists the
+report in its own section above the groups, titled by the registry's
+`featuredTitle`. The module only passes the flag through `listReports` /
+`GET /reports`; nothing on the server reads it.
+
 `display: "wall"` marks a report the web can show full screen (large type,
 re-run every 60 s while visible).
 
@@ -180,6 +185,8 @@ None. Reports read the host's tables through the `db` handle passed to `run`.
 4. **Define a report.** Group first, then the report (a view of tickets per week):
 
    ```js
+   import { sql } from "drizzle-orm";
+
    registry.defineGroup({ key: "support", title: "Support", position: 1 });
    registry.defineReport({
      key: "tickets-by-week", group: "support", title: "Tickets by week",
@@ -189,16 +196,25 @@ None. Reports read the host's tables through the `db` handle passed to `run`.
        { id: "opened", label: "Opened", type: "int", align: "right" },
      ],
      chart: { type: "bar", x: "week", series: [{ field: "opened", label: "Opened" }] },
-     async run(db, { range }, actor, ctx) {
-       const rows = await db.execute(sql`select date_trunc('week', created_at)::date as week, count(*)::int as opened
-         from tickets where created_at >= ${range.from} and created_at < ${range.to} group by 1 order by 1`);
+     async run(tx, { range }, actor, ctx) {
+       // Weeks of the app's local day (ctx.tz), not the UTC day; the range is inclusive,
+       // so `to` ends at the start of the local day after it.
+       const result = await tx.execute(sql`
+         select to_char(date_trunc('week', created_at at time zone ${ctx.tz}), 'YYYY-MM-DD') as week, count(*)::int as opened
+         from tickets
+         where created_at >= (${range.from}::date)::timestamp at time zone ${ctx.tz}
+           and created_at < (${range.to}::date + 1)::timestamp at time zone ${ctx.tz}
+         group by 1 order by 1`);
+       const rows = result.rows ?? result; // postgres.js returns the rows array; node-postgres returns { rows }
        return { rows };
      },
    });
    ```
 
    `run` receives a read-only transaction under a statement timeout, never the raw handle. Money is
-   integer cents; the `money` column type formats it.
+   integer cents; the `money` column type formats it. In the CSV export, money is written as plain
+   dollars ("1234.50"), `int` as a number, `pct` as the percent figure with one decimal ("-5.0", no
+   "%") and `duration_days` as the number of days, so a spreadsheet can sum them.
 
 5. **Roles and capabilities.** A report or tile with no `roles` takes `defaultRoles`; list `roles` to
    narrow it (the routes answer 403 outside them, and a dashboard leaves the tile out). A report

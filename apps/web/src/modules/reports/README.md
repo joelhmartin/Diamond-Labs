@@ -52,7 +52,9 @@ None. State is the URL (`p.<name>` params, table paging under `r`) and the API's
 
 ## Wiring it into another app
 
-1. Mount the pages (any layout that provides the app's auth and toast context):
+1. Mount the pages (any layout that provides the app's auth and toast context). The paths below
+   are examples (or any prefix): the pages link to each other only through the app's route config
+   (`ROUTES.REPORTS`, `reportPath(key)`, `dashboardPath(key)`), so mount them wherever those point:
 
    ```jsx
    <Route path="/reports" element={<ReportsIndexPage />} />
