@@ -16,6 +16,8 @@ import { shipmentSummaries } from "../shipping/shipments.service.js";
 import { allocateSequenceNumber } from "../sequence.service.js";
 import { devicesForCase } from "../rx/case-devices.js";
 import { compileNotesMulti } from "../rx/case-notes.js";
+import { filesFor } from "../../modules/record-files/index.js";
+import { LAB_ORDER_RECORD_TYPE } from "./lab-tags.js";
 import {
   LabOrderError, planRxRelease, planShopLabOrder, planRemake,
   assertFresh, planStatusChange, planFieldChange, presentBoardCard, rushFromCase,
@@ -53,7 +55,7 @@ export function allocateOrderNumber(tx) {
   });
 }
 
-async function insertPlan(tx, { labOrder, lines, events }) {
+export async function insertPlan(tx, { labOrder, lines, events }) {
   await tx.insert(labOrders).values(sealOrder(labOrder));
   const inserted = lines.map((l) => ({ ...l, id: createId() }));
   if (inserted.length) await tx.insert(labOrderLines).values(inserted);
@@ -263,7 +265,7 @@ export async function getLabOrderDetail(id, now = new Date()) {
   if (!row) return null;
 
   const order = openOrder(row.order);
-  const [lines, eventRows, remakeOf] = await Promise.all([
+  const [lines, eventRows, remakeOf, recordFilesById] = await Promise.all([
     db.select().from(labOrderLines).where(eq(labOrderLines.labOrderId, id)).orderBy(asc(labOrderLines.position)),
     db
       .select({ event: labOrderEvents, byName: actor.name })
@@ -274,6 +276,7 @@ export async function getLabOrderDetail(id, now = new Date()) {
     order.remakeOfOrderId
       ? db.select({ orderNumber: labOrders.orderNumber }).from(labOrders).where(eq(labOrders.id, order.remakeOfOrderId))
       : Promise.resolve([]),
+    filesFor(LAB_ORDER_RECORD_TYPE, [id]),
   ]);
 
   let rxCase = null;
@@ -323,7 +326,9 @@ export async function getLabOrderDetail(id, now = new Date()) {
   const [plan, calendar] = await Promise.all([scheduleOf(db, id), getCalendar(db)]);
   const today = dateIn(calendar.timezone, now);
 
-  const { legacyPatient: _openedPatient, ...orderFields } = order; // surfaced once, under `legacy`
+  // Patients are surfaced once each: a legacy order's under `legacy`, a staff order's under `staff`.
+  const { legacyPatient: _openedPatient, patientName: _staffPatient, ...orderFields } = order;
+  const staff = order.source === "staff" ? { patientName: order.patientName ?? null } : null;
   return {
     order: {
       ...orderFields,
@@ -343,6 +348,9 @@ export async function getLabOrderDetail(id, now = new Date()) {
     files,
     shopOrder,
     legacy,
+    staff,
+    // Files attached to the order itself (record-files); `files` stays the Rx case's.
+    recordFiles: recordFilesById.get(id) ?? [],
     shipment,
   };
 }

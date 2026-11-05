@@ -64,7 +64,7 @@ export function requestedDueDateOf(caseRow = {}) {
   return parseDueDate(caseRow.dueDate) ?? parseDueDate(caseRow.formData?.dueDate);
 }
 
-function newOrder({ labOrderId, orderNumber, source, sourceId, clientUserId, now }) {
+export function newOrder({ labOrderId, orderNumber, source, sourceId, clientUserId, now }) {
   return {
     id: labOrderId, orderNumber, source, sourceId, clientUserId: clientUserId ?? null,
     status: "received", heldFrom: null, departmentId: null, assigneeUserId: null,
@@ -142,6 +142,8 @@ export function planRemake({ original, originalLines, reason, orderNumber, labOr
     isRemake: true,
     remakeOfOrderId: original.id,
     dueDate,
+    // A staff order's patient lives on the order itself (no Rx case to read it from).
+    ...(original.source === "staff" ? { patientName: original.patientName ?? null } : {}),
   };
   const lines = originalLines.map((l, position) => ({
     labOrderId, position, variantId: l.variantId ?? null, code: l.code ?? null, name: l.name,
@@ -208,7 +210,7 @@ const FIELDS = {
 export const LAB_FIELDS = Object.keys(FIELDS);
 
 /** The value to store for a field, validated; throws LabOrderError("INVALID"). */
-function cleanFieldValue(field, rawValue) {
+export function cleanFieldValue(field, rawValue) {
   if (field === "enclosures") {
     try {
       const list = normalizeEnclosures(typeof rawValue === "string" && rawValue ? JSON.parse(rawValue) : rawValue || null);

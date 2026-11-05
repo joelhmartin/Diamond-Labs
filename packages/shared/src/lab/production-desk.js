@@ -14,6 +14,11 @@ export const LAB_DELIVERY_LABELS = { local_delivery: "Local delivery", ups: "UPS
 export const LAB_ENCLOSURE_NOTE_MAX = 60;
 export const LAB_PAN_MAX = 30;
 
+/** Staff-entered order lines: which arch, and the quantity range the bench accepts. */
+export const LAB_ARCHES = ["upper", "lower", "both"];
+export const LAB_LINE_QTY_MAX = 99;
+export const LAB_PATIENT_NAME_MAX = 120;
+
 const ISO = /^(\d{4})-(\d{2})-(\d{2})$/;
 function realDate(s) {
   const m = ISO.exec(s);

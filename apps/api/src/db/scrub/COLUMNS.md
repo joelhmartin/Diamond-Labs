@@ -57,6 +57,7 @@ Pre-check before the transaction: every plan table and column must exist live ("
 | invoices.legacy_patient | phi | NULL (Seazona's patient on an imported invoice; encrypted at rest) |
 | invoice_lines.legacy_description | phi | NULL (an imported Seazona line's text; can name a patient; encrypted) |
 | lab_orders.legacy_patient | phi | NULL (a legacy Seazona order's patient; encrypted) |
+| lab_orders.patient_name | phi | NULL (a staff-entered order's patient; encrypted) |
 | lab_orders.enclosures | phi | NULL (enclosed items with staff-typed notes, JSON; encrypted) |
 | invoice_payments.reference | pii | NULL (staff-typed check number / ACH trace) |
 | invoice_payments.note | phi | NULL (a credit's reason: staff free text, encrypted) |

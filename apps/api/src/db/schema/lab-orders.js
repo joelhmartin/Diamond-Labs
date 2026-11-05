@@ -38,6 +38,9 @@ export const labOrders = pgTable("lab_orders", {
   // Piece 5: a legacy (Seazona) order has no Rx case to read the patient from,
   // so its patient lives here. Encrypted (lab-orders.service sealOrder). Null otherwise.
   legacyPatient: text("legacy_patient"),
+  // Piece 6: a staff-entered order (source = "staff") has no Rx case either;
+  // its patient lives here. Encrypted (lab-order-crypto sealOrder). Null otherwise.
+  patientName: text("patient_name"),
   // The doctor (Rx) or the approved doctor the shop order was priced for;
   // null for a guest shop order.
   clientUserId: varchar("client_user_id", { length: 128 }),

@@ -19,6 +19,14 @@ const rxDetail = {
   shopOrder: null,
 };
 
+test("a staff-entered order prints its own patient and says it was staff entry", () => {
+  const m = buildTicketModel({ ...rxDetail, rxCase: null, staff: { patientName: "John Roe" } }, { generatedAt });
+  const h = Object.fromEntries(m.header);
+  assert.equal(h.Patient, "John Roe");
+  assert.equal(h.Entry, "Staff entry");
+  assert.equal(h["Shop order"], undefined);
+});
+
 // Review Focus 4 (the printed half).
 test("rush and remake are banners a technician can't miss", () => {
   const m = buildTicketModel(rxDetail, { generatedAt });

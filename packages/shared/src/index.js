@@ -34,6 +34,7 @@ export { buildDigitalDevices, buildFormDevices, buildOrthoDevice, DEVICE_LABELS 
 export * from "./lab/lab-order-status.js";
 export * from "./lab/production-desk.js";
 export * from "./schemas/lab.schema.js";
+export * from "./schemas/lab-desk.schema.js";
 
 // Money (integer cents)
 export * from "./money.js";

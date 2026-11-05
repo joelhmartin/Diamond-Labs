@@ -1,4 +1,4 @@
-import { LAB_STATUS_LABELS, LAB_TIMEZONE, formatUsDate, formatLabDate } from "@my-app/shared";
+import { LAB_STATUS_LABELS, LAB_ORDER_SOURCE_LABELS, LAB_TIMEZONE, formatUsDate, formatLabDate } from "@my-app/shared";
 import { deepPrintable } from "../pdf/pdf-text.js";
 
 /**
@@ -30,7 +30,7 @@ function dueBadgeFor(iso) {
 }
 
 export function buildTicketModel(detail, { answerGroups = [], generatedAt }) {
-  const { order, lines, rxCase, files = [], shopOrder, legacy = null, schedule = null } = detail;
+  const { order, lines, rxCase, files = [], shopOrder, legacy = null, schedule = null, staff = null } = detail;
   const banners = [];
   if (order.rush) banners.push(order.rushTier ? `RUSH — ${order.rushTier}` : "RUSH");
   if (order.isRemake) banners.push(order.remakeOfOrderNumber ? `REMAKE of #${order.remakeOfOrderNumber}` : "REMAKE");
@@ -46,11 +46,14 @@ export function buildTicketModel(detail, { answerGroups = [], generatedAt }) {
     banners,
     header: [
       ["Order", `#${order.orderNumber}`],
-      rxCase ? ["Case", rxCase.caseNumber ?? "—"] : legacy ? ["Seazona order", legacy.seazonaOrderId] : ["Shop order", shopOrder?.orderNumber ?? "—"],
+      rxCase ? ["Case", rxCase.caseNumber ?? "—"]
+        : legacy ? ["Seazona order", legacy.seazonaOrderId]
+        : staff ? ["Entry", LAB_ORDER_SOURCE_LABELS.staff]
+        : ["Shop order", shopOrder?.orderNumber ?? "—"],
       ["Practice", practice],
       // A solo practice is named after its doctor; don't print the name twice.
       ...((order.clientName || "—") === practice ? [] : [["Doctor", order.clientName || "—"]]),
-      ["Patient", rxCase?.patientName || legacy?.patientName || "—"],
+      ["Patient", rxCase?.patientName || legacy?.patientName || staff?.patientName || "—"],
       ["Received", labDate(order.receivedAt)],
       ["Due", usDate(order.dueDate)],
       ...(schedule?.workflowName ? [["Workflow", schedule.workflowName]] : []),

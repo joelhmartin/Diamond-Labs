@@ -7,7 +7,7 @@ import { fieldSealer } from "../../lib/crypto.js";
  * Free text staff type can name a patient, so it is encrypted at rest like
  * rx_cases' free-text fields (B4 / phi-crypto.js).
  */
-export const SECRET_ORDER_FIELDS = ["holdReason", "labNotes", "legacyPatient", "enclosures"];
+export const SECRET_ORDER_FIELDS = ["holdReason", "labNotes", "legacyPatient", "enclosures", "patientName"];
 
 const orderSecrets = fieldSealer(SECRET_ORDER_FIELDS);
 export const sealOrder = orderSecrets.seal;

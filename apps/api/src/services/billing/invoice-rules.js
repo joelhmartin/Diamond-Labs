@@ -231,6 +231,48 @@ export function planShipmentLineRemoval(invoice, lines, shipmentId, { now, taxRa
   };
 }
 
+// ── Lines linked to lab order lines ─────────────────────────────────────────
+// A bench line edit (lab-order-lines.service) is mirrored onto the order's
+// draft through invoice_lines.labOrderLineId, in the same transaction, so the
+// bench and the bill never disagree. Once the invoice is issued the edit is
+// refused (the caller's transaction rolls the bench change back).
+
+export function assertLinkedDraft(invoice) {
+  if (invoice.status === "issued") throw new InvoiceError("INVALID_TRANSITION", "Invoice already issued — edit it with a credit.");
+  assertDraft(invoice);
+}
+
+const linkedPlan = (invoice, op, after, audit, { now, taxRateBps }) =>
+  ({ op, patch: { ...computeTotals(after, { taxRateBps }), ...bump(invoice, now) }, audit });
+
+/** A new bench line → its priced invoice line (priceLabLines output, remake pricing already applied). */
+export function planLinkedLineAdd(invoice, lines, pricedLine, opts) {
+  assertLinkedDraft(invoice);
+  const position = lines.reduce((m, l) => Math.max(m, l.position), -1) + 1;
+  const line = lineRow(invoice.id, position, pricedLine);
+  const audit = { op: "add", labOrderLineId: line.labOrderLineId, qty: line.qty, unitCents: line.unitCents };
+  return linkedPlan(invoice, { insert: line }, [...lines, line], audit, opts);
+}
+
+/** A bench qty change → the linked line's qty (its price stays). Null when no line is linked. */
+export function planLinkedLineQty(invoice, lines, labOrderLineId, qty, opts) {
+  assertLinkedDraft(invoice);
+  const line = lines.find((l) => l.labOrderLineId === labOrderLineId);
+  if (!line) return null;
+  checkQty(qty);
+  const updated = { ...line, qty, lineCents: lineCentsOf({ ...line, qty }) };
+  const audit = { op: "update", lineId: line.id, labOrderLineId, qty };
+  return linkedPlan(invoice, { update: { id: line.id, values: { qty, lineCents: updated.lineCents } } }, lines.map((l) => (l === line ? updated : l)), audit, opts);
+}
+
+/** A bench line removed → delete the invoice line linked to it. Null when no line is linked. */
+export function planLinkedLineRemove(invoice, lines, labOrderLineId, opts) {
+  assertLinkedDraft(invoice);
+  const line = lines.find((l) => l.labOrderLineId === labOrderLineId);
+  if (!line) return null;
+  return linkedPlan(invoice, { delete: line.id }, lines.filter((l) => l !== line), { op: "remove", lineId: line.id, labOrderLineId }, opts);
+}
+
 /** Issue a draft: due = the lab-local issue date + net terms. An unpriced line holds it. */
 export function planIssue(invoice, lines, { now, termsDays, issueDateIso }) {
   assertDraft(invoice);

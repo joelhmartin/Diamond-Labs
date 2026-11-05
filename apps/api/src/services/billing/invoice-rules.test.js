@@ -4,7 +4,7 @@ import { priceLines } from "../../lib/pricing.js";
 import {
   InvoiceError, addDaysIso, computeTotals, hasUnpriced, asRemakeLines, planDraftInvoice, planShopInvoice,
   assertFreshInvoice, planLineEdit, planIssue, planVoid, deriveBalance, canActOnInvoice, planCredit, planManualPayment,
-  planShipmentLine, planShipmentLineRemoval,
+  planShipmentLine, planShipmentLineRemoval, planLinkedLineAdd, planLinkedLineRemove, planLinkedLineQty,
 } from "./invoice-rules.js";
 import { invoiceErrorReply } from "./invoice-errors.js";
 
@@ -310,4 +310,45 @@ test("a manual payment is refused against an ownerless open invoice", () => {
   assert.throws(() => planManualPayment({ openInvoices: open, amountCents: 1000, paidOn: "2026-02-01", todayIso: "2026-02-02" }), (e) => isCode("INVALID_TRANSITION")(e) && /no client yet/.test(e.message));
   const owned = [{ ...open[0], clientUserId: "doc1" }];
   assert.equal(planManualPayment({ openInvoices: owned, amountCents: 1000, paidOn: "2026-02-01", todayIso: "2026-02-02" }).length, 1);
+});
+
+// ── Lines linked to lab order lines (production desk: bench edits mirrored onto the draft) ──
+
+const linked = line({ id: "il1", labOrderLineId: "lol1", unitCents: 4000, lineCents: 4000, taxable: true });
+const shipping = line({ id: "il2", position: 1, kind: "shipping", unitCents: 1200, lineCents: 1200, shipmentId: "s1" });
+const issuedRefusal = (e) => isCode("INVALID_TRANSITION")(e) && e.message === "Invoice already issued — edit it with a credit.";
+
+test("a linked add appends the priced line, keeps the link and recomputes totals", () => {
+  const priced = { labOrderLineId: "lol2", variantId: "v2", code: "2608", description: "DDSO Nylon", qty: 2, unitCents: 1500, priceSource: "client", taxable: false };
+  const p = planLinkedLineAdd(draft(), [linked, shipping], priced, { now, ...TAX });
+  assert.deepEqual(
+    [p.op.insert.position, p.op.insert.labOrderLineId, p.op.insert.lineCents, p.op.insert.priceSource, p.op.insert.kind],
+    [2, "lol2", 3000, "client", "item"],
+  );
+  assert.deepEqual([p.patch.subtotalCents, p.patch.taxCents, p.patch.shippingCents, p.patch.totalCents, p.patch.version], [7000, 320, 1200, 8520, 3]);
+  assert.deepEqual(p.audit, { op: "add", labOrderLineId: "lol2", qty: 2, unitCents: 1500 });
+});
+
+test("a linked qty change updates the linked line; remove deletes the line linked by labOrderLineId", () => {
+  const q = planLinkedLineQty(draft(), [linked, shipping], "lol1", 3, { now, ...TAX });
+  assert.deepEqual(q.op.update, { id: "il1", values: { qty: 3, lineCents: 12000 } });
+  assert.equal(q.patch.totalCents, 12000 + 960 + 1200);
+  assert.deepEqual(q.audit, { op: "update", lineId: "il1", labOrderLineId: "lol1", qty: 3 });
+  const r = planLinkedLineRemove(draft(), [linked, shipping], "lol1", { now, ...TAX });
+  assert.equal(r.op.delete, "il1");
+  assert.deepEqual([r.patch.subtotalCents, r.patch.totalCents], [0, 1200]);
+  assert.deepEqual(r.audit, { op: "remove", lineId: "il1", labOrderLineId: "lol1" });
+});
+
+test("a linked line no longer on the invoice (staff removed it there) mirrors nothing", () => {
+  assert.equal(planLinkedLineQty(draft(), [shipping], "lol1", 3, { now, ...TAX }), null);
+  assert.equal(planLinkedLineRemove(draft(), [shipping], "lol1", { now, ...TAX }), null);
+});
+
+test("linked edits are refused once the invoice is issued", () => {
+  const issued = draft({ status: "issued" });
+  assert.throws(() => planLinkedLineAdd(issued, [], { description: "x", qty: 1, unitCents: 1, priceSource: "base" }, { now, ...TAX }), issuedRefusal);
+  assert.throws(() => planLinkedLineQty(issued, [linked], "lol1", 2, { now, ...TAX }), issuedRefusal);
+  assert.throws(() => planLinkedLineRemove(issued, [linked], "lol1", { now, ...TAX }), issuedRefusal);
+  assert.throws(() => planLinkedLineRemove(draft({ status: "void" }), [linked], "lol1", { now, ...TAX }), isCode("INVALID_TRANSITION"));
 });

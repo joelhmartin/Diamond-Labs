@@ -298,6 +298,7 @@ export const SCRUB_PLAN = {
       hold_reason: phi("NULL"),
       lab_notes: phi("NULL"),
       legacy_patient: phi("NULL"), // a Seazona order's patient (encrypted)
+      patient_name: phi("NULL"), // a staff-entered order's patient (encrypted)
       enclosures: phi("NULL"), // enclosed items with staff-typed notes (encrypted JSON)
       pan_number: K, delivery_method: K,
       shipment_id: K,
