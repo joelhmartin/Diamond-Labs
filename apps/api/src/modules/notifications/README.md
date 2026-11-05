@@ -107,7 +107,8 @@ recipients.add(db, { event, channel: "sms"|"email", address, label?, createdByUs
 recipients.setActive(db, id, active)
 recipients.remove(db, id)
 recipients.sendTest(db, id)    // → { ok, error? }
-deliveries.list(db, { event?, channel?, status?, limit?, offset? })
+deliveries.list(db, { event?, channel?, status?, limit?, offset? })   // → { rows, total }
+events.list()                  // → [{ key, label, sms }], every registered event (GET /admin/notifications/events)
 ```
 
 ## Configuration

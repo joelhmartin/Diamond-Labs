@@ -42,10 +42,17 @@ export function createNotifier({
     ...createInbox({ store, events, use }),
     recipients: createRecipients({ store, events, sender, orgName, use, newId }),
     deliveries: {
-      list: (db, q = {}) => store.listDeliveries(use(db), {
-        event: q.event || undefined, channel: q.channel || undefined, status: q.status || undefined,
-        limit: clampInt(q.limit, 1, 500, 100), offset: clampInt(q.offset, 0, 1e6, 0),
-      }),
+      /** → { rows, total } (total ignores limit/offset) */
+      async list(db, q = {}) {
+        const filter = { event: q.event || undefined, channel: q.channel || undefined, status: q.status || undefined };
+        const [rows, total] = await Promise.all([
+          store.listDeliveries(use(db), { ...filter, limit: clampInt(q.limit, 1, 500, 100), offset: clampInt(q.offset, 0, 1e6, 0) }),
+          store.countDeliveries(use(db), filter),
+        ]);
+        return { rows, total };
+      },
     },
+    /** Every registered event (for the admin recipient form): [{ key, label, sms }] */
+    events: { list: () => events.listEvents().map((e) => ({ key: e.key, label: e.label, sms: Boolean(e.sms) })) },
   };
 }

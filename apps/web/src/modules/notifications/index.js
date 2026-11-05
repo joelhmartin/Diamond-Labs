@@ -4,4 +4,4 @@ export { PreferencesPanel } from "./PreferencesPanel.jsx";
 export { RecipientsPanel } from "./RecipientsPanel.jsx";
 export { DeliveriesTable } from "./DeliveriesTable.jsx";
 export { useUnreadPoll } from "./useUnreadPoll.js";
-export { fetchPreferences } from "./api.js";
+export { fetchEvents } from "./api.js";

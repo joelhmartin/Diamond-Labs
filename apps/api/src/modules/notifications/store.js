@@ -109,17 +109,27 @@ export function createDrizzleStore() {
       await db.insert(notificationDeliveries).values(row);
     },
     async listDeliveries(db, { event, channel, status, limit = 100, offset = 0 } = {}) {
-      const conds = [
-        event && eq(notificationDeliveries.event, event),
-        channel && eq(notificationDeliveries.channel, channel),
-        status && eq(notificationDeliveries.status, status),
-      ].filter(Boolean);
+      const conds = deliveryConds({ event, channel, status });
       const q = db.select().from(notificationDeliveries);
       return (conds.length ? q.where(and(...conds)) : q)
         .orderBy(desc(notificationDeliveries.createdAt)).limit(limit).offset(offset);
     },
+    async countDeliveries(db, { event, channel, status } = {}) {
+      const conds = deliveryConds({ event, channel, status });
+      const q = db.select({ n: sql`count(*)::int` }).from(notificationDeliveries);
+      const [r] = await (conds.length ? q.where(and(...conds)) : q);
+      return Number(r?.n ?? 0);
+    },
     pruneDeliveries,
   };
+}
+
+function deliveryConds({ event, channel, status }) {
+  return [
+    event && eq(notificationDeliveries.event, event),
+    channel && eq(notificationDeliveries.channel, channel),
+    status && eq(notificationDeliveries.status, status),
+  ].filter(Boolean);
 }
 
 function inAppWhere(userId, { unreadOnly, event }) {

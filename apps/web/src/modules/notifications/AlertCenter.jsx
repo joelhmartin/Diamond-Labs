@@ -6,7 +6,7 @@ import { useToast } from "../../components/ui/Toast.jsx";
 import { useDataTable } from "../../hooks/useDataTable.js";
 import { errorText } from "../../lib/requests.js";
 import { pageParams } from "../../lib/data-table/server.js";
-import { dismissNotification, fetchNotifications, markRead } from "./api.js";
+import { dismissNotification, fetchNotifications, markRead, markReadMany } from "./api.js";
 import { alertTitle, formatWhen } from "./format.js";
 
 const FILTERS = [{ id: "unread", label: "Unread only", type: "toggle", match: (n) => !n.readAt }];
@@ -60,7 +60,7 @@ export function AlertCenter({ timeZone, onChanged }) {
   const bulkActions = [{
     id: "read", label: "Mark read", icon: <CheckCheck size={12} />,
     run: async (rows) => {
-      await markRead({ ids: rows.map((n) => n.id) });
+      await markReadMany(rows.map((n) => n.id));
       changed();
       return { ok: rows.length, failed: [] };
     },

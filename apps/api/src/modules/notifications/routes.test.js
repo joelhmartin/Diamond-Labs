@@ -64,7 +64,7 @@ test("every route is behind authenticate", async () => {
     "DELETE /notifications/:id", "GET /notifications/preferences", "PUT /notifications/preferences",
     "GET /admin/notifications/recipients", "POST /admin/notifications/recipients", "PATCH /admin/notifications/recipients/:id",
     "DELETE /admin/notifications/recipients/:id", "POST /admin/notifications/recipients/:id/test",
-    "GET /admin/notifications/deliveries", "GET /admin/notifications/channels",
+    "GET /admin/notifications/deliveries", "GET /admin/notifications/channels", "GET /admin/notifications/events",
   ]) assert.ok(paths.includes(p), `${p} registered`);
   for (const r of fastify.routes) {
     assert.equal(r.opts.preHandler[0], authenticate, `${r.method} ${r.path} authenticates first`);
@@ -163,11 +163,22 @@ test("channels status comes from the injected reporter; deliveries filter by cha
   const added = await notifier.recipients.add(null, { event: "thing.happened", channel: "sms", address: "+15125550000" });
   await notifier.recipients.sendTest(null, added.id);
   const all = await call("GET", "/admin/notifications/deliveries", { user: { id: "a1", role: "boss" }, query: {} });
-  assert.equal(all.body.data.length, 1);
+  assert.equal(all.body.data.rows.length, 1);
   const failed = await call("GET", "/admin/notifications/deliveries", { user: { id: "a1", role: "boss" }, query: { status: "failed" } });
-  assert.equal(failed.body.data.length, 0);
+  assert.equal(failed.body.data.rows.length, 0);
   const sms = await call("GET", "/admin/notifications/deliveries", { user: { id: "a1", role: "boss" }, query: { channel: "sms", status: "sent" } });
-  assert.equal(sms.body.data.length, 1);
+  assert.equal(sms.body.data.rows.length, 1);
+  assert.equal(all.body.data.total, 1);
+  assert.equal(failed.body.data.total, 0);
   const bad = await call("GET", "/admin/notifications/deliveries", { user: { id: "a1", role: "boss" }, query: { status: "lost" } });
   assert.equal(bad.status, 422);
+});
+
+test("admin events lists every registered event with its sms flag", async () => {
+  const { call } = await setup();
+  const res = await call("GET", "/admin/notifications/events", { user: { id: "a1", role: "boss" } });
+  assert.equal(res.status, 200);
+  assert.ok(res.body.data.length > 0);
+  for (const e of res.body.data) assert.deepEqual(Object.keys(e).sort(), ["key", "label", "sms"]);
+  assert.ok(res.body.data.some((e) => e.key === "thing.happened"));
 });

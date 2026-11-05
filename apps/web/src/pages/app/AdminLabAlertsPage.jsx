@@ -1,16 +1,17 @@
 import { useEffect, useState } from "react";
 import { LAB_TIMEZONE } from "@my-app/shared";
-import { DeliveriesTable, RecipientsPanel, fetchPreferences } from "../../modules/notifications/index.js";
+import { DeliveriesTable, RecipientsPanel, fetchEvents } from "../../modules/notifications/index.js";
 
 /** Admin › Lab alerts: who gets a text for each lab event, and what was actually sent. */
 export function AdminLabAlertsPage() {
   const [events, setEvents] = useState([]);
   useEffect(() => {
     let live = true;
-    fetchPreferences().then((rows) => { if (live) setEvents(rows.map((r) => ({ key: r.event, label: r.label }))); }).catch(() => {});
+    fetchEvents().then((rows) => { if (live) setEvents(rows); }).catch(() => {});
     return () => { live = false; };
   }, []);
   const eventLabels = Object.fromEntries(events.map((e) => [e.key, e.label]));
+  const smsEvents = events.filter((e) => e.sms);
 
   return (
     <div className="mx-auto max-w-6xl space-y-8 p-6 md:p-8">
@@ -20,7 +21,7 @@ export function AdminLabAlertsPage() {
       </div>
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-navy">Text recipients</h2>
-        <RecipientsPanel events={events} />
+        <RecipientsPanel events={smsEvents} />
       </section>
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-navy">Deliveries</h2>

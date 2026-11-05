@@ -18,6 +18,9 @@ export function createFakeStore({ preferences = [], recipients = [] } = {}) {
   const inApp = (userId, { unreadOnly, event }) =>
     mine(userId).filter((n) => (!unreadOnly || !n.readAt) && (!event || n.event === event));
 
+  const matchDeliveries = ({ event, channel, status }) => state.deliveries
+    .filter((d) => (!event || d.event === event) && (!channel || d.channel === channel) && (!status || d.status === status));
+
   return {
     state,
 
@@ -106,9 +109,10 @@ export function createFakeStore({ preferences = [], recipients = [] } = {}) {
       state.deliveries.push({ createdAt: now(), ...row });
     },
     async listDeliveries(_db, { event, channel, status, limit = 100, offset = 0 } = {}) {
-      return state.deliveries
-        .filter((d) => (!event || d.event === event) && (!channel || d.channel === channel) && (!status || d.status === status))
-        .slice().reverse().slice(offset, offset + limit);
+      return matchDeliveries({ event, channel, status }).slice().reverse().slice(offset, offset + limit);
+    },
+    async countDeliveries(_db, { event, channel, status } = {}) {
+      return matchDeliveries({ event, channel, status }).length;
     },
     async pruneDeliveries(_db, days) {
       state.prunes.push(days);

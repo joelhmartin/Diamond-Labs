@@ -16,18 +16,11 @@ const FILTERS = [
   { id: "status", label: "Status", type: "select", placeholder: "Any status", options: opts(["sent", "failed", "skipped", "suppressed"]) },
 ];
 
-/**
- * The delivery route returns a bare array with no total, so ask for one extra
- * row: a full extra row means there is a next page.
- */
 async function fetchPage({ page, pageSize, filters }) {
-  const { offset } = pageParams({ page, pageSize });
-  const params = { limit: pageSize + 1, offset };
+  const params = pageParams({ page, pageSize });
   if (filters.channel) params.channel = filters.channel;
   if (filters.status) params.status = filters.status;
-  const all = await fetchDeliveries(params);
-  const rows = all.slice(0, pageSize);
-  return { rows, total: offset + rows.length + (all.length > pageSize ? 1 : 0) };
+  return fetchDeliveries(params); // { rows, total }
 }
 
 /** Email and text attempts, newest first (numbers arrive masked), filterable by channel and status. */

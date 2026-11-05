@@ -351,7 +351,11 @@ test("recipients: add validates the address, list masks nothing for admins, send
   await notifier.recipients.setActive(DB, r.id, false);
   assert.equal((await notifier.recipients.list(DB, {}))[0].active, false);
   assert.equal(await notifier.recipients.remove(DB, r.id), true);
-  assert.deepEqual(await notifier.deliveries.list(DB, {}), store.state.deliveries.slice().reverse());
+  const delivered = await notifier.deliveries.list(DB, {});
+  assert.deepEqual(delivered.rows, store.state.deliveries.slice().reverse());
+  assert.equal(delivered.total, store.state.deliveries.length);
+  assert.equal((await notifier.deliveries.list(DB, { limit: 1 })).rows.length, 1);
+  assert.equal((await notifier.deliveries.list(DB, { limit: 1 })).total, store.state.deliveries.length);
 });
 
 test("a suppressed or unconfigured email is recorded as such, not as a failure", async () => {

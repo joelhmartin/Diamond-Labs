@@ -42,6 +42,7 @@ export async function notificationRoutes(fastify, opts) {
   fastify.post("/admin/notifications/recipients/:id/test", admin, h.testRecipient);
   fastify.get("/admin/notifications/deliveries", admin, h.listDeliveries);
   fastify.get("/admin/notifications/channels", admin, h.channels);
+  fastify.get("/admin/notifications/events", admin, h.listEvents);
 }
 
 const fail = (reply, status, code, message, details) =>
@@ -147,6 +148,9 @@ function createHandlers({ notifier, kindOf, channelStatus, normalizePhone, db })
       const q = parsed(notificationDeliveryQuerySchema, request.query, reply);
       if (!q.ok) return reply;
       return { data: await notifier.deliveries.list(db, q.data) };
+    },
+    async listEvents() {
+      return { data: notifier.events.list() };
     },
     async channels() {
       return { data: await channelStatus() };
