@@ -2,7 +2,10 @@ import { eq } from "drizzle-orm";
 import { db } from "../config/database.js";
 import { users } from "../db/schema/index.js";
 import { validate, validateQuery } from "../middleware/validate.js";
-import { ERROR_CODES, receivablesQuerySchema, statementQuerySchema } from "@my-app/shared";
+import { ERROR_CODES, receivablesQuerySchema, statementQuerySchema, accountCreditSchema } from "@my-app/shared";
+import { paymentsPaused } from "../middleware/payments-paused.js";
+import { recordAccountCredit } from "../services/billing/account-credit.service.js";
+import { invoiceErrorReply } from "../services/billing/invoice-errors.js";
 import * as auditService from "../services/audit.service.js";
 import { sendStatementNotice } from "../services/email.service.js";
 import { listReceivables, statementFor } from "../services/billing/statements.service.js";
@@ -20,6 +23,19 @@ export default async function receivablesRoutes(fastify) {
   fastify.get("/admin/clients/:userId/statement.pdf", { preHandler: [...ADMIN, validateQuery(statementQuerySchema)] }, statementPdfHandler({
     scope: (request) => ({ clientUserId: request.params.userId }),
   }));
+
+  // Account credit: one amount spread over the practice's open invoices. Reason is required and
+  // sealed on the ledger rows; no email goes out.
+  fastify.post("/admin/clients/:userId/account-credit", { preHandler: [...ADMIN, paymentsPaused, validate(accountCreditSchema)] }, async (request, reply) => {
+    try {
+      const data = await recordAccountCredit({ clientUserId: request.params.userId, ...request.body, byUserId: request.user.id });
+      return reply.code(201).send({ data });
+    } catch (err) {
+      const r = invoiceErrorReply(err);
+      if (r) return reply.code(r.status).send(r.body);
+      throw err;
+    }
+  });
 
   // Staff-triggered, never automatic: a short notice with the closing balance and a portal link.
   // The balance is the practice's, the same figure the doctor's own statement download shows

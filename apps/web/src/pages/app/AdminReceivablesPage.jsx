@@ -6,6 +6,7 @@ import api from "../../config/api.js";
 import { ROUTES } from "../../config/routes.js";
 import { useToast } from "../../components/ui/Toast.jsx";
 import { ConfirmButton } from "../../components/ui/ConfirmButton.jsx";
+import { AccountCreditModal } from "../../components/admin/AccountCreditModal.jsx";
 import { StatementDownload } from "../../components/billing/StatementDownload.jsx";
 import { DataTable } from "../../components/ui/data-table/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
@@ -24,7 +25,7 @@ const searchFn = (r, q) =>
 
 const dollars = (cents) => (cents / 100).toFixed(2);
 
-function receivableColumns({ lastMonth, emailStatement }) {
+function receivableColumns({ lastMonth, emailStatement, openCredit }) {
   return [
     {
       id: "client", header: "Client", sortValue: (r) => clientName(r).toLowerCase(),
@@ -54,6 +55,7 @@ function receivableColumns({ lastMonth, emailStatement }) {
             onConfirm={() => emailStatement(r)}>
             Email statement
           </ConfirmButton>
+          <button type="button" onClick={() => openCredit(r)} className="rounded-full bg-surface-100 px-3 py-1.5 text-xs font-semibold text-navy">Account credit…</button>
         </div>
       ),
     },
@@ -81,6 +83,7 @@ export function AdminReceivablesPage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [creditFor, setCreditFor] = useState(null);
   const lastMonth = recentMonths(labToday(), 2)[1];
 
   // The whole aged list loads once; "Past due only" is a table filter, and the footer totals follow it.
@@ -117,7 +120,7 @@ export function AdminReceivablesPage() {
     run: (rows) => eachRow(rows, sendStatement, clientName),
   }];
 
-  const columns = receivableColumns({ lastMonth, emailStatement });
+  const columns = receivableColumns({ lastMonth, emailStatement, openCredit: setCreditFor });
   const footer = table.matchingRows.length > 0 ? <TotalsRow rows={table.matchingRows} columnCount={columns.length + 1} /> : null;
 
   return (
@@ -142,6 +145,9 @@ export function AdminReceivablesPage() {
         exportFileName="receivables.csv"
         emptyText={table.filters.pastDue ? "Nothing past due." : "No open balances."}
       />
+      {creditFor && (
+        <AccountCreditModal clientUserId={creditFor.clientUserId} clientName={clientName(creditFor)} onClose={() => setCreditFor(null)} onRecorded={load} />
+      )}
     </div>
   );
 }
