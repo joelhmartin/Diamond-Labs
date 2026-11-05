@@ -132,16 +132,18 @@ export function planShopLabOrder({ orderId, clientUserId = null, quoteLines, ord
  * reason is required — "why was this remade" is what the lab and invoicing
  * (piece 3) both ask. Whether it is charged is piece 3's concern.
  */
-export function planRemake({ original, originalLines, reason, orderNumber, labOrderId, byUserId = null, now, dueDate = null }) {
+export function planRemake({ original, originalLines, reason, reasonId = null, reasonLabel, orderNumber, labOrderId, byUserId = null, now, dueDate = null }) {
   if (original.source === "legacy") throw new LabOrderError("INVALID", "Seazona orders can't be remade here — start a new Rx case for the remake.");
   if (!canRemake(original)) throw new LabOrderError("INVALID", "Only a shipped order can be remade.");
-  const why = typeof reason === "string" ? reason.trim() : "";
+  // A picked reason (its label) and/or free text; at least one says why.
+  const why = [reasonLabel, reason].map((s) => (typeof s === "string" ? s.trim() : "")).filter(Boolean).join(" — ");
   if (!why) throw new LabOrderError("REASON_REQUIRED", "Say why this order is being remade.");
   const labOrder = {
     ...newOrder({ labOrderId, orderNumber, source: original.source, sourceId: original.sourceId, clientUserId: original.clientUserId, now }),
     isRemake: true,
     remakeOfOrderId: original.id,
     dueDate,
+    remakeReasonId: reasonId,
     // A staff order's patient lives on the order itself (no Rx case to read it from).
     ...(original.source === "staff" ? { patientName: original.patientName ?? null } : {}),
   };

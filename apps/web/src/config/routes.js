@@ -30,6 +30,7 @@ export const ROUTES = {
   ADMIN_AUTOPAY: "/admin/autopay",
   ADMIN_JOBS: "/admin/jobs",
   ADMIN_DEPARTMENTS: "/admin/lab/departments",
+  ADMIN_REASONS: "/admin/lab/adjustment-reasons",
   ADMIN_SHIPMENTS: "/admin/shipments",
   ADMIN_SCHEDULING: "/admin/scheduling",
 

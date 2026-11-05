@@ -38,6 +38,7 @@ import { AdminAutoPayPage } from "./pages/app/AdminAutoPayPage.jsx";
 import { AdminJobsPage } from "./pages/app/AdminJobsPage.jsx";
 import { AdminOrdersPage } from "./pages/app/AdminOrdersPage.jsx";
 import { AdminDepartmentsPage } from "./pages/app/AdminDepartmentsPage.jsx";
+import { AdminAdjustmentReasonsPage } from "./pages/app/AdminAdjustmentReasonsPage.jsx";
 import { ShipmentsPage } from "./pages/lab/ShipmentsPage.jsx";
 import { ShipmentLabelPrintPage } from "./pages/lab/ShipmentLabelPrintPage.jsx";
 import { MyCasesPage } from "./pages/doctor/MyCasesPage.jsx";
@@ -235,6 +236,7 @@ function AppRoutes() {
           <Route path="/admin/payments" element={<AdminPaymentsPage />} />
           <Route path="/admin/orders" element={<AdminOrdersPage />} />
           <Route path="/admin/lab/departments" element={<AdminDepartmentsPage />} />
+          <Route path="/admin/lab/adjustment-reasons" element={<AdminAdjustmentReasonsPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />
           <Route path="/admin/users/:userId/pricing" element={<AdminClientPricingPage />} />
           <Route path="/admin/autopay" element={<AdminAutoPayPage />} />

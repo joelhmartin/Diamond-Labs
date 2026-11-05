@@ -1,4 +1,5 @@
-import { fieldSealer } from "../../lib/crypto.js";
+import { fieldSealer, encryptField, decryptField } from "../../lib/crypto.js";
+import { createId } from "../../lib/id.js";
 
 /**
  * Lab-order field sealing, db-free so the import tools can seal a legacy
@@ -12,3 +13,11 @@ export const SECRET_ORDER_FIELDS = ["holdReason", "labNotes", "legacyPatient", "
 const orderSecrets = fieldSealer(SECRET_ORDER_FIELDS);
 export const sealOrder = orderSecrets.seal;
 export const openOrder = orderSecrets.open;
+
+/** A timeline event as stored: fresh id, note encrypted (it can carry free text). */
+export function sealEvent(e) {
+  return { ...e, id: createId(), note: e.note == null ? null : encryptField(e.note) };
+}
+export function openEvent(e) {
+  return { ...e, note: e.note == null ? null : decryptField(e.note) };
+}

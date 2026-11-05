@@ -42,6 +42,15 @@ test("a remake's draft copies the lines at no charge", async () => {
   assert.deepEqual(lines.map((l) => [l.unitCents, l.priceSource]), [[0, "remake"]]);
 });
 
+test("a remake from a 50% reason gets a draft priced at half (ruling R6)", async () => {
+  const reason = { id: "r1", appliesTo: "remake", label: "Change of occlusion", discountPercent: 50, active: true, position: 0 };
+  const tx = fakeTx({ selects: [[{ id: "v1", basePriceCents: 45000, taxable: false }], [{ variantId: "v1", priceCents: 40500 }], [{ max: null }], [reason]] });
+  await mod.createDraftForLabOrder(tx, { labOrder: { id: "lo3", clientUserId: "doc1", isRemake: true, remakeReasonId: "r1" }, lines: labLines.slice(0, 1) });
+  const [invoice, lines] = inserts(tx);
+  assert.equal(invoice.totalCents, 20250);
+  assert.deepEqual(lines.map((l) => [l.unitCents, l.priceSource]), [[20250, "remake"]]);
+});
+
 test("a paid shop order gets an issued invoice, paid in full by one shop_card ledger row", async () => {
   const tx = fakeTx({ selects: [[{ max: null }]] });
   const quote = {

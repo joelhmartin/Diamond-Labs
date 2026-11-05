@@ -22,6 +22,7 @@ import {
   CalendarDays,
   CalendarClock,
   FilePlus,
+  ListChecks,
 } from "lucide-react";
 import { brand } from "../../config/brand.js";
 import { isStaffRole } from "@my-app/shared";
@@ -53,6 +54,7 @@ const adminItems = [
   { label: "Jobs",       to: ROUTES.ADMIN_JOBS,        icon: Clock },
   { label: "Orders",     to: ROUTES.ADMIN_ORDERS,      icon: ClipboardList },
   { label: "Departments", to: ROUTES.ADMIN_DEPARTMENTS, icon: Building2 },
+  { label: "Reasons",    to: ROUTES.ADMIN_REASONS,     icon: ListChecks },
   { label: "Users",      to: ROUTES.ADMIN_USERS,       icon: UserCog },
   { label: "Products",   to: ROUTES.ADMIN_PRODUCTS,    icon: Package },
   { label: "Scheduling", to: ROUTES.ADMIN_SCHEDULING, icon: CalendarClock },

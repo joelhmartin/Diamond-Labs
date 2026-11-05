@@ -279,6 +279,9 @@ export const SCRUB_PLAN = {
   // event notes) can name a patient and is encrypted at rest in prod: replaced, never decrypted.
   lab_departments: { mode: "update", columns: { id: K, name: K, position: K, active: K, created_at: K, updated_at: K } },
   // record-tags module: admin-typed label vocabulary + id references; no patient data.
+  // production-desk (piece 6): the lab's own reason vocabulary and product/lot names; no patient data.
+  adjustment_reasons: { mode: "update", columns: { id: K, applies_to: K, label: K, discount_percent: K, active: K, position: K, created_at: K, updated_at: K } },
+  lab_order_line_materials: { mode: "update", columns: { id: K, lab_order_id: K, lab_order_line_id: K, position: K, material: K, lot_number: K, created_by: K, created_at: K } },
   tag_definitions: { mode: "update", columns: { id: K, record_type: K, label: K, color: K, position: K, active: K, created_at: K, updated_at: K } },
   record_tags: { mode: "update", columns: { id: K, record_type: K, record_id: K, tag_id: K, created_by: K, created_at: K } },
   record_stars: { mode: "update", columns: { record_type: K, record_id: K, user_id: K, created_at: K } },
@@ -294,7 +297,7 @@ export const SCRUB_PLAN = {
     mode: "update",
     columns: {
       id: K, order_number: K, source: K, source_id: K, client_user_id: K, status: K, held_from: K,
-      department_id: K, assignee_user_id: K, due_date: K, rush: K, rush_tier: K, is_remake: K, remake_of_order_id: K,
+      department_id: K, assignee_user_id: K, due_date: K, rush: K, rush_tier: K, is_remake: K, remake_of_order_id: K, remake_reason_id: K,
       hold_reason: phi("NULL"),
       lab_notes: phi("NULL"),
       legacy_patient: phi("NULL"), // a Seazona order's patient (encrypted)

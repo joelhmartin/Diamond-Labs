@@ -49,8 +49,14 @@ export function computeTotals(lines, { taxRateBps }) {
 
 export const hasUnpriced = (lines) => lines.some((l) => l.priceSource === "unpriced");
 
-/** Remakes are free unless staff edit the draft: same lines, zero price. */
-export const asRemakeLines = (pricedLines) => pricedLines.map((l) => ({ ...l, unitCents: 0, priceSource: "remake" }));
+/**
+ * A remake's price: the reason's default percent off (100 = free, the default; null means 100).
+ * Integer cents, rounded. Staff can still edit the draft.
+ */
+export const asRemakeLines = (pricedLines, percent = 100) => {
+  const off = percent ?? 100;
+  return pricedLines.map((l) => ({ ...l, unitCents: Math.round((l.unitCents * (100 - off)) / 100), priceSource: "remake" }));
+};
 
 function newInvoice({ invoiceId, invoiceNumber, kind, clientUserId, labOrderId, now }) {
   return {
@@ -191,6 +197,38 @@ export function planLineEdit(invoice, lines, edit, { now, taxRateBps }) {
     }
   }
   return { op, patch: { ...computeTotals(after, { taxRateBps }), ...bump(invoice, now) }, audit };
+}
+
+/**
+ * A discount on a draft: one negative "adjustment" line. Give a percent (taken of the item-line
+ * subtotal and rounded to whole cents, server-side) OR an amountCents, never both. Needs a reason
+ * label or text. It may not exceed the item subtotal. Not taxable: it is a flat credit.
+ */
+export function planDiscountLine(invoice, lines, { label, text, percent, amountCents }, { now, taxRateBps }) {
+  assertDraft(invoice);
+  const description = [trimmed(label), trimmed(text)].filter(Boolean).join(" — ");
+  if (!description) throw new InvoiceError("REASON_REQUIRED", "Say why this discount is being given.");
+  const hasPercent = percent !== undefined && percent !== null;
+  const hasAmount = amountCents !== undefined && amountCents !== null;
+  if (hasPercent === hasAmount) throw new InvoiceError("INVALID", "Give either a percent or an amount for the discount.");
+  const itemSubtotal = sumCents(lines.filter((l) => (l.kind ?? "item") === "item").map(lineCentsOf));
+  let cents;
+  if (hasPercent) {
+    if (!Number.isInteger(percent) || percent < 1 || percent > 100) throw new InvoiceError("INVALID", "A discount percent is a whole number from 1 to 100.");
+    cents = Math.round((itemSubtotal * percent) / 100);
+  } else {
+    assertCents(amountCents, "amountCents");
+    cents = amountCents;
+  }
+  if (cents <= 0) throw new InvoiceError("INVALID", "A discount must be more than $0.00.");
+  if (cents > itemSubtotal) throw new InvoiceError("INVALID", "A discount can't be more than the items on the invoice.");
+  const position = lines.reduce((m, l) => Math.max(m, l.position), -1) + 1;
+  const line = lineRow(invoice.id, position, { kind: "adjustment", description, qty: 1, unitCents: -cents, taxable: false, priceSource: "manual" });
+  return {
+    op: { insert: line },
+    patch: { ...computeTotals([...lines, line], { taxRateBps }), ...bump(invoice, now) },
+    audit: { op: "discount", unitCents: -cents, ...(hasPercent ? { percent } : {}) },
+  };
 }
 
 /** A shipment's charge must be a known positive integer of cents; null ("charge unknown") is refused, never $0. */

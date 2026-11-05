@@ -160,6 +160,19 @@ test("only a shipped order can be remade, and only with a reason", () => {
   assert.throws(() => planRemake({ original: shipped, originalLines: [], reason: "   ", orderNumber: 1, labOrderId: "x", now }), isCode("REASON_REQUIRED"));
 });
 
+test("remake with only reasonId is accepted and the note carries the label", () => {
+  const plan = planRemake({ original: shipped, originalLines: shippedLines, reasonId: "r1", reasonLabel: "Lab error", orderNumber: 100300, labOrderId: "lo-9", now });
+  assert.equal(plan.labOrder.remakeReasonId, "r1");
+  assert.equal(plan.events[0].note, "Remake of #100245: Lab error");
+});
+
+test("remake with a label and free text carries both; neither is refused", () => {
+  const plan = planRemake({ original: shipped, originalLines: shippedLines, reasonId: "r1", reasonLabel: "Lab error", reason: "cracked", orderNumber: 1, labOrderId: "lo-9", now });
+  assert.equal(plan.events[0].note, "Remake of #100245: Lab error — cracked");
+  const free = planRemake({ original: shipped, originalLines: shippedLines, reason: "cracked", orderNumber: 1, labOrderId: "lo-9", now });
+  assert.equal(free.labOrder.remakeReasonId, null);
+  assert.throws(() => planRemake({ original: shipped, originalLines: [], reasonId: "r1", orderNumber: 1, labOrderId: "x", now }), isCode("REASON_REQUIRED"));
+});
 
 const order = {
   id: "lo-1", orderNumber: 100245, status: "received", heldFrom: null, holdReason: null, version: 3,

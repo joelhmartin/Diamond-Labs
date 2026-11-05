@@ -4,7 +4,7 @@ import { priceLines } from "../../lib/pricing.js";
 import {
   InvoiceError, addDaysIso, computeTotals, hasUnpriced, asRemakeLines, planDraftInvoice, planShopInvoice,
   assertFreshInvoice, planLineEdit, planIssue, planVoid, deriveBalance, canActOnInvoice, planCredit, planManualPayment,
-  planShipmentLine, planShipmentLineRemoval, planLinkedLineAdd, planLinkedLineRemove, planLinkedLineQty,
+  planShipmentLine, planShipmentLineRemoval, planLinkedLineAdd, planLinkedLineRemove, planLinkedLineQty, planDiscountLine,
 } from "./invoice-rules.js";
 import { invoiceErrorReply } from "./invoice-errors.js";
 
@@ -74,6 +74,46 @@ test("a lab order's draft prices each line and keeps unpriced ones visible", () 
 test("a remake's lines are free unless staff edit them", () => {
   const out = asRemakeLines([{ description: "DDSO", qty: 1, unitCents: 40500, priceSource: "client" }]);
   assert.deepEqual(out.map((l) => [l.unitCents, l.priceSource]), [[0, "remake"]]);
+});
+
+test("asRemakeLines with 100 is free", () => {
+  const out = asRemakeLines([{ description: "A", qty: 1, unitCents: 1999, priceSource: "client" }], 100);
+  assert.deepEqual(out.map((l) => [l.unitCents, l.priceSource]), [[0, "remake"]]);
+});
+
+test("asRemakeLines with 50 halves 1999 to 1000", () => {
+  const out = asRemakeLines([{ description: "A", qty: 1, unitCents: 1999, priceSource: "client" }], 50);
+  assert.deepEqual(out.map((l) => [l.unitCents, l.priceSource]), [[1000, "remake"]]);
+});
+
+test("discount at 10% of 12345 item subtotal is -1235 adjustment", () => {
+  const lines = [line({ lineCents: 12345, unitCents: 12345 }), line({ id: "s", kind: "shipping", lineCents: 900, unitCents: 900 })];
+  const plan = planDiscountLine(draft(), lines, { label: "Courtesy", percent: 10 }, { now, ...TAX });
+  assert.equal(plan.op.insert.kind, "adjustment");
+  assert.equal(plan.op.insert.unitCents, -1235);
+  assert.equal(plan.op.insert.lineCents, -1235);
+  assert.equal(plan.op.insert.description, "Courtesy");
+  assert.equal(plan.patch.subtotalCents, 12345 - 1235);
+  assert.equal(plan.patch.version, 3);
+});
+
+test("discount with amountCents uses it negated", () => {
+  const plan = planDiscountLine(draft(), [line()], { label: "Family", amountCents: 2500 }, { now, ...TAX });
+  assert.equal(plan.op.insert.unitCents, -2500);
+});
+
+test("discount needs a reason or text", () => {
+  assert.throws(() => planDiscountLine(draft(), [line()], { percent: 10 }, { now, ...TAX }), isCode("REASON_REQUIRED"));
+  const ok = planDiscountLine(draft(), [line()], { text: " Loyal client ", percent: 10 }, { now, ...TAX });
+  assert.equal(ok.op.insert.description, "Loyal client");
+});
+
+test("discount needs exactly one of percent or amountCents, within the item subtotal", () => {
+  assert.throws(() => planDiscountLine(draft(), [line()], { label: "x" }, { now, ...TAX }), isCode("INVALID"));
+  assert.throws(() => planDiscountLine(draft(), [line()], { label: "x", percent: 10, amountCents: 5 }, { now, ...TAX }), isCode("INVALID"));
+  assert.throws(() => planDiscountLine(draft(), [line()], { label: "x", percent: 101 }, { now, ...TAX }), isCode("INVALID"));
+  assert.throws(() => planDiscountLine(draft(), [line()], { label: "x", amountCents: 10001 }, { now, ...TAX }), isCode("INVALID"));
+  assert.throws(() => planDiscountLine(draft({ status: "issued" }), [line()], { label: "x", percent: 10 }, { now, ...TAX }), isCode("INVALID_TRANSITION"));
 });
 
 test("addDaysIso crosses months and leap days, and refuses junk", () => {

@@ -19,6 +19,16 @@ export const LAB_ARCHES = ["upper", "lower", "both"];
 export const LAB_LINE_QTY_MAX = 99;
 export const LAB_PATIENT_NAME_MAX = 120;
 
+/** Remake and discount reasons: where a reason may be picked, and the label length. */
+export const ADJUSTMENT_APPLIES_TO = ["remake", "discount", "both"];
+export const ADJUSTMENT_APPLIES_LABELS = { remake: "Remakes", discount: "Discounts", both: "Both" };
+export const ADJUSTMENT_LABEL_MAX = 80;
+
+/** Materials and lot numbers per bench line. */
+export const LAB_MATERIALS_MAX = 10;
+export const LAB_MATERIAL_NAME_MAX = 120;
+export const LAB_MATERIAL_LOT_MAX = 60;
+
 const ISO = /^(\d{4})-(\d{2})-(\d{2})$/;
 function realDate(s) {
   const m = ISO.exec(s);

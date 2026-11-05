@@ -14,6 +14,7 @@ import { SchedulePanel } from "../../components/lab/SchedulePanel.jsx";
 import { Badge } from "../../components/ui/Badge.jsx";
 import { ProductionPanel } from "../../components/lab/ProductionPanel.jsx";
 import { LinesEditor } from "../../components/lab/LinesEditor.jsx";
+import { RemakeModal } from "../../components/lab/RemakeModal.jsx";
 import { FileList } from "../../modules/record-files/index.js";
 import { errorText, blobErrorText, isStale, openInNewTab, openPdf } from "../../lib/requests.js";
 
@@ -52,6 +53,7 @@ export function LabOrderDetailPage() {
   // Hold / cancel / remake all need a reason: one dialog, not window.prompt.
   const [reasonFor, setReasonFor] = useState(null); // { kind: "status"|"remake", to?, title, submit }
   const [reasonText, setReasonText] = useState("");
+  const [remaking, setRemaking] = useState(false); // the remake dialog (reason picker + note)
 
   // What the inputs last mirrored from the server, so a reload only resets
   // text the user is typing when the server value (or the order) changed.
@@ -156,11 +158,11 @@ export function LabOrderDetailPage() {
   };
   const setField = (field, value) =>
     act(() => api.patch(`/lab/orders/${order.id}`, { field, value, expectedVersion: order.version }));
-  const remake = () =>
-    askReason("Why is this order being remade?", async (reason) => {
-      const res = await act(() => api.post(`/lab/orders/${order.id}/remake`, { reason, expectedVersion: order.version }));
-      if (res) navigate(labOrderPath(res.data.data.labOrder.id));
-    });
+  const submitRemake = async (why) => {
+    setRemaking(false);
+    const res = await act(() => api.post(`/lab/orders/${order.id}/remake`, { ...why, expectedVersion: order.version }));
+    if (res) navigate(labOrderPath(res.data.data.labOrder.id));
+  };
   const printTicket = () =>
     openPdf(api, `/lab/orders/${order.id}/ticket.pdf`).catch(async (err) => addToast({ message: await blobErrorText(err), type: "error" }));
   const openFile = (fileId) =>
@@ -198,7 +200,7 @@ export function LabOrderDetailPage() {
             <Printer size={14} /> Work ticket
           </button>
           {canRemake(order) && (
-            <button type="button" disabled={busy} onClick={remake} className="flex items-center gap-1.5 rounded-full border border-navy/20 bg-white px-4 py-2 text-sm font-semibold text-navy hover:border-navy/40 disabled:opacity-40">
+            <button type="button" disabled={busy} onClick={() => setRemaking(true)} className="flex items-center gap-1.5 rounded-full border border-navy/20 bg-white px-4 py-2 text-sm font-semibold text-navy hover:border-navy/40 disabled:opacity-40">
               <RotateCcw size={14} /> Remake
             </button>
           )}
@@ -366,6 +368,8 @@ export function LabOrderDetailPage() {
           )}
         </div>
       </div>
+
+      <RemakeModal open={remaking} onClose={() => setRemaking(false)} onSubmit={submitRemake} />
 
       <Modal open={!!reasonFor} onClose={() => setReasonFor(null)} title={reasonFor?.title}>
         <textarea

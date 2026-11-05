@@ -97,6 +97,8 @@ export function describeEvent(e, { staffById = {}, departmentsById = {} } = {}) 
     case "enclosed": return `${who}: ${e.note ?? "enclosed items updated"}`;
     case "note": return `${who}: ${e.note ?? "note"}`;
     case "workflow": return e.from ? `${who}: workflow changed from ${e.from} to ${e.to}` : `${who}: workflow set to ${e.to}`;
+    case "lines":
+    case "materials": return `${who}: ${e.note ?? e.type}`;
     case "shipment": return `${who}: ${e.note ?? (e.to ? "shipping label bought" : "shipping label voided")}`;
     default: return `${who}: ${e.type}`;
   }

@@ -1,8 +1,11 @@
-import { labOrderCreateSchema, labLineEditSchema, labPricePreviewSchema } from "@my-app/shared";
+import {
+  labOrderCreateSchema, labLineEditSchema, labPricePreviewSchema,
+  adjustmentReasonCreateSchema, adjustmentReasonUpdateSchema, labMaterialsPutSchema, materialSuggestionsQuerySchema,
+} from "@my-app/shared";
 import { db } from "../config/database.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireAdmin } from "../middleware/require-role.js";
-import { validate } from "../middleware/validate.js";
+import { validate, validateQuery } from "../middleware/validate.js";
 import { barcodeLookupRoutes } from "../modules/barcode-lookup/index.js";
 import { recordFileRoutes } from "../modules/record-files/index.js";
 import { recordTagRoutes, tagErrorReply } from "../modules/record-tags/index.js";
@@ -12,6 +15,8 @@ import { defaultDueAt } from "../services/lab/lab-scheduling.js";
 import { listFamilies } from "../services/catalog.service.js";
 import * as staffOrders from "../services/lab/staff-orders.service.js";
 import { changeLines } from "../services/lab/lab-order-lines.service.js";
+import { replaceLineMaterials, materialSuggestions } from "../services/lab/materials.service.js";
+import { listReasons, createReason, updateReason } from "../services/billing/adjustment-reasons.service.js";
 import { invoiceErrorReply } from "../services/billing/invoice-errors.js";
 import { STAFF } from "./lab.routes.js";
 import { run, audit, labRouteErrorReply } from "./lab-route-helpers.js";
@@ -24,6 +29,8 @@ import { run, audit, labRouteErrorReply } from "./lab-route-helpers.js";
 
 /** Staff entry and line edits touch the order, its draft invoice and its labels: each refusal maps to its reply. */
 const deskErrorReply = (err) => labRouteErrorReply(err) ?? invoiceErrorReply(err) ?? tagErrorReply(err);
+
+const ADMIN = [authenticate, requireAdmin];
 
 export default async function labDeskRoutes(fastify) {
   await fastify.register(barcodeLookupRoutes, { registry: labLookups, path: "/lab/lookup", guard: STAFF });
@@ -78,6 +85,37 @@ export default async function labDeskRoutes(fastify) {
 
   fastify.post("/lab/orders/price-preview", { preHandler: [...STAFF, validate(labPricePreviewSchema)] }, (request, reply) =>
     run(reply, async () => ({ lines: await staffOrders.previewPrices(request.body) }), 200, deskErrorReply));
+
+  // The remake/discount pick-list. Lab staff read the active ones; admins manage the list.
+  fastify.get("/lab/adjustment-reasons", { preHandler: STAFF }, async (request) => ({
+    data: { reasons: await listReasons({ appliesTo: request.query?.appliesTo }) },
+  }));
+  fastify.get("/admin/lab/adjustment-reasons", { preHandler: ADMIN }, async () => ({
+    data: { reasons: await listReasons({ includeInactive: true }) },
+  }));
+  fastify.post("/admin/lab/adjustment-reasons", { preHandler: [...ADMIN, validate(adjustmentReasonCreateSchema)] }, (request, reply) =>
+    run(reply, async () => {
+      const reason = await createReason(request.body);
+      audit(request, "adjustment_reason.created", reason.id, { appliesTo: reason.appliesTo }, "adjustment_reason");
+      return { reason };
+    }, 201, deskErrorReply));
+  fastify.patch("/admin/lab/adjustment-reasons/:id", { preHandler: [...ADMIN, validate(adjustmentReasonUpdateSchema)] }, (request, reply) =>
+    run(reply, async () => {
+      const reason = await updateReason(request.params.id, request.body);
+      audit(request, "adjustment_reason.updated", reason.id, { fields: Object.keys(request.body) }, "adjustment_reason");
+      return { reason };
+    }, 200, deskErrorReply));
+
+  // Materials and lots per bench line (names of products, not people; fine on a shipped order).
+  fastify.put("/lab/orders/:id/lines/:lineId/materials", { preHandler: [...STAFF, validate(labMaterialsPutSchema)] }, (request, reply) =>
+    run(reply, async () => {
+      const materials = await replaceLineMaterials(request.params.id, request.params.lineId, { materials: request.body.materials, byUserId: request.user.id });
+      audit(request, "lab_order.materials_changed", request.params.id, { lineId: request.params.lineId, count: materials.length });
+      return { materials };
+    }, 200, deskErrorReply));
+  fastify.get("/lab/materials/suggestions", { preHandler: [...STAFF, validateQuery(materialSuggestionsQuerySchema)] }, async (request) => ({
+    data: { suggestions: await materialSuggestions(request.query.q) },
+  }));
 
   fastify.post("/lab/orders/:id/lines", { preHandler: [...STAFF, validate(labLineEditSchema)] }, (request, reply) =>
     run(reply, async () => {

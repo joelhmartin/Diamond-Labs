@@ -36,8 +36,11 @@ test("hold reasons, lab notes and event notes are sealed on write and opened on 
   const crypto = readFileSync(new URL("./lab-order-crypto.js", import.meta.url), "utf8");
   assert.match(crypto, /SECRET_ORDER_FIELDS = \["holdReason", "labNotes", "legacyPatient", "enclosures", "patientName"\]/);
   assert.match(source, /from "\.\/lab-order-crypto\.js"/);
-  assert.match(source, /encryptField/);
-  assert.match(source, /decryptField/);
+  // Event notes are sealed/opened by sealEvent/openEvent, which live beside the order sealer.
+  assert.match(source, /sealEvent/);
+  assert.match(source, /openEvent/);
+  assert.match(crypto, /encryptField/);
+  assert.match(crypto, /decryptField/);
 });
 
 test("stored values are opened before the planners compare old vs new", () => {

@@ -8,6 +8,11 @@ import { useDataTable } from "../../hooks/useDataTable.js";
 import { errorText, isStale } from "../../lib/requests.js";
 import { INPUT_BASE } from "./form-styles.js";
 import { LinePicker } from "./order-entry/LinePicker.jsx";
+import { MaterialsRow } from "./MaterialsRow.jsx";
+
+/** "Acrylic (lot A1), Resin" for the Materials column; "—" when none. */
+const summarizeMaterials = (materials = []) =>
+  materials.length ? materials.map((m) => (m.lotNumber ? `${m.material} (lot ${m.lotNumber})` : m.material)).join(", ") : "—";
 
 /** Quantity box that saves when it loses focus (or on Enter) with a changed, valid value. */
 function QtyCell({ line, disabled, onSave }) {
@@ -64,6 +69,7 @@ export function LinesEditor({ order, lines, onChanged }) {
     { id: "code", header: "Code", cell: (l) => <span className="font-mono text-xs">{l.code ?? "—"}</span> },
     { id: "name", header: "Item", cell: (l) => l.name },
     { id: "arch", header: "Arch", cell: (l) => <span className="text-navy/60">{l.arch ?? ""}</span> },
+    { id: "materials", header: "Materials", cell: (l) => <span className="text-xs text-navy/60">{summarizeMaterials(l.materials)}</span> },
     {
       id: "actions", header: "", export: false, align: "right",
       cell: (l) => (
@@ -75,7 +81,7 @@ export function LinesEditor({ order, lines, onChanged }) {
 
   return (
     <div className="space-y-3">
-      <DataTable table={table} columns={columns} searchable={false} selectable={false} exportable={false} paginated={false} dense itemLabel="lines" emptyText="No lines." />
+      <DataTable table={table} columns={columns} renderExpanded={(l) => <MaterialsRow order={order} line={l} onChanged={onChanged} />} searchable={false} selectable={false} exportable={false} paginated={false} dense itemLabel="lines" emptyText="No lines." />
       {!locked && <LinePicker disabled={busy} onAdd={({ variantId, qty }) => send({ op: "add", variantId, qty }, "Line added.")} />}
     </div>
   );

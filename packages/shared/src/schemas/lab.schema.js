@@ -40,7 +40,12 @@ export const labFieldChangeSchema = z.discriminatedUnion("field", [
   z.object({ field: z.literal("enclosures"), value: labEnclosuresSchema.nullable(), expectedVersion: version }),
 ]);
 
-export const labRemakeSchema = z.object({ reason: reason.min(1), expectedVersion: version });
+// Why: a picked reason (reasonId) and/or free text; at least one is required.
+export const labRemakeSchema = z.object({
+  reasonId: id.optional(),
+  reason: reason.optional(),
+  expectedVersion: version,
+}).refine((b) => Boolean(b.reasonId) || Boolean(b.reason), { message: "Say why this order is being remade.", path: ["reason"] });
 
 export const labDepartmentCreateSchema = z.object({
   name: z.string().trim().min(1).max(80),

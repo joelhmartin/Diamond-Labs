@@ -64,6 +64,8 @@ export const labOrders = pgTable("lab_orders", {
   deliveryMethod: varchar("delivery_method", { length: 20 }),
   // Items sent in with the case: JSON text of [{ kind, date?, note? }], encrypted (the notes are free text).
   enclosures: text("enclosures"),
+  // The adjustment_reasons row a remake was created from (its percent priced the draft); null otherwise.
+  remakeReasonId: varchar("remake_reason_id", { length: 128 }),
   // The current shipment (piece 4). One shipment can carry several orders
   // ("ship together"); voiding clears it. History lives in lab_order_events (type "shipment").
   shipmentId: varchar("shipment_id", { length: 128 }),

@@ -8,8 +8,7 @@ import {
 } from "../../db/schema/index.js";
 import { createId } from "../../lib/id.js";
 import { pageOf, containsPattern, prefixPattern } from "../../lib/list-query.js";
-import { encryptField, decryptField } from "../../lib/crypto.js";
-import { sealOrder, openOrder } from "./lab-order-crypto.js";
+import { sealOrder, openOrder, sealEvent, openEvent } from "./lab-order-crypto.js";
 import { variantIdsForCodes } from "./lab-variants.js";
 import { decryptRxPhi } from "../rx/phi-crypto.js";
 import { shipmentSummaries } from "../shipping/shipments.service.js";
@@ -23,6 +22,8 @@ import {
   assertFresh, planStatusChange, planFieldChange, presentBoardCard, rushFromCase,
   requestedDueDateOf, assertSchedulable, planWorkflowChange,
 } from "./lab-order-rules.js";
+import { materialsFor } from "./materials.service.js";
+import { requireReason } from "../billing/adjustment-reasons.service.js";
 import {
   defaultDueAt, saveSchedule, scheduleOf, schedulesOf, replanOrder, remakeSchedule, presentSchedule, scheduleFlags, assertWorkflowActive,
 } from "./lab-scheduling.js";
@@ -38,13 +39,6 @@ const SHIPPED_VISIBLE_DAYS = 14;
 const client = alias(users, "client");
 const assignee = alias(users, "assignee");
 const actor = alias(users, "actor");
-
-function sealEvent(e) {
-  return { ...e, id: createId(), note: e.note == null ? null : encryptField(e.note) };
-}
-function openEvent(e) {
-  return { ...e, note: e.note == null ? null : decryptField(e.note) };
-}
 
 // Serialises order-number allocation (services/sequence.service.js).
 export const LAB_ORDER_NUMBER_LOCK = 7300421;
@@ -265,7 +259,7 @@ export async function getLabOrderDetail(id, now = new Date()) {
   if (!row) return null;
 
   const order = openOrder(row.order);
-  const [lines, eventRows, remakeOf, recordFilesById] = await Promise.all([
+  const [lines, eventRows, remakeOf, recordFilesById, materialsByLine] = await Promise.all([
     db.select().from(labOrderLines).where(eq(labOrderLines.labOrderId, id)).orderBy(asc(labOrderLines.position)),
     db
       .select({ event: labOrderEvents, byName: actor.name })
@@ -277,6 +271,7 @@ export async function getLabOrderDetail(id, now = new Date()) {
       ? db.select({ orderNumber: labOrders.orderNumber }).from(labOrders).where(eq(labOrders.id, order.remakeOfOrderId))
       : Promise.resolve([]),
     filesFor(LAB_ORDER_RECORD_TYPE, [id]),
+    materialsFor(id),
   ]);
 
   let rxCase = null;
@@ -342,7 +337,7 @@ export async function getLabOrderDetail(id, now = new Date()) {
     schedule: presentSchedule(plan, order, today, calendar),
     // Also set for an order with no saved plan (due-date rule only), so the page can still show At risk.
     scheduleFlags: scheduleFlags(order, plan, today, calendar),
-    lines,
+    lines: lines.map((l) => ({ ...l, materials: materialsByLine.get(l.id) ?? [] })),
     events: eventRows.map(({ event, byName }) => ({ ...openEvent(event), byName: byName ?? null })),
     rxCase,
     files,
@@ -471,7 +466,7 @@ export function changeField(id, { field, value, expectedVersion, byUserId = null
   });
 }
 
-export function remakeOrder(id, { reason, expectedVersion, byUserId = null }, database = db) {
+export function remakeOrder(id, { reason, reasonId, expectedVersion, byUserId = null }, database = db) {
   return database.transaction(async (tx) => {
     const [row] = await tx.select().from(labOrders).where(eq(labOrders.id, id));
     if (!row) throw new LabOrderError("NOT_FOUND", "Lab order not found.");
@@ -485,7 +480,12 @@ export function remakeOrder(id, { reason, expectedVersion, byUserId = null }, da
     const orderNumber = await allocateOrderNumber(tx);
     const now = new Date();
     const { dueDate, plan: schedule } = await remakeSchedule(tx, { originalId: id, originalLines, now });
-    const plan = planRemake({ original, originalLines, reason, orderNumber, labOrderId: createId(), byUserId, now, dueDate });
+    // A picked reason sets the draft's price (its percent, via remakeReasonId) and names the remake.
+    const picked = reasonId ? await requireReason(reasonId, "remake", tx) : null;
+    const plan = planRemake({
+      original, originalLines, reason, reasonId: picked?.id ?? null, reasonLabel: picked?.label,
+      orderNumber, labOrderId: createId(), byUserId, now, dueDate,
+    });
     // Bump the original's version so a stale tab can't act on it as if nothing happened.
     const [bumped] = await tx
       .update(labOrders)

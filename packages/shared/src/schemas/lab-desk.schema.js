@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { id, isoDate } from "./common.schema.js";
 import { labEnclosuresSchema, labPanSchema, labDeliveryMethodSchema, labNotesSchema, labVersionSchema } from "./lab.schema.js";
-import { LAB_ARCHES, LAB_LINE_QTY_MAX, LAB_PATIENT_NAME_MAX } from "../lab/production-desk.js";
+import {
+  LAB_ARCHES, LAB_LINE_QTY_MAX, LAB_PATIENT_NAME_MAX, ADJUSTMENT_APPLIES_TO, ADJUSTMENT_LABEL_MAX,
+  LAB_MATERIALS_MAX, LAB_MATERIAL_NAME_MAX, LAB_MATERIAL_LOT_MAX,
+} from "../lab/production-desk.js";
 
 /**
  * Production desk requests: staff order entry (full and quick), the price
@@ -47,3 +50,31 @@ export const labLineEditSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("update"), lineId: id, qty, expectedVersion: labVersionSchema }),
   z.object({ op: z.literal("remove"), lineId: id, expectedVersion: labVersionSchema }),
 ]);
+
+// Remake/discount reasons (admin) and materials per line.
+const reasonPercent = z.number().int().min(0).max(100);
+const reasonLabel = z.string().trim().min(1).max(ADJUSTMENT_LABEL_MAX);
+
+export const adjustmentReasonCreateSchema = z.object({
+  appliesTo: z.enum(ADJUSTMENT_APPLIES_TO),
+  label: reasonLabel,
+  discountPercent: reasonPercent.nullable().optional(),
+  position: z.number().int().min(0).max(1000).optional(),
+});
+
+export const adjustmentReasonUpdateSchema = z.object({
+  appliesTo: z.enum(ADJUSTMENT_APPLIES_TO).optional(),
+  label: reasonLabel.optional(),
+  discountPercent: reasonPercent.nullable().optional(),
+  position: z.number().int().min(0).max(1000).optional(),
+  active: z.boolean().optional(),
+}).refine((b) => Object.keys(b).length > 0, "Nothing to change.");
+
+export const labMaterialsPutSchema = z.object({
+  materials: z.array(z.object({
+    material: z.string().max(LAB_MATERIAL_NAME_MAX),
+    lot: z.string().max(LAB_MATERIAL_LOT_MAX).optional().default(""),
+  })).max(LAB_MATERIALS_MAX),
+});
+
+export const materialSuggestionsQuerySchema = z.object({ q: z.string().max(LAB_MATERIAL_NAME_MAX).optional() });

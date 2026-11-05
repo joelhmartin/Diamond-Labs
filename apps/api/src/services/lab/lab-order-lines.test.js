@@ -109,6 +109,17 @@ test("a remake order's added line is priced as remake", async () => {
   assert.equal(bench.id, added.labOrderLineId, "the invoice line points at the new bench line");
 });
 
+test("a line added later to a 50% remake is priced at 50% off (ruling R6)", async () => {
+  const reason = { id: "r1", appliesTo: "remake", label: "Change of occlusion", discountPercent: 50, active: true, position: 0 };
+  const h = harness({
+    orderRow: order({ isRemake: true, remakeReasonId: "r1" }),
+    rest: [[variant], [draftInvoice], [variant], [{ variantId: "v1", priceCents: 40500 }], [reason], [invoiceLine]],
+  });
+  await changeLines("lo1", { edit: { op: "add", variantId: "v1", qty: 1 }, expectedVersion: 3, byUserId: "staff1" }, h.database);
+  const added = inserts(h.tx).find((v) => v && "priceSource" in v);
+  assert.deepEqual([added.unitCents, added.priceSource], [20250, "remake"]);
+});
+
 test("a note-only line is not billed: nothing is added to the invoice", async () => {
   const h = harness({ rest: [[variant]] });
   await changeLines("lo1", { edit: { op: "add", variantId: "v1", qty: 1, noteOnly: true }, expectedVersion: 3, byUserId: "staff1" }, h.database);

@@ -8,6 +8,7 @@ import { allocateSequenceNumber, INVOICE_NUMBER_LOCK } from "../sequence.service
 import { priceLabOrderLines } from "../pricing.service.js";
 import * as auditService from "../audit.service.js";
 import { sealInvoice, openInvoice, sealLine, openLine } from "./invoice-crypto.js";
+import { remakePercentFor } from "./adjustment-reasons.service.js";
 import {
   planDraftInvoice, planShopInvoice, asRemakeLines, hasUnpriced, planIssue, planVoid, InvoiceError, assertShipmentCharge,
   planShipmentLine, planShipmentLineRemoval, assertLinkedDraft, planLinkedLineAdd, planLinkedLineQty, planLinkedLineRemove,
@@ -49,6 +50,16 @@ export async function loadLines(tx, invoiceId) {
 }
 
 /**
+ * How far off a remake is priced: its reason's default percent (adjustment_reasons),
+ * 100 when it has no reason or the reason has none. THE one place both remake pricing
+ * paths (createDraftForLabOrder, syncDraftLine) read it, so they cannot disagree.
+ */
+async function remakePercent(tx, labOrder) {
+  if (!labOrder.remakeReasonId) return 100;
+  return (await remakePercentFor(labOrder.remakeReasonId, tx)) ?? 100;
+}
+
+/**
  * A new lab order (Rx release or remake) → its draft invoice. `lines` are the
  * lab order's inserted lines (with ids). A remake is priced at zero.
  */
@@ -58,7 +69,7 @@ export async function createDraftForLabOrder(tx, { labOrder, lines, byUserId = n
     invoiceId: createId(),
     invoiceNumber: await allocateInvoiceNumber(tx),
     labOrder,
-    pricedLines: labOrder.isRemake ? asRemakeLines(priced) : priced,
+    pricedLines: labOrder.isRemake ? asRemakeLines(priced, await remakePercent(tx, labOrder)) : priced,
     now: new Date(),
     taxRateBps: PRICING.taxRateBps,
   });
@@ -208,7 +219,7 @@ export async function syncDraftLine(tx, { labOrder, op, line, byUserId = null })
   let plan;
   if (op === "add") {
     const priced = await priceLabOrderLines([line], labOrder.clientUserId, tx);
-    const [pricedLine] = labOrder.isRemake ? asRemakeLines(priced) : priced;
+    const [pricedLine] = labOrder.isRemake ? asRemakeLines(priced, await remakePercent(tx, labOrder)) : priced;
     plan = planLinkedLineAdd(invoice, await loadLines(tx, invoice.id), pricedLine, opts);
   } else if (op === "qty") {
     plan = planLinkedLineQty(invoice, await loadLines(tx, invoice.id), line.id, line.qty, opts);

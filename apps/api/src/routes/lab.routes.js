@@ -10,7 +10,8 @@ import * as departmentsService from "../services/lab/departments.service.js";
 import { buildTicketModel } from "../services/lab/ticket-model.js";
 import { renderTicketPdf } from "../services/lab/ticket-pdf.js";
 import * as labShipping from "../services/lab/lab-shipping.service.js";
-import { run, audit } from "./lab-route-helpers.js";
+import { invoiceErrorReply } from "../services/billing/invoice-errors.js";
+import { run, audit, labRouteErrorReply } from "./lab-route-helpers.js";
 import { sendPdf } from "./pdf-reply.js";
 
 /**
@@ -83,9 +84,11 @@ export default async function labRoutes(fastify) {
   fastify.post("/lab/orders/:id/remake", { preHandler: [...STAFF, validate(labRemakeSchema)] }, (request, reply) =>
     run(reply, async () => {
       const { labOrder } = await labOrdersService.remakeOrder(request.params.id, { ...request.body, byUserId: request.user.id });
-      audit(request, "lab_order.remade", request.params.id, { remakeId: labOrder.id, orderNumber: labOrder.orderNumber });
+      audit(request, "lab_order.remade", request.params.id, {
+        remakeId: labOrder.id, orderNumber: labOrder.orderNumber, reasonId: request.body.reasonId ?? null,
+      });
       return { labOrder };
-    }, 201));
+    }, 201, (err) => labRouteErrorReply(err) ?? invoiceErrorReply(err)));
 
   fastify.get("/lab/departments", { preHandler: STAFF }, async (request) => ({
     data: { departments: await departmentsService.listDepartments({ includeInactive: request.query?.includeInactive === "true" }) },
