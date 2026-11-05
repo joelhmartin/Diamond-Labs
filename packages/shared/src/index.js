@@ -43,3 +43,6 @@ export * from "./schemas/billing.schema.js";
 // Shipping
 export * from "./shipping/shipping.js";
 export * from "./schemas/shipping.schema.js";
+
+// Notifications (generic module)
+export * from "./notifications/channels.js";

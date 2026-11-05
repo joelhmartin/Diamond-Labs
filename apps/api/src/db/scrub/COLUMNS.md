@@ -66,6 +66,10 @@ Pre-check before the transaction: every plan table and column must exist live ("
 | shipments.tracking_error | pii | NULL (carrier error text can echo the address) |
 | shipment_events.description | pii | NULL for carrier-sourced events (scan text can name a city/state); staff events keep their fixed text |
 | shipment_events.location | pii | NULL (a recipient's city) |
+| notification_recipients.address | pii | SMS: `+15005550006#<id>` (Twilio's magic test number, suffixed with the row id because `(event, channel, address)` is unique); email: `recipient+<id>@example.invalid` (never mailed). Staging SMS is redirected to `STAGING_SMS_TO` anyway |
+| notification_recipients.label | pii | NULL (staff-typed name for the number or mailbox) |
+| notification_deliveries.target_masked | pii | NULL (a masked phone or email, still partly identifying) |
+| notification_deliveries.reason | pii | NULL (provider error text can echo an address) |
 
 ## Tables emptied (DELETE all rows)
 
@@ -84,6 +88,7 @@ Pre-check before the transaction: every plan table and column must exist live ("
 - rx_cases: case_number, practice_name, device_key/category, first_device, records_method, physical_bite, form_type, due_date, rush, status. Non-identifying once names, DOB, contact and free text are gone. Clinical-ish (`physical_bite`) but not linkable to a person.
 - rx_code_overrides: only rows whose map_key is a KNOWN catalog-map key (from the DEVICE/MODIFICATION/ATTRIBUTE/LAB_SERVICE/GUARD/ORTHO tables, `known-map-keys.js`) are kept; every other row is DELETED. The key prefixes (`mod:`, `attr:`, `primary:`) are shared by stable slugs and by doctor-typed literals (`mod:<literal>`), so shape cannot tell them apart; this is the "not in the known set" fallback. Consequence: a real lab override on a key the tables no longer emit is also dropped. `note` and the rest of each kept row (except `seazona_name`, re-derived) are lab-staff mapping data.
 - lab_departments, and lab_orders / lab_order_lines / lab_order_events apart from the columns above: ids, source reference (rx case or shop order id, no patient data copied), status, dates, rush, remake links, assignee, version, codes, quantities, event types and from/to values. Non-identifying once the free text is gone.
+- notifications (in-app rows): every column, `title` included. Titles are built only from a notification's validated `data` (short identifiers such as order numbers, never free text or a patient name; `modules/notifications/data-guard.js`). notification_preferences: every column. notification_recipients and notification_deliveries apart from the columns above (event, channel, status, record ids, dates).
 - shipments apart from the columns above (carrier, service, carrier tracking numbers, status, cents, parcel, the lab's own ship-from, dates); shipment_events status and dates; lab_orders.shipment_id and invoice_lines.shipment_id; invoices and invoice_lines apart from the columns above (numbers, status, dates, cents, codes, quantities, price sources); invoice_payments money columns, ids, sources and `paid_on`; autopay_attempts (allocations are invoice id/number/amount), orders money columns and transaction ids, order_items, catalog and product tables, memberships, app_theme.
 
 ## Not in the schema

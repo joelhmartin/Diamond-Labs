@@ -635,3 +635,25 @@ export async function sendShippedNotice({ to, orderNumbers = [], shopOrderNumber
   ].filter(Boolean).join("\n");
   return deliver({ to, subject: `Your order has shipped — ${lab}`, html, text });
 }
+
+/**
+ * The generic notifications module's email channel (modules/notifications).
+ * A heading, one line and an optional button: it renders ONLY these values,
+ * all escaped, and nothing from a record. The button renders only for an
+ * http(s) link. Never throws (deliver()).
+ */
+export async function sendNotificationEmail({ to, subject, heading, line, actionUrl = null, actionLabel = "Open" }) {
+  if (!to) return false;
+  const link = typeof actionUrl === "string" && /^https?:\/\//i.test(actionUrl) ? actionUrl : null;
+  const button = link
+    ? `<p style="margin:0 0 8px;"><a href="${esc(link)}" style="display:inline-block;padding:12px 24px;background:#13AEEF;color:#fff;text-decoration:none;border-radius:999px;font-weight:600;">${esc(actionLabel)}</a></p>`
+    : "";
+  const html = `
+    <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a2733;">
+      <h1 style="font-size:20px;margin:0 0 12px;">${esc(heading)}</h1>
+      <p style="margin:0 0 20px;">${esc(line)}</p>
+      ${button}
+    </div>`;
+  const text = [heading, line, link ? `${actionLabel}: ${link}` : null].filter(Boolean).join("\n");
+  return deliver({ to, subject, html, text });
+}

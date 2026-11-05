@@ -73,6 +73,8 @@ const MUST_SCRUB = {
   invoice_payments: ["reference", "note"],
   shipments: ["service_name", "tracking_number", "ship_to", "label_data", "tracking_error"],
   shipment_events: ["description", "location"],
+  notification_recipients: ["address", "label"],
+  notification_deliveries: ["target_masked", "reason"],
 };
 
 test("named PHI/PII/secret columns are never classified keep", () => {

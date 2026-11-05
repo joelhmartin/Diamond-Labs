@@ -367,6 +367,39 @@ export const SCRUB_PLAN = {
       occurred_at: K, source: K, created_at: K,
     },
   },
+  // Notifications module (piece 8). In-app rows hold titles built only from
+  // validated identifiers (never free text), so they stay. Static recipient
+  // addresses and labels go; each scrubbed address stays unique per row because
+  // (event, channel, address) is a unique index. Delivery logs keep status and
+  // drop the masked target and the provider's error text.
+  notifications: {
+    mode: "update",
+    columns: {
+      id: K, user_id: K, event: K, record_type: K, record_id: K, title: K, link: K, collapse_key: K, count: K,
+      read_at: K, created_at: K, updated_at: K,
+    },
+  },
+  notification_preferences: { mode: "update", columns: { user_id: K, event: K, channel: K, enabled: K, updated_at: K } },
+  notification_recipients: {
+    mode: "update",
+    columns: {
+      id: K, event: K, channel: K,
+      // Twilio's magic test number, suffixed with the row id so the unique index holds; mail to .invalid is never sent.
+      address: pii(`CASE WHEN "notification_recipients"."channel" = 'sms' THEN '+15005550006#' || "notification_recipients"."id" ELSE 'recipient+' || "notification_recipients"."id" || '@example.invalid' END`),
+      label: pii("NULL"),
+      active: K, created_at: K, created_by_user_id: K,
+    },
+  },
+  notification_deliveries: {
+    mode: "update",
+    columns: {
+      id: K, event: K, channel: K, user_id: K,
+      target_masked: pii("NULL"),
+      status: K,
+      reason: pii("NULL"),
+      record_type: K, record_id: K, created_at: K,
+    },
+  },
   app_theme: { mode: "update", columns: { id: K, tokens: K, updated_by: K, updated_at: K } },
   products: {
     mode: "update",

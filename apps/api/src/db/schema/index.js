@@ -24,3 +24,6 @@ export { clientPrices } from "./client-prices.js";
 export { labDepartments, labOrders, labOrderLines, labOrderEvents } from "./lab-orders.js";
 export { invoices, invoiceLines } from "./invoices.js";
 export { shipments, shipmentEvents } from "./shipments.js";
+export {
+  notifications, notificationPreferences, notificationRecipients, notificationDeliveries,
+} from "../../modules/notifications/schema.js";
