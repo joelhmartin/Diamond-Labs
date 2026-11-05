@@ -184,6 +184,8 @@ pnpm --filter @my-app/api import:parity $T $S --balances <path> --file-id <final
 - Release a test Rx case to the board; it gets a number from `LAB_ORDER_NUMBER_START`.
 - A legacy order cannot be remade (staff start a new Rx case instead).
 - With `PAYMENTS_PAUSED` still on, confirm Pay is refused; then (step 7) after unfreezing, make a $1 card payment and refund it.
+- Open Dashboard › Sales and compare YTD with Labzona's Sales tab. Ours is invoice subtotal (no tax/shipping) by issue date, so note the difference; do not fail on it.
+- Open Reports › Client Health; the band counts should be in the same range as Labzona's Insights tab.
 - Run the tracking job dry (`docs/shipping-operations.md`).
 - Run the shop repair dry (`{"dryRun":true}`, step 7's call): its `missing` count must equal the number of shop orders paid between T1 and the new revision going live in step 4.5 (`select count(*) from orders where status = 'paid' and created_at >= '<T1>' and created_at < '<new revision live>'`; orders placed after that already got their lab order at checkout). A mismatch means T1 is wrong: stop and fix `LAB_SHOP_REPAIR_SINCE` before the live run.
 
@@ -224,3 +226,5 @@ gcloud run services update diamond-labs-api --region=us-central1 --project=diamo
 
 - Drop `diamond_labs_rehearsal`: `gcloud sql databases delete diamond_labs_rehearsal --instance=diamond-labs-db --project=diamond-labs-prod`.
 - Keep `diamond_labs_import` until the lab signs off on Seazona being gone (piece 5b).
+- Set `REPORTS_COVERAGE_FROM=<cutover date>` on the Cloud Run service.
+- Staff star their favourite reports. Labzona's starred reports are already featured; nothing to re-enter.

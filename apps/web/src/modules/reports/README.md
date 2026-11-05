@@ -1,10 +1,14 @@
 # reports (web)
 
+## Purpose
+
 The screens for the generic reports module (`apps/api/src/modules/reports`).
 Everything here is driven by the report metadata the API serves: params,
 columns and paging are data, so a new report needs no web code.
 
-## Pieces
+## Public interface
+
+### Pieces
 
 | File | What it does |
 |---|---|
@@ -25,6 +29,8 @@ columns and paging are data, so a new report needs no web code.
 | `FeedTile` | `<FeedTile rows columns reload? />`: the last 50 events; the first date/datetime column is the time; a row's `href` (an app path) makes its line a link. Calls `reload()` every 30 s only while the page is visible (`useVisibleInterval`); hidden stops it, visible again refreshes at once, unmount stops it. |
 | `DashboardPage` | `/…/dashboard/:key?`: tabs from `GET /dashboards` (the first opens when there is no key), then the tile grid (`span` 1–4). Each tile shows its own data or its own error. Chart tiles have a "Show table" fallback; table tiles are a compact `DataTable`. The feed tile's `reload` refetches only that tile (`GET /dashboards/:key?tile=<id>`) and patches it in. |
 
+### Params and errors
+
 Params cleared to blank stay blank: a param with a default that is not
 `required` is kept as `p.<name>=` in the URL and sent blank, which the server
 reads as unset. Run with changed values writes them (the change runs the report
@@ -35,6 +41,31 @@ Server-paged tables go back to page 1 when params change (`useDataTable`'s
 Errors show the server's message (for example a timeout's "This report took
 too long. Try a shorter date range.") inside the table, with Retry.
 
+## Configuration
+
+None of its own. Everything comes from the report metadata the API serves. Colours are the
+`--chart-1..8` tokens in `index.css`; the timezone and roles live on the API side.
+
+## Data model
+
+None. State is the URL (`p.<name>` params, table paging under `r`) and the API's responses.
+
 ## Wiring it into another app
 
-(filled in by the final task)
+1. Mount the pages (any layout that provides the app's auth and toast context):
+
+   ```jsx
+   <Route path="/reports" element={<ReportsIndexPage />} />
+   <Route path="/reports/:key" element={<ReportPage />} />
+   <Route path="/dashboard" element={<DashboardPage />} />
+   <Route path="/dashboard/:key" element={<DashboardPage />} />
+   ```
+
+2. Add the paths to the app's route config (`/reports/:key` needs a `reportPath(key)` helper that
+   URL-encodes the key) and to the sidebar: a "Reports" entry for the index, and a "Dashboard" entry
+   for `/dashboard` with `end: false` so it stays active on `/dashboard/:key`.
+3. The API must serve `/api/v1/reports` and `/api/v1/dashboards` (see the API module README); the
+   screens use the app's signed-in axios client.
+4. A new report needs no web code. Dashboard tiles that link into the app use `href` and `link`
+   templates, so the app's paths are the only coupling.
+5. Charts load Chart.js as its own chunk on first use; `pnpm --filter @my-app/web build` shows it.

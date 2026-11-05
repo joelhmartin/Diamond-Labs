@@ -216,3 +216,4 @@ VITE_AUTHORIZE_NET_CLIENT_KEY=          # public client key from the merchant po
 - Route config: `apps/web/src/config/routes.js`
 - 3D models: `apps/web/public/models/` (OBJ+MTL for 4 products)
 - Downloads: `apps/web/public/downloads/` (PDFs)
+- Reports: apps/api/src/modules/reports (generic), services/lab/reports (lab definitions)

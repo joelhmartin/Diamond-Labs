@@ -1,5 +1,7 @@
 # reports
 
+## Purpose
+
 A generic report module. A report is a definition (params, a query, columns,
 an optional chart). The module owns the registry, param validation, date
 ranges, the activity-health rule, the runner, CSV export,
@@ -147,4 +149,62 @@ None. Reports read the host's tables through the `db` handle passed to `run`.
 
 ## Wiring it into another app
 
-(filled in by the final task)
+1. **Registry.** One registry per app, with the roles that may view a report that lists none:
+
+   ```js
+   export const reportRegistry = createRegistry({ defaultRoles: ["admin", "staff"], featuredTitle: "Team favorites" });
+   registerMyReports(reportRegistry); // groups, lookups, reports, metrics, dashboards
+   ```
+
+2. **Favorites store.** The module owns no table and ships no `schema.js`, so there is nothing to
+   re-export from the app's drizzle schema and no migration to generate for it. Implement
+   `{ listKeys(db, userId), set(db, userId, key, on) }` over whatever per-user stars the app has, or
+   use `createMemoryFavoritesStore()` for a demo (forgets on restart).
+
+3. **Mount the routes.** A Fastify plugin; `preHandler` is the app's auth, `audit` records exports:
+
+   ```js
+   app.register(
+     createReportRoutes({ registry: reportRegistry, db, preHandler: [authenticate], audit, favorites, tz: "America/Chicago" }),
+     { prefix: "/api/v1" },
+   );
+   ```
+
+4. **Define a report.** Group first, then the report (a view of tickets per week):
+
+   ```js
+   registry.defineGroup({ key: "support", title: "Support", position: 1 });
+   registry.defineReport({
+     key: "tickets-by-week", group: "support", title: "Tickets by week",
+     params: [{ name: "range", type: "dateRange", default: "last30" }],
+     columns: [
+       { id: "week", label: "Week", type: "date" },
+       { id: "opened", label: "Opened", type: "int", align: "right" },
+     ],
+     chart: { type: "bar", x: "week", series: [{ field: "opened", label: "Opened" }] },
+     async run(db, { range }, actor, ctx) {
+       const rows = await db.execute(sql`select date_trunc('week', created_at)::date as week, count(*)::int as opened
+         from tickets where created_at >= ${range.from} and created_at < ${range.to} group by 1 order by 1`);
+       return { rows };
+     },
+   });
+   ```
+
+   `run` receives a read-only transaction under a statement timeout, never the raw handle. Money is
+   integer cents; the `money` column type formats it.
+
+5. **Roles and capabilities.** A report or tile with no `roles` takes `defaultRoles`; list `roles` to
+   narrow it (the routes answer 403 outside them, and a dashboard leaves the tile out). A report
+   with `requires: ["billing"]` is listed but greyed out (`available: false`) until the app calls
+   `registry.provideCapability("billing")`, so reports can ship ahead of the feature they need.
+
+6. **Host settings.** Anything a definition needs from the environment (for example a
+   "data starts on" date the app validates in its env schema, such as `REPORTS_COVERAGE_FROM`) is
+   read by the host's definitions, not by this module.
+
+7. **Web.** See `apps/web/src/modules/reports/README.md` for the routes and sidebar entries.
+
+8. **Bench.** Indexes are the app's schema concern. `pnpm --filter @my-app/api reports:bench --seed`
+   runs every available report and dashboard against synthetic data and fails any run over 2 s. It needs
+   `DATABASE_URL` pointing at a local database named exactly `diamond_labs_bench` and refuses any other;
+   `--seed` drops, recreates, migrates and fills it.
