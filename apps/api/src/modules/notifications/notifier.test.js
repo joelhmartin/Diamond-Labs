@@ -353,3 +353,27 @@ test("recipients: add validates the address, list masks nothing for admins, send
   assert.equal(await notifier.recipients.remove(DB, r.id), true);
   assert.deepEqual(await notifier.deliveries.list(DB, {}), store.state.deliveries.slice().reverse());
 });
+
+test("a suppressed or unconfigured email is recorded as such, not as a failure", async () => {
+  const results = [{ ok: false, reason: "suppressed" }, { ok: false, reason: "unconfigured" }, { ok: false, reason: "undeliverable" }];
+  const { notifier, store, logs } = setup({ email: async () => results.shift() });
+  const r = await notifier.notify(DB, args({ audience: { userIds: ["c1"], addresses: { email: ["a@else.test", "b@else.test"] } } }));
+  assert.deepEqual(r, { inApp: 1, sent: 0, skipped: 3, failed: 0 });
+  assert.deepEqual(store.state.deliveries.map((d) => `${d.status}:${d.reason}`), ["suppressed:suppressed", "skipped:unconfigured", "skipped:undeliverable"]);
+  assert.equal(logs.filter((l) => l.includes("[NOTIFY][SEND_FAILED]")).length, 0);
+});
+
+test("a rejected or erroring detailed email result is a failure; ok:true is sent", async () => {
+  const results = [{ ok: false, reason: "rejected" }, { ok: false, reason: "error" }, { ok: true, reason: null }];
+  const { notifier, store, logs } = setup({ email: async () => results.shift() });
+  const r = await notifier.notify(DB, args({ audience: { addresses: { email: ["a@else.test", "b@else.test", "c@else.test"] } } }));
+  assert.deepEqual(r, { inApp: 0, sent: 1, skipped: 0, failed: 2 });
+  assert.deepEqual(store.state.deliveries.map((d) => `${d.status}:${d.reason}`), ["failed:rejected", "failed:error", "sent:null"]);
+  assert.equal(logs.filter((l) => l.includes("[NOTIFY][SEND_FAILED]")).length, 2);
+});
+
+test("notify with null or missing args resolves to zeros", async () => {
+  const { notifier } = setup();
+  assert.deepEqual(await notifier.notify(DB, null), { inApp: 0, sent: 0, skipped: 0, failed: 0 });
+  assert.deepEqual(await notifier.notify(DB), { inApp: 0, sent: 0, skipped: 0, failed: 0 });
+});

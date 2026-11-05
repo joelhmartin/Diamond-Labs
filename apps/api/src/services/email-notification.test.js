@@ -1,8 +1,10 @@
 import { test, vi, afterEach } from "vitest";
 import assert from "node:assert/strict";
 
-const cfg = vi.hoisted(() => ({ appEnv: "production", to: undefined }));
-vi.mock("../config/email.js", () => ({ mailgun: { apiKey: "k", domain: "mg.example", apiBase: "https://api.mailgun.test" } }));
+const cfg = vi.hoisted(() => ({ appEnv: "production", to: undefined, mailgun: true }));
+vi.mock("../config/email.js", () => ({
+  get mailgun() { return cfg.mailgun ? { apiKey: "k", domain: "mg.example", apiBase: "https://api.mailgun.test" } : null; },
+}));
 vi.mock("../config/env.js", () => ({
   env: {
     get APP_ENV() { return cfg.appEnv; },
@@ -19,6 +21,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   cfg.appEnv = "production";
   cfg.to = undefined;
+  cfg.mailgun = true;
 });
 
 test("sendNotificationEmail escapes heading/line and links actionUrl", async () => {
@@ -27,7 +30,7 @@ test("sendNotificationEmail escapes heading/line and links actionUrl", async () 
     to: "user@x.com", subject: "Thing 7", heading: "Thing <b>7</b> happened", line: `Tom & "Jerry" <script>`,
     actionUrl: "https://portal.example/things/7?a=1&b=2",
   });
-  assert.equal(ok, true);
+  assert.deepEqual(ok, { ok: true, reason: null });
   assert.equal(f.mock.calls.length, 1);
   const p = sent(f);
   assert.equal(p.get("to"), "user@x.com");
@@ -68,7 +71,7 @@ test("it renders only the values it is given: no other body text", async () => {
 
 test("no recipient sends nothing", async () => {
   const f = capture();
-  assert.equal(await email.sendNotificationEmail({ to: "", subject: "S", heading: "H", line: "L" }), false);
+  assert.deepEqual(await email.sendNotificationEmail({ to: "", subject: "S", heading: "H", line: "L" }), { ok: false, reason: "undeliverable" });
   assert.equal(f.mock.calls.length, 0);
 });
 
@@ -80,4 +83,36 @@ test("it goes through deliver (staging rewrite applies)", async () => {
   const p = sent(f);
   assert.equal(p.get("to"), "qa@example.com");
   assert.match(p.get("subject"), /^\[STAGING → real@party\.com\] Thing 7/);
+});
+
+const msg = (to = "real@party.com") => ({ to, subject: "S", heading: "H", line: "L", actionUrl: null });
+
+test("staging with no STAGING_EMAIL_TO is suppressed, not a failure", async () => {
+  cfg.appEnv = "staging";
+  const f = capture();
+  assert.deepEqual(await email.sendNotificationEmail(msg()), { ok: false, reason: "suppressed" });
+  assert.equal(f.mock.calls.length, 0);
+});
+
+test("no Mailgun config (dev) is unconfigured, not a failure", async () => {
+  cfg.mailgun = false;
+  const f = capture();
+  assert.deepEqual(await email.sendNotificationEmail(msg()), { ok: false, reason: "unconfigured" });
+  assert.equal(f.mock.calls.length, 0);
+});
+
+test("only .invalid recipients is undeliverable; a Mailgun refusal is rejected; a throw is error", async () => {
+  capture();
+  assert.deepEqual(await email.sendNotificationEmail(msg("user+1@example.invalid")), { ok: false, reason: "undeliverable" });
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 400, text: async () => "bad" })));
+  assert.deepEqual(await email.sendNotificationEmail(msg()), { ok: false, reason: "rejected" });
+  vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("net"); }));
+  assert.deepEqual(await email.sendNotificationEmail(msg()), { ok: false, reason: "error" });
+});
+
+test("the other senders still return a plain boolean", async () => {
+  capture();
+  assert.equal(await email.sendInvoiceNotice({ to: "u@x.com", invoiceId: "i1", invoiceNumber: 1, totalCents: 100, balanceCents: 100, dueDate: null }), true);
+  cfg.mailgun = false;
+  assert.equal(await email.sendInvoiceNotice({ to: "u@x.com", invoiceId: "i1", invoiceNumber: 1, totalCents: 100, balanceCents: 100, dueDate: null }), false);
 });

@@ -21,6 +21,14 @@ test("it delegates to the configured notifier with the root db and the same argu
   assert.deepEqual(seen[0].a, a);
 });
 
+test("null args never throw", async () => {
+  assert.deepEqual(await notify({}, null), ZERO);
+  const seen = [];
+  configureNotifications({ notify: async (_db, a) => { seen.push(a); return ZERO; } });
+  assert.deepEqual(await notify({}, null), ZERO);
+  assert.equal(seen[0].event, undefined);
+});
+
 test("it never throws, even when the notifier does", async () => {
   configureNotifications({ notify: async () => { throw new Error("boom"); } });
   assert.deepEqual(await notify({}, { event: "x.y", audience: "staff", data: {} }), ZERO);

@@ -7,8 +7,11 @@ import { currentNotifier } from "../modules/notifications/index.js";
 
 const zero = () => ({ inApp: 0, sent: 0, skipped: 0, failed: 0 });
 
-export async function notify(db, { event, recordType, recordId, audience, data } = {}) {
+export async function notify(db, args) {
+  let event;
   try {
+    const { recordType, recordId, audience, data } = args ?? {};
+    ({ event } = args ?? {});
     const notifier = currentNotifier();
     if (!notifier) return zero();
     return (await notifier.notify(db, { event, recordType, recordId, audience, data })) ?? zero();

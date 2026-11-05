@@ -25,7 +25,12 @@ and callers must not depend on the counts it returns.
 | `registry.js` | `defineNotificationEvent`, `getEvent`, `listEvents`, `clearEvents` |
 | `data-guard.js` | `assertSafeData`, `NotificationDataError`, `maskAddress` |
 | `preferences.js` | `effectivePreference(rows, event, kind, channel)`, `isOffered` |
-| `notifier.js` | `createNotifier(...)`, `NotificationInputError` |
+| `notifier.js` | `createNotifier(...)`: composes the four pieces below |
+| `dispatch.js` | `notify()`: event, data guard, audience, collapse, email, static list, prune |
+| `sender.js` | channel calls, result classification (`outcome`), the deliveries log |
+| `inbox.js` | a user's in-app list, read state and preferences |
+| `recipients.js` | the static per-event recipient list and `sendTest` |
+| `util.js` | `NotificationInputError`, small helpers, `safeReason` (masked error text) |
 | `store.js` | the drizzle data access, `pruneDeliveries(db, days)` |
 | `fake-store.js` | the same surface in memory, for tests |
 | `index.js` | the public surface, `configureNotifications`, `currentNotifier` |
@@ -112,7 +117,7 @@ configureNotifications(createNotifier({
   db,                       // fallback db when a method is passed none
   resolveAudience,          // async (db, audience) → [{ id, email, kind }]
   channels: {
-    email: { send },        // async ({ to, subject, heading, line, actionUrl, actionLabel }) → boolean
+    email: { send },        // async ({ to, subject, heading, line, actionUrl, actionLabel }) → boolean | { ok, reason }
     sms: { send },          // async ({ to, body }) → { ok, error? }
   },
   appUrl,                   // prefixed to every link
@@ -126,6 +131,13 @@ configureNotifications(createNotifier({
 
 With no notifier configured, the seam resolves to zeros. A missing channel
 records a `skipped` delivery (`no_email_channel`, `no_sms_channel`).
+
+A channel result of `{ ok: false, reason }` is not always a failure: reason
+`suppressed` (the staging rule) records a `suppressed` delivery, and
+`unconfigured` (no mail provider) or `undeliverable` (no real address) record
+`skipped`. These count as `skipped` and log no `[NOTIFY][SEND_FAILED]`. Any
+other reason, a bare `false`, or a throw is `failed`. An `event.email.send`
+override may still answer a boolean.
 
 ## Data model
 
