@@ -1,16 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { playOnView } from "../../lib/playOnView";
 import { HeroStage } from "../../components/marketing/HeroStage";
 import { CtaBand } from "../../components/marketing/CtaBand.jsx";
+import { RotatingGeometry, ScanningGrid, PulsingWaveform } from "../../components/marketing/ProtocolAnimations.jsx";
 import LottiePlayer from "../../components/ui/LottiePlayer";
 import {
   ArrowRight,
-  Scan,
-  PenTool,
-  Printer,
   ChevronRight,
   Activity,
   Shield,
@@ -18,7 +15,6 @@ import {
   Clock,
 } from "lucide-react";
 
-gsap.registerPlugin(ScrollTrigger);
 
 /* ─── HERO ─── */
 function Hero() {
@@ -701,312 +697,54 @@ function Philosophy() {
 
 /* ─── STICKY PROTOCOL ─── */
 function Protocol() {
-  const sectionRef = useRef(null);
-  const panelsRef = useRef([]);
-
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      const total = panelsRef.current.length;
-
-      panelsRef.current.forEach((panel, i) => {
-        // Pin ALL cards (including last)
-        ScrollTrigger.create({
-          trigger: panel,
-          start: "top top",
-          pin: true,
-          pinSpacing: i === total - 1, // last card gets real spacing so it holds
-          ...(i < total - 1
-            ? {
-                endTrigger: panelsRef.current[total - 1],
-                end: "top top",
-              }
-            : {
-                end: "+=50%", // last card holds for 50vh of scroll
-              }),
-        });
-
-        // Fade/blur out all except the last card
-        if (i < total - 1) {
-          gsap.to(panel, {
-            scale: 0.9,
-            filter: "blur(12px)",
-            opacity: 0.5,
-            scrollTrigger: {
-              trigger: panelsRef.current[i + 1],
-              start: "top 60%",
-              end: "top top",
-              scrub: true,
-            },
-          });
-
-          // Hide the pinned card once the next card fully arrives
-          ScrollTrigger.create({
-            trigger: panelsRef.current[i + 1],
-            start: "top top",
-            onEnter: () => (panel.style.visibility = "hidden"),
-            onLeaveBack: () => (panel.style.visibility = "visible"),
-          });
-        }
-      });
-    }, sectionRef);
-    return () => ctx.revert();
-  }, []);
-
   const steps = [
     {
-      step: "01",
       title: "Scan",
       desc: "Intraoral digital capture eliminates traditional impressions. Precision data from the first touch.",
-      Icon: Scan,
       animation: <RotatingGeometry />,
     },
     {
-      step: "02",
       title: "Design",
       desc: "CAD articulation to the parameters on your Rx. Every occlusal surface mapped.",
-      Icon: PenTool,
       animation: <ScanningGrid />,
     },
     {
-      step: "03",
       title: "Fabricate",
       desc: "Printed appliances are made in biocompatible nylon. Quality verified. Shipped with tracking and care kit.",
-      Icon: Printer,
       animation: <PulsingWaveform />,
     },
   ];
 
+  /* Cards stack with CSS sticky at lg+, so scrolling past them can never leave
+     blank space. */
   return (
-    <section ref={sectionRef} className="relative">
-      {steps.map((step, i) => (
-        <div key={i}>
-          {/* Spacer between cards gives scroll room for the "hold" */}
-          {i > 0 && <div className="h-[40vh]" />}
-          <div
-            ref={(el) => (panelsRef.current[i] = el)}
-            className="h-screen flex items-center justify-center"
-            style={{ zIndex: i + 1 }}
+    <section className="section-pad py-20 md:py-28">
+      <ol className="max-w-6xl mx-auto space-y-6">
+        {steps.map((step, i) => (
+          <li
+            key={step.title}
+            className="lg:sticky relative overflow-hidden rounded-[2.5rem] md:rounded-[3rem] bg-white border border-navy/10 shadow-xl shadow-navy/10"
+            style={{ top: 112 + i * 20 }}
           >
-            <div className="section-pad w-full max-w-6xl mx-auto">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-                <div>
-                  <span className="font-mono text-brand-700 text-sm mb-4 block">
-                    {step.step}
-                  </span>
-                  <h3 className="font-heading font-bold text-4xl md:text-6xl tracking-tight mb-4">
-                    {step.title}
-                  </h3>
-                  <p className="text-navy/70 text-lg max-w-md leading-relaxed">
-                    {step.desc}
-                  </p>
-                </div>
-                <div className="flex items-center justify-center">
-                  <div className="w-72 h-72 md:w-96 md:h-96 rounded-[3rem] flex items-center justify-center overflow-hidden">
-                    {step.animation}
-                  </div>
-                </div>
+            <HeroStage tone="light" />
+            <div className="relative z-10 grid lg:grid-cols-2 gap-8 items-center p-8 md:p-14 lg:min-h-[440px]">
+              <div>
+                <span aria-hidden="true" className="block font-drama italic lining-nums text-7xl md:text-8xl leading-none text-brand-600">
+                  {i + 1}
+                </span>
+                <h3 className="mt-4 font-heading font-bold text-4xl md:text-6xl tracking-tight text-navy">
+                  {step.title}
+                </h3>
+                <p className="mt-4 text-navy/70 text-lg max-w-md leading-relaxed">{step.desc}</p>
+              </div>
+              <div className="flex items-center justify-center" aria-hidden="true">
+                {step.animation}
               </div>
             </div>
-          </div>
-        </div>
-      ))}
-    </section>
-  );
-}
-
-/* SVG animations for protocol cards */
-function RotatingGeometry() {
-  const ref = useRef(null);
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.to("[data-rotate]", {
-        rotation: 360,
-        duration: 20,
-        repeat: -1,
-        ease: "none",
-        transformOrigin: "center center",
-      });
-      gsap.to("[data-rotate-reverse]", {
-        rotation: -360,
-        duration: 30,
-        repeat: -1,
-        ease: "none",
-        transformOrigin: "center center",
-      });
-    }, ref);
-    return () => ctx.revert();
-  }, []);
-
-  return (
-    <svg
-      ref={ref}
-      viewBox="0 0 200 200"
-      className="w-48 h-48 md:w-64 md:h-64"
-    >
-      <g data-rotate>
-        <circle
-          cx="100"
-          cy="100"
-          r="60"
-          fill="none"
-          stroke="rgb(var(--brand-500))"
-          strokeWidth="0.5"
-          opacity="0.4"
-        />
-        <circle
-          cx="100"
-          cy="100"
-          r="45"
-          fill="none"
-          stroke="rgb(var(--brand-500))"
-          strokeWidth="0.5"
-          opacity="0.3"
-        />
-        {[0, 60, 120, 180, 240, 300].map((angle) => (
-          <circle
-            key={angle}
-            cx={100 + 60 * Math.cos((angle * Math.PI) / 180)}
-            cy={100 + 60 * Math.sin((angle * Math.PI) / 180)}
-            r="3"
-            fill="rgb(var(--brand-500))"
-            opacity="0.6"
-          />
+          </li>
         ))}
-      </g>
-      <g data-rotate-reverse>
-        <rect
-          x="65"
-          y="65"
-          width="70"
-          height="70"
-          fill="none"
-          stroke="rgb(var(--brand-500))"
-          strokeWidth="0.5"
-          opacity="0.2"
-          rx="4"
-        />
-        <rect
-          x="78"
-          y="78"
-          width="44"
-          height="44"
-          fill="none"
-          stroke="rgb(var(--brand-500))"
-          strokeWidth="0.5"
-          opacity="0.3"
-          rx="4"
-        />
-      </g>
-      <circle cx="100" cy="100" r="4" fill="rgb(var(--brand-500))" opacity="0.8" />
-    </svg>
-  );
-}
-
-function ScanningGrid() {
-  const ref = useRef(null);
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.to("[data-scan-line]", {
-        y: 160,
-        duration: 2.5,
-        repeat: -1,
-        ease: "power1.inOut",
-        yoyo: true,
-      });
-    }, ref);
-    return () => ctx.revert();
-  }, []);
-
-  const dots = [];
-  for (let row = 0; row < 8; row++) {
-    for (let col = 0; col < 8; col++) {
-      dots.push(
-        <circle
-          key={`${row}-${col}`}
-          cx={40 + col * 17}
-          cy={20 + row * 20}
-          r="2"
-          fill="rgb(var(--brand-500))"
-          opacity="0.15"
-        />
-      );
-    }
-  }
-
-  return (
-    <svg
-      ref={ref}
-      viewBox="0 0 200 200"
-      className="w-48 h-48 md:w-64 md:h-64"
-    >
-      {dots}
-      <line
-        data-scan-line
-        x1="30"
-        y1="20"
-        x2="170"
-        y2="20"
-        stroke="rgb(var(--brand-500))"
-        strokeWidth="1"
-        opacity="0.6"
-      />
-      <rect
-        data-scan-line
-        x="30"
-        y="12"
-        width="140"
-        height="16"
-        fill="url(#scanGradient)"
-      />
-      <defs>
-        <linearGradient id="scanGradient" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="rgb(var(--brand-500))" stopOpacity="0" />
-          <stop offset="50%" stopColor="rgb(var(--brand-500))" stopOpacity="0.1" />
-          <stop offset="100%" stopColor="rgb(var(--brand-500))" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
-}
-
-function PulsingWaveform() {
-  const ref = useRef(null);
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.to("[data-waveform]", {
-        strokeDashoffset: -400,
-        duration: 3,
-        repeat: -1,
-        ease: "none",
-      });
-    }, ref);
-    return () => ctx.revert();
-  }, []);
-
-  return (
-    <svg
-      ref={ref}
-      viewBox="0 0 200 100"
-      className="w-48 h-24 md:w-64 md:h-32"
-    >
-      <path
-        data-waveform
-        d="M0,50 L20,50 L25,50 L30,20 L35,80 L40,30 L45,70 L50,45 L55,55 L60,50 L80,50 L85,50 L90,15 L95,85 L100,25 L105,75 L110,40 L115,60 L120,50 L140,50 L145,50 L150,20 L155,80 L160,30 L165,70 L170,45 L175,55 L180,50 L200,50"
-        fill="none"
-        stroke="rgb(var(--brand-500))"
-        strokeWidth="1.5"
-        strokeDasharray="200"
-        strokeDashoffset="0"
-        opacity="0.6"
-      />
-      <path
-        d="M0,50 L200,50"
-        fill="none"
-        stroke="rgb(var(--brand-500))"
-        strokeWidth="0.3"
-        opacity="0.2"
-      />
-    </svg>
+      </ol>
+    </section>
   );
 }
 
@@ -1014,7 +752,6 @@ function PulsingWaveform() {
 function CTASection() {
   return (
     <CtaBand
-      eyebrow="Partner With Us"
       title="Get the best for your"
       titleAccent="patients."
       intro={
@@ -1026,6 +763,9 @@ function CTASection() {
       }
       primary={{ label: "Contact Our Lab", to: "/contact" }}
       secondary={{ label: "View All Products", to: "/products" }}
+      product="/images/cta-patients.webp"
+      productAlt="Three smiling people, each holding a custom oral appliance"
+      productFlush
     />
   );
 }

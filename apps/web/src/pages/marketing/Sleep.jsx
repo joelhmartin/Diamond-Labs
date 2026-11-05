@@ -134,7 +134,7 @@ export function SleepPage() {
         title="Mandibular advancement,"
         titleAccent="engineered."
         intro="The Diamond Digital Sleep Orthotic (DDSO) is a custom CAD/CAM device for snoring and mild-to-moderate OSA in adults. FDA 510(k) cleared, fully digital."
-        product="/images/ddso-transparent.webp"
+        product="/images/hero-ddso-reflection.webp"
         productAlt="DDSO sleep appliance with a blue adjustment strap"
       />
       <ProductCatalog tabs={SLEEP_TABS} spacing="pt-12 md:pt-14 pb-12 md:pb-16" />

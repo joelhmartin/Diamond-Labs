@@ -9,7 +9,8 @@ import { HeroStage } from "./HeroStage";
 /* Closing call-to-action band, extracted from Home's CTA section.
    `titleAccent` and `eyebrow` exist only so Home renders exactly as before;
    interior pages omit both. Passing `product` (a transparent appliance cut-out)
-   turns the band into a dark panel on the hero backdrop. Actions take `to`
+   turns the band into a dark panel on the hero backdrop; `productFlush` stands the
+   image on the panel's bottom edge, for a photo cropped at the bottom. Actions take `to`
    (router link) or `href`. */
 function Action({ action, className, children }) {
   if (action.href) {
@@ -41,7 +42,7 @@ function PrimaryAction({ action }) {
   );
 }
 
-export function CtaBand({ eyebrow, title, titleAccent, intro, primary, secondary, product, productAlt = "" }) {
+export function CtaBand({ eyebrow, title, titleAccent, intro, primary, secondary, product, productAlt = "", productFlush = false }) {
   const sectionRef = useRef(null);
 
   useEffect(() => {
@@ -66,10 +67,13 @@ export function CtaBand({ eyebrow, title, titleAccent, intro, primary, secondary
       <section ref={sectionRef} className="section-pad py-20 md:py-28">
         <div className="relative overflow-hidden max-w-6xl mx-auto rounded-[2.5rem] md:rounded-[3rem] bg-navy">
           <HeroStage />
-          <div className="relative z-10 grid lg:grid-cols-2 gap-8 items-center p-8 md:p-14">
-            <div>
+          <div className={`relative z-10 grid lg:grid-cols-2 gap-8 items-center p-8 md:p-14 ${productFlush ? "!pb-0" : ""}`}>
+            <div className={productFlush ? "lg:pb-14" : undefined}>
               <h2 data-cta-anim className="font-heading font-bold text-3xl md:text-5xl tracking-tight text-on-dark">
                 {title}
+                {titleAccent && (
+                  <span className="block font-drama italic text-brand-400">{titleAccent}</span>
+                )}
               </h2>
               {intro && (
                 <p data-cta-anim className="mt-5 text-on-dark/75 text-lg leading-relaxed">
@@ -92,7 +96,11 @@ export function CtaBand({ eyebrow, title, titleAccent, intro, primary, secondary
               data-cta-anim
               src={product}
               alt={productAlt}
-              className="w-[80%] max-w-[440px] mx-auto h-auto object-contain drop-shadow-[0_30px_50px_rgba(0,20,60,0.45)]"
+              className={
+                productFlush
+                  ? "w-full max-w-[640px] mx-auto self-end h-auto object-contain"
+                  : "w-[80%] max-w-[440px] mx-auto h-auto object-contain drop-shadow-[0_30px_50px_rgba(0,20,60,0.45)]"
+              }
             />
           </div>
         </div>
