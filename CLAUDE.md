@@ -1,6 +1,6 @@
 # Diamond Orthotic Laboratory marketing site
 
-The marketing pages (`apps/web/src/pages/marketing/`, `components/marketing/`) follow the design rules below. The design intent is in `docs/superpowers/specs/2026-11-05-marketing-design-consistency-design.md`.
+The marketing pages (`apps/web/src/pages/marketing/`, `components/marketing/`) follow the design rules below. Home is the visual bar: an interior page that looks plainer than Home is unfinished.
 
 The original "cinematic multi-page builder" brief that this site started from (aesthetic presets, per-page section lists, Unsplash imagery, live-software cards, required sliders, pull-quotes, stat bars) is superseded by the Global Design Rules for this site. Do not build from it.
 
@@ -9,16 +9,17 @@ The original "cinematic multi-page builder" brief that this site started from (a
 ## Global Design Rules (Apply to Every Page)
 
 - **Noise texture overlay** — rendered once by `MarketingLayout` (SVG `<feTurbulence>`, about 0.05 opacity, see `.noise-overlay`). Pages do not add their own.
-- **Rounded containers** — `border-radius: 2rem` to `3rem` on cards, panels and images. Lists, tables and spec rows are not cards; do not wrap them.
+- **Visual richness** — every page has a hero with imagery, appliance imagery below the fold, and a rhythm of light and dark sections. No screenful is only text on a pale background. Remove fake stats and filler copy, not visuals. `pages/marketing/DigitalWorkflow.jsx` is the reference.
+- **Rounded containers** — `border-radius: 2rem` to `3rem` on cards, panels and images. Use white cards, glass panels on dark, icon tiles and large rounded photos freely.
 - **Navbar** — Fixed, pill-shaped, centered. Transparent at hero top, morphs to frosted glass (`backdrop-blur-xl`) on scroll. Contains logo text, page links, CTA button.
 - **Footer** — Dark background, `border-radius: 4rem 4rem 0 0`. Brand name, nav columns (sentence-case headings), legal links. No status indicator.
-- **Colour roles** — `navy` for dark sections and heroes; `accent-500` for the primary action; `brand-500` on navy only; `brand-700` for links and accent text on light backgrounds; supporting text on light at least `navy/70`. No off-palette decoration.
-- **Type** — Plus Jakarta Sans throughout. Cormorant italic only on the second line of a page hero H1; section H2s are plain. IBM Plex Mono only for technical values (phone numbers, file formats), never as an all-caps tracked label.
-- **Shared components** — marketing pages use `PageHero`, `SectionHeading`, `CtaBand`, `StatRow` and `Reveal` from `components/marketing/`. Do not build per-page versions of a hero, CTA band or stat row.
-- **Motion** — one hero intro and one quiet reveal per section (`Reveal`); no per-card stagger or decorative floating. `PageHero`, `Reveal`, `CtaBand` and `ProductCatalog` skip their animation under `prefers-reduced-motion` (via `lib/reducedMotion`). Home's own animation and the product viewer's image crossfade do not yet; new motion must use the guard.
+- **Colour roles** — `navy` and the `HeroStage` gradient for dark sections and heroes; `accent-500` for the primary action; on light backgrounds use `brand-700`, not `brand-500`, for text; supporting text at least `navy/70` on light and `on-dark/60` on dark. No off-palette decoration.
+- **Type** — Plus Jakarta Sans for headings and body. Cormorant italic for hero accent lines, sequence numerals and dark-section accents. IBM Plex Mono for technical values.
+- **Shared components** — marketing pages use `PageHero` (with a `product` cut-out), `HeroStage`, `SectionHeading`, `CtaBand` (with `product` for the dark closing panel), `StatRow` and `Reveal` from `components/marketing/`. Do not build per-page versions of these.
+- **Motion** — a hero intro and section reveals through `lib/playOnView`, with hover lift on clickable cards. Content is never hidden in markup and never stuck hidden. New motion checks `lib/reducedMotion`.
 - **Sliders and pinned sections** — use them where the content calls for it (a gallery, a true sequence), not as a per-page quota. Sliders are full-width, touch-enabled, with custom arrows.
 - **Button micro-interactions** — `scale(1.03)` hover with spring easing. Overflow-hidden with sliding background span. No flat hover color swaps.
-- **Olmos policy** — Product names stay (Olmos Series, Day, Night, Orthotic, Neuromuscular Device/Positioner), as does Dr. Olmos on his own page, Courses and Certified Labs. Lab positioning built on his name ("Olmos-Method", "Olmos Protocol", "built around the Olmos Series") is not used; describe the work directly.
+- **Olmos policy** — Product names stay (Olmos Series, Day, Night, Orthotic, Neuromuscular Device/Positioner). Dr. Olmos has no menu link, feature or portrait outside his own page at `/about/dr-olmos`; a factual name mention on Courses and Certified Labs is fine. Lab positioning built on his name ("Olmos-Method", "Olmos Protocol", "built around the Olmos Series") is not used.
 - **Labels** — sentence case; no tracked all-caps eyebrows above headings that already say it.
 - **Copy** — plain and factual: no superlatives ("only", "premier", "gold standard", "global authority"), no invented figures, and no clinical claim that cannot be traced to the lab. Material and process claims name the cases they cover (digital cases, printed appliances); the site also sells acrylic and thermoform.
 - **Contact details** — phone and email are always `tel:` / `mailto:` links. Cases are sent by approved doctors through the Rx form in the account portal; others call the lab.

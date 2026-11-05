@@ -1,5 +1,9 @@
 # Marketing site design consistency: design
 
+## Update (2026-11-05)
+
+The owner rejected the first build as "basically just text". The visual sections below are superseded: every page uses appliance imagery, cards, panels and light-and-dark rhythm, with Home as the bar, and Dr. Olmos has no feature on About. See the project `CLAUDE.md` design rules and `DigitalWorkflow.jsx`.
+
 ## Intent
 
 Diamond Orthotic Laboratory's visitors are dentists and their staff. They come to send a case, find an appliance, check a material or call the lab. The site should feel like a precise working lab that knows the clinical side, not a software startup.
