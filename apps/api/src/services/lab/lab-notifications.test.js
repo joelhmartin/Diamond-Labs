@@ -39,11 +39,11 @@ const PEOPLE = [
   { id: "d5", email: "d5@x.test", role: "doctor", approvalStatus: "approved", seazonaClientId: "P1", status: "suspended" },
 ];
 
-test("registers exactly the six spec events", () => {
+test("registers exactly the seven lab events", () => {
   registerLabNotificationEvents();
   registerLabNotificationEvents(); // idempotent: a second boot (or test) does not throw
   assert.deepEqual(listEvents().map((e) => e.key), [
-    "message.received", "lab.order_received", "lab.pickup_requested", "lab.pickup_scheduled", "lab.pickup_cancelled", "lab.order_shipped",
+    "message.received", "lab.order_received", "lab.pickup_requested", "lab.pickup_scheduled", "lab.pickup_cancelled", "intake.created", "lab.order_shipped",
   ]);
   assert.deepEqual(LAB_EVENT_KEYS, listEvents().map((e) => e.key));
   const d = (k) => ({ kinds: getEvent(k).kinds, defaults: getEvent(k).defaults, sms: getEvent(k).sms });
@@ -57,6 +57,18 @@ test("registers exactly the six spec events", () => {
     kinds: ["staff", "client"], defaults: { staff: { in_app: true, email: false }, client: { in_app: true, email: true } }, sms: false,
   });
   assert.deepEqual(d("lab.order_shipped"), { kinds: ["client"], defaults: { client: { in_app: true, email: true } }, sms: false });
+});
+
+test("registers every production-desk (piece 6) event the app emits", () => {
+  registerLabNotificationEvents();
+  // lab-intake.js: notify({ event: "intake.created", audience: "staff", data: {} }).
+  const e = getEvent("intake.created");
+  assert.ok(e, "intake.created is registered");
+  assert.deepEqual({ kinds: e.kinds, defaults: e.defaults, sms: e.sms }, {
+    kinds: ["staff"], defaults: { staff: { in_app: true, email: false } }, sms: false,
+  });
+  assert.equal(e.title({}), "New scanner files in intake");
+  assert.equal(e.link({}, "staff"), "/lab/intake");
 });
 
 test("titles contain only numbers/dates from data", () => {

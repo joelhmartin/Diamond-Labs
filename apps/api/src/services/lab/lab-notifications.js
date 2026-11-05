@@ -92,6 +92,13 @@ export function labEventDefs({
       link: pickupLink,
     },
     {
+      // Production desk (piece 6): a scanner-export drop. lab-intake.js sends
+      // `data: {}` and the link gets no record id, so title and link are static.
+      key: "intake.created", label: "Scanner files dropped", kinds: ["staff"], defaults: STAFF_ONLY, sms: false,
+      title: () => "New scanner files in intake",
+      link: () => "/lab/intake",
+    },
+    {
       key: "lab.order_shipped", label: "Order shipped", kinds: ["client"], defaults: CLIENT_ONLY, sms: false,
       title: shippedTitle,
       link: () => "/doctor/cases",
