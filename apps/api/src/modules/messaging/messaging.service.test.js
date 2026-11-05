@@ -178,6 +178,41 @@ test("archive is per user and drives the party folders", async () => {
   await rejectsWith(messaging.listThreads(host, { folder: "archived" }), "INVALID");
 });
 
+test("a post from the other side brings an archived thread back to the inbox", async () => {
+  const { messaging } = setup();
+  const t = await messaging.createThread(partyA, { body: "hi" });
+  await messaging.archive(partyA, t.id, true);
+  await messaging.post(partyA, t.id, { body: "own post keeps it filed" });
+  assert.equal((await messaging.listThreads(partyA, { folder: "archived" })).total, 1);
+  await messaging.post(host, t.id, { body: "reply" });
+  assert.equal((await messaging.listThreads(partyA, { folder: "archived" })).total, 0);
+  const inbox = await messaging.listThreads(partyA, { folder: "inbox" });
+  assert.equal(inbox.total, 1);
+  assert.equal(inbox.rows[0].archivedAt, null);
+});
+
+test("getThread marks read only up to the messages it returned", async () => {
+  const { messaging, store } = setup();
+  const t = await messaging.createThread(partyA, { body: "first" });
+  const list = store.listMessages;
+  let raced = false;
+  // A party post lands after the host's fetch and before the read mark.
+  store.listMessages = async (...args) => {
+    const rows = await list(...args);
+    if (!raced) {
+      raced = true;
+      await messaging.post(partyA, t.id, { body: "late" });
+    }
+    return rows;
+  };
+  const { messages } = await messaging.getThread(host, t.id);
+  assert.deepEqual(messages.map((m) => m.body), ["first"]);
+  assert.equal(await messaging.unreadCount(host), 1, "the unseen late post stays unread");
+  store.listMessages = list;
+  await messaging.getThread(host, t.id);
+  assert.equal(await messaging.unreadCount(host), 0);
+});
+
 test("list filters by record and party, pages with a total, and labels rows", async () => {
   const { messaging } = setup();
   await messaging.createThread(host, { recordType: "widget", recordId: "w1", body: "a" });

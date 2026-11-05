@@ -1,4 +1,4 @@
-import { and, desc, eq, getTableColumns, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, isNotNull, ne, sql } from "drizzle-orm";
 import { messageThreads as t, messageParticipants as p, messages as m } from "./schema.js";
 import { participantJoin, unreadSql, visibleWhere, threadListWhere, isEmptyMatch } from "./queries.js";
 
@@ -20,9 +20,14 @@ export function createDrizzleStore() {
     async updateThread(db, id, patch) {
       await db.update(t).set(patch).where(eq(t.id, id));
     },
-    /** A new post: apply rules.afterPost's patch and count the message. */
+    /**
+     * A new post: apply rules.afterPost's patch, count the message, and bring
+     * the thread back to the inbox of everyone on the other side who archived it.
+     */
     async recordPost(db, id, patch) {
       await db.update(t).set({ ...patch, messageCount: sql`${t.messageCount} + 1` }).where(eq(t.id, id));
+      await db.update(p).set({ archivedAt: null })
+        .where(and(eq(p.threadId, id), ne(p.side, patch.lastMessageSide), isNotNull(p.archivedAt)));
     },
 
     async insertMessage(db, row) {

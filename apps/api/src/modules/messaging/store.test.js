@@ -65,6 +65,8 @@ test("recordPost bumps message_count in SQL; touchParticipant upserts on (thread
   const a = recordingDb([]);
   await store.recordPost(a.db, "t1", { lastMessageAt: new Date(), lastMessageSide: "host", updatedAt: new Date() });
   assert.match(a.calls[0].sql, /"message_count" = "message_threads"."message_count" \+ 1/);
+  assert.match(a.calls[1].sql, /^update "message_participants" set "archived_at" = \$1 where \("message_participants"."thread_id" = \$2 and "message_participants"."side" <> \$3 and "message_participants"."archived_at" is not null\)/);
+  assert.deepEqual(a.calls[1].params, [null, "t1", "host"]);
   const b = recordingDb([]);
   await store.touchParticipant(b.db, { threadId: "t1", userId: "u1", side: "host" }, { lastReadAt: new Date() });
   assert.match(b.calls[0].sql, /^insert into "message_participants"/);

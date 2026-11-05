@@ -35,6 +35,9 @@ export function createFakeStore() {
     async recordPost(_db, id, patch) {
       const r = state.threads.find((x) => x.id === id);
       if (r) Object.assign(r, patch, { messageCount: r.messageCount + 1 });
+      for (const x of state.participants) {
+        if (x.threadId === id && x.side !== patch.lastMessageSide) x.archivedAt = null;
+      }
     },
 
     async insertMessage(_db, row) {

@@ -86,7 +86,10 @@ Errors are `MessagingError` with `code` `NOT_FOUND`, `FORBIDDEN` or
 - **Folders:** host `inbox` (not completed) and `completed`; party `inbox`
   (not archived by me) and `archived`. Asking for another side's folder is
   `INVALID`. A party post clears `completed_at`, so the thread comes back to
-  the host's inbox.
+  the host's inbox. Any post clears `archived_at` for the other side's
+  participants, so a reply un-archives the thread for them.
+- **Read marks:** opening a thread marks it read up to the newest message it
+  returned (not "now"), so a post that lands mid-open stays unread.
 - **Search:** `q` matches only what `search()` returns (party keys and
   records). Bodies and subjects are sealed and never searched. Without a
   `search` collaborator, `q` matches nothing.

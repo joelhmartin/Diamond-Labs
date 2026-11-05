@@ -132,7 +132,10 @@ export function createMessaging({
         store.getParticipant(rootDb, thread.id, user.id),
         views.resolveRecord(rootDb, thread, user),
       ]);
-      await store.touchParticipant(rootDb, { threadId: thread.id, userId: user.id, side }, { lastReadAt: now() });
+      // Read up to the newest message returned, not now(): a post that lands
+      // between the fetch and this write stays unread.
+      const seenUpTo = rows.reduce((max, r) => (new Date(r.createdAt) > max ? new Date(r.createdAt) : max), new Date(thread.lastMessageAt));
+      await store.touchParticipant(rootDb, { threadId: thread.id, userId: user.id, side }, { lastReadAt: seenUpTo });
       const row = await views.threadRow(rootDb, thread, { recordLabel: resolved?.label ?? null, unread: false, archivedAt: mine?.archivedAt ?? null });
       const recordPath = resolved ? (side === SIDES.HOST ? resolved.hostPath : resolved.partyPath) ?? null : null;
       return { thread: { ...row, recordPath }, messages: await views.messageList(rootDb, rows) };
