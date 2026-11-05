@@ -76,8 +76,10 @@ in a read-only transaction after `SET LOCAL statement_timeout` (report
 then `BUSY`). It throws `ReportError(code)` with code `NOT_FOUND`, `FORBIDDEN`,
 `INVALID` (with `field`), `UNAVAILABLE`, `TIMEOUT` or `BUSY`. Server-paged
 reports read `limit` (default 50, max 500), `offset` and `sort` from the query;
-client-paged results are cut at 5000 rows with `truncated`. `streamCsv` pages a
-server report by 2000 up to 100000 rows, one short transaction per page.
+client-paged results are cut at 5000 rows with `truncated` (a run that cuts its
+own list returns `truncated: true` and `total`, and the same note shows). `streamCsv`
+pages a server report by 2000 up to 100000 rows, one short transaction per page,
+and cuts a client-paged report at 100000 rows, not 5000.
 
 `createReportRoutes({ registry, db, preHandler, audit, favorites, tz?, slots?, dashboardCache? })`
 returns a Fastify plugin: `GET /reports` (with the registry's `featuredTitle`,

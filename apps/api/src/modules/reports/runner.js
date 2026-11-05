@@ -162,7 +162,8 @@ export async function executePrepared({ def, params, page, clock = runClock() },
   const timeoutMs = override ?? def.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const out = await inReadOnlyTx({ db, timeoutMs, slots }, (tx) => def.run(tx, params, actor, { page, ...clock }));
   const rows = out?.rows || [];
-  const result = { rows, total: out?.total ?? rows.length, truncated: false, generatedAt: new Date().toISOString() };
+  // A run may cut its own list (`truncated: true`, `total` = how many exist); the cap below cuts the rest.
+  const result = { rows, total: out?.total ?? rows.length, truncated: out?.truncated === true, generatedAt: new Date().toISOString() };
   if (!page && rows.length > rowCap) {
     result.rows = rows.slice(0, rowCap);
     result.truncated = true;

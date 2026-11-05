@@ -84,6 +84,13 @@ describe("runReport", () => {
     expect(out.total).toBe(ROW_CAP + 10);
   });
 
+  test("a run that cuts its own list says so: truncated and its total pass through", async () => {
+    const s = setup({ run: async () => ({ rows: [{ a: 1 }, { a: 2 }], total: 9, truncated: true }) });
+    const out = await go(s);
+    expect(out).toMatchObject({ truncated: true, total: 9 });
+    expect(out.rows).toHaveLength(2);
+  });
+
   test("server paging passes ctx.page and keeps limit/offset/sort out of params", async () => {
     const s = setup({ paging: "server", columns: [{ id: "a", label: "A", type: "int", sortable: true }], run: async () => ({ rows: [], total: 9000 }) });
     const out = await go(s, { query: { limit: "25", offset: "50", sort: "-a" } });

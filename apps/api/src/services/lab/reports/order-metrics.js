@@ -23,9 +23,9 @@ import { alias } from "drizzle-orm/pg-core";
 import {
   CARRIERS, LAB_STATUS_LABELS, LAB_TIMEZONE, TERMINAL_LAB_STATUSES, addDays, daysBetween, isoDateIn,
 } from "@my-app/shared";
-import { labOrders, labOrderLines, labDepartments, users, doctorProfiles, shipments, productFamilies } from "../../../db/schema/index.js";
+import { labOrders, labOrderLines, labDepartments, users, shipments, productFamilies } from "../../../db/schema/index.js";
 import { catalogJoins, clientName, isLiveOrder, labDay, labDayBetween, labDayText, num, rowsOf, turnaroundDaysSql } from "./lab-metrics.js";
-import { uncategorizedSql } from "./report-helpers.js";
+import { optionalClientJoin, uncategorizedSql } from "./report-helpers.js";
 
 // ── SQL building blocks ──────────────────────────────────────────────────
 
@@ -65,8 +65,7 @@ export const departmentJoin = sql`left join ${labDepartments} on ${labDepartment
 
 /** Joins an order to its client (+ profile), assignee and department; all left joins. */
 export const orderJoins = sql`
-  left join ${users} on ${users.id} = ${labOrders.clientUserId}
-  left join ${doctorProfiles} on ${doctorProfiles.userId} = ${users.id}
+  ${optionalClientJoin(labOrders.clientUserId)}
   ${assigneeJoin}
   ${departmentJoin}`;
 
@@ -151,20 +150,27 @@ export async function boardDayCounts(db, today) {
   return { pastDue: num(r.pastDue), dueToday: num(r.dueToday), dueTomorrow: num(r.dueTomorrow), onHold: num(r.onHold), atRisk: num(r.atRisk) };
 }
 
-/** The at-risk orders, soonest due first: [{ id, orderNumber, client, status, dueDate, rush }]. */
-export async function atRiskOrders(db, today, limit = 50) {
+/** How many at-risk orders the list shows. */
+export const AT_RISK_LIST_LIMIT = 50;
+
+/**
+ * The at-risk orders, soonest due first, at most `limit`:
+ * { rows: [{ id, orderNumber, client, status, dueDate, rush }], truncated }.
+ * One row past the limit is read so `truncated` says whether more exist.
+ */
+export async function atRiskOrders(db, today, limit = AT_RISK_LIST_LIMIT) {
   const raw = await rowsOf(db, sql`
     select ${labOrders.id} as "id", ${labOrders.orderNumber} as "orderNumber", ${clientName} as "client",
       ${labOrders.status} as "status", to_char(${labOrders.dueDate}, 'YYYY-MM-DD') as "dueDate", ${labOrders.rush} as "rush"
     from ${labOrders}
-    left join ${users} on ${users.id} = ${labOrders.clientUserId}
-    left join ${doctorProfiles} on ${doctorProfiles.userId} = ${users.id}
+    ${optionalClientJoin(labOrders.clientUserId)}
     where ${isOpenOrder} and ${atRiskSql(today)}
     order by ${labOrders.dueDate}, ${labOrders.rush} desc, ${labOrders.orderNumber}
-    limit ${limit}`);
-  return raw.map((r) => ({
+    limit ${limit + 1}`);
+  const rows = raw.slice(0, limit).map((r) => ({
     id: r.id, orderNumber: r.orderNumber, client: r.client ?? null, status: r.status, dueDate: r.dueDate ?? null, rush: Boolean(r.rush),
   }));
+  return { rows, truncated: raw.length > limit };
 }
 
 // ── Per-day series ───────────────────────────────────────────────────────

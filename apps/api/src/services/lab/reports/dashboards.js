@@ -178,10 +178,15 @@ const atRiskList = {
     { id: "status", label: "Status", type: "badge" }, { id: "dueDate", label: "Due", type: "date" }, { id: "rush", label: "Rush", type: "text" },
   ],
   async run(tx, _params, _actor, ctx) {
-    const rows = (await atRiskOrders(tx, labToday(ctx))).map((o) => ({
+    const today = labToday(ctx);
+    const list = await atRiskOrders(tx, today);
+    const rows = list.rows.map((o) => ({
       labOrderId: o.id, orderNumber: o.orderNumber, client: o.client, status: statusBadge(o.status), dueDate: o.dueDate, rush: o.rush ? "Rush" : "",
     }));
-    return { rows };
+    if (!list.truncated) return { rows };
+    // More exist: the runner marks the result cut, with the same count the At risk tile shows.
+    const { atRisk } = await boardDayCounts(tx, today);
+    return { rows, total: atRisk, truncated: true };
   },
 };
 

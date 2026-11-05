@@ -57,10 +57,10 @@ test("a past-due in-production order is past due, not at risk", () => {
 test("atRiskOrders lists soonest due first and never selects notes or patients", async () => {
   const tx = fakeTx({ executes: [[{ id: "o1", orderNumber: 50001, client: "One Dental", status: "in_production", dueDate: "2026-11-02", rush: true }]] });
   const out = await atRiskOrders(tx, "2026-11-01", 10);
-  assert.deepEqual(out, [{ id: "o1", orderNumber: 50001, client: "One Dental", status: "in_production", dueDate: "2026-11-02", rush: true }]);
+  assert.deepEqual(out, { rows: [{ id: "o1", orderNumber: 50001, client: "One Dental", status: "in_production", dueDate: "2026-11-02", rush: true }], truncated: false });
   const [{ text, params }] = executedSql(tx);
   assert.match(text, /order by lab_orders\.due_date, lab_orders\.rush desc, lab_orders\.order_number\s+limit \$\d+/);
-  assert.ok(params.includes(10));
+  assert.ok(params.includes(11), "reads one past the limit to know whether more exist");
   assert.doesNotMatch(text, PHI);
 });
 

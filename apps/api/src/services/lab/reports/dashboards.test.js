@@ -130,6 +130,22 @@ test("board metrics read boardDayCounts and link to their report with params", a
   assert.equal(reportHref("sales.daily", { range: "2026-01-01..2026-02-01" }), "/reports/sales.daily?p.range=2026-01-01..2026-02-01");
 });
 
+test("the at-risk list says when it is cut at 50, with the board's count", async () => {
+  const def = registry().getReport("ops.at-risk-orders");
+  const order = (i) => ({ id: `o${i}`, orderNumber: 50000 + i, client: "c", status: "received", dueDate: "2026-11-06", rush: false });
+  const many = fakeTx({ executes: [Array.from({ length: 51 }, (_, i) => order(i)), [{ pastDue: "0", dueToday: "0", dueTomorrow: "0", onHold: "0", atRisk: "73" }]] });
+  const cut = await def.run(many, {}, lab, ctx());
+  assert.equal(cut.rows.length, 50);
+  assert.equal(cut.total, 73);
+  assert.equal(cut.truncated, true);
+
+  const few = fakeTx({ executes: [[order(1), order(2)]] });
+  const all = await def.run(few, {}, lab, ctx());
+  assert.equal(all.rows.length, 2);
+  assert.equal(all.truncated, undefined);
+  assert.equal(executedSql(few).length, 1, "no count query when nothing was cut");
+});
+
 function addDaysIso(iso, n) {
   const d = new Date(`${iso}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
