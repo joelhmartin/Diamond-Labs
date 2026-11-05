@@ -35,6 +35,8 @@ const mainItems = [
 ];
 
 const staffItems = [
+  // The lab dashboards (Pulse first); `end: false` keeps it active on /lab/dashboard/:key.
+  { label: "Dashboard",  to: ROUTES.LAB_DASHBOARD_HOME, icon: LayoutDashboard, end: false },
   { label: "Production", to: ROUTES.LAB_BOARD,      icon: LayoutGrid },
   { label: "Rx Cases",   to: ROUTES.ADMIN_RX_CASES, icon: ClipboardCheck },
   { label: "Shipments",  to: ROUTES.ADMIN_SHIPMENTS, icon: Truck },
@@ -54,11 +56,11 @@ const adminItems = [
   { label: "Rx Mapping", to: ROUTES.ADMIN_RX_MAPPING,  icon: FlaskConical },
 ];
 
-function NavItem({ to, icon: Icon, label }) {
+function NavItem({ to, icon: Icon, label, end = true }) {
   return (
     <NavLink
       to={to}
-      end
+      end={end}
       className={({ isActive }) =>
         clsx(
           "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",

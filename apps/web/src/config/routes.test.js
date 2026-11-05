@@ -2,9 +2,12 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import { roleHome, ROUTES, labOrderPath, shipmentPrintPath } from "./routes.js";
 
-test("lab staff land on the production board", () => {
+test("admin roleHome is /lab/dashboard, lab is /lab", () => {
   assert.equal(roleHome({ role: "lab" }), ROUTES.LAB_BOARD);
-  assert.equal(roleHome({ role: "admin" }), ROUTES.DASHBOARD);
+  assert.equal(roleHome({ role: "lab" }), "/lab");
+  assert.equal(roleHome({ role: "admin" }), ROUTES.LAB_DASHBOARD_HOME);
+  assert.equal(roleHome({ role: "admin" }), "/lab/dashboard");
+  assert.equal(roleHome({ role: "user" }), ROUTES.DASHBOARD);
   assert.equal(labOrderPath("abc"), "/lab/orders/abc");
 });
 

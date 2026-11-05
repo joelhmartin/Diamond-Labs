@@ -11,7 +11,7 @@ vi.mock("../api.js", () => ({
   listReports: (...a) => listReports(...a),
   setFavorite: (...a) => setFavorite(...a),
 }));
-const { ReportsIndexPage } = await import("../ReportsIndexPage.jsx");
+const { ReportsIndexPage, buildSections } = await import("../ReportsIndexPage.jsx");
 
 afterEach(() => { cleanup(); listReports.mockReset(); setFavorite.mockReset(); });
 
@@ -84,4 +84,15 @@ test('unavailable report shows "Not available yet" and is not a link', async () 
   assert.equal(screen.queryByRole("link", { name: /Pickups/ }), null);
   assert.ok(screen.getByText(/Not available yet/));
   assert.ok(screen.getByRole("link", { name: "Daily totals" }).getAttribute("href").endsWith("/reports/sales.daily"));
+});
+
+test("an unlisted report (a dashboard tile's source) is not in the index sections", () => {
+  const groups = [{ key: "sales", title: "Sales", position: 1 }];
+  const reports = [
+    report({ key: "sales.daily", title: "Daily totals", featured: true }),
+    report({ key: "sales.tile", title: "Tile source", unlisted: true, featured: true }),
+  ];
+  const sections = buildSections(groups, reports);
+  for (const s of sections) assert.ok(!s.items.some((r) => r.key === "sales.tile"), s.key);
+  assert.deepEqual(sections.map((s) => s.items.length), [1, 1]);
 });

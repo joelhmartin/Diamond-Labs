@@ -36,7 +36,8 @@ export function DashboardPage() {
 
   useEffect(() => {
     if (!activeKey) return;
-    setState((s) => ({ ...s, loading: true, error: null }));
+    // A new tab starts blank: the previous dashboard's tiles never show under the new title.
+    setState({ data: null, error: null, loading: true });
     latest(() => getDashboard(activeKey))
       .then(({ stale, value }) => { if (!stale) setState({ data: value, error: null, loading: false }); })
       .catch((error) => setState({ data: null, error, loading: false }));
@@ -103,7 +104,7 @@ function Tabs({ list, activeKey }) {
 function Tile({ tile, reload }) {
   if (tile.ok && tile.kind === "stat") {
     const d = tile.data || {};
-    return <StatTile title={tile.title} value={d.value} previous={d.previous} format={d.format} href={d.href} />;
+    return <StatTile title={tile.title} value={d.value} previous={d.previous} format={d.format} href={d.href} detail={d.detail} />;
   }
   return (
     <section aria-label={tile.title} className="h-full rounded-2xl border border-surface-300/50 bg-white p-5">

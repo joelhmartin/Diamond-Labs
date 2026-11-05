@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { formatCell } from "@my-app/shared";
 import { useVisibleInterval } from "./useVisibleInterval.js";
 
@@ -8,6 +9,7 @@ const TIME_TYPES = new Set(["datetime", "date"]);
 /**
  * A live list of recent events (a report's rows, newest first). The first
  * date/datetime column is the timestamp; the other columns read as one line.
+ * A row with an `href` (an app path) makes its line a link.
  *
  * Polling: `reload()` every 30 s, only while the page is visible. Hidden stops
  * it; becoming visible again refreshes at once and resumes; unmount stops it.
@@ -29,11 +31,15 @@ export function FeedTile({ rows = [], columns = [], reload, intervalMs = FEED_PO
         // eslint-disable-next-line react/no-array-index-key -- feed rows carry no id
         <li key={i} className="flex gap-3 py-2 text-sm">
           {timeCol && <time className="shrink-0 font-mono text-[11px] text-navy/50">{formatCell(timeCol, row[timeCol.id])}</time>}
-          <span className="min-w-0 text-navy/80">
-            {rest.map((c) => formatCell(c, row[c.id])).filter(Boolean).join(" · ")}
-          </span>
+          <FeedLine row={row} text={rest.map((c) => formatCell(c, row[c.id])).filter(Boolean).join(" · ")} />
         </li>
       ))}
     </ol>
   );
+}
+
+function FeedLine({ row, text }) {
+  const href = typeof row.href === "string" && row.href.startsWith("/") ? row.href : null;
+  if (!href) return <span className="min-w-0 text-navy/80">{text}</span>;
+  return <Link to={href} className="min-w-0 text-navy/80 hover:text-brand-600 hover:underline">{text}</Link>;
 }

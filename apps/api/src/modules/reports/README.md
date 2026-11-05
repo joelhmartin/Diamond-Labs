@@ -21,10 +21,10 @@ registry.defineReport({
   columns: [{ id, label, type, align?, link?, sortable? }],
   chart?: { type: "line" | "bar" | "groupedBar" | "stackedBar", x, series: [{ field, label }] },
   roles?, paging?: "client" | "server", requires?: string[],
-  featured?, timeoutMs? /* <= 30000 */, display?: "wall",
+  featured?, timeoutMs? /* <= 30000 */, display?: "wall", unlisted?: boolean,
 });
 registry.defineDashboard({ key, title, params?, tiles: [{ id, kind, report?, metric?, span?, roles? }] });
-registry.defineMetric({ key, roles?, run(db, params, actor, ctx?) -> { value, previous?, format, href? } });
+registry.defineMetric({ key, roles?, run(db, params, actor, ctx?) -> { value, previous?, format, href?, detail? } });
 registry.defineLookup({ key, roles?, search(db, q, actor) -> [{ value, label }], label(db, value) });
 registry.provideCapability(name);
 
@@ -52,6 +52,10 @@ agree on the day.
 
 `display: "wall"` marks a report the web can show full screen (large type,
 re-run every 60 s while visible).
+
+`unlisted: true` marks a report that exists for a dashboard tile: `listReports`
+still returns it (flagged `unlisted`, so its page opens by link) but the web
+index leaves it out of every section.
 
 `paramsSchema(def).parse(query, { now, tz })` coerces query strings, applies
 defaults and rejects bad values. Each `dateRange` comes back as
@@ -99,7 +103,11 @@ returns `{ key, title, tiles }`. Each tile is
   `title`, `span` and `chart`. `query` supplies only the dashboard's declared
   `params`, laid over each tile's own.
 - Tiles run in parallel through the same read-only, time-limited transaction
-  and run slots as a report, at 5000 ms each.
+  and run slots as a report, at 5000 ms each, or the report's own `timeoutMs`
+  when that is shorter (`tileTimeoutMs`). A metric's `run` gets that
+  transaction, never the raw handle.
+- A metric's optional `detail` is a list of related counts,
+  `[{ id, label, value, format? }]`; the stat tile shows them under the value.
 - One tile failing never fails the dashboard. A `ReportError` keeps its code and
   message (a timeout says "This report took too long. Try a shorter date
   range."); anything else becomes `INTERNAL_ERROR` with a generic message, and
@@ -107,7 +115,8 @@ returns `{ key, title, tiles }`. Each tile is
 - Tiles outside the actor's roles (the tile's `roles`, or its report's or
   metric's) are left out, not shown as errors.
 - `tile` resolves that one tile only (a feed tile's poll); unknown or hidden is
-  `NOT_FOUND`.
+  `NOT_FOUND`. A one-tile request skips the cache read (so a 30 s poll is never
+  60 s stale) and refills it.
 - Successful tiles are cached in memory per process for 60 s, keyed by
   `dashboard:tile | params | role` (`createDashboardCache({ ttlMs, clock, max })`).
   So a tile must not depend on who the actor is beyond their role.

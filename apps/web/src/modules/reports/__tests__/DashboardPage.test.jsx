@@ -164,3 +164,57 @@ test("the feed tile reloads just its own tile", async () => {
   await waitFor(() => assert.ok(screen.getByText("Newer event")));
   assert.deepEqual(getDashboard.mock.calls[1], ["pulse", { tile: "feed" }]);
 });
+
+test("switching tabs clears the previous dashboard's tiles while the next one loads", async () => {
+  listDashboards.mockResolvedValue(LIST);
+  let release;
+  getDashboard.mockResolvedValueOnce(PULSE);
+  getDashboard.mockReturnValueOnce(new Promise((resolve) => { release = resolve; }));
+  render(
+    <MemoryRouter initialEntries={[dashboardPath("pulse")]}>
+      <ToastProvider>
+        <Routes><Route path={ROUTES.LAB_DASHBOARD} element={<DashboardPage />} /></Routes>
+      </ToastProvider>
+    </MemoryRouter>,
+  );
+  await screen.findByText("New today");
+  const tabs = screen.getByRole("navigation", { name: "Dashboards" });
+  act(() => { within(tabs).getByText("Operations").click(); });
+  const ops = { key: "ops", title: "Operations", tiles: [{ id: "x", kind: "stat", span: 1, title: "Due today", ok: true, data: { value: 2, format: "int" } }] };
+  try {
+    // While Operations loads, the old tiles are gone and the page says it is loading (not Pulse's tiles under the Operations tab).
+    // Booleans only: an AssertionError that prints a DOM node makes node's inspect walk React's fiber graph and hang the worker.
+    assert.equal(screen.queryByText("New today") === null, true, "the previous dashboard's tiles are still shown");
+    assert.equal(screen.queryByText(/Loading/) !== null, true, "no loading state");
+  } finally {
+    await act(async () => { release(ops); }); // always settle the request, pass or fail
+  }
+  assert.ok(await screen.findByText("Due today"));
+  assert.equal(getDashboard.mock.calls[1][0], "ops");
+});
+
+test("StatTile shows detail counts under the value when present", async () => {
+  render(<MemoryRouter><StatTile title="Active clients" value={158} format="int" detail={[{ id: "declining", label: "declining", value: 35 }, { id: "inactive", label: "inactive", value: 111 }]} /></MemoryRouter>);
+  assert.ok(screen.getByText("158"));
+  assert.ok(screen.getByText("35 declining · 111 inactive"));
+  cleanup();
+  // A stat tile on a dashboard passes its data's detail through.
+  listDashboards.mockResolvedValue(LIST);
+  getDashboard.mockResolvedValue({ key: "pulse", title: "Pulse", tiles: [{ id: "a", kind: "stat", span: 1, title: "Month to date", ok: true, data: { value: 1500, format: "money", detail: [{ id: "invoices", label: "invoices", value: 3 }] } }] });
+  render(
+    <MemoryRouter initialEntries={[dashboardPath("pulse")]}>
+      <ToastProvider><Routes><Route path={ROUTES.LAB_DASHBOARD} element={<DashboardPage />} /></Routes></ToastProvider>
+    </MemoryRouter>,
+  );
+  assert.ok(await screen.findByText("3 invoices"));
+});
+
+test("FeedTile links a row that carries an href", () => {
+  const columns = [{ id: "at", label: "When", type: "datetime" }, { id: "text", label: "What", type: "text" }];
+  const rows = [{ at: "2026-11-05T15:00:00.000Z", text: "Moved to production", href: "/somewhere/12" }, { at: "2026-11-05T14:00:00.000Z", text: "No link here" }];
+  render(<MemoryRouter><FeedTile rows={rows} columns={columns} /></MemoryRouter>);
+  const link = screen.getByRole("link", { name: "Moved to production" });
+  assert.ok(link.getAttribute("href").endsWith("/somewhere/12"));
+  assert.equal(screen.getAllByRole("link").length, 1);
+  assert.ok(screen.getByText("No link here"));
+});

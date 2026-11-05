@@ -24,7 +24,7 @@ import {
   CARRIERS, LAB_STATUS_LABELS, LAB_TIMEZONE, TERMINAL_LAB_STATUSES, addDays, daysBetween, isoDateIn,
 } from "@my-app/shared";
 import { labOrders, labOrderLines, labDepartments, users, doctorProfiles, shipments, productFamilies } from "../../../db/schema/index.js";
-import { catalogJoins, clientName, isLiveOrder, labDayBetween, labDayText, num, rowsOf } from "./lab-metrics.js";
+import { catalogJoins, clientName, isLiveOrder, labDay, labDayBetween, labDayText, num, rowsOf, turnaroundDaysSql } from "./lab-metrics.js";
 
 // ── SQL building blocks ──────────────────────────────────────────────────
 
@@ -101,6 +101,36 @@ export function turnaroundDays(order, calendar) {
   return to < from ? 0 : daysBetween(from, to).length - 1;
 }
 
+/** Shipped (not cancelled) on a lab day in the range: the orders a turnaround figure averages. */
+export const shippedInSql = (range) => sql`${labOrders.status} = 'shipped' and ${labOrders.shippedAt} is not null and ${labDayBetween(labOrders.shippedAt, range)}`;
+
+const avgOrNull = (v) => (v == null ? null : Number(v));
+
+/** Average turnaround (turnaroundDaysSql) of orders shipped in the range: { orders, avgDays | null }. */
+export async function turnaroundAverage(db, range) {
+  const [r = {}] = await rowsOf(db, sql`
+    select count(*) as "orders", avg(${turnaroundDaysSql}) as "avgDays" from ${labOrders} where ${shippedInSql(range)}`);
+  return { orders: num(r.orders), avgDays: avgOrNull(r.avgDays) };
+}
+
+/** The Monday of a "YYYY-MM-DD" day's week (Postgres date_trunc('week') weeks). */
+export function weekStart(day) {
+  const dow = new Date(`${day}T00:00:00Z`).getUTCDay(); // 0 = Sunday
+  return addDays(day, -((dow + 6) % 7));
+}
+
+/** Average turnaround per week shipped (Monday start), every week the range touches: [{ week, orders, avgDays | null }]. */
+export async function turnaroundByWeek(db, range) {
+  const raw = await rowsOf(db, sql`
+    select to_char(date_trunc('week', ${labDay(labOrders.shippedAt)}), 'YYYY-MM-DD') as "week", count(*) as "orders", avg(${turnaroundDaysSql}) as "avgDays"
+    from ${labOrders} where ${shippedInSql(range)}
+    group by 1 order by 1`);
+  const byWeek = new Map(raw.map((r) => [String(r.week), r]));
+  const weeks = [];
+  for (let w = weekStart(range.from); w <= range.to; w = addDays(w, 7)) weeks.push(w);
+  return weeks.map((week) => ({ week, orders: num(byWeek.get(week)?.orders), avgDays: avgOrNull(byWeek.get(week)?.avgDays) }));
+}
+
 // ── Board day counts (the seam piece 7 replaces) ─────────────────────────
 
 /**
@@ -137,6 +167,17 @@ export async function atRiskOrders(db, today, limit = 50) {
 }
 
 // ── Per-day series ───────────────────────────────────────────────────────
+
+/** Open orders due per day, every day in the range: [{ day, orders, rush }]. boardDayCounts' due-today rule, by day. */
+export async function dueByDay(db, range) {
+  const raw = await rowsOf(db, sql`
+    select to_char(${labOrders.dueDate}, 'YYYY-MM-DD') as "day", count(*) as "orders", count(*) filter (where ${labOrders.rush}) as "rush"
+    from ${labOrders}
+    where ${isOpenOrder} and ${labOrders.dueDate} between ${range.from}::date and ${range.to}::date
+    group by 1 order by 1`);
+  const byDay = new Map(raw.map((r) => [String(r.day), r]));
+  return daysBetween(range.from, range.to).map((day) => ({ day, orders: num(byDay.get(day)?.orders), rush: num(byDay.get(day)?.rush) }));
+}
 
 /** Orders received per lab day, every day in the range: [{ day, orders, rush, remakes, units }]. Cancelled orders do not count. */
 export async function ordersByDay(db, range) {

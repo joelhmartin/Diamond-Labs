@@ -4,7 +4,8 @@ import { isOverdue, TERMINAL_LAB_STATUSES, LAB_ORDER_STATUSES } from "@my-app/sh
 import { fakeTx } from "../../../test/fake-tx.js";
 import { executedSql, renderSql, sqlText } from "../../../test/sql-text.js";
 import {
-  atRiskOrders, atRiskSql, boardDayCounts, dueSoonSql, isOpenOrder, ordersByDay, openUnitsByCategory, pastDueSql, shippedByDay, turnaroundDays,
+  atRiskOrders, atRiskSql, boardDayCounts, dueByDay, dueSoonSql, isOpenOrder, ordersByDay, openUnitsByCategory, pastDueSql, shippedByDay, turnaroundDays,
+  turnaroundAverage, turnaroundByWeek, weekStart,
 } from "./order-metrics.js";
 
 const PHI = /legacy_patient|patient_|form_data|notes|hold_reason|lab_notes|source_label|\bnote\b/;
@@ -103,4 +104,36 @@ test("openUnitsByCategory sums product lines on open orders by catalog category"
   assert.match(text, /left join product_variants as by_code/);
   assert.match(text, /lab_orders\.status not in \('shipped', 'cancelled'\)/);
   assert.doesNotMatch(text, PHI);
+});
+
+test("dueByDay counts open orders by due date, every day filled (the board's due-today rule)", async () => {
+  const tx = fakeTx({ executes: [[{ day: "2026-11-06", orders: "4", rush: "1" }]] });
+  const out = await dueByDay(tx, range("2026-11-05", "2026-11-07"));
+  assert.deepEqual(out, [
+    { day: "2026-11-05", orders: 0, rush: 0 }, { day: "2026-11-06", orders: 4, rush: 1 }, { day: "2026-11-07", orders: 0, rush: 0 },
+  ]);
+  const [{ text, params }] = executedSql(tx);
+  assert.match(text, /lab_orders\.status not in \('shipped', 'cancelled'\) and lab_orders\.due_date between \$\d::date and \$\d::date/);
+  assert.ok(params.includes("2026-11-05") && params.includes("2026-11-07"));
+  assert.doesNotMatch(text, PHI);
+});
+
+test("turnaround average and weekly trend use the clamped received -> shipped lab-day rule on shipped orders", async () => {
+  const tx = fakeTx({ executes: [[{ orders: "3", avgDays: "2.5" }], []] });
+  assert.deepEqual(await turnaroundAverage(tx, range("2026-10-07", "2026-11-05")), { orders: 3, avgDays: 2.5 });
+  assert.deepEqual(await turnaroundAverage(tx, range("2026-09-07", "2026-10-06")), { orders: 0, avgDays: null });
+  const [{ text }] = executedSql(tx);
+  assert.match(text, /lab_orders\.status = 'shipped' and lab_orders\.shipped_at is not null/);
+  assert.match(text, /avg\(greatest\(0, \(lab_orders\.shipped_at at time zone 'America\/Chicago'\)::date - \(lab_orders\.received_at at time zone 'America\/Chicago'\)::date\)\)/);
+
+  assert.equal(weekStart("2026-11-05"), "2026-11-02"); // a Thursday -> its Monday
+  assert.equal(weekStart("2026-11-02"), "2026-11-02");
+  assert.equal(weekStart("2026-11-01"), "2026-10-26"); // Sunday belongs to the week before
+  const wk = fakeTx({ executes: [[{ week: "2026-10-26", orders: "2", avgDays: "4" }]] });
+  const weeks = await turnaroundByWeek(wk, range("2026-10-19", "2026-11-05"));
+  assert.deepEqual(weeks, [
+    { week: "2026-10-19", orders: 0, avgDays: null }, { week: "2026-10-26", orders: 2, avgDays: 4 }, { week: "2026-11-02", orders: 0, avgDays: null },
+  ]);
+  const [{ text: wt }] = executedSql(wk);
+  assert.match(wt, /date_trunc\('week', \(lab_orders\.shipped_at at time zone 'America\/Chicago'\)::date\)/);
 });

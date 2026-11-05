@@ -81,7 +81,8 @@ export function roleHome(user) {
     if (user.approvalStatus === "approved") return ROUTES.DOCTOR_INVOICES;
   }
   if (user.role === "lab") return ROUTES.LAB_BOARD;
-  // Everyone else (including admin) lands on the dashboard; the sidebar
-  // surfaces role-specific sections like /admin/*.
+  // Admins land on the lab dashboards (Pulse).
+  if (user.role === "admin") return ROUTES.LAB_DASHBOARD_HOME;
+  // Everyone else lands on the account dashboard.
   return ROUTES.DASHBOARD;
 }

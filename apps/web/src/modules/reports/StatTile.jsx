@@ -23,12 +23,17 @@ export function deltaOf(value, previous) {
  * "duration_days", …) and goes through the shared formatCell, so a tile and
  * its report show the same text. The delta is neutral ink: whether up is good
  * depends on the number, so it is not coloured. `href` makes the tile a link.
+ * `detail` is an optional list of related counts shown under the value
+ * (`[{ id, label, value, format? }]` reads "35 declining · 111 inactive").
  *
  *   <StatTile title="New today" value={7} previous={5} format="int" href="/reports/x" />
  */
-export function StatTile({ title, value, previous, format = "int", href, note }) {
+export function StatTile({ title, value, previous, format = "int", href, note, detail }) {
   const shown = formatCell({ type: format }, value) || "—";
   const delta = deltaOf(value, previous);
+  const details = Array.isArray(detail) && detail.length > 0
+    ? detail.map((d) => `${formatCell({ type: d.format ?? "int" }, d.value) || "0"} ${d.label}`).join(" · ")
+    : null;
   const body = (
     <>
       <p className="font-mono text-[10px] uppercase tracking-widest text-navy/50">{title}</p>
@@ -40,6 +45,7 @@ export function StatTile({ title, value, previous, format = "int", href, note })
             <span className="sr-only">{delta.words}</span>
           </span>
         )}
+        {details && <span>{details}</span>}
         {note && <span>{note}</span>}
       </div>
     </>

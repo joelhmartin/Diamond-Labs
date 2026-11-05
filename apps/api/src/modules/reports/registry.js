@@ -62,6 +62,7 @@ function validateReport(def, groups) {
   if (def.chart && !CHART_TYPES.includes(def.chart.type)) fail(`${where}: unknown chart type "${def.chart.type}"`);
   if (def.display !== undefined && def.display !== "wall") fail(`${where}: display must be "wall"`);
   if (def.requires !== undefined && !Array.isArray(def.requires)) fail(`${where}: requires must be an array`);
+  if (def.unlisted !== undefined && typeof def.unlisted !== "boolean") fail(`${where}: unlisted must be true or false`);
 }
 
 /** Public metadata: everything except functions. */

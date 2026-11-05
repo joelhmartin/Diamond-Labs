@@ -36,7 +36,8 @@ const DEPENDENT = {
 
 test("every AUDIT_REPORTS title is defined exactly once in its group, and there are 63 definitions in total", () => {
   assert.equal(AUDIT_REPORTS.length, 63);
-  const all = registry().listReports(boss);
+  // Dashboard-only tile reports are unlisted: not in the index or the audit count.
+  const all = registry().listReports(boss).filter((d) => !d.unlisted);
   assert.equal(all.length, 63);
   const groupKeys = new Set(LAB_REPORT_GROUPS.map((g) => g.key));
   for (const { group, title } of AUDIT_REPORTS) {
@@ -91,7 +92,7 @@ test("roles: money and pricing are admin only; operations, planning, productivit
 });
 
 test("featured (starred in Labzona) reports", () => {
-  const featured = registry().listReports(boss).filter((d) => d.featured).map((d) => d.key).sort();
+  const featured = registry().listReports(boss).filter((d) => d.featured && !d.unlisted).map((d) => d.key).sort();
   assert.deepEqual(featured, [
     "clients.health", "departments.monitoring-boards", "operations.case-submission",
     "planning.calendar", "planning.tasks-schedule", "planning.technician-workload",

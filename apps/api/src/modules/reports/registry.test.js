@@ -72,6 +72,16 @@ describe("listing and access", () => {
     expect(reg.listReports({ role: "guest" })).toEqual([]);
   });
 
+  test("an unlisted report (a dashboard tile's source) is listed with unlisted: true and must say so with a boolean", () => {
+    const reg = make();
+    reg.defineReport(base({ key: "sales.tile", unlisted: true }));
+    reg.defineReport(base({ key: "sales.open" }));
+    const listed = Object.fromEntries(reg.listReports({ role: "staff" }).map((r) => [r.key, r]));
+    expect(listed["sales.tile"].unlisted).toBe(true);
+    expect(listed["sales.open"].unlisted).toBeUndefined();
+    expect(() => reg.defineReport(base({ key: "sales.bad", unlisted: "yes" }))).toThrow(/unlisted/);
+  });
+
   test("list meta omits the run function", () => {
     const reg = make();
     reg.defineReport(base());

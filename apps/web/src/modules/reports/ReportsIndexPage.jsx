@@ -13,8 +13,12 @@ export function matchesReport(report, groupTitle, q) {
   return [report.title, report.description, groupTitle].some((s) => String(s ?? "").toLowerCase().includes(needle));
 }
 
-/** Sections in display sequence: the person's stars, featured (titled by the host), then each group in the server's sequence. */
-export function buildSections(groups, reports, featuredTitle = "Featured") {
+/**
+ * Sections in display sequence: the person's stars, featured (titled by the host), then each group in the server's sequence.
+ * `unlisted` reports (a dashboard tile's source) are left out: they open by link only.
+ */
+export function buildSections(groups, allReports, featuredTitle = "Featured") {
+  const reports = allReports.filter((r) => !r.unlisted);
   const sections = [
     { key: "favorites", title: "Favorites", items: reports.filter((r) => r.favorite) },
     { key: "featured", title: featuredTitle, items: reports.filter((r) => r.featured) },
