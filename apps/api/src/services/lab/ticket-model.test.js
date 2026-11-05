@@ -90,3 +90,32 @@ test("a legacy order's ticket names the Seazona order and its patient", () => {
   assert.deepEqual(m.header.find((h) => h[0] === "Seazona order"), ["Seazona order", "ord-1"]);
   assert.deepEqual(m.header.find((h) => h[0] === "Patient"), ["Patient", "Test Patient"]);
 });
+
+const scheduled = {
+  ...rxDetail,
+  schedule: {
+    workflowName: "10-day Printed",
+    stages: [
+      { key: "check-in", label: "Check in", targetAt: "2026-10-07", reached: true },
+      { key: "qc", label: "Quality check", targetAt: "2026-10-19", reached: false },
+    ],
+  },
+};
+
+test("ticket model includes the due badge and stage schedule", () => {
+  const m = buildTicketModel({ ...scheduled, order: { ...scheduled.order, dueDate: "2026-11-12" } }, { generatedAt });
+  assert.equal(m.dueBadge, "DUE THU 11/12", "2026-11-12 is a Thursday");
+  assert.deepEqual(Object.fromEntries(m.header).Workflow, "10-day Printed");
+  assert.deepEqual(m.schedule, [
+    { label: "Check in", target: "10/07/2026", reached: true },
+    { label: "Quality check", target: "10/19/2026", reached: false },
+  ]);
+  assert.equal(buildTicketModel({ ...scheduled, order: { ...scheduled.order, dueDate: "2026-11-11" } }, { generatedAt }).dueBadge, "DUE WED 11/11");
+});
+
+test("no plan: no Schedule section and no Workflow row", () => {
+  const m = buildTicketModel({ ...rxDetail, schedule: null }, { generatedAt });
+  assert.deepEqual(m.schedule, []);
+  assert.equal(m.header.some(([k]) => k === "Workflow"), false);
+  assert.equal(buildTicketModel({ ...rxDetail, order: { ...rxDetail.order, dueDate: null } }, { generatedAt }).dueBadge, null);
+});
