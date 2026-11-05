@@ -131,6 +131,18 @@ test("doctor lists practice-wide pickups (same seazonaClientId) and not another 
   assert.deepEqual(other.calls[0].params.slice(0, 2), ["user:d4", "practice:P2"]);
 });
 
+test("a doctor with no seazonaClientId lists only their own user:<id> pickups and can't cancel a practice pickup", async () => {
+  const solo = { id: "d6", role: "doctor", approvalStatus: "approved", seazonaClientId: null };
+  const { db, calls } = queueDb([], [[0]]);
+  await svc.listPickups(solo, { limit: 25 }, { database: db });
+  assert.match(calls[0].sql, /"party_key" in \(\$1\)/);
+  assert.equal(calls[0].params[0], "user:d6");
+  const tx = fakeTx({ selects: [[row({ partyKey: "practice:P1" })]] });
+  await assert.rejects(svc.cancelPickup("p1", {}, solo, { database: tx, now: NOW }), (e) => e instanceof PickupError && e.code === "NOT_FOUND");
+  assert.equal(tx.log.some((l) => l.op === "update"), false);
+  assert.equal(notified.length, 0);
+});
+
 test("listing opens sealed notes and hides staff-only fields from doctors", async () => {
   const sealed = row({ notes: encryptField("Back door"), assigneeUserId: "s1", completedByUserId: null });
   const tx = fakeTx({ selects: [[sealed], [{ total: 1 }]] });

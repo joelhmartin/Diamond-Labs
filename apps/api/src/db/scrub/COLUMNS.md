@@ -74,6 +74,7 @@ Pre-check before the transaction: every plan table and column must exist live ("
 | messages.body | phi | `[scrubbed]` (NOT NULL; sealed free text, can name a patient) |
 | pickups.notes | phi | NULL (sealed, practice-typed pickup notes; can name a patient) |
 | pickups.cancel_reason | phi | NULL (sealed, typed cancel reason; can name a patient) |
+| pickups.address | pii | the shipments.ship_to placeholder address (a ship-to snapshot with the doctor's name and phone); NULL stays NULL |
 
 ## Tables emptied (DELETE all rows)
 
@@ -93,7 +94,7 @@ Pre-check before the transaction: every plan table and column must exist live ("
 - rx_code_overrides: only rows whose map_key is a KNOWN catalog-map key (from the DEVICE/MODIFICATION/ATTRIBUTE/LAB_SERVICE/GUARD/ORTHO tables, `known-map-keys.js`) are kept; every other row is DELETED. The key prefixes (`mod:`, `attr:`, `primary:`) are shared by stable slugs and by doctor-typed literals (`mod:<literal>`), so shape cannot tell them apart; this is the "not in the known set" fallback. Consequence: a real lab override on a key the tables no longer emit is also dropped. `note` and the rest of each kept row (except `seazona_name`, re-derived) are lab-staff mapping data.
 - lab_departments, and lab_orders / lab_order_lines / lab_order_events apart from the columns above: ids, source reference (rx case or shop order id, no patient data copied), status, dates, rush, remake links, assignee, version, codes, quantities, event types and from/to values. Non-identifying once the free text is gone.
 - notifications (in-app rows): every column, `title` included. Titles are built only from a notification's validated `data` (short identifiers such as order numbers, never free text or a patient name; `modules/notifications/data-guard.js`). notification_preferences: every column. notification_recipients and notification_deliveries apart from the columns above (event, channel, status, record ids, dates).
-- pickups apart from the columns above: ids, number, party key, window dates, time preference, box count, status, scheduled date, assignee, source, version, dates, and `address` (the practice address snapshot, kept for the same reason as doctor_profiles' address: practice business data).
+- pickups apart from the columns above: ids, number, party key, window dates, time preference, box count, status, scheduled date, assignee, source, version and dates.
 - message_participants: every column (per-user read state and archive dates). message_threads and messages apart from the columns above (record ids, party keys, sides, counts, dates, author ids).
 - shipments apart from the columns above (carrier, service, carrier tracking numbers, status, cents, parcel, the lab's own ship-from, dates); shipment_events status and dates; lab_orders.shipment_id and invoice_lines.shipment_id; invoices and invoice_lines apart from the columns above (numbers, status, dates, cents, codes, quantities, price sources); invoice_payments money columns, ids, sources and `paid_on`; autopay_attempts (allocations are invoice id/number/amount), orders money columns and transaction ids, order_items, catalog and product tables, memberships, app_theme.
 
