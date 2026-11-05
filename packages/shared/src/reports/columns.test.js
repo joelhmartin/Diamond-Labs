@@ -1,0 +1,35 @@
+import { test } from "vitest";
+import assert from "node:assert/strict";
+import { COLUMN_TYPES, formatCell, csvValue } from "./columns.js";
+
+test("formatCell money and pct", () => {
+  assert.equal(formatCell({ type: "money" }, 123450), "$1,234.50");
+  assert.equal(formatCell({ type: "money" }, -1250), "-$12.50");
+  assert.equal(formatCell({ type: "money" }, 0), "$0.00");
+  assert.equal(formatCell({ type: "pct" }, 0.074), "7.4%");
+});
+
+test("formatCell other types and nulls", () => {
+  assert.equal(formatCell({ type: "text" }, null), "");
+  assert.equal(formatCell({ type: "money" }, undefined), "");
+  assert.equal(formatCell({ type: "int" }, 12345), "12,345");
+  assert.equal(formatCell({ type: "link" }, { label: "Acme", href: "/x/1" }), "Acme");
+  assert.equal(formatCell({ type: "link" }, "Acme"), "Acme");
+  assert.equal(formatCell({ type: "badge" }, "Late"), "Late");
+  assert.equal(formatCell({ type: "duration_days" }, 3), "3 d");
+  assert.equal(formatCell({ type: "duration_days" }, 3.25), "3.3 d");
+  assert.equal(formatCell({ type: "date" }, "2026-10-31"), "2026-10-31");
+  assert.equal(
+    formatCell({ type: "datetime", timeZone: "America/Chicago" }, "2026-11-01T04:30:00Z"),
+    "2026-10-31 23:30",
+  );
+  assert.equal(COLUMN_TYPES.length, 9);
+});
+
+test("csvValue gives plain money and numbers", () => {
+  assert.equal(csvValue({ type: "money" }, 123450), "1234.50");
+  assert.equal(csvValue({ type: "money" }, -1250), "-12.50");
+  assert.equal(csvValue({ type: "int" }, 7), 7);
+  assert.equal(csvValue({ type: "text" }, null), "");
+  assert.equal(csvValue({ type: "pct" }, 0.074), "7.4%");
+});
