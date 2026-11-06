@@ -174,3 +174,12 @@ test("requestedStatementSubject: one practice, or the combined statement for an 
   // Every other ?account= caller still refuses the organization form.
   assert.throws(() => requestedAccounts(admin, "organization:g1"), notFound);
 });
+
+test("administersAPractice: an owner/admin member or a group admin of any practice in scope; members, managers and viewers do not", async () => {
+  const { administersAPractice } = await import("./client-scope-rules.js");
+  const scope = (roles) => toClientScope({ accountIds: Object.keys(roles), roles: new Map(Object.entries(roles)), via: new Map(), organizations: [] });
+  for (const role of ["owner", "admin", "org-admin"]) assert.equal(administersAPractice(scope({ a1: "viewer", a2: role })), true, role);
+  for (const role of ["member", "manager", "viewer"]) assert.equal(administersAPractice(scope({ a1: role })), false, role);
+  assert.equal(administersAPractice(emptyClientScope()), false);
+  assert.equal(administersAPractice(undefined), false);
+});

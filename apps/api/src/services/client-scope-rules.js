@@ -64,6 +64,21 @@ export function payableAccountIds(scope) {
   return (scope?.accountIds ?? []).filter((id) => scope.payable?.has(id));
 }
 
+/** The roles that run a practice's account: a direct owner or admin member, or an admin of its group. */
+const PRACTICE_ADMIN_ROLES = new Set(["owner", "admin", "org-admin"]);
+
+/**
+ * Does this login run at least one practice in its scope (an ACTIVE owner or
+ * admin membership, or an ACTIVE admin of the practice's group)? Besides a
+ * doctor, the only kind of login staff may record a payment or credit for
+ * (billing/invoice-actions.service.js loadPayingClient): a DSO billing
+ * manager pays for the practices it runs. A "member", "manager" or "viewer"
+ * alone does not qualify.
+ */
+export function administersAPractice(scope) {
+  return (scope?.accountIds ?? []).some((id) => PRACTICE_ADMIN_ROLES.has(scope.roles?.get(id)));
+}
+
 /**
  * Does this `?account=` value ask for the whole scope? Only absent or "all"
  * (spec "Authorization seam"). An empty value (`?account=`) names nothing, so

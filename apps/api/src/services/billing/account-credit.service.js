@@ -16,8 +16,8 @@ import { loadPayingClient, lockInvoice, underInvoiceLocks } from "./invoice-acti
  *                       never a sibling practice's, whoever owns them;
  *  - `{ clientUserId }` the client's "Unassigned" row: that client's open
  *                       invoices with no practice (account_id null) only.
- * An unknown practice, or a non-client account, or a user who isn't a doctor,
- * is NOT_FOUND. `owns(invoice)` re-checks a locked row against the same target.
+ * An unknown practice, a non-client account, or a user who is neither a doctor
+ * nor runs a practice (loadPayingClient), is NOT_FOUND. `owns(invoice)` re-checks a locked row against the same target.
  */
 async function creditTarget({ accountId = null, clientUserId = null }, database) {
   if (accountId) {
