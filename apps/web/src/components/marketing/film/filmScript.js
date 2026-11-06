@@ -7,8 +7,9 @@ gsap.registerPlugin(ScrollTrigger);
    like and what the page says at each point of the scroll.
 
    Each chapter's `vh` is its length on the one timeline that drives both the words and
-   the picture, so they cannot drift apart. To retime or reorder the film, edit this
-   file only. Copy follows the rules in CLAUDE.md: facts come from
+   the picture, so they cannot drift apart. The page turns from chapter to chapter (see
+   filmStops), so `vh` sets the scrollbar's scale, not how long a chapter stays on screen.
+   To retime or reorder the film, edit this file only. Copy follows the rules in CLAUDE.md: facts come from
    data/products.js and the lab's Rx material, with no invented figures. */
 
 /* What the appliance looks like. The film moves through these in order, and between two
@@ -35,14 +36,14 @@ export const VARIANTS = [
 export const CHAPTERS = [
   {
     id: "opening",
-    vh: 130,
+    vh: 100,
     look: 0,
     pose: { yaw: 0.72, pitch: 0.2, dist: 7, x: -1.25, y: 0.42, open: 0, labels: 0 },
     fallback: "/images/ddso-post-iso.webp",
   },
   {
     id: "anatomy",
-    vh: 190,
+    vh: 100,
     look: 0,
     pose: { yaw: 1.05, pitch: 0.16, dist: 8.2, x: -1.3, y: 0.66, open: 1, labels: 1 },
     title: "Every part",
@@ -53,7 +54,7 @@ export const CHAPTERS = [
   },
   {
     id: "scan",
-    vh: 150,
+    vh: 100,
     look: 1,
     numeral: 1,
     pose: { yaw: 2.2, pitch: 0.62, dist: 5.8, x: -0.92, y: 0.3, open: 0, labels: 0 },
@@ -63,7 +64,7 @@ export const CHAPTERS = [
   },
   {
     id: "design",
-    vh: 150,
+    vh: 100,
     look: 2,
     numeral: 2,
     pose: { yaw: 3.55, pitch: 0.8, dist: 6, x: -1, y: 0.3, open: 0, labels: 0 },
@@ -73,7 +74,7 @@ export const CHAPTERS = [
   },
   {
     id: "fabricate",
-    vh: 160,
+    vh: 100,
     look: 3,
     numeral: 3,
     pose: { yaw: 4.5, pitch: 0.24, dist: 7, x: -1.2, y: 0.36, open: 0, labels: 0 },
@@ -83,7 +84,7 @@ export const CHAPTERS = [
   },
   {
     id: "anterior",
-    vh: 150,
+    vh: 100,
     look: 4,
     pose: { yaw: 6.75, pitch: 0.22, dist: 6.6, x: -1.15, y: 0.4, open: 0, labels: 0 },
     kicker: "Sleep appliance",
@@ -96,7 +97,7 @@ export const CHAPTERS = [
   },
   {
     id: "ond",
-    vh: 150,
+    vh: 100,
     look: 5,
     pose: { yaw: 7.15, pitch: 0.28, dist: 6.4, x: -1.15, y: 0.4, open: 0, labels: 0, house: 0.42 },
     kicker: "TMD orthotic",
@@ -109,7 +110,7 @@ export const CHAPTERS = [
   },
   {
     id: "onp",
-    vh: 190,
+    vh: 100,
     look: 6,
     pose: { yaw: 9.05, pitch: 0.3, dist: 6.4, x: -1.15, y: 0.4, open: 0, labels: 0, house: 0.42 },
     kicker: "TMD orthotic",
@@ -147,11 +148,12 @@ const COPY_IN = { at: -34, duration: 34 };
 
 /* Builds the one scrubbed timeline. Its duration is the scroll distance in vh, so a
    position on it is simply "how many vh have been scrolled", and a chapter lands at its
-   `start`. All copy shares one held layer, so later chapters start hidden. */
+   `start`. All copy shares one held layer, so later chapters start hidden. Every move
+   into a chapter ends by its `start`, so a page resting there is never mid-animation. */
 export function buildFilmTimeline(root, film) {
   const timeline = gsap.timeline({
     defaults: { ease: "none" },
-    scrollTrigger: { trigger: root, start: "top top", end: "bottom bottom", scrub: 0.8 },
+    scrollTrigger: { trigger: root, start: "top top", end: "bottom bottom", scrub: 0.35 },
   });
 
   const end = FILM_VH - 100;
@@ -167,7 +169,7 @@ export function buildFilmTimeline(root, film) {
       timeline.to(film, { house: 1, ...chapter.pose, duration: 85, ease: "power2.inOut" }, start - 85);
       if (chapter.look !== CHAPTERS[i - 1].look) {
         // The wipe sits after the trays have closed, so the plane cuts a whole device.
-        timeline.to(film, { look: chapter.look, duration: 62 }, start - 58);
+        timeline.to(film, { look: chapter.look, duration: 62 }, start - 62);
       }
       if (copy) {
         gsap.set(copy, { autoAlpha: 0, y: 28 });
@@ -182,4 +184,16 @@ export function buildFilmTimeline(root, film) {
 
   timeline.set({}, {}, end);
   return timeline;
+}
+
+/* Where each chapter lands, in scroll px. The page rests only on these. */
+export function filmStops(timeline) {
+  const { start, end } = timeline.scrollTrigger;
+  const length = FILM_VH - 100;
+  let landing = 0;
+  return CHAPTERS.map((chapter) => {
+    const stop = start + (landing / length) * (end - start);
+    landing += chapter.vh;
+    return stop;
+  });
 }

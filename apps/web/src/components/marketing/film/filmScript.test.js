@@ -28,3 +28,7 @@ test("every chapter has a photo for visitors who get no film", () => {
   for (const { id, fallback } of CHAPTERS) assert.ok(fallback && existsSync(publicFile(fallback)), id);
   for (const { key, image } of VARIANTS) assert.ok(existsSync(publicFile(image)), key);
 });
+
+test("every chapter is the same length, so a page turn has no dead scroll", () => {
+  for (const { id, vh } of CHAPTERS) assert.equal(vh, 100, id);
+});

@@ -4,7 +4,8 @@ import { ArrowRight } from "lucide-react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { prefersReducedMotion } from "../../../lib/reducedMotion";
-import { CHAPTERS, FILM_VH, VARIANTS, buildFilmTimeline, createFilmState } from "./filmScript";
+import { createScrollPager } from "../../../lib/scrollPager";
+import { CHAPTERS, FILM_VH, VARIANTS, buildFilmTimeline, createFilmState, filmStops } from "./filmScript";
 
 const FilmStage = lazy(() => import("./FilmStage.jsx"));
 
@@ -187,8 +188,10 @@ export function ApplianceFilm() {
 
   useLayoutEffect(() => {
     if (mode !== "film") return undefined;
+    let pager;
     const ctx = gsap.context(() => {
-      buildFilmTimeline(root.current, film);
+      const timeline = buildFilmTimeline(root.current, film);
+      pager = createScrollPager({ getStops: () => filmStops(timeline) });
       gsap.fromTo(
         "[data-film-intro]",
         { y: 36, autoAlpha: 0 },
@@ -196,7 +199,10 @@ export function ApplianceFilm() {
       );
     }, root);
     ScrollTrigger.refresh();
-    return () => ctx.revert();
+    return () => {
+      pager.destroy();
+      ctx.revert();
+    };
   }, [mode, film]);
 
   // Stop drawing when the film is off screen.
