@@ -1,7 +1,7 @@
 # Cutover runbook (own-the-lab piece 5)
 
 Executed once, by the operator with the user, inside the agreed window. Every
-time below is the lab's local time (America/Chicago). Read
+time below is the lab's local time (America/Los_Angeles). Read
 `docs/import-operations.md` first: its setup, rules and commands apply here
 (the shell exports, the production PHI key, the load lock, exit codes).
 
@@ -230,7 +230,7 @@ Seazona's API never exposed price lists or who is on them, so the load brought n
 
 Scheduling seeds a default calendar and eight starter workflows (migration 0036); staff finish the setup in Admin › Scheduling:
 
-- Confirm the calendar timezone. It is seeded as `America/Chicago`, but the audit shows a California address, so check which zone due dates should be read in. Changing it is not only a setting: invoices, statements, the ledger, slip timestamps and the calendar page's starting date all read `LAB_TIMEZONE` in `packages/shared/src/lab/lab-order-status.js`, so a different zone also needs that constant changed and a deploy (ruling R-F). There is deliberately no timezone field in the admin UI.
+- Calendar timezone: confirmed Pacific (`America/Los_Angeles`) on 2026-11-06. `LAB_TIMEZONE` in `packages/shared/src/lab/lab-order-status.js` and the seeded calendar row (migration 0045) both say so. Check that Admin > Scheduling shows due dates on Pacific days.
 - Enter the coming year's holidays.
 - Set capacity limits if wanted (basis and per-weekday limits); the seed has none.
 - Correct each of the 8 workflows' stages and day offsets against Labzona's Workflow screen. The seeded stages are editable defaults.

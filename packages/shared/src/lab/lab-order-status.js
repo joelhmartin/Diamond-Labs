@@ -85,8 +85,8 @@ export function reasonRequiredFor(to) {
   return REASON_REQUIRED_STATUSES.includes(to);
 }
 
-/** The lab is in San Antonio; "today" for due dates is the lab's today. */
-export const LAB_TIMEZONE = "America/Chicago";
+/** The lab is in La Mesa, CA; "today" for due dates is the lab's today. */
+export const LAB_TIMEZONE = "America/Los_Angeles";
 
 // One formatter per time zone: building an Intl.DateTimeFormat costs far more
 // than formatting with one, and statements/reports call this per row (tens of

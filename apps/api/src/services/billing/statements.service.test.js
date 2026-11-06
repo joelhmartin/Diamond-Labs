@@ -134,11 +134,11 @@ test("statement activity can be bounded to a month end: invoices and ledger rows
   const { renderSql } = await import("../../test/sql-text.js");
   const { invoiceScope, paymentBound } = svc.statementActivityFilters(null, { through: "2026-10-31" });
   const inv = renderSql(invoiceScope);
-  assert.match(inv.text, /invoices\.issued_at < \(\(\$\d+::date \+ 1\)::timestamp at time zone 'America\/Chicago'\)/);
+  assert.match(inv.text, /invoices\.issued_at < \(\(\$\d+::date \+ 1\)::timestamp at time zone 'America\/Los_Angeles'\)/);
   assert.ok(inv.params.includes("2026-10-31"));
   const pay = renderSql(paymentBound);
   // ledgerRowDay <= through, written index-friendly (ledgerRowDayBetween): no coalesce in the filter.
-  assert.match(pay.text, /\(invoice_payments\.paid_on <= \$\d+::date\) or \(invoice_payments\.paid_on is null and invoice_payments\.created_at < \(\(\$\d+::date \+ 1\)::timestamp at time zone 'America\/Chicago'\)\)/);
+  assert.match(pay.text, /\(invoice_payments\.paid_on <= \$\d+::date\) or \(invoice_payments\.paid_on is null and invoice_payments\.created_at < \(\(\$\d+::date \+ 1\)::timestamp at time zone 'America\/Los_Angeles'\)\)/);
   assert.doesNotMatch(pay.text, /coalesce/);
   assert.deepEqual(pay.params, ["2026-10-31", "2026-10-31"]);
   // Unbounded (the existing callers): no date clause at all.

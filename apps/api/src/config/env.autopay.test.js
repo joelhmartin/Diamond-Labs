@@ -15,7 +15,7 @@ describe("AutoPay configuration defaults", () => {
   });
 
   it("defaults the timezone to lab time", () => {
-    expect(env.AUTOPAY_TIMEZONE).toBe("America/Chicago");
+    expect(env.AUTOPAY_TIMEZONE).toBe("America/Los_Angeles");
   });
 
   it("defaults the failure threshold to 3", () => {

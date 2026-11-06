@@ -157,7 +157,7 @@ test("invoices summary by day or month carries no client id, so the client link 
   }
   const month = fakeTx({ executes: [[]] });
   await report("accounting.invoices-summary").run(month, { range, by: "month" });
-  assert.match(executedSql(month)[0].text, /to_char\(\(invoices\.issued_at at time zone 'America\/Chicago'\)::date, 'YYYY-MM'\) as bucket/);
+  assert.match(executedSql(month)[0].text, /to_char\(\(invoices\.issued_at at time zone 'America\/Los_Angeles'\)::date, 'YYYY-MM'\) as bucket/);
 });
 
 test("payments received sorts invoice numbers numerically and methods by the label shown", async () => {
