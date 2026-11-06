@@ -1,6 +1,7 @@
 import { INVOICE_LINE_KINDS, addIsoDays, allocateOldestFirst, isCalendarDate } from "@my-app/shared";
 import { assertCents, formatCents, mulCents, pctOfCents, sumCents } from "../../lib/money.js";
 import { canActForAccount } from "../client-scope-rules.js";
+import { InvoiceError } from "./invoice-error.js";
 
 /**
  * Pure invoice rules: totals, the draft → issued → void lifecycle, draft edit
@@ -9,18 +10,7 @@ import { canActForAccount } from "../client-scope-rules.js";
  * the plans inside transactions.
  */
 
-export class InvoiceError extends Error {
-  /**
-   * @param {"NOT_FOUND"|"PRACTICE_REQUIRED"|"STALE"|"LOCKED"|"INVALID"|"INVALID_TRANSITION"|"REASON_REQUIRED"|"OVERPAY"} code
-   * @param {string} message  safe to show staff
-   */
-  constructor(code, message, extra = {}) {
-    super(message);
-    this.name = "InvoiceError";
-    this.code = code;
-    Object.assign(this, extra);
-  }
-}
+export { InvoiceError };
 
 const MAX_QTY = 999;
 

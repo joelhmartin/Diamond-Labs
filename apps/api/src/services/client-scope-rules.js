@@ -1,4 +1,5 @@
 import { ERROR_CODES } from "@my-app/shared";
+import { InvoiceError } from "./billing/invoice-error.js";
 
 /**
  * The pure half of the client-scope seam (services/client-scope.js loads it).
@@ -77,14 +78,15 @@ export function scopeNotFound() {
 }
 
 /**
- * 422 PRACTICE_REQUIRED "Choose a practice.": a login with several practices
- * creating a thread or pickup in "All practices" must name one.
+ * THE 422 PRACTICE_REQUIRED refusal: a login (or a client staff act for) with
+ * several practices, and none named. One error for every path: an
+ * InvoiceError (invoice-errors.js maps it) that also carries statusCode, so
+ * the app error handler answers the same 422 body. Two pinned texts: the
+ * default "Choose a practice." (threads, pickups, statements) and
+ * "Choose which practice this is for." (record creation, practice-of.js).
  */
-export function practiceRequired() {
-  const err = new Error("Choose a practice.");
-  err.statusCode = 422;
-  err.code = "PRACTICE_REQUIRED";
-  return err;
+export function practiceRequired(message = "Choose a practice.") {
+  return new InvoiceError("PRACTICE_REQUIRED", message, { statusCode: 422 });
 }
 
 /**

@@ -95,6 +95,21 @@ const owner = alias(users, "owner");
 export async function openInvoicesForAccounts(accountIds, database = db) {
   const wanted = new Set((accountIds ?? []).filter(Boolean));
   if (!wanted.size) return [];
+  return openIssuedInvoices(inArray(invoices.accountId, [...wanted]), (r) => r.accountId != null && wanted.has(r.accountId), database);
+}
+
+/**
+ * The same list for one client's UNASSIGNED invoices (account_id null, the
+ * receivables page's "Unassigned" row): staff only, never a client's own
+ * read (a null-account invoice fails closed for clients). No client, no query.
+ */
+export async function openUnassignedInvoicesForClient(clientUserId, database = db) {
+  if (!clientUserId) return [];
+  return openIssuedInvoices(and(isNull(invoices.accountId), eq(invoices.clientUserId, clientUserId)), (r) => r.accountId == null && r.clientUserId === clientUserId, database);
+}
+
+// Issued invoices matching `where` (re-checked by `keep` in JS) that still owe, oldest due first.
+async function openIssuedInvoices(where, keep, database) {
   const rows = await database
     .select({
       id: invoices.id, clientUserId: invoices.clientUserId, accountId: invoices.accountId, ownerName: owner.name,
@@ -103,8 +118,8 @@ export async function openInvoicesForAccounts(accountIds, database = db) {
     })
     .from(invoices)
     .leftJoin(owner, eq(owner.id, invoices.clientUserId))
-    .where(and(inArray(invoices.accountId, [...wanted]), eq(invoices.status, "issued")));
-  const balanced = await withBalances(rows.filter((r) => r.accountId != null && wanted.has(r.accountId)), database);
+    .where(and(where, eq(invoices.status, "issued")));
+  const balanced = await withBalances(rows.filter(keep), database);
   return sortOldestFirst(
     balanced
       .filter((i) => i.balanceCents > 0)

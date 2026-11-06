@@ -1,6 +1,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import { accounts, memberships } from "../db/schema/index.js";
 import { InvoiceError } from "./billing/invoice-rules.js";
+import { practiceRequired } from "./client-scope-rules.js";
 
 /**
  * THE definition of "a practice this login can create records for": ACTIVE, DIRECT
@@ -81,6 +82,6 @@ export async function practiceForNewRecord(tx, { ownerUserId, requestedAccountId
     if (!candidates.includes(requestedAccountId)) throw new InvoiceError("NOT_FOUND", "Not found.");
     return requestedAccountId;
   }
-  if (candidates.length > 1) throw new InvoiceError("PRACTICE_REQUIRED", "Choose which practice this is for.");
+  if (candidates.length > 1) throw practiceRequired("Choose which practice this is for.");
   return candidates[0] ?? null;
 }

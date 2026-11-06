@@ -3,7 +3,7 @@ import { db } from "../../config/database.js";
 import { users } from "../../db/schema/index.js";
 import { organizations, organizationAccounts, organizationAdmins } from "../../modules/organizations/index.js";
 import { allPracticeMembersQuery, directPracticeIdsQuery, practiceMembersQuery } from "../practice-of.js";
-import { scopeNotFound } from "../client-scope-rules.js";
+import { practiceRequired, scopeNotFound } from "../client-scope-rules.js";
 import { loadStatementPractices } from "./statements.service.js";
 
 /**
@@ -109,8 +109,5 @@ export async function singlePracticeOf(userId, database = db) {
   const ids = [...new Set(rows.map((r) => r.accountId))];
   if (ids.length === 1) return ids[0];
   if (!ids.length) throw scopeNotFound();
-  const err = new Error("This client is in more than one practice. Use the practice's statement.");
-  err.statusCode = 422;
-  err.code = "PRACTICE_REQUIRED";
-  throw err;
+  throw practiceRequired("This client is in more than one practice. Use the practice's statement.");
 }
