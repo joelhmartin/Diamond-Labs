@@ -39,6 +39,7 @@ export function reportHref(key, params = {}) {
 const stat = (value, { previous = null, format = "int", href, detail } = {}) => ({ value, previous, format, href, ...(detail ? { detail } : {}) });
 
 const asOfOf = (ctx) => ctx?.now ?? new Date();
+const memoOf = (ctx) => ctx?.memo ?? ((_key, fn) => fn());
 
 // ── Metrics ──────────────────────────────────────────────────────────────
 
@@ -46,7 +47,9 @@ const asOfOf = (ctx) => ctx?.now ?? new Date();
 const boardMetric = (key, field, href) => ({
   key,
   async run(tx, _params, _actor, ctx) {
-    const counts = await boardDayCounts(tx, asOfOf(ctx));
+    const now = asOfOf(ctx);
+    // One board computation per dashboard run, shared by every board tile (ctx.memo; the key carries `now`).
+    const counts = await memoOf(ctx)(`board:${now.getTime()}`, () => boardDayCounts(tx, now));
     return stat(counts[field], { href });
   },
 });

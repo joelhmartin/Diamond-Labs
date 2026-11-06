@@ -2,21 +2,20 @@
  * The practice / group filter on client-bearing reports (report-helpers
  * PRACTICE_PARAMS, practiceFilterSql) and its two lookups (lookups.js
  * `practice`, `organization`). Fake-transaction checks always run; the
- * real-Postgres check runs only when a LOCAL server is named:
- *   PRACTICE_FILTER_TEST_SERVER_URL=postgresql://bif@localhost:5432/postgres npx vitest run src/services/lab/reports/practice-filter.test.js
- * It creates its own uniquely named database on that server, migrates and
- * seeds it, and drops it afterwards. It never writes to a database it did
- * not create (it checks current_database() before the first write).
+ * real-Postgres check runs only when a LOCAL server is named
+ * (SCRATCH_DB_SERVER_URL, or the older PRACTICE_FILTER_TEST_SERVER_URL):
+ *   SCRATCH_DB_SERVER_URL=postgresql://bif@localhost:5432/postgres npx vitest run src/services/lab/reports/practice-filter.test.js
+ * The scratch lifecycle (create, migrate, assert current_database(), drop) is test/scratch-db.js.
  */
 import { afterAll, test } from "vitest";
 import assert from "node:assert/strict";
-import { fileURLToPath } from "node:url";
 import { sql } from "drizzle-orm";
 import { STAFF_ROLES, LAB_TIMEZONE } from "@my-app/shared";
 import { createRegistry } from "../../../modules/reports/registry.js";
 import { runReport, createRunSlots } from "../../../modules/reports/runner.js";
 import { fakeTx, fakeDb } from "../../../test/fake-tx.js";
 import { renderSql, executedSql } from "../../../test/sql-text.js";
+import { createScratchDb } from "../../../test/scratch-db.js";
 import { invoices } from "../../../db/schema/index.js";
 import { registerLabReports } from "./index.js";
 import { LAB_LOOKUPS } from "./lookups.js";
@@ -229,38 +228,12 @@ test("the organization lookup lists groups by name and says when one is archived
 
 // ── Real Postgres (opt-in) ───────────────────────────────────────────────
 
-const SERVER = process.env.PRACTICE_FILTER_TEST_SERVER_URL;
-/** The database this test creates (and is the only one it writes to or drops). */
-const SCRATCH = `practice_filter_test_${process.pid}_${Date.now()}`;
-const withDatabase = (url, name) => { const u = new URL(url); u.pathname = `/${name}`; return u.toString(); };
-let created = false;
+const scratch = createScratchDb({ prefix: "practice_filter_test", label: "practice-filter-test", envNames: ["PRACTICE_FILTER_TEST_SERVER_URL"] });
+afterAll(scratch.drop);
 
-async function adminSql(statement) {
-  const { default: postgres } = await import("postgres");
-  const admin = postgres(SERVER, { max: 1, onnotice: () => {} });
-  try { await admin.unsafe(statement); } finally { await admin.end(); }
-}
-
-afterAll(async () => {
-  if (created) await adminSql(`drop database if exists "${SCRATCH}" with (force)`);
-});
-
-test.skipIf(!SERVER)("against a real Postgres: lookups, practice, group, both, outside the group and unknown on sales and orders", async () => {
-  assert.match(new URL(SERVER).hostname, /^(localhost|127\.0\.0\.1)$/, "only a local server");
-  assert.match(SCRATCH, /^practice_filter_test_\d+_\d+$/);
-  await adminSql(`create database "${SCRATCH}"`);
-  created = true;
-  const url = withDatabase(SERVER, SCRATCH);
-  const { runMigrations } = await import("../../../db/run-migrations.js");
-  await runMigrations({ url, migrationsFolder: fileURLToPath(new URL("../../../db/migrations", import.meta.url)), label: "practice-filter-test" });
-
-  const { default: postgres } = await import("postgres");
-  const { drizzle } = await import("drizzle-orm/postgres-js");
-  const client = postgres(url, { max: 1, onnotice: () => {} });
-  const db = drizzle(client);
+test.skipIf(!scratch.enabled)("against a real Postgres: lookups, practice, group, both, outside the group and unknown on sales and orders", async () => {
+  const { db, client } = await scratch.open();
   try {
-    const [{ name }] = await client`select current_database() as name`;
-    assert.equal(name, SCRATCH, "writes only to the database this test created");
     await db.execute(sql`insert into users (id, email, name, role) values
       ('d1', 'd1@example.test', 'Dr A', 'doctor'), ('d2', 'd2@example.test', 'Dr B', 'doctor'), ('d3', 'd3@example.test', 'Dr C', 'doctor')`);
     await db.execute(sql`insert into accounts (id, name, slug, owner_id, is_client, account_number) values

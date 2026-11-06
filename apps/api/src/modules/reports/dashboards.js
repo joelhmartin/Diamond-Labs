@@ -11,7 +11,7 @@
  * A one-tile request (`tile`, a feed's poll) skips the cache read and refills it.
  * A tile's limit never exceeds its report's own `timeoutMs`.
  */
-import { runReport, inReadOnlyTx, ReportError, defaultRunSlots, runClock } from "./runner.js";
+import { runReport, inReadOnlyTx, ReportError, defaultRunSlots, runClock, createRunMemo } from "./runner.js";
 import { paramsSchema } from "./params.js";
 
 export const TILE_TIMEOUT_MS = 5000;
@@ -74,7 +74,7 @@ function tileHead(tile, source) {
 /** A tile's statement limit: 5000 ms, or the source's own limit when that is shorter. */
 export const tileTimeoutMs = (def) => Math.min(TILE_TIMEOUT_MS, def?.timeoutMs ?? TILE_TIMEOUT_MS);
 
-async function runMetric({ def, query, db, actor, slots, now, tz }) {
+async function runMetric({ def, query, db, actor, slots, now, tz, memo }) {
   let params = query;
   if (def.params) {
     try {
@@ -84,15 +84,15 @@ async function runMetric({ def, query, db, actor, slots, now, tz }) {
       throw new ReportError("INVALID", "Invalid tile settings");
     }
   }
-  return inReadOnlyTx({ db, timeoutMs: tileTimeoutMs(def), slots }, (tx) => def.run(tx, params, actor, runClock(now, tz)));
+  return inReadOnlyTx({ db, timeoutMs: tileTimeoutMs(def), slots }, (tx) => def.run(tx, params, actor, runClock(now, tz, memo)));
 }
 
-function runTile({ registry, tile, source, query, db, actor, slots, now, tz }) {
+function runTile({ registry, tile, source, query, db, actor, slots, now, tz, memo }) {
   if (!source.def) throw new ReportError("NOT_FOUND", "This tile's source is missing.");
   if (source.type === "report") {
-    return runReport({ registry, db, key: tile.report, query, actor, now, tz, slots, timeoutMs: tileTimeoutMs(source.def) });
+    return runReport({ registry, db, key: tile.report, query, actor, now, tz, slots, memo, timeoutMs: tileTimeoutMs(source.def) });
   }
-  return runMetric({ def: source.def, query, db, actor, slots, now, tz });
+  return runMetric({ def: source.def, query, db, actor, slots, now, tz, memo });
 }
 
 function failure(err, tileId, onTileError) {
@@ -124,6 +124,7 @@ export async function resolveDashboard({
     (dash.params || []).filter((p) => Object.hasOwn(query, p.name)).map((p) => [p.name, query[p.name]]),
   );
 
+  const memo = createRunMemo(); // ctx.memo: shared by this run's tiles only
   const resolved = await Promise.all(tiles.map(async (tile) => {
     const source = sourceOf(registry, tile);
     const head = tileHead(tile, source);
@@ -133,7 +134,7 @@ export async function resolveDashboard({
     const hit = onlyTile === undefined ? cache.get(cacheKey) : undefined;
     if (hit !== undefined) return { ...head, ok: true, data: hit };
     try {
-      const data = await runTile({ registry, tile, source, query: tileQuery, db, actor, slots, now, tz });
+      const data = await runTile({ registry, tile, source, query: tileQuery, db, actor, slots, now, tz, memo });
       cache.set(cacheKey, data);
       return { ...head, ok: true, data };
     } catch (err) {

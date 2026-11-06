@@ -2,7 +2,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import { STAFF_ROLES, LAB_TIMEZONE } from "@my-app/shared";
 import { createRegistry } from "../../../modules/reports/registry.js";
-import { createRunSlots } from "../../../modules/reports/runner.js";
+import { createRunSlots, createRunMemo } from "../../../modules/reports/runner.js";
 import { resolveDashboard, createDashboardCache } from "../../../modules/reports/dashboards.js";
 import { fakeTx, fakeDb } from "../../../test/fake-tx.js";
 import { executedSql } from "../../../test/sql-text.js";
@@ -166,3 +166,41 @@ function addDaysIso(iso, n) {
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }
+
+test("one Operations dashboard run computes the board once for all its board tiles (ctx.memo)", async () => {
+  const orders = [open("a", "received", "2026-11-03"), open("c", "received", "2026-11-05"), open("d", "on_hold", "2026-11-06")];
+  // One board's worth of selects (calendar, holidays, open orders, plans); a second computation would read [] and change the counts.
+  const tx = fakeTx({ selects: boardSelects(orders), executes: [] });
+  const out = await resolveDashboard({
+    registry: registry(), db: fakeDb(tx), key: "operations", actor: lab, now: NOW, tz: LAB_TIMEZONE,
+    cache: createDashboardCache(), slots: createRunSlots(),
+  });
+  const value = (id) => out.tiles.find((t) => t.id === id).data.value;
+  assert.deepEqual([value("past-due"), value("due-today"), value("due-tomorrow"), value("on-hold")], [1, 1, 1, 1]);
+});
+
+test("five board metrics sharing one run memo read the board's four selects once", async () => {
+  const tx = fakeTx({ selects: boardSelects([open("a", "received", "2026-11-03")]) });
+  const memo = createRunMemo();
+  const keys = ["ops.past-due", "ops.at-risk", "ops.due-today", "ops.due-tomorrow", "ops.on-hold"];
+  const vals = await Promise.all(keys.map((k) => metric(k).run(tx, {}, lab, ctx({ memo }))));
+  assert.deepEqual(vals.map((v) => v.value), [1, 1, 0, 0, 0]);
+  assert.equal(tx.log.filter((e) => e.op === "select").length, 4, "calendar, holidays, open orders, plans: once");
+  // Without a memo (a report page, a lone tile) each call computes its own.
+  const lone = fakeTx({ selects: [...boardSelects([]), ...boardSelects([])] });
+  await metric("ops.past-due").run(lone, {}, lab, ctx());
+  await metric("ops.on-hold").run(lone, {}, lab, ctx());
+  assert.equal(lone.log.filter((e) => e.op === "select").length >= 6, true);
+});
+
+test("the run memo shares one call per key and retries after a failure", async () => {
+  const memo = createRunMemo();
+  let calls = 0;
+  const [a, b] = await Promise.all([memo("k", async () => { calls += 1; return 7; }), memo("k", async () => { calls += 1; return 8; })]);
+  assert.deepEqual([a, b, calls], [7, 7, 1]);
+  let tries = 0;
+  await assert.rejects(memo("bad", async () => { tries += 1; throw new Error("x"); }));
+  await new Promise((r) => setImmediate(r));
+  assert.equal(await memo("bad", async () => { tries += 1; return "ok"; }), "ok");
+  assert.equal(tries, 2);
+});

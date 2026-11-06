@@ -48,7 +48,13 @@ from the query for server paging).
 - `today`: `now`'s calendar day, `"YYYY-MM-DD"`, in `tz`.
 - `tz`: the app's timezone (`createReportRoutes({ tz })`, default UTC).
 
-A metric's `run` gets the same `{ now, today, tz }` (no `page`). Use
+- `memo(key, fn)`: shares work between the tiles of ONE dashboard run. The first
+  caller for a `key` runs `fn`; later callers get the same promise (a failed
+  `fn` is forgotten so the next caller retries). Key it on everything the result
+  depends on (e.g. include `now`). Outside a dashboard it just calls `fn`. The
+  work runs on the first caller's transaction, so use it for reads only.
+
+A metric's `run` gets the same `{ now, today, tz, memo }` (no `page`). Use
 `ctx.today` for "today" rather than reading the clock, so a run and its tests
 agree on the day.
 

@@ -122,7 +122,7 @@ function parseSort(raw, def) {
  * { def, params, page, clock } where page is null for client-paged reports and
  * clock is { now, today, tz } (today = now's calendar day in tz).
  */
-export function prepareRun({ registry, key, query = {}, actor, now = new Date(), tz = "UTC" }) {
+export function prepareRun({ registry, key, query = {}, actor, now = new Date(), tz = "UTC", memo }) {
   const def = registry.getReport(key);
   if (!def) throw new ReportError("NOT_FOUND", "Report not found");
   if (!registry.canView(actor, def)) throw new ReportError("FORBIDDEN", "You cannot view this report");
@@ -145,15 +145,35 @@ export function prepareRun({ registry, key, query = {}, actor, now = new Date(),
         sort: parseSort(query.sort, def),
       }
     : null;
-  return { def, params, page, clock: runClock(now, tz) };
+  return { def, params, page, clock: runClock(now, tz, memo) };
 }
 
-/** What a definition's run sees of time: `{ now, today, tz }`, today being now's "YYYY-MM-DD" in tz. */
-export const runClock = (now = new Date(), tz = "UTC") => ({ now, today: localDay(now, tz), tz });
+/**
+ * A per-dashboard-run memo: `memo(key, fn)` runs `fn` once per key and hands every
+ * later caller the same promise (a failed `fn` is forgotten, so the next caller retries).
+ */
+export function createRunMemo() {
+  const entries = new Map();
+  return (key, fn) => {
+    if (!entries.has(key)) {
+      const pending = Promise.resolve().then(fn);
+      entries.set(key, pending);
+      pending.catch(() => { if (entries.get(key) === pending) entries.delete(key); });
+    }
+    return entries.get(key);
+  };
+}
+
+/**
+ * What a definition's run sees of time and of its run: `{ now, today, tz, memo }`, today being
+ * now's "YYYY-MM-DD" in tz. `memo(key, fn)` shares work between the tiles of one dashboard run;
+ * outside a dashboard it just calls `fn`.
+ */
+export const runClock = (now = new Date(), tz = "UTC", memo = (_key, fn) => fn()) => ({ now, today: localDay(now, tz), tz, memo });
 
 /**
  * Execute one prepared run (one page, for server-paged reports) and shape the
- * result. The definition's run gets ctx = { page, now, today, tz }. A
+ * result. The definition's run gets ctx = { page, now, today, tz, memo }. A
  * client-paged result is cut at `rowCap` rows (ROW_CAP on screen; the CSV
  * export passes its own, larger cap).
  */
@@ -179,7 +199,7 @@ export async function executePrepared({ def, params, page, clock = runClock() },
  * Validate and run a report: `{ rows, total, truncated, summary?, notice?, generatedAt, tookMs }`.
  * `timeoutMs` overrides the report's own limit (dashboards run tiles at 5000).
  */
-export async function runReport({ registry, db, key, query, actor, now = new Date(), tz = "UTC", slots = defaultRunSlots, timeoutMs }) {
-  const prepared = prepareRun({ registry, key, query, actor, now, tz });
+export async function runReport({ registry, db, key, query, actor, now = new Date(), tz = "UTC", slots = defaultRunSlots, timeoutMs, memo }) {
+  const prepared = prepareRun({ registry, key, query, actor, now, tz, memo });
   return executePrepared(prepared, { db, actor, slots, timeoutMs });
 }
