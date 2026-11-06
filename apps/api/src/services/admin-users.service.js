@@ -4,7 +4,7 @@ import { users, accounts, memberships } from "../db/schema/index.js";
 import { tagsFor } from "../modules/record-tags/index.js";
 import { CLIENT_REP_RECORD_TYPE } from "./lab/lab-tags.js";
 import { containsPattern } from "../lib/list-query.js";
-import { organizations, organizationAdmins } from "../modules/organizations/index.js";
+import { usersAdministeringAPractice } from "./client-scope.js";
 
 const COLUMNS = {
   id: users.id,
@@ -49,7 +49,6 @@ export async function listAdminUsers(query = {}, database = appDb) {
 
   // Each user's primary (first) active account.
   const primary = new Map();
-  const runs = new Set(); // logins that own/administer an active practice directly
   const memberQuery = database
     .select({
       userId: memberships.userId,
@@ -57,26 +56,16 @@ export async function listAdminUsers(query = {}, database = appDb) {
       role: memberships.role,
       accountName: accounts.name,
       accountSlug: accounts.slug,
-      practice: sql`(${accounts.isClient} AND ${accounts.status} = 'active')`,
     })
     .from(memberships)
     .innerJoin(accounts, eq(memberships.accountId, accounts.id));
   const memberRows = await memberQuery.where(and(eq(memberships.status, "active"), (where || paged) ? inArray(memberships.userId, userRows.map((u) => u.id)) : undefined));
   for (const m of memberRows) {
-    if (m.practice && (m.role === "owner" || m.role === "admin")) runs.add(m.userId);
     if (!primary.has(m.userId)) primary.set(m.userId, { accountId: m.accountId, name: m.accountName, slug: m.accountSlug, role: m.role });
   }
 
-  // ...or administer a group (staff may record a payment for either kind, besides a doctor: loadPayingClient).
-  const plain = userRows.filter((u) => u.role === "user" && !runs.has(u.id)).map((u) => u.id);
-  if (plain.length) {
-    const groupAdmins = await database
-      .select({ userId: organizationAdmins.userId })
-      .from(organizationAdmins)
-      .innerJoin(organizations, eq(organizations.id, organizationAdmins.organizationId))
-      .where(and(inArray(organizationAdmins.userId, plain), eq(organizationAdmins.status, "active"), eq(organizations.status, "active")));
-    for (const g of groupAdmins) runs.add(g.userId);
-  }
+  // Who staff may record a payment for besides a doctor: the ONE shared rule (client-scope.js).
+  const runs = await usersAdministeringAPractice(userRows.filter((u) => u.role === "user").map((u) => u.id), database);
 
   const reps = await tagsFor(CLIENT_REP_RECORD_TYPE, userRows.filter((u) => u.role === "doctor").map((u) => u.id));
   const enriched = userRows.map((u) => ({ ...u, account: primary.get(u.id) || null, runsPractice: runs.has(u.id), repTags: reps.get(u.id) ?? [] }));

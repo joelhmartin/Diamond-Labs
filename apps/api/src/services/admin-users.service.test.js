@@ -3,6 +3,8 @@ import { adminUsersQuerySchema } from "@my-app/shared";
 import { fakeTx } from "../test/fake-tx.js";
 
 vi.mock("../modules/record-tags/index.js", () => ({ tagsFor: vi.fn(async () => new Map()) }));
+const administering = vi.fn(async () => new Set());
+vi.mock("./client-scope.js", () => ({ usersAdministeringAPractice: (...a) => administering(...a) }));
 
 const { listAdminUsers } = await import("./admin-users.service.js");
 
@@ -27,7 +29,7 @@ test("no limit: the whole list plus the screen's summary, as before", async () =
 });
 
 test("with a limit: one page and the filtered total, no summary, and the page is limited/offset in SQL", async () => {
-  const db = fakeTx({ selects: [[user("a")], [], [], [{ n: 41 }]] });
+  const db = fakeTx({ selects: [[user("a")], [], [{ n: 41 }]] });
   const out = await listAdminUsers({ q: "a", limit: 10, offset: 30 }, db);
   expect(out.users).toHaveLength(1);
   expect(out.total).toBe(41);
@@ -36,15 +38,10 @@ test("with a limit: one page and the filtered total, no summary, and the page is
   expect(calls).toEqual(expect.arrayContaining(["where", "orderBy", "limit", "offset"]));
 });
 
-test("runsPractice: a direct owner/admin of an active practice or an active group admin; a plain member or doctor-less login is not", async () => {
-  const db = fakeTx({ selects: [
-    [user("own"), user("mem"), user("grp"), user("none")],
-    [
-      { userId: "own", accountId: "a1", role: "owner", accountName: "P", accountSlug: "p", practice: true },
-      { userId: "mem", accountId: "a1", role: "member", accountName: "P", accountSlug: "p", practice: true },
-    ],
-    [{ userId: "grp" }],
-  ] });
+test("runsPractice comes from the shared rule (usersAdministeringAPractice), asked only about role=user logins", async () => {
+  administering.mockResolvedValueOnce(new Set(["own"]));
+  const db = fakeTx({ selects: [[user("own"), user("doc", "doctor"), user("none")], []] });
   const out = await listAdminUsers({}, db);
-  expect(Object.fromEntries(out.users.map((u) => [u.id, u.runsPractice]))).toEqual({ own: true, mem: false, grp: true, none: false });
+  expect(administering.mock.calls.at(-1)[0]).toEqual(["own", "none"]);
+  expect(Object.fromEntries(out.users.map((u) => [u.id, u.runsPractice]))).toEqual({ own: true, doc: false, none: false });
 });

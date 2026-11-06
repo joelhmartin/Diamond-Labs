@@ -33,7 +33,7 @@ export const usersSource = {
   async labels(ids) {
     const out = {};
     for (let i = 0; i < ids.length; i += LABEL_CHUNK) {
-      const res = await api.get("/admin/users", { params: { ids: ids.slice(i, i + LABEL_CHUNK).join(",") } });
+      const res = await api.get("/admin/users", { params: { ids: ids.slice(i, i + LABEL_CHUNK).join(","), limit: LABEL_CHUNK } });
       for (const u of res.data.data.users) out[u.id] = userLabel(u);
     }
     return out;

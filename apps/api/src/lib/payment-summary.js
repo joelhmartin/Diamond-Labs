@@ -88,3 +88,12 @@ export function summarizePayments(rows) {
   summaries.sort((a, b) => ts(b) - ts(a) || String(a.transactionId).localeCompare(String(b.transactionId)));
   return summaries;
 }
+
+/** Keep only the practices in `scopeIds` on each summary (an own-payment row may name a practice the login has left). */
+export function limitPaymentAccounts(payments, scopeIds) {
+  const allowed = new Set(scopeIds);
+  return payments.map((p) => {
+    const accountIds = (p.accountIds ?? []).filter((id) => allowed.has(id));
+    return { ...p, accountIds, accountId: accountIds.length === 1 ? accountIds[0] : null };
+  });
+}

@@ -1,11 +1,11 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { ERROR_CODES } from "@my-app/shared";
 import { db as appDb } from "../config/database.js";
-import { accounts } from "../db/schema/index.js";
-import { organizations } from "../modules/organizations/index.js";
+import { accounts, memberships } from "../db/schema/index.js";
+import { organizations, organizationAdmins } from "../modules/organizations/index.js";
 import { organizationsService } from "./organizations.service.js";
 import { directPracticeMembershipsQuery } from "./practice-of.js";
-import { clientScopeOf, emptyClientScope, toClientScope } from "./client-scope-rules.js";
+import { administersAPractice, clientScopeOf, emptyClientScope, toClientScope } from "./client-scope-rules.js";
 
 /**
  * THE client authorization seam (piece 11, spec "Authorization seam"). Every
@@ -69,6 +69,26 @@ export async function loadClientScope(userId, database = appDb) {
     },
   }, database);
   return toClientScope(resolved, await organizationDetails(resolved.organizations.map((o) => o.id), database));
+}
+
+/**
+ * Of `userIds`, those who administer a practice (administersAPractice over their live scope): the set
+ * loadPayingClient lets staff record a payment for. Two cheap queries find the only logins that could
+ * (an active owner/admin membership, or an active group-admin grant), then the ONE rule decides each
+ * from its real scope, so a list and the payment path cannot disagree (e.g. an admin of an empty group).
+ */
+export async function usersAdministeringAPractice(userIds, database = appDb) {
+  if (!userIds.length) return new Set();
+  const [direct, grants] = await Promise.all([
+    database.select({ userId: memberships.userId }).from(memberships)
+      .where(and(inArray(memberships.userId, userIds), eq(memberships.status, "active"), inArray(memberships.role, ["owner", "admin"]))),
+    database.select({ userId: organizationAdmins.userId }).from(organizationAdmins)
+      .where(and(inArray(organizationAdmins.userId, userIds), eq(organizationAdmins.status, "active"))),
+  ]);
+  const candidates = [...new Set([...direct, ...grants].map((r) => r.userId))];
+  const out = new Set();
+  for (const id of candidates) if (administersAPractice(await loadClientScope(id, database))) out.add(id);
+  return out;
 }
 
 /**

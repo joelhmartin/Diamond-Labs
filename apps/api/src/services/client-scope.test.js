@@ -19,7 +19,7 @@ vi.mock("../config/database.js", () => ({
   get db() { return holder.db; },
 }));
 
-const { loadClientScope, requireClientPortal, canActForAccount, requestedAccounts, emptyClientScope, toClientScope } = await import("./client-scope.js");
+const { usersAdministeringAPractice, loadClientScope, requireClientPortal, canActForAccount, requestedAccounts, emptyClientScope, toClientScope } = await import("./client-scope.js");
 const { authenticate } = await import("../middleware/authenticate.js");
 const { signAccessToken } = await import("../lib/tokens.js");
 
@@ -182,4 +182,24 @@ test("administersAPractice: an owner/admin member or a group admin of any practi
   for (const role of ["member", "manager", "viewer"]) assert.equal(administersAPractice(scope({ a1: role })), false, role);
   assert.equal(administersAPractice(emptyClientScope()), false);
   assert.equal(administersAPractice(undefined), false);
+});
+
+test("usersAdministeringAPractice: the same answer as administersAPractice(loadClientScope) - an admin of an EMPTY group is not one", async () => {
+  const { administersAPractice } = await import("./client-scope.js");
+  // Candidate queries: direct owner/admin memberships (none), group-admin grants (g1). Then g1's own scope: no direct
+  // practices, a grant on o1, and o1 has no accounts.
+  const { db } = queueDb([], [["g1"]], [], [grant("o1")], []);
+  assert.deepEqual([...await usersAdministeringAPractice(["g1"], db)], []);
+  // loadClientScope + administersAPractice, the loadPayingClient path, says the same.
+  const again = queueDb([], [grant("o1")], []);
+  assert.equal(administersAPractice(await loadClientScope("g1", again.db)), false);
+});
+
+test("usersAdministeringAPractice: an owner of an active practice qualifies; a login with no candidate rows costs no scope loads", async () => {
+  const { db, calls } = queueDb([["u1"]], [], [member("a1", "owner")], []);
+  assert.deepEqual([...await usersAdministeringAPractice(["u1", "u2"], db)], ["u1"]);
+  assert.equal(calls.length, 4);
+  const none = queueDb([], []);
+  assert.equal((await usersAdministeringAPractice(["u3"], none.db)).size, 0);
+  assert.equal(none.calls.length, 2);
 });
