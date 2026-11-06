@@ -88,6 +88,7 @@ test("the page renders the case and its lines", async () => {
   await renderPage();
   assert.ok(screen.getByText("Night Guard"));
   assert.ok(screen.getByText(/Order lines/));
+  assert.ok(screen.getByText(/Staff-edited lines are kept; only untouched auto lines are replaced/));
 });
 
 test("the Release card is staff-gated and hidden once cancelled", async () => {
@@ -129,7 +130,7 @@ test("removing a line needs a second click before it deletes", async () => {
   mockCase({ lines: [OK_LINE] });
   await renderPage();
   api.delete.mockResolvedValue({});
-  fireEvent.click(screen.getByLabelText("Delete this line").closest("button"));
+  fireEvent.click(screen.getByTitle("Delete Night Guard"));
   assert.equal(api.delete.mock.calls.length, 0);
   fireEvent.click(screen.getByRole("button", { name: /Click again to remove/ }));
   await waitFor(() => assert.equal(api.delete.mock.calls.length, 1));
@@ -153,4 +154,26 @@ test("a once-off save is one click; an 'always' save (changes future cases) take
   fireEvent.click(screen.getByRole("button", { name: /changes ALL future prescriptions/ }));
   await waitFor(() => assert.equal(api.put.mock.calls.length, 2));
   assert.deepEqual(api.put.mock.calls[1][1], { noteOnly: true, scope: "always" });
+});
+
+test("an 'always' Assign takes two clicks, and changing the selection disarms it", async () => {
+  mockCase({ lines: [OPEN_LINE] });
+  await renderPage();
+  const catalog = [{ code: "A1", name: "Pad One" }, { code: "B2", name: "Pad Two" }];
+  api.get.mockResolvedValue({ data: { data: catalog } });
+  api.put.mockResolvedValue({ data: { data: { ...OPEN_LINE, status: "confirmed", seazonaCode: "A1" } } });
+  const pick = async (name) => {
+    fireEvent.change(screen.getByPlaceholderText(/Search catalog/), { target: { value: "pad" } });
+    fireEvent.click(await screen.findByText(name));
+  };
+  fireEvent.click(screen.getByLabelText(/Always \(future cases too\)/));
+  await pick("Pad One");
+  fireEvent.click(screen.getByRole("button", { name: "Assign" }));
+  assert.ok(screen.getByRole("button", { name: /changes ALL future prescriptions/ }), "armed");
+  await pick("Pad Two");
+  assert.equal(screen.queryByRole("button", { name: /changes ALL future prescriptions/ }), null, "a new selection disarms it");
+  fireEvent.click(screen.getByRole("button", { name: "Assign" }));
+  fireEvent.click(screen.getByRole("button", { name: /changes ALL future prescriptions/ }));
+  await waitFor(() => assert.equal(api.put.mock.calls.length, 1));
+  assert.deepEqual(api.put.mock.calls[0][1], { seazonaCode: "B2", name: "Pad Two", noteOnly: false, scope: "always" });
 });

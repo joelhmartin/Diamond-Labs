@@ -36,61 +36,67 @@ export function OrderLinesCard({ caseId, lines, setLines, readOnly }) {
   };
 
   return (
-  <div className="bg-white rounded-2xl border border-surface-300/50 overflow-hidden">
-    <div className="flex items-center justify-between px-5 py-4 border-b border-surface-300/40">
-      <h2 className="font-heading font-bold text-sm text-navy">
-        Order lines <span className="text-navy/30 font-normal">({lines.length})</span>
-      </h2>
+    <div className="bg-white rounded-2xl border border-surface-300/50 overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-surface-300/40">
+        <h2 className="font-heading font-bold text-sm text-navy">
+          Order lines <span className="text-navy/30 font-normal">({lines.length})</span>
+        </h2>
+        {!readOnly && (
+          <div className="flex items-center gap-2">
+            <ConfirmButton
+              disabled={reResolving}
+              onConfirm={doReResolve}
+              confirmLabel="Click again to re-resolve"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all disabled:opacity-50"
+            >
+              <RotateCcw size={12} className={reResolving ? "animate-spin" : ""} /> Re-resolve
+            </ConfirmButton>
+            <button
+              type="button"
+              onClick={() => setAddingLine((v) => !v)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all"
+            >
+              <Plus size={12} /> Add line
+            </button>
+          </div>
+        )}
+      </div>
+
       {!readOnly && (
-        <div className="flex items-center gap-2">
-          <ConfirmButton
-            disabled={reResolving}
-            onConfirm={doReResolve}
-            confirmLabel="Click again to re-resolve"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all disabled:opacity-50"
-          >
-            <RotateCcw size={12} className={reResolving ? "animate-spin" : ""} /> Re-resolve
-          </ConfirmButton>
-          <button
-            type="button"
-            onClick={() => setAddingLine((v) => !v)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-navy/60 hover:text-navy hover:bg-surface-100 transition-all"
-          >
-            <Plus size={12} /> Add line
-          </button>
+        <p className="px-5 pt-3 text-xs text-navy/50">
+          Re-resolve recomputes lines from the prescription. Staff-edited lines are kept; only untouched auto lines are replaced.
+        </p>
+      )}
+
+      {reResolveError && (
+        <div className="mx-5 mt-4 flex items-start gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+          <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
+          <span>{reResolveError}</span>
+        </div>
+      )}
+
+      {addingLine && !readOnly && (
+        <div className="p-4">
+          <AddLineForm caseId={caseId} onAdded={handleLineAdded} onClose={() => setAddingLine(false)} />
+        </div>
+      )}
+
+      {lines.length === 0 ? (
+        <p className="px-5 py-8 text-center text-sm text-navy/40">No lines on this case yet.</p>
+      ) : (
+        <div>
+          {lines.map((line) => (
+            <LineRow
+              key={line.id}
+              caseId={caseId}
+              line={line}
+              locked={readOnly}
+              onSaved={handleLineSaved}
+              onDeleted={handleLineDeleted}
+            />
+          ))}
         </div>
       )}
     </div>
-
-    {reResolveError && (
-      <div className="mx-5 mt-4 flex items-start gap-2 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
-        <AlertCircle size={13} className="mt-0.5 flex-shrink-0" />
-        <span>{reResolveError}</span>
-      </div>
-    )}
-
-    {addingLine && !readOnly && (
-      <div className="p-4">
-        <AddLineForm caseId={caseId} onAdded={handleLineAdded} onClose={() => setAddingLine(false)} />
-      </div>
-    )}
-
-    {lines.length === 0 ? (
-      <p className="px-5 py-8 text-center text-sm text-navy/40">No lines on this case yet.</p>
-    ) : (
-      <div>
-        {lines.map((line) => (
-          <LineRow
-            key={line.id}
-            caseId={caseId}
-            line={line}
-            locked={readOnly}
-            onSaved={handleLineSaved}
-            onDeleted={handleLineDeleted}
-          />
-        ))}
-      </div>
-    )}
-  </div>
   );
 }

@@ -40,6 +40,8 @@ export function AdminRxCaseDetailPage() {
   const [prescription, setPrescription] = useState(null);
   const [tab, setTab] = useState("order");
   const [labOrder, setLabOrder] = useState(null);
+  const [releasing, setReleasing] = useState(false);
+  const [releaseError, setReleaseError] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -146,7 +148,7 @@ export function AdminRxCaseDetailPage() {
       {tab === "order" && (
         <div className="space-y-5">
           {!locked && caseRow.status !== "cancelled" && isStaffRole(user?.role) && (
-            <ReleaseCard caseId={id} lines={lines} legacyPushUnconfirmed={legacyPushUnconfirmed} onReleased={load} />
+            <ReleaseCard caseId={id} lines={lines} legacyPushUnconfirmed={legacyPushUnconfirmed} onReleased={load} release={{ releasing, setReleasing, error: releaseError, setError: setReleaseError }} />
           )}
 
           {locked && (

@@ -86,6 +86,7 @@ export function LineEditor({ caseId, line, onSaved, onCancel }) {
 
       <div className="flex flex-wrap items-center gap-2 pt-1">
         <SaveButton
+          key={`assign-${scope}-${selected?.code}`}
           scope={scope}
           disabled={busy || !selected}
           onClick={assign}
@@ -94,6 +95,7 @@ export function LineEditor({ caseId, line, onSaved, onCancel }) {
           {busy ? "Saving…" : "Assign"}
         </SaveButton>
         <SaveButton
+          key={`note-${scope}-${selected?.code}`}
           scope={scope}
           disabled={busy}
           onClick={markNoteOnly}

@@ -61,9 +61,10 @@ export function LineRow({ caseId, line, locked, onSaved, onDeleted }) {
               disabled={deleting}
               onConfirm={del}
               confirmLabel="Click again to remove"
+              title={`Delete ${line.name || line.sourceLabel || "this line"}`}
               className="h-7 min-w-7 px-1.5 whitespace-nowrap text-[11px] font-semibold rounded-full flex items-center justify-center text-navy/30 hover:text-red-600 hover:bg-red-50 transition-all disabled:opacity-40"
             >
-              {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} aria-label="Delete this line" />}
+              {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
             </ConfirmButton>
           </div>
         )}

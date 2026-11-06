@@ -6,10 +6,11 @@ import { Modal } from "../../ui/Modal.jsx";
 import { errMsg, releaseBlockedReason } from "./helpers.js";
 
 /** "Release to the lab" card plus the legacy-Seazona double-check modal. */
-export function ReleaseCard({ caseId, lines, legacyPushUnconfirmed, onReleased }) {
+// `release` ({ releasing, setReleasing, error, setError }) is owned by the page so an in-flight
+// release survives a tab switch (this card unmounts) and cannot be double-submitted.
+export function ReleaseCard({ caseId, lines, legacyPushUnconfirmed, onReleased, release }) {
+  const { releasing, setReleasing, error: releaseError, setError: setReleaseError } = release;
   const { addToast } = useToast();
-  const [releasing, setReleasing] = useState(false);
-  const [releaseError, setReleaseError] = useState(null);
   const [confirmLegacyOpen, setConfirmLegacyOpen] = useState(false);
   const blockedReason = releaseBlockedReason(lines);
 
@@ -70,23 +71,23 @@ export function ReleaseCard({ caseId, lines, legacyPushUnconfirmed, onReleased }
       </div>
 
       <Modal open={confirmLegacyOpen} onClose={() => setConfirmLegacyOpen(false)} title="Check Seazona first">
-      <p className="text-sm text-navy/70">
-        A Seazona push for this case started and was never confirmed, so an order for it may already exist there.
-        Only continue if you checked Seazona and there is no order for this case — otherwise the lab will build it twice.
-      </p>
-      <div className="mt-5 flex justify-end gap-2">
-        <button type="button" onClick={() => setConfirmLegacyOpen(false)} className="px-4 py-2 rounded-full text-sm font-semibold text-navy/50 hover:text-navy">
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={() => doRelease(true)}
-          disabled={releasing}
-          className="disabled:opacity-50 px-4 py-2 rounded-full text-sm font-bold bg-brand-500 text-white hover:bg-brand-600 transition-colors"
-        >
-          No Seazona order exists — release
-        </button>
-      </div>
+        <p className="text-sm text-navy/70">
+          A Seazona push for this case started and was never confirmed, so an order for it may already exist there.
+          Only continue if you checked Seazona and there is no order for this case — otherwise the lab will build it twice.
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={() => setConfirmLegacyOpen(false)} className="px-4 py-2 rounded-full text-sm font-semibold text-navy/50 hover:text-navy">
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => doRelease(true)}
+            disabled={releasing}
+            className="disabled:opacity-50 px-4 py-2 rounded-full text-sm font-bold bg-brand-500 text-white hover:bg-brand-600 transition-colors"
+          >
+            No Seazona order exists — release
+          </button>
+        </div>
       </Modal>
     </>
   );
