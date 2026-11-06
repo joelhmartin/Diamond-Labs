@@ -34,7 +34,7 @@ import { atRiskCutoff } from "../lab-schedule-flags.js";
 import {
   catalogJoins, clientName, isLiveOrder, labCalendar, labDay, labDayBetween, labDayText, num, rowsOf, turnaroundDaysSql,
 } from "./lab-metrics.js";
-import { optionalClientJoin, uncategorizedSql } from "./report-helpers.js";
+import { andScope, optionalClientJoin, uncategorizedSql } from "./report-helpers.js";
 
 // ── SQL building blocks ──────────────────────────────────────────────────
 
@@ -86,9 +86,6 @@ export const unitsJoin = sql`
     select coalesce(sum(${labOrderLines.qty}), 0) as units from ${labOrderLines}
     where ${labOrderLines.labOrderId} = ${labOrders.id} and ${labOrderLines.noteOnly} = false
   ) u on true`;
-
-/** ` and <practice/group filter on the order>` for an optional practiceScope (report-helpers), else nothing. */
-export const andScope = (scope) => (scope ? sql` and ${scope(labOrders.accountId)}` : sql``);
 
 /** A lab status as a badge cell. */
 export const statusBadge = (s) => (s ? { value: s, label: LAB_STATUS_LABELS[s] ?? s } : null);
@@ -204,7 +201,7 @@ export async function ordersByDay(db, range, scope = null) {
       count(*) filter (where ${labOrders.rush}) as "rush", count(*) filter (where ${labOrders.isRemake}) as "remakes",
       coalesce(sum(u.units), 0) as "units"
     from ${labOrders} ${unitsJoin}
-    where ${isLiveOrder} and ${labDayBetween(labOrders.receivedAt, range)}${andScope(scope)}
+    where ${isLiveOrder} and ${labDayBetween(labOrders.receivedAt, range)}${andScope(scope, labOrders.accountId)}
     group by 1 order by 1`);
   const byDay = new Map(raw.map((r) => [String(r.day), r]));
   return daysInRange(range.from, range.to).map((day) => {
@@ -227,7 +224,7 @@ export async function shippedByDay(db, range, scope = null) {
       ${sql.join(perCarrier, sql`, `)}, count(*) filter (where ${shipments.id} is null) as "noShipment"
     from ${labOrders}
     left join ${shipments} on ${shipments.id} = ${labOrders.shipmentId}
-    where ${labOrders.status} = 'shipped' and ${labDayBetween(labOrders.shippedAt, range)}${andScope(scope)}
+    where ${labOrders.status} = 'shipped' and ${labDayBetween(labOrders.shippedAt, range)}${andScope(scope, labOrders.accountId)}
     group by 1 order by 1`);
   const byDay = new Map(raw.map((r) => [String(r.day), r]));
   return daysInRange(range.from, range.to).map((day) => {

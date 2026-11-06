@@ -2,12 +2,15 @@
  * The practice / group filter on client-bearing reports (report-helpers
  * PRACTICE_PARAMS, practiceFilterSql) and its two lookups (lookups.js
  * `practice`, `organization`). Fake-transaction checks always run; the
- * real-Postgres check runs only when a local throwaway database is named:
- *   PRACTICE_FILTER_TEST_DATABASE_URL=postgresql://bif@localhost:5432/<scratch> npx vitest run src/services/lab/reports/practice-filter.test.js
- * (the database must have the migrations applied: DATABASE_URL=<scratch> npx drizzle-kit migrate).
+ * real-Postgres check runs only when a LOCAL server is named:
+ *   PRACTICE_FILTER_TEST_SERVER_URL=postgresql://bif@localhost:5432/postgres npx vitest run src/services/lab/reports/practice-filter.test.js
+ * It creates its own uniquely named database on that server, migrates and
+ * seeds it, and drops it afterwards. It never writes to a database it did
+ * not create (it checks current_database() before the first write).
  */
-import { test } from "vitest";
+import { afterAll, test } from "vitest";
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 import { sql } from "drizzle-orm";
 import { STAFF_ROLES, LAB_TIMEZONE } from "@my-app/shared";
 import { createRegistry } from "../../../modules/reports/registry.js";
@@ -126,14 +129,15 @@ test("every query a filtered SQL report runs is filtered, so its totals agree wi
   assert.equal(await filters("clients.bottom"), 3);
 });
 
-test("an unknown practice or group is an empty result, not an error", async () => {
+// That an unknown id gives an EMPTY result is checked against real Postgres below; a fake tx can only show it is accepted.
+test("an unknown practice or group does not throw (the lookup param accepts any id; no INVALID)", async () => {
   for (const key of FILTERED.bySql) {
     const { out } = await run(key, { practice: "no-such-practice", organization: "no-such-group" });
     assert.ok(Array.isArray(out.rows), key);
   }
   // A non-admin runs a staff report with the filter.
   const { out } = await run("productivity.orders", { practice: "no-such-practice" }, fakeTx({ executes: [] }), lab);
-  assert.deepEqual(out.rows, []);
+  assert.ok(Array.isArray(out.rows));
 });
 
 // ── The receivables and statement reports ────────────────────────────────
@@ -225,55 +229,96 @@ test("the organization lookup lists groups by name and says when one is archived
 
 // ── Real Postgres (opt-in) ───────────────────────────────────────────────
 
-const REAL = process.env.PRACTICE_FILTER_TEST_DATABASE_URL;
-test.skipIf(!REAL)("against a real Postgres: lookups, practice, group, both and unknown on sales and orders", async () => {
-  assert.match(REAL, /localhost|127\.0\.0\.1/, "only a local database");
-  assert.doesNotMatch(REAL, /\/diamond_labs(\?|$)/, "never the dev database");
+const SERVER = process.env.PRACTICE_FILTER_TEST_SERVER_URL;
+/** The database this test creates (and is the only one it writes to or drops). */
+const SCRATCH = `practice_filter_test_${process.pid}_${Date.now()}`;
+const withDatabase = (url, name) => { const u = new URL(url); u.pathname = `/${name}`; return u.toString(); };
+let created = false;
+
+async function adminSql(statement) {
+  const { default: postgres } = await import("postgres");
+  const admin = postgres(SERVER, { max: 1, onnotice: () => {} });
+  try { await admin.unsafe(statement); } finally { await admin.end(); }
+}
+
+afterAll(async () => {
+  if (created) await adminSql(`drop database if exists "${SCRATCH}" with (force)`);
+});
+
+test.skipIf(!SERVER)("against a real Postgres: lookups, practice, group, both, outside the group and unknown on sales and orders", async () => {
+  assert.match(new URL(SERVER).hostname, /^(localhost|127\.0\.0\.1)$/, "only a local server");
+  assert.match(SCRATCH, /^practice_filter_test_\d+_\d+$/);
+  await adminSql(`create database "${SCRATCH}"`);
+  created = true;
+  const url = withDatabase(SERVER, SCRATCH);
+  const { runMigrations } = await import("../../../db/run-migrations.js");
+  await runMigrations({ url, migrationsFolder: fileURLToPath(new URL("../../../db/migrations", import.meta.url)), label: "practice-filter-test" });
+
   const { default: postgres } = await import("postgres");
   const { drizzle } = await import("drizzle-orm/postgres-js");
-  const client = postgres(REAL, { max: 1, onnotice: () => {} });
+  const client = postgres(url, { max: 1, onnotice: () => {} });
   const db = drizzle(client);
   try {
-    await db.execute(sql`delete from organization_accounts; delete from organizations; delete from invoices; delete from lab_orders; delete from accounts; delete from users`);
-    await db.execute(sql`insert into users (id, email, name, role) values ('d1', 'd1@example.test', 'Dr A', 'doctor'), ('d2', 'd2@example.test', 'Dr B', 'doctor')`);
+    const [{ name }] = await client`select current_database() as name`;
+    assert.equal(name, SCRATCH, "writes only to the database this test created");
+    await db.execute(sql`insert into users (id, email, name, role) values
+      ('d1', 'd1@example.test', 'Dr A', 'doctor'), ('d2', 'd2@example.test', 'Dr B', 'doctor'), ('d3', 'd3@example.test', 'Dr C', 'doctor')`);
     await db.execute(sql`insert into accounts (id, name, slug, owner_id, is_client, account_number) values
-      ('A1', 'Alpha Dental', 'alpha', 'd1', true, '1001'), ('A2', 'Beta Ortho', 'beta', 'd2', true, '1002'), ('P1', 'Personal', 'personal', 'd1', false, null)`);
+      ('A1', 'Alpha Dental', 'alpha', 'd1', true, '1001'), ('A2', 'Beta Ortho', 'beta', 'd2', true, '1002'),
+      ('A3', 'Gamma Smiles', 'gamma', 'd3', true, '1003'), ('P1', 'Personal', 'personal', 'd1', false, null)`);
+    // G1 holds A1 and A2; A3 is a client practice outside every group.
     await db.execute(sql`insert into organizations (id, name) values ('G1', 'Smile Group')`);
     await db.execute(sql`insert into organization_accounts (organization_id, account_id) values ('G1', 'A1'), ('G1', 'A2')`);
     await db.execute(sql`insert into invoices (id, invoice_number, kind, status, issued_at, subtotal_cents, client_user_id, account_id) values
       ('i1', 1, 'order', 'issued', '2026-10-05T18:00:00Z', 1000, 'd1', 'A1'),
       ('i2', 2, 'order', 'issued', '2026-10-06T18:00:00Z', 2000, 'd2', 'A2'),
-      ('i3', 3, 'shop', 'issued', '2026-10-07T18:00:00Z', 4000, null, null)`);
+      ('i3', 3, 'shop', 'issued', '2026-10-07T18:00:00Z', 4000, null, null),
+      ('i4', 4, 'order', 'issued', '2026-10-08T18:00:00Z', 8000, 'd3', 'A3')`);
     await db.execute(sql`insert into lab_orders (id, order_number, source, source_id, received_at, client_user_id, account_id) values
-      ('o1', 1, 'staff', 's1', '2026-10-05T18:00:00Z', 'd1', 'A1'), ('o2', 2, 'staff', 's2', '2026-10-06T18:00:00Z', 'd2', 'A2')`);
+      ('o1', 1, 'staff', 's1', '2026-10-05T18:00:00Z', 'd1', 'A1'), ('o2', 2, 'staff', 's2', '2026-10-06T18:00:00Z', 'd2', 'A2'),
+      ('o3', 3, 'staff', 's3', '2026-10-07T18:00:00Z', 'd3', 'A3'), ('o4', 4, 'staff', 's4', '2026-10-08T18:00:00Z', null, null)`);
 
     const reg = registry();
     const runReal = (key, query) => runReport({ registry: reg, db, key, query, actor: boss, slots: createRunSlots(), tz: TZ });
     const range = { range: "2026-10-01..2026-10-31" };
     const sales = async (q) => (await runReal("sales.daily", { ...range, ...q })).summary.sales;
-    assert.equal(await sales({}), 7000);
+    assert.equal(await sales({}), 15000, "unfiltered: every invoice, the no-account one included");
     assert.equal(await sales({ practice: "A1" }), 1000);
-    assert.equal(await sales({ organization: "G1" }), 3000);
+    assert.equal(await sales({ practice: "A3" }), 8000);
+    assert.equal(await sales({ organization: "G1" }), 3000, "the group's members only: not A3, not the no-account invoice");
     assert.equal(await sales({ organization: "G1", practice: "A2" }), 2000);
+    assert.equal(await sales({ organization: "G1", practice: "A3" }), 0, "a practice outside the group does not widen it");
     assert.equal(await sales({ practice: "nope" }), 0);
     assert.equal(await sales({ organization: "nope" }), 0);
-    const orders = await runReal("productivity.orders", { ...range, practice: "A2" });
-    assert.deepEqual(orders.rows.map((r) => r.orderNumber), [2]);
-    assert.equal(orders.total, 1);
 
-    // Every filtered report's real SQL runs with both filters set (and with none).
+    const orderNumbers = async (q) => {
+      const out = await runReal("productivity.orders", { ...range, ...q });
+      assert.equal(out.total, out.rows.length);
+      return out.rows.map((r) => r.orderNumber).sort();
+    };
+    assert.deepEqual(await orderNumbers({}), [1, 2, 3, 4]);
+    assert.deepEqual(await orderNumbers({ practice: "A2" }), [2]);
+    assert.deepEqual(await orderNumbers({ organization: "G1" }), [1, 2], "no A3, no no-account order");
+    assert.deepEqual(await orderNumbers({ organization: "G1", practice: "A3" }), []);
+    assert.deepEqual(await orderNumbers({ practice: "nope" }), []);
+    assert.deepEqual(await orderNumbers({ organization: "nope" }), []);
+
+    // Every filtered report's real SQL runs with both filters set and with none; an unknown id is empty everywhere.
     for (const key of ALL_FILTERED) {
       for (const q of [{}, { practice: "A1", organization: "G1" }]) {
         const out = await runReal(key, q);
         assert.ok(Array.isArray(out.rows), `${key} ${JSON.stringify(q)}`);
       }
+      const unknown = await runReal(key, { practice: "nope", organization: "nope" });
+      const counted = unknown.rows.filter((r) => Object.entries(r).some(([k, v]) => typeof v === "number" && v !== 0 && !["rank", "year", "share"].includes(k)));
+      assert.deepEqual(counted, [], `${key}: an unknown id has no figures`);
     }
 
     const found = await lookup("practice").search(db, "");
-    assert.deepEqual(found.map((f) => f.value), ["A1", "A2"], "client accounts only");
+    assert.deepEqual(found.map((f) => f.value), ["A1", "A2", "A3"], "client accounts only");
     assert.equal(await lookup("practice").label(db, "P1"), null);
     assert.deepEqual((await lookup("organization").search(db, "smile")).map((f) => f.label), ["Smile Group"]);
   } finally {
     await client.end();
   }
-});
+}, 60000);

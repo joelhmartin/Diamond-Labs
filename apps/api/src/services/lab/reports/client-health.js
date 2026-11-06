@@ -14,6 +14,7 @@ import { LAB_TIMEZONE, addDays, isoDateIn } from "@my-app/shared";
 import { labOrders, users, doctorProfiles } from "../../../db/schema/index.js";
 import { activityHealth } from "../../../modules/reports/health.js";
 import { clientName, isClient, isLiveOrder, labCalendar, labDayBetween, labDayText, num, rowsOf, salesByClient, turnaroundDaysSql } from "./lab-metrics.js";
+import { andScope } from "./report-helpers.js";
 
 export const HEALTH_THRESHOLDS = { inactiveDays: 90, declining: 0.5, stable: 0.85 };
 
@@ -65,7 +66,7 @@ export async function clientHealthRows(db, { asOf, calendar = null, scope = null
     from ${labOrders}
     join ${users} on ${users.id} = ${labOrders.clientUserId} and ${isClient}
     left join ${doctorProfiles} on ${doctorProfiles.userId} = ${users.id}
-    where ${isLiveOrder}${scope ? sql` and ${scope(labOrders.accountId)}` : sql``}
+    where ${isLiveOrder}${andScope(scope, labOrders.accountId)}
     group by ${users.id}, ${doctorProfiles.companyName}, ${users.name}`);
   const sales = await salesByClient(db, w.recent, scope);
 

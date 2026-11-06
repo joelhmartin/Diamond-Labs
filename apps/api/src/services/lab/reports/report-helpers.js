@@ -84,8 +84,11 @@ export function practiceFilterSql(params, accountIdColumn) {
  */
 export const practiceScope = (params) => (hasPracticeFilter(params) ? (col) => practiceFilterSql(params, col) : null);
 
-/** ` and <filter on accountIdColumn>` when a practice or group is set, else nothing (the unfiltered SQL is unchanged). */
-export const andPractice = (params, accountIdColumn) => (hasPracticeFilter(params) ? sql` and ${practiceFilterSql(params, accountIdColumn)}` : sql``);
+/** ` and <scope(accountIdColumn)>` for a practiceScope, else nothing (the unfiltered SQL is unchanged). The shared metrics' form. */
+export const andScope = (scope, accountIdColumn) => (scope ? sql` and ${scope(accountIdColumn)}` : sql``);
+
+/** The same from the report's params: ` and <filter on accountIdColumn>` when a practice or group is set, else nothing. */
+export const andPractice = (params, accountIdColumn) => andScope(practiceScope(params), accountIdColumn);
 
 /**
  * The client account ids the filter selects (any status), or null when no
