@@ -51,8 +51,8 @@ test("the at-risk list is piece 7's at-risk ids, and its total is the At risk ti
   assert.deepEqual(out.rows.map((r) => r.id), ["a", "b", "c"]);
   assert.equal(out.rows[0].rush, true);
   const [{ text, params }] = executedSql(tx);
-  assert.match(text, /where lab_orders\.id in \(\$1, \$2, \$3, \$4, \$5\)/);
-  assert.deepEqual(params.slice(0, 5), ids);
+  assert.match(text, /where lab_orders\.id = any\(\$1::text\[\]\)/, "one array parameter, not an IN list");
+  assert.deepEqual(params[0], ids);
   assert.match(text, /order by lab_orders\.due_date nulls last, lab_orders\.rush desc, lab_orders\.order_number/);
   assert.doesNotMatch(text, PHI);
   // Nothing at risk: no detail query at all.

@@ -22,7 +22,7 @@
  * "today" is the lab-local day the caller passes (the runner's ctx.today). The
  * board functions take `now` (a Date) and read the day in the calendar's zone, as the board does.
  */
-import { inArray, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import {
   CARRIERS, LAB_STATUS_LABELS, LAB_TIMEZONE, TERMINAL_LAB_STATUSES, addDays, daysInRange, isoDateIn,
@@ -158,7 +158,8 @@ export const AT_RISK_LIST_LIMIT = 50;
 /**
  * The at-risk orders as of `now` (piece 7's tileOrderIds(db, "at_risk")), soonest
  * due first, at most `limit`: { rows: [{ id, orderNumber, client, status, dueDate, rush }],
- * total, truncated }. `total` counts the same ids the At risk tile counts.
+ * total, truncated }. `total` counts the same ids the At risk tile counts. The ids are
+ * bound as ONE array parameter, so the statement stays one bind however many are at risk.
  */
 export async function atRiskOrders(db, now = new Date(), limit = AT_RISK_LIST_LIMIT) {
   const ids = (await tileOrderIds(db, "at_risk", now)) ?? [];
@@ -168,7 +169,7 @@ export async function atRiskOrders(db, now = new Date(), limit = AT_RISK_LIST_LI
       ${labOrders.status} as "status", to_char(${labOrders.dueDate}, 'YYYY-MM-DD') as "dueDate", ${labOrders.rush} as "rush"
     from ${labOrders}
     ${optionalClientJoin(labOrders.clientUserId)}
-    where ${inArray(labOrders.id, ids)}
+    where ${labOrders.id} = any(${sql.param(ids)}::text[])
     order by ${labOrders.dueDate} nulls last, ${labOrders.rush} desc, ${labOrders.orderNumber}
     limit ${limit}`);
   const rows = raw.map((r) => ({
