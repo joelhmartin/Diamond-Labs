@@ -147,7 +147,7 @@ All commands are `pnpm --filter @my-app/api import:fetch <entity> ...`.
    - **The load lock.** Every LIVE step (`clients`, `invoices`, `balances`, `orders`) holds the target's load lock for its whole run, taken on the target database; a second live load on the same target refuses, and so does `import:parity`, which takes the same lock so it never reads a half-written target. A dead run frees it when Postgres drops the session (see the half-open note above).
    - **Exit codes (load):** 0 ok or dry run, 2 refused, 1 failed.
 
-4. **Balances.** Per-invoice (`--balances per-invoice`, the Invoices & Payments report) or per-client (`--balances per-client`); `--file <export.xls>` seals the export on first use and prints its id, afterwards `--file-id <id>` (never both). `--cutover-at <ISO>` is the freeze start (defaults to now). When the lab has no per-invoice balance report, derive one from its Payments screen instead: see "Balances from the Payments export" below; the derived file's id goes to `--balances per-invoice --file-id` exactly like an export's.
+4. **Balances.** Per-invoice (`--balances per-invoice`, the Invoices & Payments report) or per-client (`--balances per-client`); `--file <export.xls>` seals the export on first use and prints its id, afterwards `--file-id <id>` (never both). `--cutover-at <ISO>` is the freeze start (defaults to now). When the lab has no per-invoice balance report, derive one from its Account Balance report instead: see "Balances from the Account Balance report" below; the derived file's id goes to `--balances per-invoice --file-id` exactly like an export's.
    - **Export problems.** The parser reports row numbers and keys only: `export-row-no-key`, `export-row-bad-balance`, `export-row-duplicate-key`, `export-total-mismatch`. They are always printed. **A live `balances` run refuses while the export has problems** unless you pass `--accept-export-problems`.
    - **The footer "Total" row (F4).** The portal ends every export with a keyless "Total" / "Totals" / "Grand Total" row. When it is the last non-empty row it is read as the export's own total (`exportTotalCents`, printed by `import:fetch export` and in the balances report), not as a problem, and the parsed rows must add up to it to the cent; if they do not, that is `export-total-mismatch` (some balance was not read: find the row). A keyless row anywhere else is still `export-row-no-key`.
    - **What `--accept-export-problems` does and does not do (T12).** Rows with an unreadable (`export-row-bad-balance`) or duplicated (`export-row-duplicate-key`) balance are left open: nothing is settled for those invoices (per-invoice) or those accounts' history (per-client), and they are reported as `invoice_left_open_export_problem` / `account_left_open_export_problem`. **A keyless row cannot be matched to any invoice or account, so whatever it owed is settled as PAID** unless you fix the file; the refusal text and the report's `warnings` say so. Fix the export (the lab re-saves it) rather than accepting keyless rows. Credits (negative balances) are not written at all: they are reported as `credit_balance_for_staff` and staff apply them with the invoice Credit action after cutover.
@@ -170,7 +170,31 @@ All commands are `pnpm --filter @my-app/api import:fetch <entity> ...`.
 
    No mail leaves (no Mailgun key), no card is charged (sandbox, payments paused), no Seazona call is possible.
 
+### Balances from the Account Balance report (use this one)
+
+Checked in the live portal on 2026-11-06: **Seazona never links a payment to an invoice.** It keeps one running balance per account and applies each payment to the oldest amount due (its A/R Aging report says so). Invoice numbers in payment notes are free text, and check numbers and years read as invoices, split payments and statement payments break any match. Adjustments and the balances carried in at its October 2024 go-live are not in the Payments export at all. So the portal's own balance is the source of truth:
+
+```
+owed = report balance + invoices due after the last statement - payments after the report
+```
+
+The newest dated invoices stay open until they add up to `owed`, the same result as paying oldest first. Every account then matches Seazona to the cent.
+
+```bash
+pnpm --filter @my-app/api import:fetch balance-derive --balance-file AccountBalance.xls \
+  --statement-through <last day of the last statement month> \
+  --file jan.xls [--file ...] --payments-through <last day of payments the report counts> --columns client=Acct [--live]
+```
+
+1. **Export** Reports > Accounting > Account Balance. It reads the `Balance` column, never `Amount Due`. Read the report's period: `Amount Due` is the last statement month (`--statement-through`), and `Payments Received` is the month after it (`--payments-through`, its last day). The Payments exports only supply what came in after that.
+2. **Check the control total** before sealing: derived net owed must equal the report's net, plus the invoices after the statement month, minus the later payments.
+3. **Read the counts.** `Credits for staff` are accounts in credit after their newer invoices; staff apply them by hand after cutover. `Owed beyond every invoice` is a carried-in balance with no invoice to sit on; `--live` refuses until `--accept-excess`. A report row matching no single client refuses until `--accept-unresolved-accounts`. Clients the report omits have their older invoices treated as settled and newer ones open: size them before accepting, since the report leaves some clients out. Undated invoices are on no statement, stay out of the file and stay open if loaded.
+4. **Seal** with `--live`. It seals the report (`balances_client`), the Payments exports (`payments_export`) and the derived file (`payments_derived`), which `load balances --balances per-invoice --file-id <id>` and parity read like any other. Parity raises `balance export is derived`, which the user must `--accept`. Delete the local exports afterwards and empty the Trash.
+5. **Limit:** a doctor's total matches Seazona, but which invoice shows as open is inferred from the oldest-first rule. Seazona cannot say either.
+
 ### Balances from the Payments export
+
+**Superseded for the real balances by the section above.** Payment notes under-credit by about $2.35M on the real data. Keep this only as a cross-check.
 
 Seazona's API has no paid flag and no payment list. The lab portal's Payments screen does list every payment staff entered, with a reference and notes, and staff (and the portal's own integration, which writes "Invoices 1234, 1235" into the reference) put invoice numbers there. The user's rule: *an invoice is paid if a payment names it and the amounts add up, partial or unclear if it shares a multi-invoice payment and the total doesn't match, and unpaid if no payment names it.* `import:fetch payments-match` applies it against the invoice summaries already in the import DB (no Seazona call) and produces a per-invoice open-balance file that the balances step reads like any per-invoice export.
 

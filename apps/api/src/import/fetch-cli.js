@@ -53,10 +53,11 @@ import { runSummaryCommand, runDetailCommand, createPacer } from "./seazona-fetc
 import { makeFetchLock } from "./fetch-lock.js";
 import { printLines, printReport, runIfMain } from "./report.js";
 import { runPaymentsMatch, PAYMENTS_MATCH_FLAGS, PAYMENTS_MATCH_BOOLEANS } from "./payments-match-command.js";
+import { runBalanceDerive, BALANCE_DERIVE_FLAGS, BALANCE_DERIVE_BOOLEANS } from "./account-balance-derive.js";
 
 const FLAGS = {
-  allowed: ["live", "detail", "ids", "since", "open", "open-balance", "file-id", "columns", "refetch", "resume", "approved", "file", "balances", "mark-stale", "accept-capped-timestamp", ...PAYMENTS_MATCH_FLAGS.filter((f) => !["file", "columns", "live"].includes(f))],
-  booleans: ["live", "detail", "open", "open-balance", "refetch", ...PAYMENTS_MATCH_BOOLEANS],
+  allowed: ["live", "detail", "ids", "since", "open", "open-balance", "file-id", "columns", "refetch", "resume", "approved", "file", "balances", "mark-stale", "accept-capped-timestamp", ...BALANCE_DERIVE_FLAGS, ...PAYMENTS_MATCH_FLAGS.filter((f) => !["file", "columns", "live"].includes(f))],
+  booleans: ["live", "detail", "open", "open-balance", "refetch", ...PAYMENTS_MATCH_BOOLEANS, ...BALANCE_DERIVE_BOOLEANS],
   repeatable: ["file"],
 };
 
@@ -64,6 +65,7 @@ const FLAGS = {
 const FILE_COMMANDS = {
   export: ["balances", "file", "columns"],
   "payments-match": PAYMENTS_MATCH_FLAGS,
+  "balance-derive": BALANCE_DERIVE_FLAGS,
 };
 
 const EXPORTS = {
@@ -203,8 +205,8 @@ function checkShape(name, entity, flags, positional) {
     const stray = Object.keys(flags).filter((f) => !FILE_COMMANDS[name].includes(f));
     if (stray.length) throw new ImportRefusal(`${name} takes only --${FILE_COMMANDS[name].join(", --")} (not --${stray.join(", --")}).`);
   } else if (entity) {
-    const stray = ["balances", ...PAYMENTS_MATCH_FLAGS.filter((f) => f !== "columns" && f !== "live")].filter((f) => flags[f] !== undefined);
-    if (stray.length) throw new ImportRefusal(`--${stray.join(", --")} belongs to export or payments-match, not a Seazona fetch.`);
+    const stray = ["balances", ...new Set([...PAYMENTS_MATCH_FLAGS, ...BALANCE_DERIVE_FLAGS])].filter((f) => f !== "columns" && f !== "live").filter((f) => flags[f] !== undefined);
+    if (stray.length) throw new ImportRefusal(`--${stray.join(", --")} belongs to export, payments-match or balance-derive, not a Seazona fetch.`);
   }
   if ((!entity && !FILE_COMMANDS[name]) || positional.length !== 1) {
     throw new ImportRefusal(`Usage: import:fetch <${Object.keys(SUMMARY_ENTITIES).join("|")}|${Object.keys(FILE_COMMANDS).join("|")}> [--detail <filter>] [--live]`);
@@ -255,6 +257,7 @@ export async function main(argv, env = process.env, overrides = {}) {
   try {
     if (name === "export") return await storeExport(flags, store, deps);
     if (name === "payments-match") return await runPaymentsMatch(flags, store, deps);
+    if (name === "balance-derive") return await runBalanceDerive(flags, store, deps);
     const storeEntity = flags.detail ? DETAIL_ENTITIES[name] : entity;
     if (flags["mark-stale"]) return await markStale(store, [entity, DETAIL_ENTITIES[name]], flags, deps, tryLock);
     const live = flags.live === true;

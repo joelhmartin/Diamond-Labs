@@ -176,8 +176,8 @@ test("a live run refuses on export problems unless accepted; stray flags and a m
   await assert.rejects(r.run(["payments-match", "--file", "bad.xls", "--accept-export-problems"]), /only with --live/);
   await assert.rejects(r.run(["payments-match"]), /Usage: import:fetch payments-match/);
   await assert.rejects(r.run(["payments-match", "--file", "bad.xls", "--approved", "5"]), /payments-match takes only/);
-  await assert.rejects(r.run(["invoices", "--unclear", "open"]), /belongs to export or payments-match/);
-  await assert.rejects(r.run(["invoices", "--accept-unresolved-clients"]), /belongs to export or payments-match/);
+  await assert.rejects(r.run(["invoices", "--unclear", "open"]), /belongs to export, payments-match or balance-derive/);
+  await assert.rejects(r.run(["invoices", "--accept-unresolved-clients"]), /belongs to export, payments-match or balance-derive/);
   await assert.rejects(r.run(["export", "--balances", "per-invoice", "--file", "a", "--file", "b"]), /one file/);
 });
 
