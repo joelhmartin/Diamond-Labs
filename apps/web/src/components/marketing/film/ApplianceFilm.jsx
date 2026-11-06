@@ -223,29 +223,6 @@ export function ApplianceFilm() {
     gsap.fromTo(film, { swap: 0 }, { swap: 1, duration: 1.15, ease: "power2.inOut" });
   };
 
-  // Drag to turn the appliance; vertical movement stays with the page.
-  const drag = useRef(null);
-  const stageEvents = {
-    onPointerDown: (e) => {
-      if (e.pointerType === "mouse" && e.button !== 0) return;
-      drag.current = { x: e.clientX, yaw: film.userYaw };
-      e.currentTarget.setPointerCapture(e.pointerId);
-    },
-    onPointerMove: (e) => {
-      if (drag.current) film.userYaw = drag.current.yaw + (e.clientX - drag.current.x) * 0.007;
-      if (e.pointerType === "mouse") {
-        film.pointerX = (e.clientX / window.innerWidth) * 2 - 1;
-        film.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
-      }
-    },
-    onPointerUp: () => {
-      drag.current = null;
-    },
-    onPointerCancel: () => {
-      drag.current = null;
-    },
-  };
-
   const lowPower = useMemo(() => matchMedia("(pointer: coarse), (max-width: 767px)").matches, []);
   const handleLoaded = useCallback(() => setLoaded(true), []);
   const handleLost = useCallback(() => setMode("photos"), []);
@@ -257,9 +234,8 @@ export function ApplianceFilm() {
       {/* This wrapper is the sticky stage's containing block, so the stage stops exactly where the film ends. */}
       <div className="absolute inset-0">
       <div
-        {...stageEvents}
         aria-hidden="true"
-        className="sticky top-0 h-[100lvh] overflow-hidden cursor-grab active:cursor-grabbing bg-gradient-to-br from-navy to-navy-dark [touch-action:pan-y]"
+        className="sticky top-0 h-[100lvh] overflow-hidden bg-gradient-to-br from-navy to-navy-dark"
       >
         <StageBoundary onError={handleLost}>
           <Suspense fallback={null}>

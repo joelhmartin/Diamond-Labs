@@ -136,9 +136,6 @@ export function createFilmState() {
     swap: 1, // 0..1: a material change sweeping through
     variant: VARIANTS[0].key,
     previousVariant: VARIANTS[0].key,
-    userYaw: 0,
-    pointerX: 0,
-    pointerY: 0,
   };
 }
 

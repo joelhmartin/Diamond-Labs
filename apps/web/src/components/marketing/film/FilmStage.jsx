@@ -328,9 +328,8 @@ function Film({ film, lowPower, allLooks }) {
   }, [allLooks, gl, camera, scene, rig]);
 
   const target = useMemo(() => new THREE.Vector3(), []);
-  const smooth = useRef({ yaw: film.yaw, px: 0, py: 0 });
 
-  useFrame((_, delta) => {
+  useFrame(() => {
     // 1. Which looks are on screen, and how far the plane has travelled between them.
     const index = Math.floor(film.look + 1e-4);
     const lookFraction = film.look - index;
@@ -380,19 +379,17 @@ function Film({ film, lowPower, allLooks }) {
     const portrait = aspect < 1.05;
     const fit = (2.7 + film.open * 0.9) / (2 * Math.tan(THREE.MathUtils.degToRad(CAMERA_FOV / 2)) * aspect);
     const dist = Math.max(film.dist, fit);
-    const k = 1 - Math.exp(-delta * 5);
-    smooth.current.px += (film.pointerX - smooth.current.px) * k;
-    smooth.current.py += (film.pointerY - smooth.current.py) * k;
-    const pitch = film.pitch + smooth.current.py * 0.04;
+    const pitch = film.pitch;
     const targetX = portrait ? 0 : film.x * (aspect < 1.5 ? aspect / 1.5 : 1);
     const targetY = portrait ? film.y - dist * 0.09 : film.y;
     target.set(targetX, targetY, 0);
-    camera.position.set(targetX + smooth.current.px * 0.16, targetY + Math.sin(pitch) * dist, Math.cos(pitch) * dist);
+    camera.position.set(targetX, targetY + Math.sin(pitch) * dist, Math.cos(pitch) * dist);
     camera.lookAt(target);
 
     // 4. The device.
     if (device.current) {
-      device.current.rotation.y = film.yaw + film.drift + film.userYaw + smooth.current.px * 0.08;
+      // Only the script turns the device: no drag, no mouse follow.
+      device.current.rotation.y = film.yaw + film.drift;
       const rise = THREE.MathUtils.smoothstep(film.intro, 0, 1);
       device.current.scale.setScalar(0.97 + rise * 0.03);
     }
