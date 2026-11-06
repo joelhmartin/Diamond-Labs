@@ -186,20 +186,41 @@ test("administersAPractice: an owner/admin member or a group admin of any practi
 
 test("usersAdministeringAPractice: the same answer as administersAPractice(loadClientScope) - an admin of an EMPTY group is not one", async () => {
   const { administersAPractice } = await import("./client-scope.js");
-  // Candidate queries: direct owner/admin memberships (none), group-admin grants (g1). Then g1's own scope: no direct
-  // practices, a grant on o1, and o1 has no accounts.
-  const { db } = queueDb([], [["g1"]], [], [grant("o1")], []);
+  // The set query joins the group's ACTIVE client accounts, so a group with none yields no row for g1.
+  const { db } = queueDb([], []);
   assert.deepEqual([...await usersAdministeringAPractice(["g1"], db)], []);
-  // loadClientScope + administersAPractice, the loadPayingClient path, says the same.
+  // loadClientScope + administersAPractice, the loadPayingClient path: a grant on o1, o1 holds no accounts.
   const again = queueDb([], [grant("o1")], []);
   assert.equal(administersAPractice(await loadClientScope("g1", again.db)), false);
 });
 
-test("usersAdministeringAPractice: an owner of an active practice qualifies; a login with no candidate rows costs no scope loads", async () => {
-  const { db, calls } = queueDb([["u1"]], [], [member("a1", "owner")], []);
-  assert.deepEqual([...await usersAdministeringAPractice(["u1", "u2"], db)], ["u1"]);
-  assert.equal(calls.length, 4);
-  const none = queueDb([], []);
-  assert.equal((await usersAdministeringAPractice(["u3"], none.db)).size, 0);
-  assert.equal(none.calls.length, 2);
+test("usersAdministeringAPractice: direct owners/admins and group admins qualify, in a CONSTANT two queries however many ids", async () => {
+  const ids = Array.from({ length: 50 }, (_, i) => `u${i}`);
+  const { db, calls } = queueDb([["u1"], ["u2"]], [["u2"], ["u7"]]);
+  assert.deepEqual([...await usersAdministeringAPractice(ids, db)].sort(), ["u1", "u2", "u7"]);
+  assert.equal(calls.length, 2, "one direct-admin query + one group-admin query, not per user");
+});
+
+test("usersAdministeringAPractice: the queries keep only ACTIVE client accounts, active memberships, owner/admin roles, active grants and groups", async () => {
+  const { db, calls } = queueDb([], []);
+  await usersAdministeringAPractice(["u1"], db);
+  const [direct, group] = calls;
+  // An owner of a non-client or inactive account, or a viewer/member, never matches the direct query.
+  assert.match(direct.sql, /"memberships"\."status" = \$/);
+  assert.match(direct.sql, /"accounts"\."status" = \$/);
+  assert.match(direct.sql, /"accounts"\."is_client" = \$/);
+  assert.match(direct.sql, /"memberships"\."role" in \(/);
+  assert.ok(direct.params.includes("owner") && direct.params.includes("admin") && direct.params.includes(true));
+  assert.ok(!direct.params.includes("member") && !direct.params.includes("viewer"));
+  // A group admin needs an active grant, an active group, and an active client account inside it.
+  assert.match(group.sql, /"organization_admins"\."status" = \$/);
+  assert.match(group.sql, /"organizations"\."status" = \$/);
+  assert.match(group.sql, /"accounts"\."status" = \$/);
+  assert.match(group.sql, /"accounts"\."is_client" = \$/);
+});
+
+test("usersAdministeringAPractice: no ids, no queries", async () => {
+  const none = queueDb();
+  assert.equal((await usersAdministeringAPractice([], none.db)).size, 0);
+  assert.equal(none.calls.length, 0);
 });

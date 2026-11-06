@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { accounts, memberships } from "../db/schema/index.js";
 import { InvoiceError } from "./billing/invoice-rules.js";
 import { practiceRequired } from "./client-scope-rules.js";
@@ -17,6 +17,11 @@ export function directPracticeIdsQuery(tx, userId) {
 /** The same rows with the membership role: the client scope's direct half (services/client-scope.js). */
 export function directPracticeMembershipsQuery(tx, userId) {
   return directPracticeQuery(tx, userId, { accountId: memberships.accountId, role: memberships.role });
+}
+
+/** Of `userIds`, the DIRECT owners/admins of an active client account (same definition as the scope's direct half): rows of (userId). */
+export function directPracticeAdminsQuery(tx, userIds) {
+  return activeMemberships(tx, { userId: memberships.userId }, and(inArray(memberships.userId, userIds), inArray(memberships.role, ["owner", "admin"])));
 }
 
 /**

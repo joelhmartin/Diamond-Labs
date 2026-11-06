@@ -1,11 +1,11 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { ERROR_CODES } from "@my-app/shared";
 import { db as appDb } from "../config/database.js";
-import { accounts, memberships } from "../db/schema/index.js";
-import { organizations, organizationAdmins } from "../modules/organizations/index.js";
+import { accounts } from "../db/schema/index.js";
+import { organizations, organizationAdmins, organizationAccounts } from "../modules/organizations/index.js";
 import { organizationsService } from "./organizations.service.js";
-import { directPracticeMembershipsQuery } from "./practice-of.js";
-import { administersAPractice, clientScopeOf, emptyClientScope, toClientScope } from "./client-scope-rules.js";
+import { directPracticeAdminsQuery, directPracticeMembershipsQuery } from "./practice-of.js";
+import { clientScopeOf, emptyClientScope, toClientScope } from "./client-scope-rules.js";
 
 /**
  * THE client authorization seam (piece 11, spec "Authorization seam"). Every
@@ -72,23 +72,31 @@ export async function loadClientScope(userId, database = appDb) {
 }
 
 /**
- * Of `userIds`, those who administer a practice (administersAPractice over their live scope): the set
- * loadPayingClient lets staff record a payment for. Two cheap queries find the only logins that could
- * (an active owner/admin membership, or an active group-admin grant), then the ONE rule decides each
- * from its real scope, so a list and the payment path cannot disagree (e.g. an admin of an empty group).
+ * Of `userIds`, those who administer a practice: exactly administersAPractice(loadClientScope(id)), in a constant
+ * two queries however many ids. The scope's rule has two halves, each resolved in one set query: a DIRECT owner or
+ * admin of an active client account (practice-of.js), or an ACTIVE admin grant on an ACTIVE group (organizations
+ * rules resolveScope) that holds at least one active client account. A group admin whose group has none does not
+ * qualify, here or in loadPayingClient. This is the set loadPayingClient lets staff record a payment for.
  */
 export async function usersAdministeringAPractice(userIds, database = appDb) {
   if (!userIds.length) return new Set();
   const [direct, grants] = await Promise.all([
-    database.select({ userId: memberships.userId }).from(memberships)
-      .where(and(inArray(memberships.userId, userIds), eq(memberships.status, "active"), inArray(memberships.role, ["owner", "admin"]))),
-    database.select({ userId: organizationAdmins.userId }).from(organizationAdmins)
-      .where(and(inArray(organizationAdmins.userId, userIds), eq(organizationAdmins.status, "active"))),
+    directPracticeAdminsQuery(database, userIds),
+    database
+      .selectDistinct({ userId: organizationAdmins.userId })
+      .from(organizationAdmins)
+      .innerJoin(organizations, eq(organizations.id, organizationAdmins.organizationId))
+      .innerJoin(organizationAccounts, eq(organizationAccounts.organizationId, organizations.id))
+      .innerJoin(accounts, eq(accounts.id, organizationAccounts.accountId))
+      .where(and(
+        inArray(organizationAdmins.userId, userIds),
+        eq(organizationAdmins.status, "active"),
+        eq(organizations.status, "active"),
+        eq(accounts.status, "active"),
+        eq(accounts.isClient, true),
+      )),
   ]);
-  const candidates = [...new Set([...direct, ...grants].map((r) => r.userId))];
-  const out = new Set();
-  for (const id of candidates) if (administersAPractice(await loadClientScope(id, database))) out.add(id);
-  return out;
+  return new Set([...direct, ...grants].map((r) => r.userId));
 }
 
 /**
