@@ -86,8 +86,14 @@ nothing.
 
 ## Wiring it into another app
 
-Stub: the full worked example is added when the host-side authorization layer is built.
+1. **Schema.** Re-export `schema.js` from the app's Drizzle schema index and run `db:generate` (three tables, see Data model).
+2. **Routes.** Create the service with the app's audit writer and register `createOrganizationsRoutes({ service, guard, describeAccounts })` under an admin prefix, with the app's admin guard (see Configuration).
+3. **Scope.** Call `service.scopeForUser(userId, { loadMemberships, eligibleAccounts })` with two callbacks:
+   `loadMemberships(userId)` returns the user's direct memberships as `[{ accountId, role, status, accountActive }]`, and
+   `eligibleAccounts(accountIds)` takes the candidate ids (direct and group-granted together) and returns the `Set` of those that are active and eligible by the app's rules, in one batch.
+4. **Per request.** Load the scope in the auth middleware on every request, from the database. Never cache it (not in the token, Redis or the browser), so removing an admin or an account takes effect at once.
+5. **Filter.** Every account-owned query filters by `scope.accountIds`. An id outside the scope answers as not found, never as forbidden, and a record with no account belongs to nobody but staff.
 
-1. Re-export `schema.js` from the app's Drizzle schema index and run `db:generate` (three tables, see Data model).
-2. Create the service with the app's audit writer and register `createOrganizationsRoutes` with an admin guard and `describeAccounts` (see Configuration).
-3. Environment variables: none.
+Environment variables: none.
+
+The host app's own glue (its scope loader, its account-eligibility query and its admin screens' data sources) lives under `apps/api/src/services/` and `apps/api/src/routes/`, not in this module; see the authorization seam in `docs/superpowers/specs/`.

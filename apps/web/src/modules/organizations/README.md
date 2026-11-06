@@ -28,4 +28,9 @@ Props the host provides:
 
 ## Wiring it into another app
 
-See `apps/web/src/pages/app/AdminGroupsPage.jsx` and `AdminGroupDetailPage.jsx` for the worked example: a list page that navigates to a detail page, and a detail page that builds the two sources from the app's own endpoints.
+1. Serve the API module (`apps/api/src/modules/organizations`) and keep the default `base`, or pass your own.
+2. Build the two sources from your own endpoints: `accountsSource.list({ q, limit, offset, ungrouped })` and `usersSource.list(...)` / `usersSource.labels(ids)` (shapes under Public interface). Both return `{ rows, total }`.
+3. Write `describeAccount(account) -> { title, subtitle?, to? }` so a member row reads the way your app names an account, and pass `accountNoun` if "account" is the wrong word.
+4. Mount `OrganizationsTable` on a list page whose `onOpen` navigates to a detail page, and `OrganizationDetail` on the detail page with `organizationId` and the props above.
+
+Worked example: `apps/web/src/pages/app/AdminGroupsPage.jsx` and `AdminGroupDetailPage.jsx`, and the data-source file beside them (Admin > Groups). Environment variables: none.

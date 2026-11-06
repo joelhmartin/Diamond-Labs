@@ -14,6 +14,10 @@ It knows nothing about the host app's domain. Everything domain-shaped (who
 is host staff, which party keys a user holds, what a record is called and
 where it lives) comes in through collaborators.
 
+## In this app
+
+Party keys are `practice:<accountId>` for a practice and `user:<userId>` for a thread or pickup with no practice (`services/practice.js`). `partyKeysFor(user)` returns the keys of every practice in the login's client scope, and `defaultPartyKey(user)` the single practice key when the scope has exactly one account, else `user:<id>`. A thread started while viewing "All practices" must name one (422 "Choose a practice.").
+
 ## Files
 
 | File | What it owns |

@@ -120,6 +120,7 @@ Full cinematic landing experience:
 - Doctors require admin approval (`approvalStatus`: pending → approved/rejected)
 - Doctor registration → admin email with approve/reject links → one-click approval
 - Middleware: `authenticate.js` (JWT), `authorize.js` (membership RBAC), `require-role.js` (user-level role guards)
+- Client access is `services/client-scope.js`; never compare seazonaClientId
 
 ### External APIs
 
