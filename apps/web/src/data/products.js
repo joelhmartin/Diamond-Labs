@@ -39,9 +39,8 @@ export const PRODUCTS = {
     images: [
       { src: "/images/ddso-post-overview.webp", label: "DDSO Posterior — Overview" },
       { src: "/images/ddso-post-iso.webp",      label: "DDSO Posterior — Isometric" },
-      { src: "/images/ddso-post-stacked.webp",  label: "DDSO Posterior — Stacked" },
       { src: "/images/ddso-post-interior.webp", label: "DDSO Posterior — Interior" },
-      { src: "/images/ddso-blue-bands.webp",    label: "DDSO Posterior — Blue Bands" },
+      { src: "/images/ddso-isometric.webp",     label: "DDSO Posterior — Blue Bands" },
       {
         is3D: true,
         modelPath: "/models/DDSO-Posterior.glb",
@@ -102,7 +101,6 @@ export const PRODUCTS = {
     categoryBg: "bg-brand-500/10",
     images: [
       { src: "/images/onp-front.webp",       label: "ONP — Front View" },
-      { src: "/images/onp-nylon.webp",       label: "ONP — Nylon" },
       { src: "/images/onp-nylon4.webp",      label: "ONP — Nylon Detail" },
       { src: "/images/onp-bioflex-new.webp", label: "ONP — Bioflex" },
       { src: "/images/onp-model.webp",       label: "ONP — On Model" },

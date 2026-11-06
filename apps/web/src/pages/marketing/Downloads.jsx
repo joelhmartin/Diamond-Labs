@@ -31,8 +31,8 @@ export function DownloadsPage() {
         title="Downloads"
         titleAccent="to keep on hand."
         intro="Instructions, brochures and publications from Diamond Orthotic Laboratory."
-        product="/images/ddso-post-stacked.webp"
-        productAlt="Two DDSO sleep appliances stacked"
+        product="/images/ddso-post-overview.webp"
+        productAlt="A DDSO sleep appliance with blue bands"
       />
 
       <Reveal className="section-pad py-16 md:py-24">

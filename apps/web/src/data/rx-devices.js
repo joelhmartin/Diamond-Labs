@@ -533,7 +533,7 @@ export const RX_DEVICES = [
     name: "ON — Olmos Night",
     fullName: "Olmos Night Orthotic",
     category: "tmd",
-    image: "/images/ond-overview.webp",
+    image: "/images/ond-nylon.webp",
     tagline: "Worn supine · built for the airway. ON-D decompressor & ON-P positioner variants.",
     options: OLMOS_NIGHT_OPTIONS,
   },

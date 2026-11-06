@@ -145,7 +145,7 @@ export function SleepPage() {
         intro="All DDSO devices are Rx-only. Approved doctors send scans and Rx details through the Rx form in the account portal."
         primary={{ label: "Submit Digital Rx", to: "/submit-case" }}
         secondary={{ label: "Talk to the lab", to: "/contact" }}
-        product="/images/ddso-post-stacked.webp"
+        product="/images/ddso-post-overview.webp"
         productAlt="DDSO Posterior sleep appliance, upper and lower trays"
       />
     </>
