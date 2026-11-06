@@ -41,35 +41,37 @@ export function ageBalances(items, asOfIso) {
 }
 
 /**
- * Admin › Accounts receivable: one row per client with a balance (worst past
- * due first), plus a totals row that follows the filter. Guest invoices
- * (no client) never appear.
+ * Admin › Accounts receivable: one row per practice account with a balance
+ * (worst past due first), plus a totals row that follows the filter. Invoices
+ * with no practice account (guest shop invoices, unstamped history) never appear.
  *
- * @param {Array<{ clientUserId: string|null, dueDate: string|null, balanceCents: number }>} openInvoices
- * @param {Map<string, { name?: string, practice?: string, accountNumber?: string }>} clientsById
+ * @param {Array<{ accountId: string|null, dueDate: string|null, balanceCents: number }>} openInvoices
+ * @param {Map<string, { name?: string, accountNumber?: string, ownerUserId?: string }>} practicesById
+ * @param {Map<string, { id: string, name: string }>} [organizationOf] account id → its group (organizationOf of the organizations module)
  */
-export function buildReceivables(openInvoices, clientsById, asOfIso, { pastDueOnly = false } = {}) {
-  const byClient = new Map();
+export function buildReceivables(openInvoices, practicesById, asOfIso, { pastDueOnly = false, organizationOf = new Map() } = {}) {
+  const byAccount = new Map();
   for (const inv of openInvoices) {
-    if (!inv.clientUserId) continue;
-    if (!byClient.has(inv.clientUserId)) byClient.set(inv.clientUserId, []);
-    byClient.get(inv.clientUserId).push(inv);
+    if (!inv.accountId) continue;
+    if (!byAccount.has(inv.accountId)) byAccount.set(inv.accountId, []);
+    byAccount.get(inv.accountId).push(inv);
   }
   const rows = [];
-  for (const [clientUserId, items] of byClient) {
+  for (const [accountId, items] of byAccount) {
     const aged = ageBalances(items, asOfIso);
     if (aged.totalCents <= 0) continue;
     const pastDueCents = aged.totalCents - aged.buckets.current;
     if (pastDueOnly && pastDueCents <= 0) continue;
-    const c = clientsById.get(clientUserId) ?? {};
+    const p = practicesById.get(accountId) ?? {};
+    const org = organizationOf.get(accountId);
     rows.push({
-      clientUserId, name: c.name ?? null, practice: c.practice ?? null, accountNumber: c.accountNumber ?? null,
+      accountId, name: p.name ?? null, accountNumber: p.accountNumber ?? null, ownerUserId: p.ownerUserId ?? null,
+      organizationId: org?.id ?? null, organizationName: org?.name ?? null,
       balanceCents: aged.totalCents, pastDueCents, buckets: aged.buckets, oldestDueDate: aged.oldestDueDate,
       openInvoices: items.filter((i) => i.balanceCents > 0).length,
     });
   }
-  rows.sort((a, b) => b.pastDueCents - a.pastDueCents || b.balanceCents - a.balanceCents
-    || String(a.practice ?? a.name ?? "").localeCompare(String(b.practice ?? b.name ?? "")));
+  rows.sort((a, b) => b.pastDueCents - a.pastDueCents || b.balanceCents - a.balanceCents || String(a.name ?? "").localeCompare(String(b.name ?? "")));
   const totals = { balanceCents: 0, pastDueCents: 0, buckets: emptyBuckets() };
   for (const r of rows) {
     totals.balanceCents += r.balanceCents;
@@ -77,4 +79,33 @@ export function buildReceivables(openInvoices, clientsById, asOfIso, { pastDueOn
     for (const k of AGING_KEYS) totals.buckets[k] += r.buckets[k];
   }
   return { rows, totals, asOf: asOfIso };
+}
+
+/**
+ * The group rollup of receivables rows: one entry per group (organization)
+ * that has a row, its buckets and totals the sum of its practices' rows (so a
+ * group's total can never disagree with them). Rows without a group are not in
+ * any entry: callers show them as plain rows. Worst past due first.
+ * @returns {Array<{ organizationId, name, balanceCents, totalCents, pastDueCents, buckets, oldestDueDate, openInvoices, accountIds }>}
+ */
+export function rollupGroups(rows) {
+  const groups = new Map();
+  for (const r of rows) {
+    if (!r.organizationId) continue;
+    if (!groups.has(r.organizationId)) {
+      groups.set(r.organizationId, {
+        organizationId: r.organizationId, name: r.organizationName, balanceCents: 0, totalCents: 0, pastDueCents: 0,
+        buckets: emptyBuckets(), oldestDueDate: null, openInvoices: 0, accountIds: [],
+      });
+    }
+    const g = groups.get(r.organizationId);
+    g.balanceCents += r.balanceCents;
+    g.totalCents += r.balanceCents;
+    g.pastDueCents += r.pastDueCents;
+    for (const k of AGING_KEYS) g.buckets[k] += r.buckets[k];
+    if (r.oldestDueDate && (!g.oldestDueDate || r.oldestDueDate < g.oldestDueDate)) g.oldestDueDate = r.oldestDueDate;
+    g.openInvoices += r.openInvoices;
+    g.accountIds.push(r.accountId);
+  }
+  return [...groups.values()].sort((a, b) => b.pastDueCents - a.pastDueCents || b.balanceCents - a.balanceCents || String(a.name).localeCompare(String(b.name)));
 }

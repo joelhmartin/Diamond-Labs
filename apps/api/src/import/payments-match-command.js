@@ -7,10 +7,11 @@ import { matchPayments, derivedBalances, MATCH_STATUS, UNCLEAR_MODES } from "./p
 import { centsOf } from "./map-invoices.js";
 import { recordNumber, INVOICE_NUMBER_FIELDS, invoiceStatusFor, firstString, bySeazonaId } from "./seazona-records.js";
 import { normAccount } from "./owners.js";
+import { readGroupsCsv, groupCounts } from "./groups-csv.js";
 
 /**
  * `import:fetch payments-match --file <a.xls> [--file <b.xls> …] [--columns …]
- *   [--unclear credit-definite|open] [--review-out <path>] [--live [--accept-…]]`
+ *   [--unclear credit-definite|open] [--review-out <path>] [--groups <groups.csv>] [--live [--accept-…]]`
  *
  * Derives per-invoice open balances from the lab's Payments exports and the
  * invoice summaries already in the import DB (no Seazona call). Dry run by
@@ -20,18 +21,24 @@ import { normAccount } from "./owners.js";
  * `import:load balances --balances per-invoice --file-id <id>` takes. Output
  * is counts, invoice numbers, payment ids (file and row), cents and header
  * names: never client names or notes text.
+ *
+ * `--groups <csv>` (`account_number,group`, from the lab) lets a payment that
+ * names a sibling practice's invoice count as that invoice's payment when both
+ * practices are in the same group; those payments are counted as `same-group`
+ * (ids and cents only: no account numbers, group labels or names are printed).
  */
 const LIVE_WAIVERS = {
   "accept-export-problems": "the export(s) have problem rows (listed above): an unread payment leaves an invoice MORE open, but an unread refund forgives one",
   "accept-unresolved-clients": "fewer than 99% of payments resolve to a client: their invoices are unclear (nothing definite is credited)",
   "accept-unmapped-status": "a column that looks like a status/type/void/reversal is not mapped (map it with --columns status=\"Header\")",
   "accept-unattributed-refunds": "refunds name no known invoice: some invoice may be owed money back that this cannot see",
+  "accept-group-problems": "the groups file has problem rows (listed above): an account left out of its group makes its cross-practice payments cross-client (not applied), so those invoices stay more open",
 };
-export const PAYMENTS_MATCH_FLAGS = ["file", "columns", "unclear", "review-out", "live", ...Object.keys(LIVE_WAIVERS)];
+export const PAYMENTS_MATCH_FLAGS = ["file", "columns", "unclear", "review-out", "groups", "live", ...Object.keys(LIVE_WAIVERS)];
 export const PAYMENTS_MATCH_BOOLEANS = Object.keys(LIVE_WAIVERS);
 export const PAYMENTS_FILE_KIND = "payments_export";
 export const MIN_CLIENT_RESOLUTION = 0.99;
-const USAGE = "Usage: import:fetch payments-match --file <payments.xls> [--file <more.xls> …] [--columns name=Header,…] [--unclear credit-definite|open] [--review-out <path>] [--live [--accept-…]]";
+const USAGE = "Usage: import:fetch payments-match --file <payments.xls> [--file <more.xls> …] [--columns name=Header,…] [--unclear credit-definite|open] [--review-out <path>] [--groups <groups.csv>] [--live [--accept-…]]";
 
 /**
  * Raw invoice summaries (in seazonaId order) → the matcher's invoices, plus why
@@ -105,7 +112,7 @@ export function reviewCsv(result, derived, paymentsById) {
 }
 
 /** What the run saw, for the counts and the live gates. Counts and cents only. */
-function summarize({ parsedList, merged, payments, result }) {
+function summarize({ parsedList, merged, payments, result, groups }) {
   const amountOf = new Map(merged.payments.map((p) => [p.id, p.amountCents]));
   const cents = (ids) => ids.reduce((n, id) => n + amountOf.get(id), 0);
   const resolved = payments.filter((p) => p.clientKey != null).length;
@@ -118,10 +125,12 @@ function summarize({ parsedList, merged, payments, result }) {
     unattributedCents: cents(result.unattributedPayments),
     unattributedRefundCents: cents(result.unattributedRefunds),
     crossClientCents: cents(result.crossClient.map((c) => c.paymentId)),
+    sameGroupCents: cents(result.sameGroup),
+    groupProblems: groups ? groups.problems.length : 0,
   };
 }
 
-function countLines({ parsedList, merged, result, derived, skipped, duplicateNumbers, s }) {
+function countLines({ parsedList, merged, result, derived, skipped, duplicateNumbers, s, groups }) {
   const r = result;
   const lines = [
     `Payments read: ${merged.payments.length} from ${parsedList.length} file(s) (${merged.duplicatesDropped} repeated across files dropped; ${s.reversed} reversal/void row(s) subtracted; ${s.fileProblems} problem row(s)).`,
@@ -132,6 +141,11 @@ function countLines({ parsedList, merged, result, derived, skipped, duplicateNum
     `  multi-invoice payments that do not add up: ${r.unclearPayments.filter((u) => u.reason === "sum-mismatch").length}; overpaid invoices (unclear, kept open): ${r.overpaid.length}; refunds above payments: ${r.netRefund.length}.`,
     `Invoices matched: ${r.invoices.length} (left out: ${skipped.void} void, ${skipped.noNumber} no number, ${skipped.badTotal} bad or negative total, ${skipped.duplicateNumber} record(s) sharing a number).`,
   ];
+  if (groups) {
+    const n = groupCounts(groups.groupOf);
+    lines.push(`  same-group (attributed to the sibling's invoice): ${r.sameGroup.length} payment(s), ${s.sameGroupCents} cents.`);
+    lines.push(`groups file: ${n.practices} practice(s) in ${n.groups} group(s), ${groups.problems.length} problem row(s).`);
+  }
   if (duplicateNumbers.length) lines.push(`  invoice number(s) on more than one record (never credited): ${duplicateNumbers.length}: ${duplicateNumbers.slice(0, 20).join(", ")}${duplicateNumbers.length > 20 ? ", …" : ""}.`);
   if (s.unmappedStatus.length) lines.push(`  UNMAPPED status-like column(s): ${s.unmappedStatus.map((h) => `"${h}"`).join(", ")}. Map with --columns status="Header" (or waive on --live with --accept-unmapped-status).`);
   const open = new Map(derived.rows.map((x) => [x.key, x.cents]));
@@ -162,6 +176,7 @@ function assertLiveGates(flags, s, result) {
     "accept-unresolved-clients": s.resolution < MIN_CLIENT_RESOLUTION,
     "accept-unmapped-status": s.unmappedStatus.length > 0,
     "accept-unattributed-refunds": result.unattributedRefunds.length > 0,
+    "accept-group-problems": s.groupProblems > 0,
   };
   const open = Object.keys(failing).filter((f) => failing[f] && !flags[f]);
   if (open.length) throw new ImportRefusal(`Not sealed: ${open.map((f) => `${LIVE_WAIVERS[f]} (waive with --${f})`).join("; ")}. Fix the input, or get the user's OK to waive.`);
@@ -176,6 +191,13 @@ async function writeReview(deps, path, data) {
   }
 }
 
+/** "kind xN: rows a, b, …" per kind (first 20 rows each). */
+function problemLines(problems) {
+  const byKind = new Map();
+  for (const p of problems) byKind.set(p.kind, [...(byKind.get(p.kind) ?? []), p.line]);
+  return [...byKind].map(([kind, lines]) => `  ${kind} x${lines.length}: rows ${lines.slice(0, 20).join(", ")}`);
+}
+
 export async function runPaymentsMatch(flags, store, deps) {
   const opts = options(flags);
   const rawFiles = [];
@@ -186,17 +208,19 @@ export async function runPaymentsMatch(flags, store, deps) {
   const { invoices, skipped, duplicateNumbers } = invoicesFromRecords(invoiceRecords);
   const resolve = clientResolver(await store.records("client"));
   const payments = merged.payments.map((p) => ({ id: p.id, date: p.date, amountCents: p.amountCents, clientKey: resolve(p.client), text: `${p.reference} ${p.notes}` }));
-  const result = matchPayments({ invoices, payments });
+  const groups = flags.groups ? readGroupsCsv(await deps.readFile(flags.groups), resolve) : null;
+  const result = matchPayments({ invoices, payments, groupOf: groups?.groupOf });
   const derived = derivedBalances(result, { unclear: opts.unclear });
-  const s = summarize({ parsedList, merged, payments, result });
+  const s = summarize({ parsedList, merged, payments, result, groups });
   const now = deps.now();
   const reviewPath = flags["review-out"] ?? join(tmpdir(), `payments-match-review-${now.toISOString().replace(/[:.]/g, "-")}.csv`);
   await writeReview(deps, reviewPath, reviewCsv(result, derived, new Map(payments.map((p) => [p.id, p]))));
-  deps.print(countLines({ parsedList, merged, result, derived, skipped, duplicateNumbers, s }));
+  deps.print(countLines({ parsedList, merged, result, derived, skipped, duplicateNumbers, s, groups }));
   deps.print([`Review CSV (unclear, partial and net-refund invoices; numbers and cents only, mode 600): ${reviewPath}`]);
   parsedList.forEach((p, i) => {
     if (p.problems.length) deps.print([`File ${i + 1} problems (row numbers only):`, ...p.problems.map((x) => `  ${x.kind} x${x.count}: rows ${x.lines.slice(0, 20).join(", ")}`)]);
   });
+  if (groups?.problems.length) deps.print(["Groups file problems (row numbers only):", ...problemLines(groups.problems)]);
   if (!flags.live) {
     deps.print(["Dry run: nothing was stored. Re-run with --live to seal the derived balances."]);
     return 0;

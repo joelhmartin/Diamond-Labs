@@ -69,12 +69,12 @@ export async function openReceivableInvoices(database = db) {
   const paidSql = sql`coalesce(${totals.paid}, 0)`;
   const rows = await database
     .select({
-      id: invoices.id, clientUserId: invoices.clientUserId, status: invoices.status, totalCents: invoices.totalCents, dueDate: invoices.dueDate,
+      id: invoices.id, clientUserId: invoices.clientUserId, accountId: invoices.accountId, status: invoices.status, totalCents: invoices.totalCents, dueDate: invoices.dueDate,
       paid: sql`${paidSql}`.as("paid_cents"),
     })
     .from(invoices)
     .leftJoin(totals, eq(totals.invoiceId, invoices.id))
-    .where(and(eq(invoices.status, "issued"), isNotNull(invoices.clientUserId), sql`${invoices.totalCents} - ${paidSql} > 0`));
+    .where(and(eq(invoices.status, "issued"), isNotNull(invoices.accountId), sql`${invoices.totalCents} - ${paidSql} > 0`));
   return rows
     .map(({ paid, ...inv }) => ({ ...inv, ...deriveBalance(inv, Number(paid)) }))
     .filter((i) => i.balanceCents > 0);

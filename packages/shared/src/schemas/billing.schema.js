@@ -12,6 +12,7 @@ export const invoiceListQuerySchema = z.object({
   status: z.enum(INVOICE_STATUSES).optional(),
   needsPrice: flag,
   clientUserId: id.optional(),
+  accountId: id.optional(),
   number: z.coerce.number().int().positive().optional(),
   q: searchText.optional(),
   ...pageQueryShape,
@@ -80,5 +81,6 @@ export const statementQuerySchema = z.object({ month: z.string().regex(/^\d{4}-(
 export const statementDownloadQuerySchema = statementQuerySchema.extend({ account: z.string().min(1).max(200).optional() });
 // The monthly statement run: everyone due (omit keys), or only these preview rows ("<subject>:<id>|<recipientUserId>").
 export const statementRunSchema = statementQuerySchema.extend({ keys: z.array(z.string().min(3).max(300)).min(1).max(5000).optional() });
-export const receivablesQuerySchema = z.object({ pastDueOnly: flag });
+// groupBy=organization adds the group rollup (`groups`); the rows stay one per practice either way.
+export const receivablesQuerySchema = z.object({ pastDueOnly: flag, groupBy: z.enum(["account", "organization"]).default("account") });
 export const clientInvoicesQuerySchema = z.object({ open: flag });

@@ -8,7 +8,7 @@ import { openPdf, blobErrorText } from "../../lib/requests.js";
 /**
  * Pick a month and open that statement as a PDF. `path` is
  * "/invoices/statement.pdf" (a doctor's own) or
- * "/admin/clients/:userId/statement.pdf".
+ * "/admin/practices/:id/statement.pdf".
  */
 export function StatementDownload({ path, compact = false }) {
   const months = recentMonths(labToday(), 12);

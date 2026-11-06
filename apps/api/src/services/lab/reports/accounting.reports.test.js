@@ -14,24 +14,26 @@ const page = (over = {}) => ({ page: { limit: 50, offset: 0, sort: null, ...over
 const range = { from: "2026-10-01", to: "2026-10-31", previous: { from: "2026-08-31", to: "2026-09-30" } };
 
 const openInvoices = [
-  { id: "i1", clientUserId: "doc1", status: "issued", totalCents: 30000, dueDate: "2000-01-01", paid: "10000" },
-  { id: "i2", clientUserId: "doc1", status: "issued", totalCents: 4000, dueDate: "2999-01-01", paid: "0" },
-  { id: "i3", clientUserId: "doc2", status: "issued", totalCents: 8000, dueDate: "2999-01-01", paid: "0" },
+  { id: "i1", clientUserId: "doc1", accountId: "A1", status: "issued", totalCents: 30000, dueDate: "2000-01-01", paid: "10000" },
+  { id: "i2", clientUserId: "doc1", accountId: "A1", status: "issued", totalCents: 4000, dueDate: "2999-01-01", paid: "0" },
+  { id: "i3", clientUserId: "doc2", accountId: "A2", status: "issued", totalCents: 8000, dueDate: "2999-01-01", paid: "0" },
 ];
 const clients = [{ id: "doc1", name: "Dr One", accountNumber: "1", practice: "One Dental" }, { id: "doc2", name: "Dr Two", accountNumber: "2", practice: null }];
+// What the receivables read loads: the open invoices, the practices they belong to, their groups.
+const practices = [{ id: "A1", name: "One Dental", accountNumber: "1", ownerUserId: "doc1" }, { id: "A2", name: "Two Ortho", accountNumber: "2", ownerUserId: "doc2" }];
 
 test("aging summary totals equal the sum of buckets", async () => {
-  const out = await report("accounting.aging-summary").run(fakeTx({ selects: [openInvoices, clients] }), { pastDueOnly: false });
+  const out = await report("accounting.aging-summary").run(fakeTx({ selects: [openInvoices, practices, []] }), { pastDueOnly: false });
   const buckets = ["current", "d1_30", "d31_60", "d61_90", "d90_plus"];
   for (const r of out.rows) assert.equal(r.balance, buckets.reduce((s, k) => s + r[k], 0));
   assert.equal(out.summary.balance, buckets.reduce((s, k) => s + out.summary[k], 0));
   assert.equal(out.summary.balance, 32000);
-  assert.deepEqual(out.rows.map((r) => [r.client, r.clientUserId]), [["One Dental", "doc1"], ["Dr Two", "doc2"]]);
+  assert.deepEqual(out.rows.map((r) => [r.client, r.clientUserId]), [["One Dental", "doc1"], ["Two Ortho", "doc2"]]);
 });
 
-test("account balance is one row per client from the receivables rule", async () => {
-  const out = await report("accounting.account-balance").run(fakeTx({ selects: [openInvoices, clients] }), {});
-  assert.deepEqual(out.rows.map((r) => [r.client, r.balance, r.pastDue, r.openInvoices]), [["One Dental", 24000, 20000, 2], ["Dr Two", 8000, 0, 1]]);
+test("account balance is one row per practice from the receivables rule", async () => {
+  const out = await report("accounting.account-balance").run(fakeTx({ selects: [openInvoices, practices, []] }), {});
+  assert.deepEqual(out.rows.map((r) => [r.client, r.balance, r.pastDue, r.openInvoices]), [["One Dental", 24000, 20000, 2], ["Two Ortho", 8000, 0, 1]]);
   assert.equal(out.summary.balance, 32000);
 });
 
@@ -128,11 +130,11 @@ test("an imported negative adjustment line is not a discount, and pre-cutover ra
 
 test("receivables and the default statement month follow the run clock, not the wall clock", async () => {
   const ctx = { now: new Date("2026-03-04T17:00:00Z"), today: "2026-03-04" };
-  const due = [{ id: "i1", clientUserId: "doc1", status: "issued", totalCents: 5000, dueDate: "2026-03-01", paid: "0" }];
-  const bal = await report("accounting.account-balance").run(fakeTx({ selects: [due, clients] }), {}, null, ctx);
+  const due = [{ id: "i1", clientUserId: "doc1", accountId: "A1", status: "issued", totalCents: 5000, dueDate: "2026-03-01", paid: "0" }];
+  const bal = await report("accounting.account-balance").run(fakeTx({ selects: [due, practices, []] }), {}, null, ctx);
   assert.equal(bal.notice, "As of 2026-03-04.");
   assert.equal(bal.rows[0].pastDue, 5000);
-  const aging = await report("accounting.aging-summary").run(fakeTx({ selects: [due, clients] }), {}, null, ctx);
+  const aging = await report("accounting.aging-summary").run(fakeTx({ selects: [due, practices, []] }), {}, null, ctx);
   assert.equal(aging.notice, "As of 2026-03-04.");
   assert.equal(aging.rows[0].d1_30, 5000);
   const stmt = await report("accounting.statements-summary").run(fakeTx({ selects: [[], [], []] }), {}, null, ctx);

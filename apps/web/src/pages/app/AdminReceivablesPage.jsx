@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { RefreshCw, Mail } from "lucide-react";
 import { AGING_BUCKETS } from "@my-app/shared";
@@ -15,25 +15,30 @@ import { formatCents } from "../../lib/money.js";
 import { errorText } from "../../lib/requests.js";
 import { dateText, labToday, recentMonths } from "../../lib/invoices.js";
 
-const getRowId = (r) => r.clientUserId;
-const clientName = (r) => r.practice || r.name || "—";
+// A table row is a practice (one per account) or, in "By group" view, a group of them.
+const getRowId = (r) => (r.isGroup ? `g:${r.organizationId}` : r.accountId);
+const rowName = (r) => r.name || "—";
+const practiceCount = (r) => (r.isGroup ? r.members.length : 1);
 
 const FILTERS = [{ id: "pastDue", label: "Past due only", type: "toggle", match: (r) => r.pastDueCents > 0 }];
 
+const searchText = (r) => [r.name, r.accountNumber, r.organizationName].filter(Boolean).join(" ");
 const searchFn = (r, q) =>
-  [r.practice, r.name, r.accountNumber].filter(Boolean).join(" ").toLowerCase().includes(q.toLowerCase());
+  [searchText(r), ...(r.isGroup ? r.members.map(searchText) : [])].join(" ").toLowerCase().includes(q.toLowerCase());
 
 const dollars = (cents) => (cents / 100).toFixed(2);
 
 function receivableColumns({ lastMonth, emailStatement, openCredit }) {
   return [
     {
-      id: "client", header: "Client", sortValue: (r) => clientName(r).toLowerCase(),
-      exportValue: (r) => [clientName(r), r.accountNumber && `Acct ${r.accountNumber}`].filter(Boolean).join(" · "),
+      id: "client", header: "Practice", sortValue: (r) => rowName(r).toLowerCase(),
+      exportValue: (r) => (r.isGroup ? `${rowName(r)} (group)` : [rowName(r), r.accountNumber && `Acct ${r.accountNumber}`].filter(Boolean).join(" · ")),
       cell: (r) => (
         <>
-          <div className="font-medium text-navy">{clientName(r)}</div>
-          <div className="text-xs text-navy/40">{r.practice && r.name ? r.name : ""}{r.accountNumber ? ` · Acct ${r.accountNumber}` : ""}</div>
+          <div className="font-medium text-navy">{rowName(r)}</div>
+          <div className="text-xs text-navy/40">
+            {r.isGroup ? `Group · ${r.members.length} ${r.members.length === 1 ? "practice" : "practices"}` : [r.accountNumber && `Acct ${r.accountNumber}`, r.organizationName].filter(Boolean).join(" · ")}
+          </div>
         </>
       ),
     },
@@ -47,19 +52,37 @@ function receivableColumns({ lastMonth, emailStatement, openCredit }) {
     { id: "oldest", header: "Oldest due", sortValue: (r) => r.oldestDueDate, exportValue: (r) => r.oldestDueDate ?? "", cell: (r) => <span className="text-navy/60">{dateText(r.oldestDueDate)}</span> },
     {
       id: "actions", header: "", align: "right", exportValue: () => "",
-      cell: (r) => (
+      cell: (r) => (r.isGroup ? null : (
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <Link to={`${ROUTES.ADMIN_INVOICES}?inv.clientUserId=${r.clientUserId}`} className="text-xs font-semibold text-brand-700 hover:underline">Invoices</Link>
-          <StatementDownload path={`/admin/clients/${r.clientUserId}/statement.pdf`} compact />
+          <Link to={`${ROUTES.ADMIN_INVOICES}?inv.accountId=${r.accountId}`} className="text-xs font-semibold text-brand-700 hover:underline">Invoices</Link>
+          <StatementDownload path={`/admin/practices/${r.accountId}/statement.pdf`} compact />
           <ConfirmButton className="rounded-full bg-surface-100 px-3 py-1.5 text-xs font-semibold text-navy" confirmLabel={`Email ${lastMonth.label}?`}
             onConfirm={() => emailStatement(r)}>
             Email statement
           </ConfirmButton>
-          <button type="button" onClick={() => openCredit(r)} className="rounded-full bg-surface-100 px-3 py-1.5 text-xs font-semibold text-navy">Account credit…</button>
+          {r.ownerUserId && <button type="button" onClick={() => openCredit(r)} className="rounded-full bg-surface-100 px-3 py-1.5 text-xs font-semibold text-navy">Account credit…</button>}
         </div>
-      ),
+      )),
     },
   ];
+}
+
+/** The practices inside an expanded group row, with the same aging as the main table. */
+function GroupPractices({ group }) {
+  return (
+    <table className="w-full text-sm" aria-label={`${group.name} practices`}>
+      <tbody>
+        {group.members.map((m) => (
+          <tr key={m.accountId} className="border-t border-surface-300/40 first:border-t-0">
+            <td className="py-1.5 pr-4 font-medium text-navy">{rowName(m)}{m.accountNumber ? <span className="ml-2 text-xs font-normal text-navy/40">Acct {m.accountNumber}</span> : null}</td>
+            <td className="py-1.5 pr-4 text-right font-semibold">{formatCents(m.balanceCents)}</td>
+            <td className="py-1.5 pr-4 text-right text-red-700">{m.pastDueCents ? `${formatCents(m.pastDueCents)} past due` : <span className="text-navy/40">Nothing past due</span>}</td>
+            <td className="py-1.5 text-right text-navy/60">{dateText(m.oldestDueDate)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
 }
 
 /** Totals for the rows the table currently matches (search + filters), so the footer follows the filter. */
@@ -69,15 +92,16 @@ function TotalsRow({ rows, columnCount }) {
   return (
     <tr className="bg-surface-50 font-semibold text-navy">
       <td className="w-10 px-4 py-3" />
-      <td className="px-4 py-3 text-sm">Total ({rows.length} clients)</td>
+      <td className="w-8 px-4 py-3" />
+      <td className="px-4 py-3 text-sm">Total ({rows.reduce((n, r) => n + practiceCount(r), 0)} practices)</td>
       <td className={cell}>{formatCents(sum((r) => r.balanceCents))}</td>
       {AGING_BUCKETS.map((b) => <td key={b.key} className={cell}>{formatCents(sum((r) => r.buckets[b.key]))}</td>)}
-      <td colSpan={columnCount - 3 - AGING_BUCKETS.length} />
+      <td colSpan={columnCount - 4 - AGING_BUCKETS.length} />
     </tr>
   );
 }
 
-/** Admin › Accounts receivable: one row per client with a balance, aged; worst past due first. */
+/** Admin › Accounts receivable: one row per practice with a balance, aged; "By group" rolls practices of a group into one expandable row. */
 export function AdminReceivablesPage() {
   const { addToast } = useToast();
   const [data, setData] = useState(null);
@@ -85,13 +109,14 @@ export function AdminReceivablesPage() {
   const [loading, setLoading] = useState(true);
   const [creditFor, setCreditFor] = useState(null);
   const [statementsOpen, setStatementsOpen] = useState(false);
+  const [byGroup, setByGroup] = useState(false);
   const lastMonth = recentMonths(labToday(), 2)[1];
 
   // The whole aged list loads once; "Past due only" is a table filter, and the footer totals follow it.
   const load = async () => {
     setLoading(true);
     try {
-      const res = await api.get("/admin/receivables", { params: { pastDueOnly: "false" } });
+      const res = await api.get("/admin/receivables", { params: { pastDueOnly: "false", groupBy: "organization" } });
       setData(res.data.data);
       setError(null);
     } catch (err) {
@@ -102,20 +127,28 @@ export function AdminReceivablesPage() {
   };
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const table = useDataTable({ mode: "client", rows: data?.rows ?? [], searchFn, filters: FILTERS, getRowId, loading, error, reload: load });
+  // "By group": each group's row (its practices inside) plus the practices that are in no group.
+  const tableRows = useMemo(() => {
+    const rows = data?.rows ?? [];
+    if (!byGroup) return rows;
+    const groups = (data?.groups ?? []).map((g) => ({ ...g, isGroup: true, members: rows.filter((r) => g.accountIds.includes(r.accountId)) }));
+    return [...groups, ...rows.filter((r) => !r.organizationId)];
+  }, [data, byGroup]);
 
-  // One client, now (an explicit re-send is allowed). The whole month goes out from "Monthly statements".
+  const table = useDataTable({ mode: "client", rows: tableRows, searchFn, filters: FILTERS, getRowId, loading, error, reload: load });
+
+  // One practice, now, to its approved doctors (an explicit re-send is allowed). The whole month goes out from "Monthly statements".
   const emailStatement = async (row) => {
     try {
-      const res = await api.post(`/admin/clients/${row.clientUserId}/statement/email`, { month: lastMonth.value });
+      const res = await api.post(`/admin/practices/${row.accountId}/statement/email`, { month: lastMonth.value });
       if (!res.data.data.sent) throw new Error("The notice could not be sent.");
-      addToast({ message: `${lastMonth.label} statement notice sent to ${clientName(row)}.`, type: "success" });
+      addToast({ message: `${lastMonth.label} statement notice sent to ${rowName(row)}.`, type: "success" });
     } catch (err) {
       addToast({ message: errorText(err), type: "error" });
     }
   };
   const columns = receivableColumns({ lastMonth, emailStatement, openCredit: setCreditFor });
-  const footer = table.matchingRows.length > 0 ? <TotalsRow rows={table.matchingRows} columnCount={columns.length + 1} /> : null;
+  const footer = table.matchingRows.length > 0 ? <TotalsRow rows={table.matchingRows} columnCount={columns.length + 2} /> : null;
 
   return (
     <div className="mx-auto max-w-7xl p-6 md:p-8">
@@ -141,13 +174,21 @@ export function AdminReceivablesPage() {
         table={table}
         columns={columns}
         footer={footer}
-        searchPlaceholder="Practice, doctor, or account #"
-        itemLabel="clients"
+        searchPlaceholder="Practice, group, or account #"
+        itemLabel={byGroup ? "groups and practices" : "practices"}
+        renderExpanded={(g) => (g.isGroup ? <GroupPractices group={g} /> : null)}
+        canExpand={(r) => r.isGroup}
+        toolbarRight={(
+          <button type="button" onClick={() => setByGroup((v) => !v)} aria-pressed={byGroup}
+            className={`rounded-full px-3 py-1.5 text-xs font-semibold ${byGroup ? "bg-brand-500 text-white" : "bg-surface-100 text-navy"}`}>
+            By group
+          </button>
+        )}
         exportFileName="receivables.csv"
         emptyText={table.filters.pastDue ? "Nothing past due." : "No open balances."}
       />
       {creditFor && (
-        <AccountCreditModal clientUserId={creditFor.clientUserId} clientName={clientName(creditFor)} onClose={() => setCreditFor(null)} onRecorded={load} />
+        <AccountCreditModal clientUserId={creditFor.ownerUserId} clientName={rowName(creditFor)} onClose={() => setCreditFor(null)} onRecorded={load} />
       )}
     </div>
   );

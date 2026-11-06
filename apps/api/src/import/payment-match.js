@@ -87,13 +87,17 @@ function applyShared(payment, named, out) {
  * - the payment's client (or a named invoice's) is unknown: its invoices are unclear, nothing definite;
  * - otherwise one invoice takes the amount; several take their totals only on an exact sum.
  * A negative amount (refund) subtracts.
+ * groupOf (optional Map<clientKey, groupLabel>, the lab's own list of practices
+ * that share a bill): when every other client a payment names is in the
+ * payer's group, the payment is attributed as normal and listed in `sameGroup`
+ * (payment ids) instead of `crossClient`. A client with no label is in no group.
  */
-export function matchPayments({ invoices, payments }) {
+export function matchPayments({ invoices, payments, groupOf = new Map() }) {
   const state = new Map(invoices.map((i) => [i.number, { ...i, definiteCents: 0, unclear: false, paymentIds: [] }]));
   const known = new Set(state.keys());
   const out = {
     attributedPayments: 0, clientUnknownPayments: 0, prefixedPayments: 0, barePayments: 0,
-    unattributedPayments: [], unattributedRefunds: [], crossClient: [], unclearPayments: [],
+    unattributedPayments: [], unattributedRefunds: [], crossClient: [], sameGroup: [], unclearPayments: [],
   };
   for (const p of payments) {
     const matches = extractInvoiceMatches(p.text, known);
@@ -105,9 +109,14 @@ export function matchPayments({ invoices, payments }) {
     if (matches.every((m) => m.prefixed)) out.prefixedPayments += 1; else out.barePayments += 1;
     const numbers = matches.map((m) => m.number);
     const named = numbers.map((n) => state.get(n));
-    if (p.clientKey != null && named.some((i) => i.clientKey != null && i.clientKey !== p.clientKey)) {
-      out.crossClient.push({ paymentId: p.id, invoiceNumbers: numbers });
-      continue;
+    const foreign = p.clientKey == null ? [] : named.filter((i) => i.clientKey != null && i.clientKey !== p.clientKey);
+    if (foreign.length) {
+      const label = groupOf.get(p.clientKey);
+      if (label == null || !foreign.every((i) => groupOf.get(i.clientKey) === label)) {
+        out.crossClient.push({ paymentId: p.id, invoiceNumbers: numbers });
+        continue;
+      }
+      out.sameGroup.push(p.id);
     }
     for (const i of named) i.paymentIds.push(p.id);
     if (p.clientKey == null || named.some((i) => i.clientKey == null)) {

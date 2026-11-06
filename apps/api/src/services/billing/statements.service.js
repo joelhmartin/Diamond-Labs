@@ -4,7 +4,8 @@ import { db } from "../../config/database.js";
 import { accounts, invoices, invoicePayments, labOrders, users, doctorProfiles } from "../../db/schema/index.js";
 import { openReceivableInvoices, ledgerRowDayBetween } from "./ledger.service.js";
 import { afterLabDay } from "../../lib/lab-day-sql.js";
-import { buildReceivables } from "./aging.js";
+import { buildReceivables, rollupGroups } from "./aging.js";
+import { organizationsService } from "../organizations.service.js";
 import { buildStatementModel, buildCombinedStatementModel } from "./statement-model.js";
 import { renderStatementPdf, renderCombinedStatementPdf } from "./billing-pdf.js";
 
@@ -179,19 +180,39 @@ export async function statementPdfFor(subject, month, database = db) {
 }
 
 /**
- * Admin › Accounts receivable as of the lab's today: every issued client
- * invoice, its balance from the ledger's one paid-sum and balance rule
- * (deriveBalance, summed in SQL by openReceivableInvoices), aged and grouped per client (clientUserId). Grouping by
- * practice where seazonaClientId is shared is deferred to piece 5's practice
- * entity: every row action (invoice filter, statement PDF, statement email)
- * is per user today. Spec correction 6. `today` ("YYYY-MM-DD", default the
- * lab's today now) lets a report age against its run clock; it is a separate
- * argument so a route passing its query object can never set it.
+ * Admin › Accounts receivable as of the lab's today: every issued invoice
+ * that still owes, its balance from the ledger's one paid-sum and balance rule
+ * (deriveBalance, summed in SQL by openReceivableInvoices), aged and grouped
+ * per practice account. Each row names its group (organizationId/Name, null
+ * when the practice is in none). `groupBy: "organization"` also returns
+ * `groups`, the rollup of those rows (rollupGroups); ungrouped practices stay
+ * plain rows. `today` ("YYYY-MM-DD", default the lab's today now) lets a report
+ * age against its run clock; it is a separate argument so a route passing its
+ * query object can never set it.
  */
-export async function listReceivables({ pastDueOnly = false } = {}, database = db, { today } = {}) {
+export async function listReceivables({ pastDueOnly = false, groupBy = "account" } = {}, database = db, { today } = {}) {
   const open = await openReceivableInvoices(database);
-  const clients = await loadClientNames(open.map((i) => i.clientUserId), database);
-  return buildReceivables(open, clients, today ?? isoDateIn(LAB_TIMEZONE, new Date()), { pastDueOnly });
+  const accountIds = [...new Set(open.map((i) => i.accountId).filter(Boolean))];
+  const practices = await loadPracticeNames(accountIds, database);
+  const organizationOf = await organizationsService.organizationOf(accountIds, database);
+  const out = buildReceivables(open, practices, today ?? isoDateIn(LAB_TIMEZONE, new Date()), { pastDueOnly, organizationOf });
+  return groupBy === "organization" ? { ...out, groups: rollupGroups(out.rows) } : out;
+}
+
+/**
+ * Many practices' name, account number and owner (the user the lab's
+ * per-client actions, such as an account credit, are recorded against) in one
+ * query, keyed by account id. Any status: a closed practice that still owes
+ * stays on the receivables list.
+ * @returns {Promise<Map<string, { id, name, accountNumber, ownerUserId }>>}
+ */
+export async function loadPracticeNames(accountIds, database = db) {
+  if (!accountIds.length) return new Map();
+  const rows = await database
+    .select({ id: accounts.id, name: accounts.name, accountNumber: accounts.accountNumber, ownerUserId: accounts.ownerId })
+    .from(accounts)
+    .where(inArray(accounts.id, accountIds));
+  return new Map(rows.map((r) => [r.id, { ...r, accountNumber: r.accountNumber ?? null }]));
 }
 
 /**

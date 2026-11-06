@@ -7,20 +7,48 @@ const { fakeTx } = await import("../../test/fake-tx.js");
 const svc = await import("./statements.service.js");
 const source = readFileSync(fileURLToPath(new URL("./statements.service.js", import.meta.url)), "utf8");
 
-test("receivables: issued invoices with what is still owed, aged and grouped by client", async () => {
-  const db = fakeTx({ selects: [
-    [
-      { id: "i1", clientUserId: "doc1", status: "issued", totalCents: 30000, dueDate: "2000-01-01", paid: "10000" },
-      { id: "i2", clientUserId: "doc1", status: "issued", totalCents: 5000, dueDate: "2000-01-01", paid: "5000" },
-      { id: "i3", clientUserId: "doc2", status: "issued", totalCents: 8000, dueDate: "2999-01-01", paid: "0" },
-    ],
-    [{ id: "doc1", name: "Dr One", accountNumber: "1", practice: "One Dental" }, { id: "doc2", name: "Dr Two", accountNumber: "2", practice: null }],
-  ] });
+const OPEN = [
+  { id: "i1", clientUserId: "doc1", accountId: "A1", status: "issued", totalCents: 30000, dueDate: "2000-01-01", paid: "10000" },
+  { id: "i2", clientUserId: "doc1", accountId: "A1", status: "issued", totalCents: 5000, dueDate: "2000-01-01", paid: "5000" },
+  { id: "i3", clientUserId: "doc2", accountId: "A2", status: "issued", totalCents: 8000, dueDate: "2999-01-01", paid: "0" },
+  { id: "i4", clientUserId: "doc3", accountId: "A3", status: "issued", totalCents: 2000, dueDate: "2000-01-01", paid: "0" },
+];
+const PRACTICES = [
+  { id: "A1", name: "Alpha Dental", accountNumber: "1", ownerUserId: "doc1" },
+  { id: "A2", name: "Beta Ortho", accountNumber: "2", ownerUserId: "doc2" },
+  { id: "A3", name: "Gamma Perio", accountNumber: "3", ownerUserId: "doc3" },
+];
+const ORGS = [{ accountId: "A1", id: "G1", name: "North Group", settings: {} }, { accountId: "A2", id: "G1", name: "North Group", settings: {} }];
+
+test("receivables: issued invoices with what is still owed, aged per practice account", async () => {
+  const db = fakeTx({ selects: [OPEN, PRACTICES, ORGS] });
   const ar = await svc.listReceivables({}, db);
-  assert.deepEqual(ar.rows.map((r) => [r.clientUserId, r.balanceCents, r.pastDueCents, r.openInvoices]), [["doc1", 20000, 20000, 1], ["doc2", 8000, 0, 1]]);
+  assert.deepEqual(ar.rows.map((r) => [r.accountId, r.name, r.balanceCents, r.pastDueCents, r.openInvoices]), [["A1", "Alpha Dental", 20000, 20000, 1], ["A3", "Gamma Perio", 2000, 2000, 1], ["A2", "Beta Ortho", 8000, 0, 1]]);
+  assert.deepEqual(ar.rows.map((r) => [r.organizationId, r.organizationName, r.ownerUserId]), [["G1", "North Group", "doc1"], [null, null, "doc3"], ["G1", "North Group", "doc2"]]);
   assert.equal(ar.rows[0].buckets.d90_plus, 20000);
-  assert.equal(ar.totals.balanceCents, 28000);
+  assert.equal(ar.totals.balanceCents, 30000);
+  assert.equal(ar.groups, undefined, "no rollup unless asked");
   assert.match(ar.asOf, /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test("group rollup total equals the sum of its practices", async () => {
+  const ar = await svc.listReceivables({ groupBy: "organization" }, fakeTx({ selects: [OPEN, PRACTICES, ORGS] }));
+  assert.equal(ar.groups.length, 1);
+  const [g] = ar.groups;
+  const members = ar.rows.filter((r) => g.accountIds.includes(r.accountId));
+  assert.deepEqual([g.organizationId, g.name, [...g.accountIds].sort()], ["G1", "North Group", ["A1", "A2"]]);
+  assert.equal(g.totalCents, members.reduce((n, r) => n + r.balanceCents, 0));
+  assert.equal(g.totalCents, 28000);
+  for (const k of Object.keys(g.buckets)) assert.equal(g.buckets[k], members.reduce((n, r) => n + r.buckets[k], 0), k);
+  assert.equal(Object.values(g.buckets).reduce((n, v) => n + v, 0), g.totalCents);
+});
+
+test("ungrouped practice is a plain row", async () => {
+  const ar = await svc.listReceivables({ groupBy: "organization" }, fakeTx({ selects: [OPEN, PRACTICES, ORGS] }));
+  const plain = ar.rows.find((r) => r.accountId === "A3");
+  assert.equal(plain.organizationId, null);
+  assert.ok(ar.groups.every((g) => !g.accountIds.includes("A3")));
+  assert.equal(ar.totals.balanceCents, ar.groups.reduce((n, g) => n + g.totalCents, 0) + plain.balanceCents, "groups plus plain rows cover the total once");
 });
 
 test("a statement is only for an active practice; drafts carry no money", async () => {
@@ -70,7 +98,7 @@ test("one activity load splits per practice; a group's combined total is the sum
 
 test("receivables read one SQL-aggregated query (no id list) and keep deriveBalance as the balance rule", async () => {
   assert.match(source, /openReceivableInvoices\(/);
-  const db = fakeTx({ selects: [[{ id: "i1", clientUserId: "d", status: "issued", totalCents: 100, dueDate: null, paid: "100" }]] });
+  const db = fakeTx({ selects: [[{ id: "i1", clientUserId: "d", accountId: "A1", status: "issued", totalCents: 100, dueDate: null, paid: "100" }]] });
   assert.equal((await svc.listReceivables({}, db)).rows.length, 0, "a fully paid invoice never reaches AR");
   assert.doesNotMatch(source, /sum\(\$\{invoicePayments/);
 });
@@ -83,8 +111,8 @@ test("loadClient carries the practice phone and delivery preferences (the Ship f
   assert.deepEqual([c.phone, c.deliveryMethod, c.deliveryNotes], ["512-555-0100", "UPS Ground", "Back door"]);
 });
 
-test("an unowned legacy invoice (null client) is left out of AR and never reaches the client lookup", async () => {
-  const db = fakeTx({ selects: [[{ id: "i1", clientUserId: null, status: "issued", totalCents: 100, dueDate: null, paid: "0" }]] });
+test("an unowned legacy invoice (no practice account) is left out of AR and never reaches the client lookup", async () => {
+  const db = fakeTx({ selects: [[{ id: "i1", clientUserId: null, accountId: null, status: "issued", totalCents: 100, dueDate: null, paid: "0" }]] });
   const ar = await svc.listReceivables({}, db);
   assert.equal(ar.rows.length, 0);
   // The ledger's query builds two selects (a paid-sum subquery and the rows); a third would be the users lookup.
@@ -125,4 +153,15 @@ test("a practice statement is billed to the practice at its owner's doctor-profi
   const group = fakeTx({ selects: [[{ id: "A1", name: "Alpha Dental", accountNumber: "1001", address1: "1 Main St", city: "Austin", state: "TX", zip: "78701" }], []] });
   const c = await svc.combinedStatementFor({ id: "G1", name: "Smile Group", accountIds: ["A1"] }, "2026-10", { generatedAt: new Date("2026-11-02T15:00:00Z") }, group);
   assert.deepEqual(c.billTo, ["Smile Group"]);
+});
+
+test("the receivables query takes groupBy (account by default) and the invoice list filters by practice account", async () => {
+  const { receivablesQuerySchema, invoiceListQuerySchema } = await import("@my-app/shared");
+  assert.equal(receivablesQuerySchema.parse({}).groupBy, "account");
+  assert.equal(receivablesQuerySchema.parse({ groupBy: "organization" }).groupBy, "organization");
+  assert.equal(receivablesQuerySchema.safeParse({ groupBy: "client" }).success, false);
+  assert.equal(invoiceListQuerySchema.parse({ accountId: "A1" }).accountId, "A1");
+  const { renderSql } = await import("../../test/sql-text.js");
+  const { invoiceListWhere } = await import("./invoice-queries.js");
+  assert.match(renderSql(invoiceListWhere({ accountId: "A1" })).text, /invoices\.account_id = \$\d+/);
 });

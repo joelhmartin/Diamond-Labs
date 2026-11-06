@@ -54,6 +54,7 @@ export function invoiceListWhere(filters = {}) {
   const conds = [];
   if (filters.status) conds.push(eq(invoices.status, filters.status));
   if (filters.clientUserId) conds.push(eq(invoices.clientUserId, filters.clientUserId));
+  if (filters.accountId) conds.push(eq(invoices.accountId, filters.accountId));
   if (filters.number) conds.push(eq(invoices.invoiceNumber, filters.number));
   // "Needs a price or lines": a draft that shipping would hold (invoices.service issueForShippedLabOrder).
   if (filters.needsPrice) {

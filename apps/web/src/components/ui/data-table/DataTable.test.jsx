@@ -458,3 +458,10 @@ test("groupBy works with paginated={false}", () => {
   assert.equal(screen.queryByRole("button", { name: "Next page" }), null);
   assert.equal(bodyRows().filter((tr) => tr.hasAttribute("data-group")).length, 3);
 });
+
+test("canExpand limits the expander to the rows that have a detail", () => {
+  mount(<Harness paginated={false} renderExpanded={(r) => <p>Detail of {r.id}</p>} canExpand={(r) => r.id === "r2"} />);
+  assert.equal(screen.getAllByRole("button", { name: "Expand row" }).length, 1);
+  fireEvent.click(within(rowOf("Row 02")).getByRole("button", { name: "Expand row" }));
+  assert.ok(screen.getByText("Detail of r2"));
+});
