@@ -1,4 +1,4 @@
-import { CARRIER_LABELS } from "@my-app/shared";
+import { CARRIER_LABELS, practiceKeyFor } from "@my-app/shared";
 import { ShippingError } from "../shipping/shipping-errors.js";
 
 /**
@@ -104,4 +104,22 @@ export function shipToFromShopOrder(shop) {
     // A shop checkout ships to a person's address (P8).
     residential: true,
   };
+}
+
+/**
+ * Who the shipped alert (lab.order_shipped) goes to, from the box's orders and
+ * shipmentRecipient's `to`:
+ *  - every order in one practice → that practice's people (`party`, resolved by
+ *    lab-notifications resolveLabAudience, as for every other practice alert);
+ *  - otherwise (an order with no practice yet, or a box spanning practices,
+ *    whose order numbers one practice must not see) → the client doctor;
+ *  - a guest shop order → its email address.
+ * Order numbers, carrier and tracking only ride along (shippedNoticeData).
+ */
+export function shippedAudience(orders, to) {
+  const accountIds = new Set((orders ?? []).map((o) => o.accountId ?? null));
+  const [accountId] = accountIds;
+  if (accountIds.size === 1 && accountId) return { party: practiceKeyFor({ accountId }) };
+  if (to?.userId) return { userIds: [to.userId] };
+  return { addresses: { email: [to.email] } };
 }

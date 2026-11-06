@@ -13,7 +13,7 @@ import { planNewShipment, assertVoidable } from "../shipping/shipment-rules.js";
 import * as shipments from "../shipping/shipments.service.js";
 import { mutateIn, changeStatus, billingFollowUp } from "./lab-orders.service.js";
 import { LabOrderError, assertFresh, planStatusChange, planShipmentLink, planShipmentUnlink } from "./lab-order-rules.js";
-import { planShippable, shipmentReference, planShippingCharge, assertOrdersVoidable, billableOrders } from "./lab-shipping-rules.js";
+import { planShippable, shipmentReference, planShippingCharge, assertOrdersVoidable, billableOrders, shippedAudience } from "./lab-shipping-rules.js";
 import { loadOrders, ordersOnShipment, shipmentRecipient } from "./lab-shipping-queries.js";
 
 /**
@@ -192,8 +192,9 @@ export async function markShipmentShipped(shipmentId, { byUserId = null } = {}, 
 }
 
 /**
- * lab.order_shipped to the client doctor (in-app + the shipped email), or to a
- * guest shop order's address (email only). The email is sendShippedNotice,
+ * lab.order_shipped (in-app + the shipped email) to the box's practice, else
+ * the client doctor, else a guest shop order's address (email only):
+ * shippedAudience. The email is sendShippedNotice,
  * the event's email.send (lab-notifications.js), which honours
  * SHIPPED_EMAIL_ENABLED. Order numbers, carrier and tracking only.
  */
@@ -206,7 +207,7 @@ async function notifyShipped(shipment, d) {
     event: "lab.order_shipped",
     recordType: "shipment",
     recordId: shipment.id,
-    audience: to.userId ? { userIds: [to.userId] } : { addresses: { email: [to.email] } },
+    audience: shippedAudience(boxed, to),
     // Bounded so the data guard can never drop the shipped email (shippedNoticeData).
     data: shippedNoticeData({ shipment, orderNumbers: boxed.map((o) => o.orderNumber), shopOrderNumber: to.shopOrderNumber }),
   });

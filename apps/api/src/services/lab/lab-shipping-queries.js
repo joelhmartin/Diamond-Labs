@@ -12,7 +12,7 @@ import { shipToFromClient, shipToFromShopOrder } from "./lab-shipping-rules.js";
 const ORDER_COLS = {
   id: labOrders.id, orderNumber: labOrders.orderNumber, status: labOrders.status, source: labOrders.source,
   sourceId: labOrders.sourceId, clientUserId: labOrders.clientUserId, isRemake: labOrders.isRemake,
-  shipmentId: labOrders.shipmentId, version: labOrders.version,
+  shipmentId: labOrders.shipmentId, version: labOrders.version, accountId: labOrders.accountId,
 };
 
 export function loadOrders(ids, database = db) {
