@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Plus, Trash2, X } from "lucide-react";
 import api from "../../config/api.js";
+import { Drawer } from "../../components/ui/Drawer.jsx";
 import { DataTable } from "../../components/ui/data-table/index.js";
 import { Button } from "../../components/ui/Button.jsx";
 import { Input } from "../../components/ui/Input.jsx";
@@ -68,7 +69,7 @@ export function PracticeDrawer({ practice, onClose, onChanged }) {
   }, [path]);
   useEffect(() => { load(); }, [load]);
 
-  const table = useDataTable({ rows: members, getRowId, searchFn, loading, error, reload: load });
+  const table = useDataTable({ rows: members, getRowId, searchFn, isRowSelectable: (m) => !m.isOwner, loading, error, reload: load });
 
   const changeRole = async (m, role) => {
     try {
@@ -121,9 +122,8 @@ export function PracticeDrawer({ practice, onClose, onChanged }) {
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end">
-      <div className="fixed inset-0 bg-black/40" onClick={onClose} />
-      <aside role="dialog" aria-label={`${practice.name} details`} className="relative z-10 h-full w-full max-w-xl space-y-6 overflow-y-auto bg-white p-6 shadow-xl">
+    <>
+      <Drawer onClose={onClose} label={`${practice.name} details`} className="max-w-xl space-y-6 bg-white p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="font-heading text-2xl font-bold text-navy">{practice.name}</h2>
@@ -155,7 +155,7 @@ export function PracticeDrawer({ practice, onClose, onChanged }) {
             )}
           />
         </section>
-      </aside>
+      </Drawer>
       {picking && (
         <PickerModal
           title="Add members"
@@ -166,6 +166,6 @@ export function PracticeDrawer({ practice, onClose, onChanged }) {
           itemLabel="people"
         />
       )}
-    </div>
+    </>
   );
 }

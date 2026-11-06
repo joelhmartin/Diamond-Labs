@@ -38,3 +38,15 @@ test("a taken account number shows the server's message and does not close the f
   fireEvent.click(screen.getByRole("button", { name: "Save" }));
   await screen.findByText(/belongs to another practice/);
 });
+
+test("the owner row has no select checkbox, so bulk Remove can never include it", async () => {
+  get.mockResolvedValue({ data: { data: [
+    { userId: "o1", name: "Olive Owner", email: "o@x.test", role: "admin", isOwner: true },
+    { userId: "u2", name: "Vic Viewer", email: "v@x.test", role: "viewer", isOwner: false },
+  ] } });
+  wrap(<PracticeDrawer practice={PRACTICE} onClose={() => {}} onChanged={() => {}} />);
+  await screen.findByText("Vic Viewer");
+  const ownerRow = screen.getByText("Olive Owner").closest("tr");
+  assert.equal(ownerRow.querySelector('input[type="checkbox"]:not([disabled])'), null);
+  assert.ok(screen.getByText("Vic Viewer").closest("tr").querySelector('input[type="checkbox"]:not([disabled])'));
+});

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { FolderPlus } from "lucide-react";
 import api from "../../config/api.js";
+import { useToast } from "../../components/ui/Toast.jsx";
+import { errorText } from "../../lib/requests.js";
 import { DataTable } from "../../components/ui/data-table/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
 import { pageParams } from "../../lib/data-table/server.js";
@@ -29,14 +31,15 @@ const COLUMNS = [
 
 /** Admin > Practices: every practice with its account number, group, members and open balance. A row opens the drawer. */
 export function AdminPracticesPage() {
+  const { addToast } = useToast();
   const [groups, setGroups] = useState([]);
   const [open, setOpen] = useState(null);
 
   useEffect(() => {
     api.get("/admin/organizations", { params: { status: "active", limit: 200 } })
       .then((res) => setGroups(res.data.data.rows))
-      .catch(() => setGroups([]));
-  }, []);
+      .catch((err) => addToast({ message: `Groups could not be loaded: ${errorText(err)}`, type: "error" }));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filters = [
     { id: "organizationId", label: "Group", type: "select", placeholder: "All groups", options: groups.map((g) => ({ value: g.id, label: g.name })), match: () => true },
