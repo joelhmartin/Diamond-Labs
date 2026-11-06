@@ -3,9 +3,11 @@
  * repo has no DB harness). Every awaited select/update chain pops the next
  * queued result (an array; [] when the queue runs dry); inserts record their
  * values; `transaction(fn)` runs fn against the same fake, as a savepoint
- * would in production. `log` is the ordered list of operations.
+ * would in production. `log` is the ordered list of operations. With
+ * `executes`, each `execute(sql)` pops the next queued row array (else it
+ * resolves to the query itself, as before).
  */
-export function fakeTx({ selects = [], updates = [] } = {}) {
+export function fakeTx({ selects = [], updates = [], executes = null } = {}) {
   const log = [];
   const chain = (queue, record) => {
     const b = new Proxy(function () {}, {
@@ -18,7 +20,7 @@ export function fakeTx({ selects = [], updates = [] } = {}) {
   };
   const tx = {
     log,
-    execute: async (q) => { log.push({ op: "execute", q }); return q; },
+    execute: async (q) => { log.push({ op: "execute", q }); return executes ? executes.shift() ?? [] : q; },
     // A select entry records its builder calls by name (`calls`), so a test can see e.g. a row lock ("for").
     select: () => { const entry = { op: "select", calls: [] }; log.push(entry); return chain(selects, (m) => entry.calls.push(m)); },
     selectDistinct: () => { log.push({ op: "select" }); return chain(selects); },

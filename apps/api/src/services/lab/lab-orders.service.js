@@ -602,8 +602,8 @@ export function changeWorkflow(id, { workflowKey, keepDueDate = false, expectedV
 }
 
 /** People an order can be assigned to: active admins and lab staff. */
-export function listAssignableStaff() {
-  return db
+export function listAssignableStaff(database = db) {
+  return database
     .select({ id: users.id, name: users.name, role: users.role })
     .from(users)
     .where(and(inArray(users.role, STAFF_ROLES), eq(users.status, "active")))

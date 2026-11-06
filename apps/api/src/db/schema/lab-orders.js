@@ -91,6 +91,13 @@ export const labOrders = pgTable("lab_orders", {
   index("lab_orders_client_idx").on(t.clientUserId),
   index("lab_orders_account_id_idx").on(t.accountId),
   index("lab_orders_shipment_idx").on(t.shipmentId),
+  // Reports (piece 9): date-range scans and the open / department / assignee slices.
+  index("lab_orders_received_idx").on(t.receivedAt),
+  index("lab_orders_shipped_idx").on(t.shippedAt).where(sql`shipped_at is not null`),
+  index("lab_orders_client_received_idx").on(t.clientUserId, t.receivedAt),
+  index("lab_orders_open_due_idx").on(t.dueDate).where(sql`status not in ('shipped', 'cancelled')`),
+  index("lab_orders_department_idx").on(t.departmentId).where(sql`department_id is not null`),
+  index("lab_orders_assignee_idx").on(t.assigneeUserId).where(sql`assignee_user_id is not null`),
   index("lab_orders_merged_into_idx").on(t.mergedIntoOrderId),
 ]);
 
@@ -127,4 +134,7 @@ export const labOrderEvents = pgTable("lab_order_events", {
   index("lab_order_events_order_idx").on(t.labOrderId, t.at),
   // The Shipments list filters events by type = 'shipment' and the shipment id in to_value.
   index("lab_order_events_type_to_idx").on(t.type, t.to),
+  // Reports (piece 9): events by day, and one event type by day.
+  index("lab_order_events_at_idx").on(t.at),
+  index("lab_order_events_type_at_idx").on(t.type, t.at),
 ]);

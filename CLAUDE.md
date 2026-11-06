@@ -216,6 +216,7 @@ VITE_AUTHORIZE_NET_CLIENT_KEY=          # public client key from the merchant po
 - Route config: `apps/web/src/config/routes.js`
 - 3D models: `apps/web/public/models/` (OBJ+MTL for 4 products)
 - Downloads: `apps/web/public/downloads/` (PDFs)
+- Reports: apps/api/src/modules/reports (generic), services/lab/reports (lab definitions)
 - Exports module: `apps/api/src/modules/exports/` (generic; app sources in `apps/api/src/exports/`, screen in `apps/web/src/modules/exports/`; see its README)
 - Production desk glue (mounts the generic modules): `apps/api/src/routes/lab-desk.routes.js` (lookup at `/api/v1/lab/lookup`, intake at `/api/v1/lab/intake`, tags, record files)
 - Price lists: `apps/api/src/services/price-lists.service.js` (resolution stays in `lib/pricing.js` + `services/pricing.service.js`)

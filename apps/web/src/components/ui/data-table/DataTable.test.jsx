@@ -325,6 +325,41 @@ test("server mode bulk actions get the rows from the latest fetch, not the ones 
   assert.deepEqual(run.mock.calls[0][0].map((r) => [r.id, r.version]), [["r1", 2], ["r2", 2]]);
 });
 
+test("toolbar Export CSV calls exportAll with current params", async () => {
+  // The table passes no arguments: the caller's closure holds its own current params.
+  let params = { range: "last30" };
+  const exportAll = vi.fn(async () => {});
+  const { rerender } = mount(<Harness exportAll={() => exportAll(params)} />);
+  params = { range: "last7" };
+  rerender(
+    <MemoryRouter>
+      <ToastProvider><Harness exportAll={() => exportAll(params)} /></ToastProvider>
+    </MemoryRouter>,
+  );
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Export CSV" })));
+  assert.deepEqual(exportAll.mock.calls, [[{ range: "last7" }]]);
+});
+
+test("toolbar Export CSV is busy while running and toasts a failure", async () => {
+  let fail;
+  const exportAll = vi.fn(() => new Promise((_, reject) => { fail = reject; }));
+  mount(<Harness exportAll={exportAll} />);
+  fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
+  const busy = await screen.findByRole("button", { name: /Exporting/ });
+  assert.equal(busy.disabled, true);
+  await act(async () => fail(new Error("This report took too long. Try a shorter date range.")));
+  assert.ok(await screen.findByText("This report took too long. Try a shorter date range."));
+  assert.equal(screen.getByRole("button", { name: "Export CSV" }).disabled, false);
+});
+
+test("no exportAll, no toolbar export button", () => {
+  mount(<Harness />);
+  assert.equal(screen.queryByRole("button", { name: /Export CSV/ }), null);
+  // Selecting rows still offers the selected-rows export in the bulk bar.
+  fireEvent.click(rowOf("Row 01"), { metaKey: true });
+  assert.ok(screen.getByRole("button", { name: /Export CSV/ }));
+});
+
 test("resultToast: success, partial (warning) or none done (error), longer when something failed", async () => {
   const { resultToast } = await import("./index.js");
   assert.deepEqual(resultToast({ ok: 2, failed: [] }), { message: "2 done", type: "success", duration: 4000 });

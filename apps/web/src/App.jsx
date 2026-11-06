@@ -45,6 +45,9 @@ import { AdminOrdersPage } from "./pages/app/AdminOrdersPage.jsx";
 import { AdminDepartmentsPage } from "./pages/app/AdminDepartmentsPage.jsx";
 import { AdminAdjustmentReasonsPage } from "./pages/app/AdminAdjustmentReasonsPage.jsx";
 import { ShipmentsPage } from "./pages/lab/ShipmentsPage.jsx";
+import { ReportsIndexPage } from "./modules/reports/ReportsIndexPage.jsx";
+import { ReportPage } from "./modules/reports/ReportPage.jsx";
+import { DashboardPage as ReportsDashboardPage } from "./modules/reports/DashboardPage.jsx";
 import { ShipmentLabelPrintPage } from "./pages/lab/ShipmentLabelPrintPage.jsx";
 import { MyCasesPage } from "./pages/doctor/MyCasesPage.jsx";
 import { AdminRxMappingPage } from "./pages/app/AdminRxMappingPage.jsx";
@@ -278,6 +281,10 @@ function AppRoutes() {
           <Route path="/admin/shipments" element={<ShipmentsPage />} />
           <Route path="/admin/rx-cases" element={<AdminRxCasesPage />} />
           <Route path="/admin/rx-cases/:id" element={<AdminRxCaseDetailPage />} />
+          <Route path="/reports" element={<ReportsIndexPage />} />
+          <Route path="/reports/:key" element={<ReportPage />} />
+          <Route path="/lab/dashboard" element={<ReportsDashboardPage />} />
+          <Route path="/lab/dashboard/:key" element={<ReportsDashboardPage />} />
         </Route>
       </Route>
 

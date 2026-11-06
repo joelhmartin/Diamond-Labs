@@ -32,7 +32,7 @@ const cutoffs = new WeakMap();
  * open day after today. A due date strictly before it is at risk, whatever
  * its distance in the past, and a far-future due date costs nothing.
  */
-function atRiskCutoff(todayIso, calendar) {
+export function atRiskCutoff(todayIso, calendar) {
   let byDay = cutoffs.get(calendar);
   if (!byDay) { byDay = new Map(); cutoffs.set(calendar, byDay); }
   if (!byDay.has(todayIso)) {

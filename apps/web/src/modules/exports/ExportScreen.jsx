@@ -7,7 +7,7 @@ import { useToast } from "../../components/ui/Toast.jsx";
 import { useDataTable } from "../../hooks/useDataTable.js";
 import { saveBlob } from "../../lib/download.js";
 import { pageParams } from "../../lib/data-table/server.js";
-import { blobErrorText, errorText } from "../../lib/requests.js";
+import { blobErrorText, dispositionFilename, errorText } from "../../lib/requests.js";
 import { formatCents } from "../../lib/money.js";
 import { ParamsForm, paramsReady, paramsToQuery } from "./ParamsForm.jsx";
 
@@ -48,11 +48,6 @@ function PreviewTable({ basePath, source, query }) {
   );
 }
 
-function filenameFrom(res, fallback) {
-  const m = /filename="?([^";]+)"?/i.exec(res.headers?.["content-disposition"] ?? "");
-  return m ? m[1] : fallback;
-}
-
 /**
  * Pick an export source, set its parameters, preview it page by page and
  * download it in one of the formats the source supports. Everything comes from
@@ -87,7 +82,7 @@ export function ExportScreen({ basePath, defaultSource }) {
     setDownloading(true);
     try {
       const res = await api.get(`${basePath}/${source.key}/download.${format.key}`, { params: query, responseType: "blob" });
-      saveBlob(filenameFrom(res, `${source.key}.${format.extension}`), res.data);
+      saveBlob(dispositionFilename(res.headers?.["content-disposition"]) || `${source.key}.${format.extension}`, res.data);
     } catch (err) {
       addToast({ type: "error", message: await blobErrorText(err) });
     } finally {

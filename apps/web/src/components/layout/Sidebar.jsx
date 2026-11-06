@@ -19,6 +19,7 @@ import {
   Building2,
   Landmark,
   Truck,
+  BarChart3,
   BellRing,
   MessageSquare,
   PackageOpen,
@@ -47,6 +48,8 @@ const mainItems = [
 ];
 
 const staffItems = [
+  // The lab dashboards (Pulse first); `end: false` keeps it active on /lab/dashboard/:key.
+  { label: "Lab dashboard", to: ROUTES.LAB_DASHBOARD_HOME, icon: LayoutDashboard, end: false },
   { label: "Production", to: ROUTES.LAB_BOARD,      icon: LayoutGrid },
   { label: "Calendar",   to: ROUTES.LAB_CALENDAR,   icon: CalendarDays },
   { label: "Intake",     to: ROUTES.LAB_INTAKE,     icon: Inbox },
@@ -56,6 +59,7 @@ const staffItems = [
   { label: "Messages",   to: ROUTES.LAB_MESSAGES,    icon: MessageSquare, badge: <MessagesBadge className="ml-auto" /> },
   { label: "Pickups",    to: ROUTES.LAB_PICKUPS,     icon: PackageOpen },
   { label: "Deliveries", to: ROUTES.LAB_DELIVERIES,  icon: Route },
+  { label: "Reports",    to: ROUTES.REPORTS,         icon: BarChart3 },
 ];
 
 const adminItems = [
@@ -77,11 +81,11 @@ const adminItems = [
   { label: "Rx Mapping", to: ROUTES.ADMIN_RX_MAPPING,  icon: FlaskConical },
 ];
 
-function NavItem({ to, icon: Icon, label, badge = null }) {
+function NavItem({ to, icon: Icon, label, end = true, badge = null }) {
   return (
     <NavLink
       to={to}
-      end
+      end={end}
       className={({ isActive }) =>
         clsx(
           "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",

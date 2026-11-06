@@ -1,4 +1,5 @@
 // Labels and small formatters for the admin Payments screen (history rows and the per-charge audit trail).
+import { PAYMENT_SOURCE_LABELS } from "@my-app/shared";
 
 export function formatUSD(n) {
   return Number(n || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -47,23 +48,9 @@ const STATUS_LABEL = {
   refund_pending: "Refund pending",
 };
 
-// How the payment was initiated. AutoPay is the one nobody clicked, so the lab
-// needs to see it distinctly when reconciling — otherwise a scheduled charge is
-// indistinguishable from one a doctor or an admin made by hand. Rows written
-// before the `source` column existed carry null; render nothing rather than guess.
-export const SOURCE_LABEL = {
-  autopay: "AutoPay",
-  doctor_card: "Doctor — card",
-  doctor_hosted: "Doctor — card",
-  admin_card: "Admin — card",
-  admin_offline: "Offline",
-  admin_check: "Check",
-  admin_cash: "Cash",
-  admin_ach: "ACH",
-  admin_other: "Other (recorded)",
-  credit: "Credit",
-  refund: "Refund",
-};
+// How the payment was initiated: the one shared map (packages/shared billing.js),
+// which the payment reports use too. Null sources render nothing.
+export const SOURCE_LABEL = PAYMENT_SOURCE_LABELS;
 
 export function StatusPill({ status }) {
   return (

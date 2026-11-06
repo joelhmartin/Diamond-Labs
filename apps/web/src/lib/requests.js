@@ -5,6 +5,8 @@
  * statements and the work ticket all use them.)
  */
 
+import { saveBlob } from "./download.js";
+
 export function errorText(err) {
   return err?.response?.data?.error?.message || err?.message || "Something went wrong.";
 }
@@ -62,4 +64,30 @@ export function openPdf(api, path, params) {
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
     return url;
   });
+}
+
+/** The filename in a Content-Disposition header, or null. */
+export function dispositionFilename(header) {
+  const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(header || "");
+  if (!m) return null;
+  try {
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1]; // malformed percent-encoding: keep the name as sent
+  }
+}
+
+/**
+ * Fetch a file from the API (`api` is config/api.js) through the signed-in
+ * client and save it. A failed request throws an Error carrying the server's
+ * message, read out of the blob body.
+ */
+export async function saveFile(api, path, params, fallbackName) {
+  let res;
+  try {
+    res = await api.get(path, { responseType: "blob", params });
+  } catch (err) {
+    throw new Error(await blobErrorText(err));
+  }
+  saveBlob(dispositionFilename(res.headers?.["content-disposition"]) || fallbackName, res.data);
 }

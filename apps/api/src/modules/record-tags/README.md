@@ -38,7 +38,7 @@ Shared validation lives in `packages/shared/src/record-tags/schemas.js`
 | GET | `/tags/:recordType/definitions` (`?includeInactive=true`) | `staffGuard` |
 | POST | `/admin/tags/:recordType/definitions` | `adminGuard` |
 | PATCH | `/admin/tags/:recordType/definitions/:id` | `adminGuard` |
-| POST | `/tags/:recordType/apply` `{ ids, add, remove }` | `staffGuard` |
+| POST | `/tags/:recordType/apply` `{ ids, add, remove }` | `staffGuard`, then the type's `applyGuard` if set |
 | PUT / DELETE | `/tags/:recordType/:recordId/star` (the caller's own star) | `staffGuard` |
 
 An unknown `:recordType` is a 404. `TagError` codes map to 404 / 409 / 422.
@@ -52,6 +52,7 @@ await fastify.register(recordTagRoutes, {
     widget: {
       exists: async (ids) => new Set(/* ids found in the host's table */),
       onChange: async (tx, changes, { byUserId }) => { /* optional: record history in the same tx */ },
+      applyGuard: [requireAdmin], // optional: only these may apply this type's tags (staff still read)
     },
   },
   staffGuard: [authenticate, requireRole(...)],   // preHandler function or array

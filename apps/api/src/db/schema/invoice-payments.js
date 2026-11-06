@@ -51,4 +51,7 @@ export const invoicePayments = pgTable("invoice_payments", {
   index("invoice_payments_seazona_invoice_id_idx").on(table.seazonaInvoiceId),
   index("invoice_payments_transaction_id_idx").on(table.transactionId),
   index("invoice_payments_refunds_transaction_id_idx").on(table.refundsTransactionId),
+  // Reports (piece 9): payments by received day (paid_on, else the created day).
+  index("invoice_payments_paid_on_idx").on(table.paidOn),
+  index("invoice_payments_created_at_idx").on(table.createdAt),
 ]);

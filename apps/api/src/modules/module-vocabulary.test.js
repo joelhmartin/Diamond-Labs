@@ -13,7 +13,7 @@ const ROOTS = [
   fileURLToPath(new URL("../../../web/src/modules", import.meta.url)),
   fileURLToPath(new URL("../../../../packages/shared/src/business-calendar", import.meta.url)),
   fileURLToPath(new URL("../../../../packages/shared/src/workflows", import.meta.url)),
-  ...["record-tags", "record-files", "barcode-lookup", "upload-intake", "organizations"].map((m) =>
+  ...["record-tags", "record-files", "barcode-lookup", "upload-intake", "organizations", "reports"].map((m) =>
     fileURLToPath(new URL(`../../../../packages/shared/src/${m}`, import.meta.url)),
   ),
   fileURLToPath(new URL("../../../../packages/shared/src/exports", import.meta.url)),
