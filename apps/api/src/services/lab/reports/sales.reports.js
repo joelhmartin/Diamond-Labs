@@ -9,7 +9,7 @@ import { invoices, invoiceLines, productFamilies, users, doctorProfiles } from "
 import {
   CLIENT_LINK, catalogJoins, clientName, coverageNotice, discountNotices, labDayText, labToday, num, orderAndPage, rowsOf, salesBreakdown, salesByDay, salesByMonth, salesWhere,
 } from "./lab-metrics.js";
-import { tagsFor } from "../../../modules/record-tags/index.js";
+import { listDefinitions, tagsFor } from "../../../modules/record-tags/index.js";
 import { CLIENT_REP_RECORD_TYPE } from "../lab-tags.js";
 import { ADMIN, money, share, sumOf, sums, uncategorizedSql } from "./report-helpers.js";
 
@@ -175,6 +175,14 @@ const byClient = {
 
 /** Sales with no client, or a client with no rep tag. */
 export const NO_REP = "No rep";
+export const NO_REPS_NOTICE = `No sales reps are set up yet, so every client shows as "${NO_REP}". An admin defines the reps and assigns them to clients.`;
+
+/** The notice when nothing could be grouped by rep because no rep exists at all (only asked when no client had one). */
+async function noRepsNotice(tx, groups) {
+  if ([...groups.keys()].some((rep) => rep !== NO_REP)) return undefined;
+  const defined = await listDefinitions(CLIENT_REP_RECORD_TYPE, {}, tx);
+  return defined.length ? undefined : NO_REPS_NOTICE;
+}
 
 const byRep = {
   key: "sales.by-rep", group: GROUP, roles: ADMIN, title: "Sales By Rep", requires: ["record-tags"],
@@ -203,7 +211,8 @@ const byRep = {
     const rows = [...groups.values()]
       .sort((a, b) => (a.rep === NO_REP) - (b.rep === NO_REP) || b.sales - a.sales || a.rep.localeCompare(b.rep))
       .map((g) => ({ ...g, share: share(g.sales, total) }));
-    return { rows, summary: { rep: "Total", ...sums(rows, ["clients", "invoices", "sales"]), share: total ? 1 : 0 } };
+    const notice = await noRepsNotice(tx, groups);
+    return { rows, summary: { rep: "Total", ...sums(rows, ["clients", "invoices", "sales"]), share: total ? 1 : 0 }, ...(notice && { notice }) };
   },
 };
 

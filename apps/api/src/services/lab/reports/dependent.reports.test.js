@@ -15,7 +15,7 @@ import { planWith } from "../../../modules/workflows/index.js";
 import { fakeTx, fakeDb } from "../../../test/fake-tx.js";
 import { executedSql } from "../../../test/sql-text.js";
 import { LAB_CAPABILITIES, registerLabReports } from "./index.js";
-import { NO_REP } from "./sales.reports.js";
+import { NO_REP, NO_REPS_NOTICE } from "./sales.reports.js";
 
 const boss = { id: "u1", role: "admin" };
 const NOW = new Date("2026-11-05T17:00:00Z"); // Thursday, 11:00 in Chicago
@@ -134,6 +134,20 @@ test("sales by rep groups by the client's rep tag; untagged clients show \"No re
   const tagRead = tx.log.find((e) => e.op === "select");
   assert.ok(tagRead, "rep tags are read with tagsFor in the report's transaction");
   assert.deepEqual(report("sales.by-rep").roles, ["admin"]);
+  assert.equal(out.notice, undefined, "reps exist, so no set-up notice");
+});
+
+test("sales by rep says so when no rep is defined at all, and stays quiet when reps exist but none is assigned", async () => {
+  const sales = [{ clientUserId: "c1", invoices: "1", cents: "10000" }];
+  const range = { range: { from: "2026-10-01", to: "2026-10-31" } };
+  // Selects: tagsFor (no client tagged), then the rep definitions.
+  const none = fakeTx({ executes: [sales], selects: [[], []] });
+  const out = await report("sales.by-rep").run(none, range, boss, ctx());
+  assert.deepEqual(out.rows.map((r) => r.rep), [NO_REP]);
+  assert.equal(out.notice, NO_REPS_NOTICE);
+  assert.match(out.notice, /No sales reps are set up yet/);
+  const defined = fakeTx({ executes: [sales], selects: [[], [{ id: "t1", recordType: "client_rep", label: "Alice", color: "slate", position: 0, active: true }]] });
+  assert.equal((await report("sales.by-rep").run(defined, range, boss, ctx())).notice, undefined);
 });
 
 test("assigned and department task reports judge each stage target by piece 7's rule: done, behind or to do", async () => {
