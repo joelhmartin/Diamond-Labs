@@ -6,6 +6,7 @@ import { prefersReducedMotion } from "../../lib/reducedMotion";
 import { HeroStage } from "../../components/marketing/HeroStage";
 import { CtaBand } from "../../components/marketing/CtaBand.jsx";
 import { RotatingGeometry, ScanningGrid, PulsingWaveform } from "../../components/marketing/ProtocolAnimations.jsx";
+import { JawJointFigure, AirwayFigure } from "../../components/marketing/SpecialtyFigures";
 import LottiePlayer from "../../components/ui/LottiePlayer";
 import {
   ArrowRight,
@@ -283,6 +284,7 @@ function TMJSleepCard() {
   const [phase, setPhase] = useState(0); // 0=TMJ visible, 1=Sleep visible
 
   useEffect(() => {
+    if (prefersReducedMotion()) return undefined;
     const interval = setInterval(() => {
       setPhase((prev) => (prev === 0 ? 1 : 0));
     }, 3500);
@@ -301,75 +303,29 @@ function TMJSleepCard() {
         Dual specialization in TMD orthotics and FDA-cleared sleep appliances.
         One lab, every case.
       </p>
-      <div className="flex-1 bg-navy/[0.03] rounded-2xl p-5 overflow-hidden min-h-[140px] flex flex-col items-center justify-center">
-        {/* SVG illustration: TMJ and Sleep side by side */}
-        <div className="flex items-center justify-center gap-6 w-full">
-          {/* TMJ figure */}
-          <div className={`flex flex-col items-center transition-all duration-700 ${phase === 0 ? "opacity-100 scale-100" : "opacity-30 scale-95"}`}>
-            <svg viewBox="0 0 80 90" className="w-16 h-20" fill="none">
-              {/* Head */}
-              <circle cx="40" cy="28" r="18" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
-              {/* Jaw - offset to show pain */}
-              <path d="M28 36 Q40 52 52 36" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
-              {/* Pain lines */}
-              <g className={`transition-opacity duration-500 ${phase === 0 ? "opacity-100" : "opacity-0"}`}>
-                <line x1="58" y1="28" x2="66" y2="24" stroke="rgb(var(--alert))" strokeWidth="1.5" strokeLinecap="round" />
-                <line x1="58" y1="33" x2="68" y2="33" stroke="rgb(var(--alert))" strokeWidth="1.5" strokeLinecap="round" />
-                <line x1="58" y1="38" x2="66" y2="42" stroke="rgb(var(--alert))" strokeWidth="1.5" strokeLinecap="round" />
-              </g>
-              {/* Shoulders */}
-              <path d="M20 58 Q40 48 60 58" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
-              {/* Eyes - squinting in pain */}
-              <line x1="33" y1="25" x2="37" y2="25" stroke="rgb(var(--navy))" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="43" y1="25" x2="47" y2="25" stroke="rgb(var(--navy))" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-            <span className={`mt-2 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all duration-500 ${
-              phase === 0 ? "bg-brand-500 text-white" : "bg-surface-200/60 text-navy/70"
-            }`}>
-              TMD
-            </span>
+      <div className="relative flex-1 grid grid-cols-2 gap-3">
+        {[
+          { label: "TMD orthotics", Figure: JawJointFigure, on: phase === 0 },
+          { label: "Sleep appliances", Figure: AirwayFigure, on: phase === 1 },
+        ].map(({ label, Figure, on }) => (
+          <div
+            key={label}
+            className={`rounded-2xl px-3 pt-4 pb-3 flex flex-col items-center border transition-colors duration-700 ${
+              on ? "bg-brand-500/[0.08] border-brand-500/30" : "bg-navy/[0.03] border-transparent"
+            }`}
+          >
+            <div className="w-full max-w-[150px] aspect-[120/124] text-navy">
+              <Figure active={on} />
+            </div>
+            <span className="mt-3 text-sm font-semibold text-navy text-center">{label}</span>
           </div>
-
-          {/* Divider */}
-          <div className="flex flex-col items-center gap-1">
-            <div className="w-px h-12 bg-navy/10" />
-            <span className="text-[9px] font-mono text-navy/70">+</span>
-            <div className="w-px h-12 bg-navy/10" />
-          </div>
-
-          {/* Sleep figure */}
-          <div className={`flex flex-col items-center transition-all duration-700 ${phase === 1 ? "opacity-100 scale-100" : "opacity-30 scale-95"}`}>
-            <svg viewBox="0 0 80 90" className="w-16 h-20" fill="none">
-              {/* Head - tilted on pillow */}
-              <circle cx="38" cy="30" r="18" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
-              {/* Closed eyes */}
-              <path d="M31 27 Q34 29 37 27" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
-              <path d="M41 27 Q44 29 47 27" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
-              {/* Open mouth - snoring */}
-              <ellipse cx="39" cy="37" rx="4" ry="3" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
-              {/* Z's */}
-              <g className={`transition-opacity duration-500 ${phase === 1 ? "opacity-100" : "opacity-0"}`}>
-                <text x="56" y="18" fill="rgb(var(--brand-500))" fontSize="11" fontWeight="700" fontFamily="IBM Plex Mono, monospace">Z</text>
-                <text x="63" y="10" fill="rgb(var(--brand-500))" fontSize="8" fontWeight="700" fontFamily="IBM Plex Mono, monospace" opacity="0.6">Z</text>
-                <text x="68" y="4" fill="rgb(var(--brand-500))" fontSize="6" fontWeight="700" fontFamily="IBM Plex Mono, monospace" opacity="0.3">Z</text>
-              </g>
-              {/* Shoulders */}
-              <path d="M18 58 Q38 48 58 58" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
-            </svg>
-            <span className={`mt-2 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all duration-500 ${
-              phase === 1 ? "bg-accent-500 text-white" : "bg-surface-200/60 text-navy/70"
-            }`}>
-              Sleep
-            </span>
-          </div>
-        </div>
-
-        {/* "One Roof" bar */}
-        <div className="mt-4 w-full flex items-center gap-2">
-          <div className="flex-1 h-px bg-navy/10" />
-          <span className="text-[9px] font-mono text-navy/70 uppercase tracking-widest">One Lab · Every Case</span>
-          <div className="flex-1 h-px bg-navy/10" />
-        </div>
+        ))}
+        <span
+          aria-hidden="true"
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white border border-surface-300 shadow-sm flex items-center justify-center text-navy font-semibold"
+        >
+          +
+        </span>
       </div>
     </div>
   );
