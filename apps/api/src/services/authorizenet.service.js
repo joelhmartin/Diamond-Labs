@@ -218,9 +218,10 @@ export async function createCustomerProfile({ email, description }) {
   const data = await apiRequest({
     createCustomerProfileRequest: {
       merchantAuthentication: merchantAuth(),
+      // Authorize.net validates these in schema order: description before email.
       profile: {
-        email,
         description: description || email,
+        email,
       },
     },
   });
