@@ -75,7 +75,10 @@ export const accountCreditSchema = z.object({
 );
 
 export const statementQuerySchema = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Use YYYY-MM.") });
-// The monthly statement run: everyone due (omit clientUserIds), or only these clients.
-export const statementRunSchema = statementQuerySchema.extend({ clientUserIds: z.array(id).min(1).max(5000).optional() });
+// A client's statement download: `account` is a practice id, "all" (only with one practice), or
+// "organization:<id>" (the combined group statement, for that group's admins). The server decides access.
+export const statementDownloadQuerySchema = statementQuerySchema.extend({ account: z.string().min(1).max(200).optional() });
+// The monthly statement run: everyone due (omit keys), or only these preview rows ("<subject>:<id>|<recipientUserId>").
+export const statementRunSchema = statementQuerySchema.extend({ keys: z.array(z.string().min(3).max(300)).min(1).max(5000).optional() });
 export const receivablesQuerySchema = z.object({ pastDueOnly: flag });
 export const clientInvoicesQuerySchema = z.object({ open: flag });

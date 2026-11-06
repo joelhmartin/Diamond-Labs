@@ -18,7 +18,7 @@ test("client invoice routes are client-portal only, read through the practice sc
   const detail = handlerSource(doctor, 'fastify.get("/invoices/:id",');
   assert.match(detail, /invoiceDetailHandler\(\{ mayRead: clientMayRead, view: doctorInvoiceView \}\)/, "the shared handler, doctor access check and view");
   assert.match(doctor, /canActOnInvoice\(clientScopeOf\(user\), detail\.invoice\)/, "one shared predicate");
-  assert.doesNotMatch(doctor, /seazonaClientId|practiceUserIds|canActOnInvoiceLegacy/);
+  assert.doesNotMatch(doctor, /seazonaClientId|practiceUserIds|doctorStatementUserIds|canActOnInvoiceLegacy/);
   assert.match(doctor, /detail\.invoice\.status !== "draft"/);
   assert.match(handler, /"invoice\.read"/, "every detail read is audited, in the one shared handler");
   assert.doesNotMatch(doctor, /seazonaService|seazona\.service/);
@@ -74,10 +74,14 @@ test("AR, client statements and notices are admin-only and audited; nothing pati
   assert.match(receivables, /import \{ ADMIN \} from "\.\/admin-invoice\.routes\.js"/);
   for (const m of markersOf(receivables)) assert.match(handlerSource(receivables, m), /preHandler: \[\.\.\.ADMIN/, m);
   assert.match(handlerSource(receivables, 'fastify.get("/admin/receivables",'), /validateQuery\(receivablesQuerySchema\)/);
+  const practicePdf = handlerSource(receivables, 'fastify.get("/admin/practices/:id/statement.pdf",');
+  assert.match(practicePdf, /statementPdfHandler\(\{\s*subject: \(request\) => \(\{ subject: "account", subjectId: request\.params\.id \}\)/, "the one shared statement handler, per practice");
+  // The per-client paths are thin wrappers onto the client's single practice (404 none, 422 several).
   const pdf = handlerSource(receivables, 'fastify.get("/admin/clients/:userId/statement.pdf",');
-  assert.match(pdf, /statementPdfHandler\(\{/, "the one shared statement handler");
-  assert.match(pdf, /clientUserId: request\.params\.userId/);
-  assert.match(handlerSource(receivables, 'fastify.post("/admin/clients/:userId/statement/email",'), /sendStatementFor\(request\.params\.userId, request\.body\.month, \{ byUserId: request\.user\.id/);
+  assert.match(pdf, /subject: async \(request\) => \(\{ subject: "account", subjectId: await singlePracticeOf\(request\.params\.userId\) \}\)/);
+  assert.match(handlerSource(receivables, 'fastify.post("/admin/practices/:id/statement/email",'), /sendStatementFor\(\{ accountId: request\.params\.id \}, request\.body\.month, \{ byUserId: request\.user\.id/);
+  const email = handlerSource(receivables, 'fastify.post("/admin/clients/:userId/statement/email",');
+  assert.match(email, /const accountId = await singlePracticeOf\(request\.params\.userId\);\s*const out = await sendStatementFor\(\{ accountId, recipientUserIds: \[request\.params\.userId\] \}/);
   assert.match(statementRun, /action: "statement\.emailed"/);
   assert.match(handlerSource(admin, 'fastify.post("/admin/invoices/:id/email",'), /invoiceEmailHandler\(\)/);
   const mail = handler.slice(handler.indexOf("export function invoiceEmailHandler"));
@@ -87,22 +91,20 @@ test("AR, client statements and notices are admin-only and audited; nothing pati
   assert.match(index, /await fastify\.register\(receivablesRoutes, \{ prefix: "\/api\/v1" \}\)/);
 });
 
-test("one statement handler serves both audiences; a doctor's covers their practice, through the shared practice rule", () => {
-  assert.match(handler, /export function statementPdfHandler\(\{ scope \}\)/);
+test("one statement handler serves both audiences; a client's goes through the practice scope", () => {
+  assert.match(handler, /export function statementPdfHandler\(\{ subject \}\)/);
   assert.match(handler, /sendPdf\(reply, out\.pdf, out\.model\.filename\)/);
-  assert.match(handler, /"statement\.downloaded"/);
+  assert.match(handler, /"statement\.downloaded", targetType: s\.subject, targetId: s\.subjectId/);
   const body = handlerSource(doctor, 'fastify.get("/invoices/statement.pdf",');
-  assert.match(body, /\.\.\.CLIENT_PORTAL, validateQuery\(statementQuerySchema\)/);
-  assert.match(body, /statementPdfHandler\(/);
-  // Task 7 moves the statement onto the account scope; until then it borrows the statement run's rule.
-  assert.match(body, /clientUserIds: await doctorStatementUserIds\(request\.user\)/);
+  assert.match(body, /\.\.\.CLIENT_PORTAL, validateQuery\(statementDownloadQuerySchema\)/);
+  assert.match(body, /subject: \(request\) => requestedStatementSubject\(clientScopeOf\(request\.user\), request\.query\.account\)/);
   assert.doesNotMatch(doctor + receivables, /statementPdfFor|sendPdf/, "no near-duplicate handler");
 });
 
-test("the emailed statement notice covers the practice, like the doctor's own download", () => {
+test("the emailed statement notice is the practice's statement, the same one the download shows", () => {
   // The single send lives in the statement-run service (it also writes statement_sends).
-  assert.match(statementRun, /statementFor\(clientUserId, month, \{ clientUserIds: await practiceUserIds\(target, database\) \}, database\)/);
-  assert.match(statementRun, /async function practiceUserIds\(/);
+  assert.match(statementRun, /const model = await practiceStatementFor\(accountId, month, \{ generatedAt \}, database\);/);
+  assert.doesNotMatch(statementRun, /practiceUserIds|doctorStatementUserIds|seazonaClientId/);
 });
 
 const runRoutes = read("../statement-run.routes.js");
@@ -114,6 +116,6 @@ test("the monthly statement run is admin-only, validated, limited to closed mont
   assert.match(post, /preHandler: \[\.\.\.ADMIN, validate\(statementRunSchema\)\]/);
   for (const body of [get, post]) assert.match(body, /if \(openMonth\(request\.(query|body)\.month\)\) return openMonthReply\(reply\)/);
   assert.match(runRoutes, /ERROR_CODES\.STATEMENT_MONTH_OPEN/);
-  assert.match(post, /runStatements\(\{ month: request\.body\.month, clientUserIds: request\.body\.clientUserIds, byUserId: request\.user\.id/);
+  assert.match(post, /runStatements\(\{ month: request\.body\.month, keys: request\.body\.keys, byUserId: request\.user\.id/);
   assert.match(index, /await fastify\.register\(statementRunRoutes, \{ prefix: "\/api\/v1" \}\)/);
 });

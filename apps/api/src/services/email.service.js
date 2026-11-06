@@ -601,17 +601,19 @@ export async function sendInvoiceNotice({ to, invoiceId, invoiceNumber, totalCen
 }
 
 /** "Your statement is ready" — staff-triggered; the closing balance and a portal link only. */
-export async function sendStatementNotice({ to, monthLabel, closingCents }) {
+export async function sendStatementNotice({ to, monthLabel, closingCents, combined = false }) {
   if (!to) return false;
   const url = `${env.APP_URL}/doctor/invoices`;
+  // `combined`: the group's combined statement (sent to group admins only); still no names, just the total.
+  const what = combined ? "combined group statement" : "statement";
   const html = `
     <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a2733;">
-      <h1 style="font-size:20px;margin:0 0 12px;">Your ${esc(monthLabel)} statement</h1>
+      <h1 style="font-size:20px;margin:0 0 12px;">Your ${esc(monthLabel)} ${what}</h1>
       <p style="margin:0 0 20px;">Balance at the end of the month: <strong>${formatCents(closingCents)}</strong></p>
       <p style="margin:0 0 24px;"><a href="${url}" style="display:inline-block;padding:12px 24px;background:#13AEEF;color:#fff;text-decoration:none;border-radius:999px;font-weight:600;">View invoices and statements</a></p>
       <p style="margin:0;font-size:12px;color:#8a98a6;">Sign in to the Diamond Orthotic Laboratory portal to download the statement.</p>
     </div>`;
-  return deliver({ to, subject: `${monthLabel} statement — Diamond Orthotic Laboratory`, html });
+  return deliver({ to, subject: `${monthLabel} ${what} — Diamond Orthotic Laboratory`, html });
 }
 
 /**

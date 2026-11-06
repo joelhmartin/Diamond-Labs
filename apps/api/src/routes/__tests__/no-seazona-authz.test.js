@@ -29,17 +29,12 @@ const EXCLUDED_FILES = new Set(["services/auth.service.js"]);
 // and a future comparison in them is caught.
 
 /**
- * Known offenders, each removed by the task that moves it onto the scope. This
+ * Known offenders, each removed by the task that moved it onto the scope. This
  * list only shrinks: a file here that no longer offends fails the test, so the
- * entry must be deleted in the same commit. Task 7 leaves it empty.
+ * entry must be deleted in the same commit. Task 7 (statements) emptied it;
+ * it must stay empty.
  */
-const ALLOWED = new Map([
-  // Task 7 (statements): the per-practice statement run (practiceKey, practiceUserIds), and
-  // the doctor's own statement download, which borrows practiceUserIds from it until then.
-  ["services/billing/statement-run.service.js", "Task 7"],
-  // Task 7: the doctor's statement download (doctorStatementUserIds) until statements move onto { accountIds }.
-  ["routes/invoice.routes.js", "Task 7"],
-]);
+const ALLOWED = new Map();
 
 const MENTION = /seazona_?client_?id/i;
 // JS comparisons and query/collection membership tests. Whitespace before "(" is allowed.
@@ -161,4 +156,8 @@ test("display uses of the column are not offenders", () => {
     "const row = { seazonaClientId: seazonaClientId || null, name };",
     "return { admins: rows.filter((u) => u.role === \"admin\").length, linked: rows.filter((u) => u.seazonaClientId).length };",
   ]) assert.ok(!caught(src), src);
+});
+
+test("the allow-list is empty: every client read and write goes through the scope", () => {
+  assert.equal(ALLOWED.size, 0);
 });

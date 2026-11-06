@@ -93,12 +93,41 @@ export function practiceRequired() {
  *  - an id in scope         → [id];
  *  - anything else          → throws 404 NOT_FOUND (out of scope reads the
  *    same as nonexistent, so ids can't be probed). That includes
- *    "organization:<id>": the combined statement parses that form itself
- *    (statements only); every other caller refuses it here.
+ *    "organization:<id>": only requestedStatementSubject (statements) accepts
+ *    that form; every other caller refuses it here.
  */
 export function requestedAccounts(scope, param) {
   const all = [...(scope?.accountIds ?? [])];
   if (isAllAccounts(param)) return all;
   if (typeof param === "string" && all.includes(param)) return [param];
   throw scopeNotFound();
+}
+
+/** The `?account=` prefix that names a group's combined statement (statements only). */
+export const ORGANIZATION_SUBJECT_PREFIX = "organization:";
+
+/**
+ * Which statement a `?account=` value asks for (GET /invoices/statement.pdf),
+ * never wider than the scope:
+ *  - "organization:<orgId>" → that group's combined statement, only when the
+ *    login is an active admin of the active group (it is in
+ *    scope.organizations) AND the group has combinedStatement on; else 404;
+ *  - anything else goes through requestedAccounts: exactly one practice →
+ *    its statement; none (out of scope, or no practice yet) → 404; several
+ *    ("all" with 2+ practices) → 422 "Choose a practice.". A statement is
+ *    per practice; practices are never merged except by the combined one.
+ * @returns {{ subject: "account", subjectId: string }
+ *   | { subject: "organization", subjectId: string, organization: { id, name, combinedStatement, accountIds } }}
+ */
+export function requestedStatementSubject(scope, param) {
+  if (typeof param === "string" && param.startsWith(ORGANIZATION_SUBJECT_PREFIX)) {
+    const id = param.slice(ORGANIZATION_SUBJECT_PREFIX.length);
+    const org = (scope?.organizations ?? []).find((o) => o.id === id);
+    if (!org || org.combinedStatement !== true) throw scopeNotFound();
+    return { subject: "organization", subjectId: org.id, organization: { ...org, accountIds: [...org.accountIds] } };
+  }
+  const ids = requestedAccounts(scope, param);
+  if (ids.length === 1) return { subject: "account", subjectId: ids[0] };
+  if (ids.length === 0) throw scopeNotFound();
+  throw practiceRequired();
 }

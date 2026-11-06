@@ -23,9 +23,49 @@ test("receivables: issued invoices with what is still owed, aged and grouped by 
   assert.match(ar.asOf, /^\d{4}-\d{2}-\d{2}$/);
 });
 
-test("a statement is only for a doctor; drafts carry no money", async () => {
-  assert.equal(await svc.statementFor("u1", "2026-10", {}, fakeTx({ selects: [[{ id: "u1", role: "admin", profile: null }]] })), null);
+test("a statement is only for an active practice; drafts carry no money", async () => {
+  assert.equal(await svc.practiceStatementFor("acc-x", "2026-10", {}, fakeTx({ selects: [[]] })), null);
   assert.match(source, /ne\(invoices\.status, "draft"\)/);
+});
+
+test("a practice statement covers that practice's invoices and is headed with its name and account number", async () => {
+  const { renderSql } = await import("../../test/sql-text.js");
+  const scope = renderSql(svc.statementActivityFilters(["A1"]).invoiceScope);
+  assert.match(scope.text, /invoices\.account_id in \(\$\d+\)/);
+  assert.doesNotMatch(scope.text, /client_user_id/);
+  const db = fakeTx({ selects: [
+    [{ id: "A1", name: "Alpha Dental", accountNumber: "1001" }],
+    [{ id: "i1", accountId: "A1", invoiceNumber: 1, status: "issued", totalCents: 5000, issuedAt: new Date("2026-10-02T15:00:00Z"), dueDate: "2026-11-01" }],
+    [],
+  ] });
+  const m = await svc.practiceStatementFor("A1", "2026-10", { generatedAt: new Date("2026-11-02T15:00:00Z") }, db);
+  assert.deepEqual([m.heading, m.closingCents], [{ name: "Alpha Dental", accountNumber: "1001" }, 5000]);
+  assert.deepEqual(m.billTo, ["Alpha Dental", "Account 1001"]);
+  // No practices: no query at all.
+  const none = fakeTx();
+  assert.deepEqual(await svc.loadStatementActivity([], none), { invoices: [], payments: [] });
+  assert.equal(none.log.length, 0);
+});
+
+test("one activity load splits per practice; a group's combined total is the sum of its practices", async () => {
+  const split = svc.activityByAccount({
+    invoices: [{ id: "i1", accountId: "A1" }, { id: "i2", accountId: "A2" }, { id: "i3", accountId: "Z" }],
+    payments: [{ invoiceId: "i2", appliedCents: 1 }, { invoiceId: "i3", appliedCents: 1 }],
+  }, ["A1", "A2", "A3"]);
+  assert.deepEqual([...split.keys()], ["A1", "A2", "A3"]);
+  assert.deepEqual(split.get("A2").payments, [{ invoiceId: "i2", appliedCents: 1 }]);
+  assert.deepEqual(split.get("A3"), { invoices: [], payments: [] });
+  const db = fakeTx({ selects: [
+    [{ id: "A1", name: "Alpha", accountNumber: "1" }, { id: "A2", name: "Beta", accountNumber: "2" }],
+    [
+      { id: "i1", accountId: "A1", invoiceNumber: 1, status: "issued", totalCents: 5000, issuedAt: new Date("2026-10-02T15:00:00Z"), dueDate: "2026-11-01" },
+      { id: "i2", accountId: "A2", invoiceNumber: 2, status: "issued", totalCents: 1234, issuedAt: new Date("2026-09-02T15:00:00Z"), dueDate: "2026-10-01" },
+    ],
+    [{ invoiceId: "i2", invoiceNumber: 2, appliedCents: 234, source: "card", paidOn: "2026-10-03", createdAt: new Date("2026-10-03T15:00:00Z") }],
+  ] });
+  const m = await svc.combinedStatementFor({ id: "G1", name: "Group", accountIds: ["A1", "A2", "gone"] }, "2026-10", { generatedAt: new Date("2026-11-02T15:00:00Z") }, db);
+  assert.deepEqual(m.sections.map((x) => [x.heading, x.closingCents]), [["Alpha · Account 1", 5000], ["Beta · Account 2", 1000]]);
+  assert.equal(m.closingCents, 6000);
 });
 
 test("receivables read one SQL-aggregated query (no id list) and keep deriveBalance as the balance rule", async () => {
@@ -63,7 +103,7 @@ test("statement activity can be bounded to a month end: invoices and ledger rows
   assert.doesNotMatch(pay.text, /coalesce/);
   assert.deepEqual(pay.params, ["2026-10-31", "2026-10-31"]);
   // Unbounded (the existing callers): no date clause at all.
-  const open = svc.statementActivityFilters(["doc1"]);
+  const open = svc.statementActivityFilters(["acc1"]);
   assert.doesNotMatch(renderSql(open.invoiceScope).text, /issued_at/);
   assert.equal(open.paymentBound, undefined);
 });

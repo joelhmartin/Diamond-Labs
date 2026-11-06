@@ -23,7 +23,7 @@ import { clientScopeOf, emptyClientScope, toClientScope } from "./client-scope-r
  * browser), so a removed member loses access on their next request.
  */
 
-export { emptyClientScope, toClientScope, clientScopeOf, canActForAccount, requestedAccounts, isAllAccounts, payableAccountIds, scopeNotFound, practiceRequired } from "./client-scope-rules.js";
+export { emptyClientScope, toClientScope, clientScopeOf, canActForAccount, requestedAccounts, isAllAccounts, payableAccountIds, scopeNotFound, practiceRequired, requestedStatementSubject } from "./client-scope-rules.js";
 
 /** Of a list of candidate accounts, those that are active client accounts (one query): the scope's eligibility, also the alert audience's. */
 export async function activeClientAccounts(ids, database) {

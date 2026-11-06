@@ -14,11 +14,10 @@ process.env.PHI_ENCRYPTION_KEY ||= "a".repeat(64);
  * `?account=`, gets 404 NOT_FOUND every time (never 403, so ids can't be
  * probed). One row per client-facing route that takes an id or an account.
  *
- * Each row is a `test.todo` until the task that moves the route onto
- * services/client-scope.js flips it to a `test` (handler-source checks as in
- * rx-doctor-view.test.js, plus service-level fakes: practice A's member, a
- * record of sibling practice B, expect NOT_FOUND). The owner task is in each
- * name; when every row is a test, delete the todo loop.
+ * Each row is a live test (handler-source checks as in rx-doctor-view.test.js,
+ * plus service-level fakes: practice A's member, a record of sibling practice
+ * B, expect NOT_FOUND). The task that moved the route onto
+ * services/client-scope.js is in each name.
  */
 const SIBLING_ROUTES = [
   { route: "GET /invoices/:id", owner: "Task 5" },
@@ -68,6 +67,20 @@ const LIVE = {
     const src = read("../invoice-payment.routes.js");
     assert.match(src, /const own = await verifyAllocations\(allocations, clientScopeOf\(request\.user\)\);\s*if \(own\) return sendAllocationError\(reply, own\);/);
   },
+  "GET /invoices/statement.pdf?account=": async () => {
+    const { requestedStatementSubject } = await import("../../services/client-scope.js");
+    const notFound = (e) => e.statusCode === 404 && e.code === "NOT_FOUND";
+    assert.throws(() => requestedStatementSubject(memberOfA.scope, "B"), notFound, "a sibling practice");
+    assert.throws(() => requestedStatementSubject(memberOfA.scope, "organization:g1"), notFound, "a group this login does not administer");
+    assert.deepEqual(requestedStatementSubject(memberOfA.scope, "A"), { subject: "account", subjectId: "A" }, "the probe is sound");
+    const body = handlerSource(read("../invoice.routes.js"), 'fastify.get("/invoices/statement.pdf",');
+    assert.match(body, /preHandler: \[\.\.\.CLIENT_PORTAL, validateQuery\(statementDownloadQuerySchema\)\]/);
+    assert.match(body, /statementPdfHandler\(\{\s*subject: \(request\) => requestedStatementSubject\(clientScopeOf\(request\.user\), request\.query\.account\),/);
+    // The subject is chosen before anything loads: a thrown 404 reaches the error handler as is (statusCode + code).
+    const handler = read("../invoice-detail.handler.js");
+    assert.match(handler, /const s = await subject\(request\);\s*let out;\s*try \{/);
+    assert.match(read("../../middleware/error-handler.js"), /if \(error\.statusCode && error\.code\)/);
+  },
   "GET /rx/cases/:id": async () => {
     const { loadClientCase } = await import("../../services/rx/client-cases.js");
     const database = rowDb({ id: "c-b", accountId: "B", userId: "docB" });
@@ -115,11 +128,7 @@ const LIVE = {
   },
 };
 
-for (const { route, owner } of SIBLING_ROUTES) {
-  const name = `${owner}: sibling ids read as not found: ${route}`;
-  if (LIVE[route]) test(name, LIVE[route]);
-  else test.todo(name);
-}
+for (const { route, owner } of SIBLING_ROUTES) test(`${owner}: sibling ids read as not found: ${route}`, LIVE[route]);
 
 test("the table covers every route Review Focus 1 names, each owned by a task", () => {
   const want = [
@@ -129,6 +138,6 @@ test("the table covers every route Review Focus 1 names, each owned by a task", 
   ];
   assert.deepEqual(SIBLING_ROUTES.map((r) => r.route).sort(), [...want].sort());
   for (const r of SIBLING_ROUTES) assert.match(r.owner, /^Task [567]$/, r.route);
-  // Task 5's and Task 6's rows are live tests, not todos.
-  for (const r of SIBLING_ROUTES.filter((x) => x.owner !== "Task 7")) assert.ok(LIVE[r.route], r.route);
+  // Every row is a live test, not a todo.
+  for (const r of SIBLING_ROUTES) assert.ok(LIVE[r.route], r.route);
 });

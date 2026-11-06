@@ -48,3 +48,19 @@ export async function listPractices({ q, organizationId, missingNumber, memberUs
     total: count?.total ?? 0,
   };
 }
+
+/**
+ * Name and lab account number of each ACTIVE client account among `ids`, in
+ * one query: the practice label for statements and the client scope view. An
+ * id that is not an active practice is simply absent.
+ * @returns {Promise<Map<string, { id: string, name: string, accountNumber: string|null }>>}
+ */
+export async function describePractices(ids, database = appDb) {
+  const unique = [...new Set((ids ?? []).filter(Boolean))];
+  if (!unique.length) return new Map();
+  const rows = await database
+    .select({ id: accounts.id, name: accounts.name, accountNumber: accounts.accountNumber })
+    .from(accounts)
+    .where(and(inArray(accounts.id, unique), eq(accounts.status, "active"), eq(accounts.isClient, true)));
+  return new Map(rows.map((r) => [r.id, { id: r.id, name: r.name, accountNumber: r.accountNumber ?? null }]));
+}

@@ -1,8 +1,8 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { renderInvoicePdf, renderStatementPdf } from "./billing-pdf.js";
+import { renderInvoicePdf, renderStatementPdf, renderCombinedStatementPdf } from "./billing-pdf.js";
 import { buildInvoiceModel } from "./invoice-model.js";
-import { buildStatementModel } from "./statement-model.js";
+import { buildStatementModel, buildCombinedStatementModel } from "./statement-model.js";
 
 const isPdf = (buf) => Buffer.isBuffer(buf) && buf.subarray(0, 5).toString("latin1") === "%PDF-" && buf.length > 1000;
 
@@ -20,4 +20,14 @@ test("an invoice renders to a PDF", async () => {
 test("a statement renders to a PDF, with or without activity", async () => {
   const empty = buildStatementModel({ name: "Dr A" }, { invoices: [], payments: [] }, { month: "2026-10" }, { generatedAt: new Date("2026-11-01T15:00:00Z") });
   assert.ok(isPdf(await renderStatementPdf(empty)));
+});
+
+test("a combined statement renders to a PDF with a section per practice", async () => {
+  const generatedAt = new Date("2026-11-01T15:00:00Z");
+  const a = buildStatementModel({ practice: "A Dental", accountNumber: "1" }, { invoices: [], payments: [] }, { month: "2026-10" }, { generatedAt });
+  const b = buildStatementModel({ practice: "B Dental", accountNumber: "2" }, {
+    invoices: [{ id: "i", invoiceNumber: 1, status: "issued", totalCents: 100, issuedAt: new Date("2026-10-02T15:00:00Z"), dueDate: "2026-11-01" }], payments: [],
+  }, { month: "2026-10" }, { generatedAt });
+  const model = buildCombinedStatementModel({ id: "g", name: "Group" }, [a, b], { month: "2026-10", generatedAt });
+  assert.ok(isPdf(await renderCombinedStatementPdf(model)));
 });

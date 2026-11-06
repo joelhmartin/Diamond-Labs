@@ -27,6 +27,11 @@ export function practiceMembersQuery(tx, accountId) {
   return activeMemberships(tx, { userId: memberships.userId }, eq(memberships.accountId, accountId));
 }
 
+/** Every ACTIVE direct membership in an ACTIVE client account, as (accountId, userId): the statement run's practice recipients, in one query. */
+export function allPracticeMembersQuery(tx) {
+  return activeMemberships(tx, { accountId: memberships.accountId, userId: memberships.userId });
+}
+
 function directPracticeQuery(tx, userId, columns) {
   return activeMemberships(tx, columns, eq(memberships.userId, userId));
 }
@@ -37,7 +42,7 @@ function activeMemberships(tx, columns, which) {
     .from(memberships)
     .innerJoin(accounts, eq(accounts.id, memberships.accountId))
     .where(and(
-      which,
+      which, // undefined: every practice
       eq(memberships.status, "active"),
       eq(accounts.status, "active"),
       eq(accounts.isClient, true),

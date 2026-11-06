@@ -1,17 +1,10 @@
-import { inArray } from "drizzle-orm";
-import { db } from "../config/database.js";
-import { accounts } from "../db/schema/index.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { organizationsService } from "../services/organizations.service.js";
 import { clientScopeOf } from "../services/client-scope.js";
+import { describePractices } from "../services/practices.service.js";
 
-/** Name and lab account number of each account id (one query). */
-async function describeScopeAccounts(ids) {
-  if (!ids.length) return new Map();
-  const rows = await db.select({ id: accounts.id, name: accounts.name, accountNumber: accounts.accountNumber })
-    .from(accounts).where(inArray(accounts.id, ids));
-  return new Map(rows.map((r) => [r.id, r]));
-}
+// Name and lab account number of each practice in scope (one query; scope ids are already active practices).
+const describeScopeAccounts = (ids) => describePractices(ids);
 
 /**
  * The scope response (spec "API routes"): what the portal's practice switcher

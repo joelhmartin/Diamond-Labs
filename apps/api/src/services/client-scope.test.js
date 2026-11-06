@@ -150,3 +150,27 @@ test("isAllAccounts: absent, empty or \"all\" ask for the whole scope; anything 
   const scope = { accountIds: ["a1", "a2"], payable: new Set() };
   assert.deepEqual(requestedAccounts(scope, "all"), ["a1", "a2"]);
 });
+
+test("requestedStatementSubject: one practice, or the combined statement for an admin of a group with it on", async () => {
+  const { requestedStatementSubject } = await import("./client-scope-rules.js");
+  const org = (id, combinedStatement, accountIds) => ({ id, name: `G ${id}`, combinedStatement, accountIds });
+  const member = toClientScope({ accountIds: ["a1"], roles: new Map([["a1", "member"]]), via: new Map(), organizations: [] });
+  const admin = toClientScope({ accountIds: ["a1", "a2"], roles: new Map([["a1", "org-admin"], ["a2", "org-admin"]]), via: new Map(),
+    organizations: [{ id: "g1", accountIds: ["a1", "a2"] }, { id: "g2", accountIds: [] }] },
+    new Map([["g1", { name: "G g1", combinedStatement: true }], ["g2", { name: "G g2", combinedStatement: false }]]));
+  // A single practice: absent / "all" / its id all mean that practice.
+  for (const p of [undefined, "all", "a1"]) assert.deepEqual(requestedStatementSubject(member, p), { subject: "account", subjectId: "a1" }, String(p));
+  assert.deepEqual(requestedStatementSubject(admin, "a2"), { subject: "account", subjectId: "a2" });
+  // Several practices and none named: choose one (422), never a merged statement.
+  assert.throws(() => requestedStatementSubject(admin, "all"), (e) => e.statusCode === 422 && e.code === "PRACTICE_REQUIRED");
+  assert.deepEqual(requestedStatementSubject(admin, "organization:g1"), { subject: "organization", subjectId: "g1", organization: org("g1", true, ["a1", "a2"]) });
+  const notFound = (e) => e.statusCode === 404 && e.code === "NOT_FOUND";
+  // doctor statement.pdf?account=organization:<id> by a non-admin → 404 (the same as a group that doesn't exist).
+  assert.throws(() => requestedStatementSubject(member, "organization:g1"), notFound);
+  assert.throws(() => requestedStatementSubject(admin, "organization:g2"), notFound, "combined statement off");
+  assert.throws(() => requestedStatementSubject(admin, "organization:nope"), notFound);
+  assert.throws(() => requestedStatementSubject(member, "a2"), notFound, "a sibling practice");
+  assert.throws(() => requestedStatementSubject(emptyClientScope(), undefined), notFound, "no practice yet");
+  // Every other ?account= caller still refuses the organization form.
+  assert.throws(() => requestedAccounts(admin, "organization:g1"), notFound);
+});

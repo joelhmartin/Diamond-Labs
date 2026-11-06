@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { test, afterEach, vi } from "vitest";
 import assert from "node:assert/strict";
-import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, waitFor, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { ToastProvider } from "../ui/Toast.jsx";
 
@@ -14,7 +14,8 @@ const { labToday, recentMonths } = await import("../../lib/invoices.js");
 afterEach(() => { cleanup(); get.mockReset(); post.mockReset(); });
 
 const row = (id, extra) => ({
-  clientUserId: id, name: `Dr ${id}`, practice: `Practice ${id}`, accountNumber: id, email: `${id}@x.test`,
+  key: `account:${id}|u${id}`, subject: "account", subjectId: id, subjectKey: `account:${id}`, recipientUserId: `u${id}`, recipientName: `Dr ${id}`,
+  name: `Practice ${id}`, accountNumber: id, email: `${id}@x.test`,
   openingCents: 0, closingCents: 1000, activityCount: 1, alreadySentAt: null, planned: "send", ...extra,
 });
 const ROWS = [
@@ -71,4 +72,19 @@ test("nothing to send disables the button", async () => {
   render(<MemoryRouter><ToastProvider><MonthlyStatementsPanel onClose={() => {}} /></ToastProvider></MemoryRouter>);
   const send = await screen.findByRole("button", { name: "Send 0 statements" });
   assert.equal(send.disabled, true);
+});
+
+test("a group's combined statement row is marked, and a selected send names row keys", async () => {
+  const group = row("g", { key: "organization:g|uga", subject: "organization", subjectId: "g", subjectKey: "organization:g", recipientUserId: "uga", recipientName: "Group Admin", name: "Smile Group", accountNumber: null });
+  get.mockResolvedValue({ data: { data: [row("a"), group] } });
+  post.mockResolvedValue({ data: { data: { sent: 1, skipped: 0, failed: 0 } } });
+  render(<MemoryRouter><ToastProvider><MonthlyStatementsPanel onClose={() => {}} /></ToastProvider></MemoryRouter>);
+  await screen.findByText("Smile Group");
+  assert.ok(screen.getByText("Combined"));
+  assert.ok(screen.getByText("Group Admin"));
+  fireEvent.click(within(screen.getByText("Smile Group").closest("tr")).getByRole("checkbox"));
+  fireEvent.click(await screen.findByRole("button", { name: "Send 1 selected" }));
+  fireEvent.click(await screen.findByRole("button", { name: /click again/i }));
+  await waitFor(() => assert.equal(post.mock.calls.length, 1));
+  assert.deepEqual(post.mock.calls[0][1].keys, ["organization:g|uga"]);
 });

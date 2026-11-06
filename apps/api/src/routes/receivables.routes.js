@@ -5,6 +5,7 @@ import { recordAccountCredit } from "../services/billing/account-credit.service.
 import { invoiceErrorReply } from "../services/billing/invoice-errors.js";
 import { listReceivables } from "../services/billing/statements.service.js";
 import { sendStatementFor } from "../services/billing/statement-run.service.js";
+import { singlePracticeOf } from "../services/billing/statement-subjects.js";
 import { statementPdfHandler } from "./invoice-detail.handler.js";
 import { ADMIN } from "./admin-invoice.routes.js";
 
@@ -14,9 +15,14 @@ export default async function receivablesRoutes(fastify) {
     data: await listReceivables(request.query),
   }));
 
-  // Same handler as the doctor's own download; admin names the doctor in the URL.
+  // Same handler as the client's own download; admin names the practice in the URL.
+  fastify.get("/admin/practices/:id/statement.pdf", { preHandler: [...ADMIN, validateQuery(statementQuerySchema)] }, statementPdfHandler({
+    subject: (request) => ({ subject: "account", subjectId: request.params.id }),
+  }));
+
+  // Thin wrapper: the client's one practice (404 none, 422 more than one: use the practice's own).
   fastify.get("/admin/clients/:userId/statement.pdf", { preHandler: [...ADMIN, validateQuery(statementQuerySchema)] }, statementPdfHandler({
-    scope: (request) => ({ clientUserId: request.params.userId }),
+    subject: async (request) => ({ subject: "account", subjectId: await singlePracticeOf(request.params.userId) }),
   }));
 
   // Account credit: one amount spread over the practice's open invoices. Reason is required and
@@ -32,15 +38,27 @@ export default async function receivablesRoutes(fastify) {
     }
   });
 
-  // Staff-triggered: a short notice with the closing balance and a portal link. The balance is the
-  // practice's, the same figure the doctor's own statement download shows (the admin PDF and AR rows
-  // stay per user). Writes statement_sends; an explicit re-send overwrites sent_at.
-  fastify.post("/admin/clients/:userId/statement/email", { preHandler: [...ADMIN, validate(statementQuerySchema)] }, async (request, reply) => {
-    const out = await sendStatementFor(request.params.userId, request.body.month, { byUserId: request.user.id, ipAddress: request.ip });
+  // Staff-triggered: a short notice with the practice's closing balance and a portal link, to every
+  // approved doctor of the practice now. Writes statement_sends (per practice and recipient); an
+  // explicit re-send overwrites sent_at.
+  fastify.post("/admin/practices/:id/statement/email", { preHandler: [...ADMIN, validate(statementQuerySchema)] }, async (request, reply) => {
+    const out = await sendStatementFor({ accountId: request.params.id }, request.body.month, { byUserId: request.user.id, ipAddress: request.ip });
     if (!out) return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
-    if (out.status === "no_email") {
-      return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "This client has no email address on file." } });
-    }
-    return { data: { sent: out.status === "sent" } };
+    const count = (status) => out.results.filter((r) => r.status === status).length;
+    if (!out.results.length) return noEmail(reply, "This practice has no approved doctor to send to.");
+    if (count("no_email") === out.results.length) return noEmail(reply, "No one at this practice has an email address on file.");
+    return { data: { sent: count("sent"), failed: count("failed"), noEmail: count("no_email") } };
+  });
+
+  // Thin wrapper: the client's one practice's statement, to that client (404 none, 422 more than one).
+  fastify.post("/admin/clients/:userId/statement/email", { preHandler: [...ADMIN, validate(statementQuerySchema)] }, async (request, reply) => {
+    const accountId = await singlePracticeOf(request.params.userId);
+    const out = await sendStatementFor({ accountId, recipientUserIds: [request.params.userId] }, request.body.month, { byUserId: request.user.id, ipAddress: request.ip });
+    const [result] = out?.results ?? [];
+    if (!result) return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
+    if (result.status === "no_email") return noEmail(reply, "This client has no email address on file.");
+    return { data: { sent: result.status === "sent" } };
   });
 }
+
+const noEmail = (reply, message) => reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message } });

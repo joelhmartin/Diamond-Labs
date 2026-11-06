@@ -5,12 +5,17 @@ import { invoices, invoicePayments, labOrders, users, doctorProfiles } from "../
 import { openReceivableInvoices, ledgerRowDayBetween } from "./ledger.service.js";
 import { afterLabDay } from "../../lib/lab-day-sql.js";
 import { buildReceivables } from "./aging.js";
-import { buildStatementModel } from "./statement-model.js";
-import { renderStatementPdf } from "./billing-pdf.js";
+import { buildStatementModel, buildCombinedStatementModel } from "./statement-model.js";
+import { renderStatementPdf, renderCombinedStatementPdf } from "./billing-pdf.js";
+import { describePractices } from "../practices.service.js";
 
 /**
- * Statements and accounts receivable. A "client" is a doctor user; guest shop
- * invoices (no client) never reach a statement or the AR page.
+ * Statements and accounts receivable. A statement is per practice (a client
+ * account, piece 11): it covers the invoices whose account_id is that
+ * practice, and is headed with the practice's name and account number. A
+ * group with `settings.combinedStatement` also has a combined statement: a
+ * section per practice and a group total. Guest shop invoices (no account)
+ * never reach a statement or the AR page.
  */
 
 /** The doctor's bill-to and ship-to block (statements, invoices, the Ship form), or null when the user isn't a doctor. */
@@ -34,15 +39,16 @@ export async function loadClient(clientUserId, database = db) {
 }
 
 /**
- * The WHERE clauses of loadStatementActivity. `through` ("YYYY-MM-DD") keeps
- * only invoices issued, and ledger rows dated (ledgerRowDay), on or before
- * that lab-local day; everything earlier still loads, so opening balances stay
- * whole. A void after `through` is dated by voidedAt and falls outside the
- * period on its own (statementEvents).
+ * The WHERE clauses of loadStatementActivity. `accountIds` are the practices
+ * covered; `null` means every owned invoice (the statements summary report).
+ * `through` ("YYYY-MM-DD") keeps only invoices issued, and ledger rows dated
+ * (ledgerRowDay), on or before that lab-local day; everything earlier still
+ * loads, so opening balances stay whole. A void after `through` is dated by
+ * voidedAt and falls outside the period on its own (statementEvents).
  */
-export function statementActivityFilters(clientUserIds, { through } = {}) {
+export function statementActivityFilters(accountIds, { through } = {}) {
   const invoiceScope = and(
-    clientUserIds === null ? isNotNull(invoices.clientUserId) : inArray(invoices.clientUserId, clientUserIds),
+    accountIds === null ? isNotNull(invoices.clientUserId) : inArray(invoices.accountId, accountIds),
     ne(invoices.status, "draft"),
     through ? lt(invoices.issuedAt, afterLabDay(through)) : undefined,
   );
@@ -51,17 +57,19 @@ export function statementActivityFilters(clientUserIds, { through } = {}) {
 }
 
 /**
- * Every money event on these clients' invoices (statement-model's `activity`).
- * Drafts carry none. `clientUserIds = null` means every client's invoices (the
- * statements summary report); the payments are then joined, not listed by id,
- * so the query does not grow with the invoice count. `{ through }` bounds it
- * (statementActivityFilters).
+ * Every money event on these practices' invoices (statement-model's
+ * `activity`); each invoice carries its accountId so one load can be split
+ * per practice. Drafts carry none. `accountIds = null` means every client's
+ * invoices (the statements summary report); the payments are then joined,
+ * not listed by id, so the query does not grow with the invoice count.
+ * `{ through }` bounds it (statementActivityFilters).
  */
-export async function loadStatementActivity(clientUserIds, database = db, { through } = {}) {
-  const { invoiceScope: scope, paymentBound } = statementActivityFilters(clientUserIds, { through });
+export async function loadStatementActivity(accountIds, database = db, { through } = {}) {
+  if (Array.isArray(accountIds) && accountIds.length === 0) return { invoices: [], payments: [] };
+  const { invoiceScope: scope, paymentBound } = statementActivityFilters(accountIds, { through });
   const invs = await database
     .select({
-      id: invoices.id, clientUserId: invoices.clientUserId, invoiceNumber: invoices.invoiceNumber, status: invoices.status, totalCents: invoices.totalCents,
+      id: invoices.id, clientUserId: invoices.clientUserId, accountId: invoices.accountId, invoiceNumber: invoices.invoiceNumber, status: invoices.status, totalCents: invoices.totalCents,
       kind: invoices.kind, legacySeazonaInvoiceId: invoices.legacySeazonaInvoiceId,
       issuedAt: invoices.issuedAt, voidedAt: invoices.voidedAt, dueDate: invoices.dueDate, labOrderNumber: labOrders.orderNumber,
     })
@@ -82,22 +90,65 @@ export async function loadStatementActivity(clientUserIds, database = db, { thro
   return { invoices: invs, payments };
 }
 
-/**
- * A statement for a month, billed to `clientUserId`, covering `clientUserIds`:
- * just that doctor (admin), or their whole practice (a doctor's own download;
- * Spec correction 6). Null when the user isn't a doctor.
- */
-export async function statementFor(clientUserId, month, { generatedAt = new Date(), clientUserIds = [clientUserId] } = {}, database = db) {
-  const client = await loadClient(clientUserId, database);
-  if (!client) return null;
-  const model = buildStatementModel(client, await loadStatementActivity(clientUserIds, database), { month }, { generatedAt });
-  return { client, model };
+/** A practice's bill-to header (statement-model's `client`): its name and lab account number. */
+export const practiceHeader = (practice) => ({ practice: practice.name, accountNumber: practice.accountNumber ?? null });
+
+/** Split one activity load per practice: Map(accountId → { invoices, payments }), one entry per id given. */
+export function activityByAccount(activity, accountIds) {
+  const out = new Map(accountIds.map((id) => [id, { invoices: [], payments: [] }]));
+  const accountOf = new Map();
+  for (const inv of activity.invoices) {
+    const bucket = out.get(inv.accountId);
+    if (!bucket) continue;
+    bucket.invoices.push(inv);
+    accountOf.set(inv.id, inv.accountId);
+  }
+  for (const p of activity.payments) out.get(accountOf.get(p.invoiceId))?.payments.push(p);
+  return out;
 }
 
-/** The statement PDF (built on request, never stored), or null when the user isn't a doctor. */
-export async function statementPdfFor(clientUserId, month, { clientUserIds } = {}, database = db) {
-  const out = await statementFor(clientUserId, month, { clientUserIds }, database);
-  return out ? { model: out.model, pdf: await renderStatementPdf(out.model) } : null;
+/**
+ * A statement for a month covering `accountIds`, headed `header` (statement-model's
+ * `client`: a practice header, practiceHeader). → the statement model.
+ */
+export async function statementFor({ accountIds, header }, month, { generatedAt = new Date() } = {}, database = db) {
+  return buildStatementModel(header, await loadStatementActivity(accountIds, database), { month }, { generatedAt });
+}
+
+/** One practice's statement model, or null when `accountId` is not an active practice. */
+export async function practiceStatementFor(accountId, month, { generatedAt = new Date() } = {}, database = db) {
+  const practice = (await describePractices([accountId], database)).get(accountId);
+  if (!practice) return null;
+  return statementFor({ accountIds: [accountId], header: practiceHeader(practice) }, month, { generatedAt }, database);
+}
+
+/**
+ * A group's combined statement model: each of `org.accountIds` that is an
+ * active practice gets its own section (its own statement, one activity load
+ * for all), then the group total (buildCombinedStatementModel).
+ * @param {{ id: string, name: string, accountIds: string[] }} org
+ */
+export async function combinedStatementFor(org, month, { generatedAt = new Date() } = {}, database = db) {
+  const practices = await describePractices(org.accountIds, database);
+  const ids = [...practices.keys()];
+  const byAccount = activityByAccount(await loadStatementActivity(ids, database), ids);
+  const models = ids.map((id) => buildStatementModel(practiceHeader(practices.get(id)), byAccount.get(id), { month }, { generatedAt }));
+  return buildCombinedStatementModel(org, models, { month, generatedAt });
+}
+
+/**
+ * The statement PDF for a subject (built on request, never stored), or null
+ * when the practice is not an active practice:
+ *   { subject: "account", subjectId }                        one practice
+ *   { subject: "organization", organization: { id, name, accountIds } }  the combined statement
+ */
+export async function statementPdfFor(subject, month, database = db) {
+  if (subject.subject === "organization") {
+    const model = await combinedStatementFor(subject.organization, month, {}, database);
+    return { model, pdf: await renderCombinedStatementPdf(model) };
+  }
+  const model = await practiceStatementFor(subject.subjectId, month, {}, database);
+  return model ? { model, pdf: await renderStatementPdf(model) } : null;
 }
 
 /**

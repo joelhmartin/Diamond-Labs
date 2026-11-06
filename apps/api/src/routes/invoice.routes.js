@@ -3,10 +3,9 @@ import { requireClientPortal } from "../middleware/require-role.js";
 import { listClientInvoices } from "../services/billing/invoice-queries.js";
 import { doctorInvoiceRow, doctorInvoiceView } from "../services/billing/invoice-views.js";
 import { canActOnInvoice } from "../services/billing/invoice-rules.js";
-import { clientScopeOf, requestedAccounts } from "../services/client-scope.js";
-import { doctorStatementUserIds } from "../services/billing/statement-run.service.js";
+import { clientScopeOf, requestedAccounts, requestedStatementSubject } from "../services/client-scope.js";
 import { validateQuery } from "../middleware/validate.js";
-import { statementQuerySchema } from "@my-app/shared";
+import { statementDownloadQuerySchema } from "@my-app/shared";
 import { invoiceDetailHandler, invoicePdfHandler, statementPdfHandler } from "./invoice-detail.handler.js";
 
 /**
@@ -35,10 +34,12 @@ export default async function invoiceRoutes(fastify) {
   // Printable copy of the same invoice, same access rule: built on request, never stored.
   fastify.get("/invoices/:id/pdf", { preHandler: CLIENT_PORTAL }, invoicePdfHandler({ mayRead: clientMayRead }));
 
-  // The doctor's monthly statement for their practice: no drafts, no patient names, never cached.
-  // Registered beside /invoices/:id; Fastify matches the static path first. Task 7 moves it onto
-  // the account scope (`?account=`); until then a login that isn't a doctor gets 404 (no bill-to).
-  fastify.get("/invoices/statement.pdf", { preHandler: [...CLIENT_PORTAL, validateQuery(statementQuerySchema)] }, statementPdfHandler({
-    scope: async (request) => ({ clientUserId: request.user.id, clientUserIds: await doctorStatementUserIds(request.user) }),
+  // A practice's monthly statement, through the login's scope: `?account=<id>` in scope → that
+  // practice's; absent/"all" → the login's one practice (422 "Choose a practice." with several);
+  // `?account=organization:<orgId>` → the combined group statement, only for an active admin of
+  // that active group with combinedStatement on. Anything else → 404. No drafts, no patient
+  // names, never cached. Registered beside /invoices/:id; Fastify matches the static path first.
+  fastify.get("/invoices/statement.pdf", { preHandler: [...CLIENT_PORTAL, validateQuery(statementDownloadQuerySchema)] }, statementPdfHandler({
+    subject: (request) => requestedStatementSubject(clientScopeOf(request.user), request.query.account),
   }));
 }

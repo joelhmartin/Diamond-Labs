@@ -67,27 +67,29 @@ export function invoicePdfHandler({ mayRead }) {
 }
 
 /**
- * A monthly statement PDF, for either audience; only the scope differs.
- *   scope(request) → { clientUserId, clientUserIds? }  (may be async)
- *     doctor: the requester, covering their whole practice (statement-run's doctorStatementUserIds until Task 7)
- *     admin:  any doctor, named in the URL, covering just them
- * No such doctor answers 404. Built on request, never stored; audited with
- * ids and the month only.
+ * A monthly statement PDF, for either audience; only how the subject is
+ * chosen differs.
+ *   subject(request) → { subject: "account", subjectId } | { subject: "organization", subjectId, organization }
+ *     (may be async; may throw an app error with statusCode + code, e.g. 404
+ *     NOT_FOUND for an out-of-scope `?account=` or 422 PRACTICE_REQUIRED,
+ *     which the error handler sends as is)
+ *     client: requestedStatementSubject over the login's scope
+ *     admin:  the practice in the URL (or a client's single practice)
+ * Not an active practice answers 404. Built on request, never stored; audited
+ * with ids and the month only.
  */
-export function statementPdfHandler({ scope }) {
+export function statementPdfHandler({ subject }) {
   return async (request, reply) => {
+    const s = await subject(request);
     let out;
-    let clientUserId;
     try {
-      const s = await scope(request);
-      clientUserId = s.clientUserId;
-      out = await statementPdfFor(clientUserId, request.query.month, { clientUserIds: s.clientUserIds });
+      out = await statementPdfFor(s, request.query.month);
     } catch (err) {
-      request.log.error({ clientUserId, err: err.message }, "statement pdf failed");
+      request.log.error({ subject: s.subject, subjectId: s.subjectId, err: err.message }, "statement pdf failed");
       return reply.code(500).send({ error: { ...ERROR_CODES.INTERNAL_ERROR, message: "Failed to build the statement." } });
     }
     if (!out) return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
-    auditService.logSafe({ userId: request.user.id, action: "statement.downloaded", targetType: "user", targetId: clientUserId, metadata: { month: request.query.month }, ipAddress: request.ip });
+    auditService.logSafe({ userId: request.user.id, action: "statement.downloaded", targetType: s.subject, targetId: s.subjectId, metadata: { month: request.query.month }, ipAddress: request.ip });
     return sendPdf(reply, out.pdf, out.model.filename);
   };
 }

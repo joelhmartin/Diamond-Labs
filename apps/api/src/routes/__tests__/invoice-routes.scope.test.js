@@ -25,6 +25,12 @@ vi.mock("../../services/billing/invoice-queries.js", () => ({
   getInvoiceDetail: async () => detail,
 }));
 
+const pdfCalls = [];
+vi.mock("../../services/billing/statements.service.js", async (importOriginal) => ({
+  ...(await importOriginal()),
+  statementPdfFor: async (subject, month) => { pdfCalls.push({ subject, month }); return { model: { filename: "statement.pdf" }, pdf: Buffer.from("%PDF-1.4 test") }; },
+}));
+
 const { default: invoiceRoutes } = await import("../invoice.routes.js");
 const { errorHandler } = await import("../../middleware/error-handler.js");
 
@@ -44,6 +50,7 @@ const row = (over) => ({
 
 beforeEach(() => {
   listCalls.length = 0;
+  pdfCalls.length = 0;
   user = { id: "gadmin", role: "user", scope: scopeOf({ a1: "org-admin", a2: "org-admin" }) };
   rows = [row(), row({ id: "i2", invoiceNumber: 500002, accountId: "a2", accountName: "South", accountNumber: "2001", balanceCents: 2550 }), row({ id: "i3", accountId: "a9", balanceCents: 99999 })];
   detail = null;
@@ -107,5 +114,50 @@ describe("GET /invoices/:id and /pdf", () => {
     expect((await get("/invoices/i1")).statusCode).toBe(200);
     detail = detailOf("a1", "draft");
     expect((await get("/invoices/i1")).statusCode).toBe(404);
+  });
+});
+
+describe("GET /invoices/statement.pdf", () => {
+  const groupAdmin = (combinedStatement) => ({
+    id: "gadmin", role: "user",
+    scope: toClientScope({ accountIds: ["a1", "a2"], roles: new Map([["a1", "org-admin"], ["a2", "org-admin"]]), via: new Map(), organizations: [{ id: "g1", accountIds: ["a1", "a2"] }] },
+      new Map([["g1", { name: "Group", combinedStatement }]])),
+  });
+
+  it("a practice in scope gets that practice's statement", async () => {
+    user = { id: "staff", role: "user", scope: scopeOf({ a1: "member" }) };
+    const res = await get("/invoices/statement.pdf?month=2026-10&account=a1");
+    expect(res.statusCode).toBe(200);
+    expect(pdfCalls).toEqual([{ subject: { subject: "account", subjectId: "a1" }, month: "2026-10" }]);
+    // A single-practice login needs no ?account=.
+    expect((await get("/invoices/statement.pdf?month=2026-10")).statusCode).toBe(200);
+    expect(pdfCalls[1].subject).toEqual({ subject: "account", subjectId: "a1" });
+  });
+
+  it("doctor statement.pdf?account=organization:<id> by a non-admin → 404", async () => {
+    user = { id: "doc1", role: "doctor", approvalStatus: "approved", scope: scopeOf({ a1: "member" }) };
+    const res = await get("/invoices/statement.pdf?month=2026-10&account=organization:g1");
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.code).toBe("NOT_FOUND");
+    expect(pdfCalls).toHaveLength(0);
+  });
+
+  it("a sibling practice reads as 404; several practices and none named ask to choose", async () => {
+    user = { id: "staff", role: "user", scope: scopeOf({ a1: "member" }) };
+    expect((await get("/invoices/statement.pdf?month=2026-10&account=a2")).statusCode).toBe(404);
+    user = groupAdmin(true);
+    const all = await get("/invoices/statement.pdf?month=2026-10");
+    expect(all.statusCode).toBe(422);
+    expect(all.json().error.code).toBe("PRACTICE_REQUIRED");
+    expect(pdfCalls).toHaveLength(0);
+  });
+
+  it("the combined statement is for that group's admins, only with the setting on", async () => {
+    user = groupAdmin(true);
+    expect((await get("/invoices/statement.pdf?month=2026-10&account=organization:g1")).statusCode).toBe(200);
+    expect(pdfCalls[0].subject).toMatchObject({ subject: "organization", subjectId: "g1", organization: { id: "g1", accountIds: ["a1", "a2"] } });
+    user = groupAdmin(false);
+    expect((await get("/invoices/statement.pdf?month=2026-10&account=organization:g1")).statusCode).toBe(404);
+    expect(pdfCalls).toHaveLength(1);
   });
 });

@@ -13,10 +13,10 @@ export default async function statementRunRoutes(fastify) {
     return { data: await previewStatementRun(request.query.month) };
   });
 
-  // Sends to everyone in the preview not yet sent and with an email (or only the ids given).
-  // Idempotent per (client, month): a double-click or a retry sends nothing twice.
+  // Sends to every preview row not yet sent and with an email (or only the row keys given).
+  // Idempotent per (subject, recipient, month): a double-click or a retry sends nothing twice.
   fastify.post("/admin/statements/run", { preHandler: [...ADMIN, validate(statementRunSchema)] }, async (request, reply) => {
     if (openMonth(request.body.month)) return openMonthReply(reply);
-    return { data: await runStatements({ month: request.body.month, clientUserIds: request.body.clientUserIds, byUserId: request.user.id }) };
+    return { data: await runStatements({ month: request.body.month, keys: request.body.keys, byUserId: request.user.id }) };
   });
 }

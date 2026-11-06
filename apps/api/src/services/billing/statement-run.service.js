@@ -1,56 +1,74 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { isoDateIn, LAB_TIMEZONE } from "@my-app/shared";
 import { db } from "../../config/database.js";
-import { users, doctorProfiles, statementSends } from "../../db/schema/index.js";
+import { statementSends } from "../../db/schema/index.js";
 import { createId } from "../../lib/id.js";
 import * as auditService from "../audit.service.js";
 import { sendStatementNotice } from "../email.service.js";
-import { loadStatementActivity, statementFor } from "./statements.service.js";
-import { buildStatementModel, monthBounds } from "./statement-model.js";
+import { activityByAccount, loadStatementActivity, practiceHeader, practiceStatementFor } from "./statements.service.js";
+import { buildCombinedStatementModel, buildStatementModel, monthBounds } from "./statement-model.js";
+import {
+  assertSubjectKey, isPracticeStatementRecipient, loadStatementSubjects, practiceStatementRecipients, statementRecipients, subjectKeyOf,
+} from "./statement-subjects.js";
 
 /**
- * The monthly statement run (piece 10, R6): one "your statement is ready"
- * notice per client user for a month, idempotent per (client, month) through
- * statement_sends. The run claims a client's row ("sending") BEFORE it emails,
+ * The monthly statement run (piece 10, R6; per practice since piece 11): one
+ * "your statement is ready" notice per (subject, recipient, month), where the
+ * subject is a practice (`account:<id>`, sent to its approved doctor members)
+ * or a group's combined statement (`organization:<id>`, sent to the group's
+ * admins only, when the group has `settings.combinedStatement`). Idempotent
+ * through statement_sends: the run claims a row ("sending") BEFORE it emails,
  * so a crash, a retry or a double-click never sends the same month twice; a
  * "failed" or "no_email" row is re-taken by the next run. The single
- * per-client action (sendStatementFor) re-sends on purpose. A statement is a
+ * per-practice action (sendStatementFor) re-sends on purpose. A statement is a
  * billing document every client gets, so this calls sendStatementNotice
- * directly, not the preference-aware notifier.
+ * directly, not the preference-aware notifier. Subjects and recipients:
+ * statement-subjects.js.
  */
 
 // A row is re-taken by the bulk run only when it never went out: a failed forced re-send of a
 // delivered month keeps its sent_at and stays "already sent".
 const RETRYABLE = ["failed", "no_email"];
 
-/** statement_sends access. The run takes it as a dependency so its idempotency can be tested without a database. */
+/**
+ * statement_sends access, always per subject: every lookup and write names
+ * `subjectKey` ("account:<id>" | "organization:<id>"), so a practice's send
+ * and a group's send to the same person never collide, and a row the practice
+ * backfill rewrote to `account:<id>` is the row a re-send finds. The run takes
+ * it as a dependency so its idempotency can be tested without a database.
+ */
 export const statementSendsStore = {
   async forMonth(database, month) {
     return database
-      .select({ clientUserId: statementSends.clientUserId, status: statementSends.status, sentAt: statementSends.sentAt })
+      .select({ subjectKey: statementSends.subjectKey, clientUserId: statementSends.clientUserId, status: statementSends.status, sentAt: statementSends.sentAt })
       .from(statementSends)
       .where(eq(statementSends.month, month));
   },
-  /** The row id when this caller now owns the (client, month) send, else null (another run holds or sent it). */
-  async claim(database, { clientUserId, month, closingCents, byUserId = null, runId = null }) {
+  /** The row id when this caller now owns the (subject, recipient, month) send, else null (another run holds or sent it). */
+  async claim(database, { subjectKey, clientUserId, month, closingCents, byUserId = null, runId = null }) {
+    assertSubjectKey(subjectKey);
     const [row] = await database
       .insert(statementSends)
-      .values({ id: createId(), clientUserId, month, closingCents, status: "sending", sentBy: byUserId, runId })
+      .values({ id: createId(), subjectKey, clientUserId, month, closingCents, status: "sending", sentBy: byUserId, runId })
       .onConflictDoNothing({ target: [statementSends.subjectKey, statementSends.clientUserId, statementSends.month] })
       .returning({ id: statementSends.id });
     if (row) return row.id;
     const [retaken] = await database
       .update(statementSends)
       .set({ status: "sending", closingCents, sentBy: byUserId, runId, updatedAt: new Date() })
-      .where(and(eq(statementSends.clientUserId, clientUserId), eq(statementSends.month, month), inArray(statementSends.status, RETRYABLE), isNull(statementSends.sentAt)))
+      .where(and(
+        eq(statementSends.subjectKey, subjectKey), eq(statementSends.clientUserId, clientUserId), eq(statementSends.month, month),
+        inArray(statementSends.status, RETRYABLE), isNull(statementSends.sentAt),
+      ))
       .returning({ id: statementSends.id });
     return retaken?.id ?? null;
   },
   /** The single action: take the row whatever its state (an explicit re-send). */
-  async forceClaim(database, { clientUserId, month, closingCents, byUserId = null }) {
+  async forceClaim(database, { subjectKey, clientUserId, month, closingCents, byUserId = null }) {
+    assertSubjectKey(subjectKey);
     const [row] = await database
       .insert(statementSends)
-      .values({ id: createId(), clientUserId, month, closingCents, status: "sending", sentBy: byUserId, runId: null })
+      .values({ id: createId(), subjectKey, clientUserId, month, closingCents, status: "sending", sentBy: byUserId, runId: null })
       .onConflictDoUpdate({
         target: [statementSends.subjectKey, statementSends.clientUserId, statementSends.month],
         set: { status: "sending", closingCents, sentBy: byUserId, runId: null, updatedAt: new Date() },
@@ -61,10 +79,11 @@ export const statementSendsStore = {
   async finish(database, id, { status, sentAt = null }) {
     await database.update(statementSends).set({ status, ...(sentAt ? { sentAt } : {}), updatedAt: new Date() }).where(eq(statementSends.id, id));
   },
-  async recordNoEmail(database, { clientUserId, month, closingCents, byUserId = null, runId = null }) {
+  async recordNoEmail(database, { subjectKey, clientUserId, month, closingCents, byUserId = null, runId = null }) {
+    assertSubjectKey(subjectKey);
     await database
       .insert(statementSends)
-      .values({ id: createId(), clientUserId, month, closingCents, status: "no_email", sentBy: byUserId, runId })
+      .values({ id: createId(), subjectKey, clientUserId, month, closingCents, status: "no_email", sentBy: byUserId, runId })
       .onConflictDoNothing({ target: [statementSends.subjectKey, statementSends.clientUserId, statementSends.month] });
   },
 };
@@ -85,19 +104,20 @@ export function openMonth(month, now = new Date()) {
 }
 
 /**
- * Who gets a notice. Pure. Order of reasons: already sent (delivered at least
- * once), unconfirmed (claimed "sending" and never settled: the email may have
- * gone out before a crash, so staff check and use the single send; the bulk run
- * never re-takes it), nothing to say (no activity and a zero closing), no address.
+ * Who gets a notice, by row key ("<subjectKey>|<recipientUserId>"). Pure.
+ * Order of reasons: already sent (delivered at least once), unconfirmed
+ * (claimed "sending" and never settled: the email may have gone out before a
+ * crash, so staff check and use the single send; the bulk run never re-takes
+ * it), nothing to say (no activity and a zero closing), no address.
  * @returns {{ send: string[], skip: { id: string, reason: "already_sent"|"unconfirmed"|"no_activity"|"no_email" }[] }}
  */
-export function planStatementRun({ candidates, onlyIds }) {
-  const only = onlyIds ? new Set(onlyIds) : null;
+export function planStatementRun({ candidates, onlyKeys }) {
+  const only = onlyKeys ? new Set(onlyKeys) : null;
   const send = [];
   const skip = [];
   for (const c of candidates) {
-    if (only && !only.has(c.clientUserId)) continue;
-    const id = c.clientUserId;
+    if (only && !only.has(c.key)) continue;
+    const id = c.key;
     if (c.alreadySentAt) skip.push({ id, reason: "already_sent" });
     else if (c.sendStatus === "sending") skip.push({ id, reason: "unconfirmed" });
     else if (!c.activityCount && !c.closingCents) skip.push({ id, reason: "no_activity" });
@@ -108,96 +128,85 @@ export function planStatementRun({ candidates, onlyIds }) {
 }
 
 /** items → Map(key → [value]), appending in place. */
-function groupBy(items, keyOf, valueOf = (x) => x) {
+function groupBy(items, keyOf) {
   const out = new Map();
   for (const item of items) {
     const k = keyOf(item);
     if (!out.has(k)) out.set(k, []);
-    out.get(k).push(valueOf(item));
+    out.get(k).push(item);
   }
   return out;
 }
 
-/**
- * The doctors whose invoices a statement covers: everyone sharing the user's
- * non-null seazonaClientId (one practice, the pre-piece-11 rule), else just
- * the user. Always includes the user. Moved here from the ledger in Task 5,
- * where every payment and invoice read went onto the client scope; Task 7
- * replaces it with per-account statements and deletes it (the allow-list in
- * routes/__tests__/no-seazona-authz.test.js keeps this file until then).
- */
-async function practiceUserIds(user, database = db) {
-  if (!user?.seazonaClientId) return [user.id];
-  const rows = await database
-    .select({ id: users.id })
-    .from(users)
-    .where(and(eq(users.seazonaClientId, String(user.seazonaClientId)), eq(users.role, "doctor")));
-  return [...new Set([...rows.map((r) => r.id), user.id])];
-}
-
-/** The doctor's own statement download (GET /invoices/statement.pdf) covers the same doctors as the emailed one. Task 7 moves it onto the account scope. */
-export function doctorStatementUserIds(user, database = db) {
-  return practiceUserIds(user, database);
-}
-
-/** A practice is every doctor sharing a non-null seazonaClientId (the rule practiceUserIds applies), else the user alone. */
-const practiceKey = (d) => (d.seazonaClientId ? `p:${d.seazonaClientId}` : `u:${d.id}`);
+/** A preview row's key: one per (subject, recipient). What the run's `keys` select. */
+export const statementRowKey = (subjectKey, recipientUserId) => `${subjectKey}|${recipientUserId}`;
 
 /**
- * Preview rows from preloaded data. Pure. Each client's statement covers their
- * practice, the same figure the single send and the client's own download show.
- * Candidates are approved doctors with activity in the month or a non-zero closing.
+ * Preview rows from preloaded data (loadStatementSubjects + one activity load). Pure.
+ *  - one row per (practice, approved doctor member), for each practice with
+ *    activity in the month or a non-zero closing: that practice's statement,
+ *    under its own name and account number;
+ *  - one row per (group, active admin), only for a group with
+ *    `settings.combinedStatement`: the combined statement (the sum of its
+ *    practices'). No practice member is ever a recipient of a group row.
+ * A legacy statement_sends row (subject_key '', written before the practice
+ * backfill) counts for that recipient's practice rows only, so a month sent
+ * before the backfill is never sent again.
  */
-export function buildStatementCandidates({ doctors, activity, sends, month, generatedAt = new Date() }) {
-  const practices = groupBy(doctors, practiceKey, (d) => d.id);
-  const invoicesBy = groupBy(activity.invoices, (inv) => inv.clientUserId);
-  const paymentsBy = groupBy(activity.payments, (p) => p.invoiceId);
-  const sendBy = new Map(sends.map((s) => [s.clientUserId, s]));
+export function buildStatementCandidates({ accounts, members, organizations, activity, sends, month, generatedAt = new Date() }) {
+  const byAccount = activityByAccount(activity, accounts.map((a) => a.id));
+  const models = new Map(accounts.map((a) => [a.id, buildStatementModel(practiceHeader(a), byAccount.get(a.id), { month }, { generatedAt })]));
+  const recipientsBy = groupBy(members.filter(isPracticeStatementRecipient), (m) => m.accountId);
+  const sendBy = new Map(sends.filter((s) => s.subjectKey).map((s) => [statementRowKey(s.subjectKey, s.clientUserId), s]));
+  const legacyBy = new Map(sends.filter((s) => !s.subjectKey).map((s) => [s.clientUserId, s]));
 
   const rows = [];
-  for (const d of doctors) {
-    if (d.approvalStatus !== "approved") continue;
-    const invs = practices.get(practiceKey(d)).flatMap((id) => invoicesBy.get(id) ?? []);
-    const payments = invs.flatMap((i) => paymentsBy.get(i.id) ?? []);
-    const model = buildStatementModel(d, { invoices: invs, payments }, { month }, { generatedAt });
-    const activityCount = model.lines.length;
-    if (!activityCount && !model.closingCents) continue;
-    const sent = sendBy.get(d.id);
-    rows.push({
-      clientUserId: d.id, name: d.name ?? null, practice: d.practice ?? null, accountNumber: d.accountNumber ?? null, email: d.email || null,
-      openingCents: model.openingCents, closingCents: model.closingCents, activityCount,
-      alreadySentAt: sent?.sentAt ?? null, sendStatus: sent?.status ?? null, // any delivery, even before a failed re-send
-    });
+  const addRows = (subject, subjectId, recipients, { name, accountNumber, model, activityCount }) => {
+    if (!activityCount && !model.closingCents) return;
+    const subjectKey = subjectKeyOf(subject, subjectId);
+    for (const r of recipients) {
+      const key = statementRowKey(subjectKey, r.userId);
+      const sent = sendBy.get(key) ?? (subject === "account" ? legacyBy.get(r.userId) : undefined);
+      rows.push({
+        key, subject, subjectId, subjectKey, recipientUserId: r.userId, recipientName: r.name ?? null, email: r.email || null,
+        name: name ?? null, accountNumber: accountNumber ?? null,
+        openingCents: model.openingCents, closingCents: model.closingCents, activityCount,
+        alreadySentAt: sent?.sentAt ?? null, sendStatus: sent?.status ?? null, // any delivery, even before a failed re-send
+      });
+    }
+  };
+  for (const a of accounts) {
+    const model = models.get(a.id);
+    addRows("account", a.id, recipientsBy.get(a.id) ?? [], { name: a.name, accountNumber: a.accountNumber, model, activityCount: model.lines.length });
+  }
+  for (const o of organizations) {
+    if (o.settings?.combinedStatement !== true) continue;
+    const model = buildCombinedStatementModel(o, o.accountIds.map((id) => models.get(id)).filter(Boolean), { month, generatedAt });
+    const admins = (o.admins ?? []).filter((a) => a.status === "active");
+    addRows("organization", o.id, admins, { name: o.name, accountNumber: null, model, activityCount: model.activityCount });
   }
   const plan = planStatementRun({ candidates: rows });
   const planned = new Map([...plan.send.map((id) => [id, "send"]), ...plan.skip.map((s) => [s.id, s.reason])]);
-  return rows.map((r) => ({ ...r, planned: planned.get(r.clientUserId) }));
+  return rows.map((r) => ({ ...r, planned: planned.get(r.key) }));
 }
 
-/** GET /admin/statements/run: one row per client due a statement for `month`. One activity load for everyone. */
-export async function previewStatementRun(month, database = db, { store = statementSendsStore, generatedAt = new Date() } = {}) {
+/** GET /admin/statements/run: one row per (subject, recipient) due a statement for `month`. One activity load for every practice. */
+export async function previewStatementRun(month, database = db, { store = statementSendsStore, generatedAt = new Date(), loadSubjects = loadStatementSubjects } = {}) {
   monthBounds(month); // throws on a malformed month
-  const doctors = await database
-    .select({
-      id: users.id, name: users.name, email: users.email, accountNumber: users.seazonaAccountNumber,
-      practice: doctorProfiles.companyName, seazonaClientId: users.seazonaClientId, approvalStatus: users.approvalStatus,
-    })
-    .from(users)
-    .leftJoin(doctorProfiles, eq(doctorProfiles.userId, users.id))
-    .where(eq(users.role, "doctor"));
-  if (!doctors.length) return [];
-  const activity = await loadStatementActivity(doctors.map((d) => d.id), database);
+  const subjects = await loadSubjects(database);
+  if (!subjects.accounts.length) return [];
+  const activity = await loadStatementActivity(subjects.accounts.map((a) => a.id), database);
   const sends = await store.forMonth(database, month);
-  return buildStatementCandidates({ doctors, activity, sends, month, generatedAt });
+  return buildStatementCandidates({ ...subjects, activity, sends, month, generatedAt });
 }
 
 /** Send one claimed notice and settle its row. Never throws: a failure is recorded and retried by the next run. */
-async function deliver({ sendId, to, clientUserId, month, monthLabel, closingCents, byUserId, runId, ipAddress = null }, { database, store, send }) {
+async function deliver({ sendId, to, subjectKey, clientUserId, month, monthLabel, closingCents, byUserId, runId, ipAddress = null }, { database, store, send }) {
   let sent = false;
   try {
-    sent = Boolean(await send({ to, monthLabel, closingCents }));
+    sent = Boolean(await send({ to, monthLabel, closingCents, combined: subjectKey.startsWith("organization:") }));
   } catch (err) {
-    console.error(`[STATEMENT] send failed for ${clientUserId} ${month}: ${String(err?.message || err)}`);
+    console.error(`[STATEMENT] send failed for ${subjectKey} ${clientUserId} ${month}: ${String(err?.message || err)}`);
   }
   try {
     await store.finish(database, sendId, sent ? { status: "sent", sentAt: new Date() } : { status: "failed" });
@@ -208,7 +217,7 @@ async function deliver({ sendId, to, clientUserId, month, monthLabel, closingCen
   try {
     await auditService.log({
       userId: byUserId ?? null, action: "statement.emailed", targetType: "user", targetId: clientUserId,
-      metadata: { month, closingCents, runId: runId ?? null, sent }, ipAddress,
+      metadata: { month, subjectKey, closingCents, runId: runId ?? null, sent }, ipAddress,
     }, database);
   } catch (err) {
     console.error(`[AUDIT] statement.emailed write failed: ${String(err?.message || err)}`);
@@ -217,55 +226,67 @@ async function deliver({ sendId, to, clientUserId, month, monthLabel, closingCen
 }
 
 /**
- * POST /admin/statements/run and the monthly job. Sequential; each client's
- * row is claimed before its email. A dry run plans only.
+ * POST /admin/statements/run and the monthly job. Sequential; each row is
+ * claimed before its email. `keys` (preview row keys) limits the run to those
+ * rows. A dry run plans only.
  * @returns {{ sent: number, skipped: number, failed: number, skippedBy: Record<string, number>, dryRun?: true, wouldSend?: number }}
  */
 export async function runStatements(
-  { month, clientUserIds, byUserId = null, runId = null, dryRun = false },
-  { database = db, store = statementSendsStore, send = sendStatementNotice, generatedAt = new Date() } = {},
+  { month, keys, byUserId = null, runId = null, dryRun = false },
+  { database = db, store = statementSendsStore, send = sendStatementNotice, generatedAt = new Date(), loadSubjects } = {},
 ) {
-  const rows = await previewStatementRun(month, database, { store, generatedAt });
-  const byId = new Map(rows.map((r) => [r.clientUserId, r]));
-  const plan = planStatementRun({ candidates: rows, onlyIds: clientUserIds });
+  const rows = await previewStatementRun(month, database, { store, generatedAt, ...(loadSubjects ? { loadSubjects } : {}) });
+  const byKey = new Map(rows.map((r) => [r.key, r]));
+  const plan = planStatementRun({ candidates: rows, onlyKeys: keys });
   const skippedBy = {};
   const skipped = (reason) => { skippedBy[reason] = (skippedBy[reason] ?? 0) + 1; };
   plan.skip.forEach((s) => skipped(s.reason));
   if (dryRun) return { dryRun: true, wouldSend: plan.send.length, sent: 0, failed: 0, skipped: plan.skip.length, skippedBy };
 
+  const claimOf = (row) => ({ subjectKey: row.subjectKey, clientUserId: row.recipientUserId, month, closingCents: row.closingCents, byUserId, runId });
   for (const s of plan.skip) {
-    if (s.reason === "no_email") await store.recordNoEmail(database, { clientUserId: s.id, month, closingCents: byId.get(s.id).closingCents, byUserId, runId });
+    if (s.reason === "no_email") await store.recordNoEmail(database, claimOf(byKey.get(s.id)));
   }
   const { label: monthLabel } = monthBounds(month);
   let sent = 0;
   let failed = 0;
-  for (const id of plan.send) {
-    const row = byId.get(id);
-    const sendId = await store.claim(database, { clientUserId: id, month, closingCents: row.closingCents, byUserId, runId });
+  for (const key of plan.send) {
+    const row = byKey.get(key);
+    const sendId = await store.claim(database, claimOf(row));
     if (!sendId) { skipped("already_sent"); continue; }
-    const ok = await deliver({ sendId, to: row.email, clientUserId: id, month, monthLabel, closingCents: row.closingCents, byUserId, runId }, { database, store, send });
+    const ok = await deliver({ sendId, to: row.email, subjectKey: row.subjectKey, clientUserId: row.recipientUserId, month, monthLabel, closingCents: row.closingCents, byUserId, runId },
+      { database, store, send });
     if (ok) sent += 1; else failed += 1;
   }
   return { sent, failed, skipped: Object.values(skippedBy).reduce((a, b) => a + b, 0), skippedBy };
 }
 
 /**
- * The per-client "Email statement" action: the practice's statement for
- * `month`, sent now. `force` (the default) re-sends a month already sent and
- * overwrites sent_at; without it the bulk run's claim rule applies.
- * → null (not a doctor), or { status: "sent"|"failed"|"no_email"|"already_sent", closingCents }.
+ * The per-practice "Email statement" action: the practice's statement for
+ * `month`, sent now to `recipientUserIds` (an admin naming one person: the
+ * per-client wrapper) or else to every approved doctor member. `force` (the
+ * default) re-sends a month already sent and overwrites sent_at; without it
+ * the bulk run's claim rule applies.
+ * → null (not an active practice), or
+ *   { closingCents, results: [{ recipientUserId, status: "sent"|"failed"|"no_email"|"already_sent" }] }.
  */
-export async function sendStatementFor(clientUserId, month, { byUserId = null, force = true, runId = null, ipAddress = null } = {},
-  { database = db, store = statementSendsStore, send = sendStatementNotice } = {}) {
-  const [target] = await database.select({ id: users.id, seazonaClientId: users.seazonaClientId }).from(users).where(eq(users.id, clientUserId));
-  if (!target) return null;
-  const out = await statementFor(clientUserId, month, { clientUserIds: await practiceUserIds(target, database) }, database);
-  if (!out) return null;
-  const { closingCents } = out.model;
-  if (!out.client.email) return { status: "no_email", closingCents };
-  const claim = { clientUserId, month, closingCents, byUserId, runId };
-  const sendId = force ? await store.forceClaim(database, claim) : await store.claim(database, claim);
-  if (!sendId) return { status: "already_sent", closingCents };
-  const ok = await deliver({ sendId, to: out.client.email, clientUserId, month, monthLabel: out.model.period.label, closingCents, byUserId, runId, ipAddress }, { database, store, send });
-  return { status: ok ? "sent" : "failed", closingCents };
+export async function sendStatementFor({ accountId, recipientUserIds = null }, month, { byUserId = null, force = true, runId = null, ipAddress = null } = {},
+  { database = db, store = statementSendsStore, send = sendStatementNotice, generatedAt = new Date() } = {}) {
+  const model = await practiceStatementFor(accountId, month, { generatedAt }, database);
+  if (!model) return null;
+  const { closingCents } = model;
+  const subjectKey = subjectKeyOf("account", accountId);
+  const recipients = recipientUserIds ? await statementRecipients(recipientUserIds, database) : await practiceStatementRecipients(accountId, database);
+  const results = [];
+  for (const person of recipients) {
+    const result = (status) => results.push({ recipientUserId: person.id, status });
+    if (!person.email) { result("no_email"); continue; }
+    const claim = { subjectKey, clientUserId: person.id, month, closingCents, byUserId, runId };
+    const sendId = force ? await store.forceClaim(database, claim) : await store.claim(database, claim);
+    if (!sendId) { result("already_sent"); continue; }
+    const ok = await deliver({ sendId, to: person.email, subjectKey, clientUserId: person.id, month, monthLabel: model.period.label, closingCents, byUserId, runId, ipAddress },
+      { database, store, send });
+    result(ok ? "sent" : "failed");
+  }
+  return { closingCents, results };
 }
