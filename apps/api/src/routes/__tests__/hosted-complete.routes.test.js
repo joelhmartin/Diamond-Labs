@@ -22,6 +22,13 @@ vi.mock("../../config/database.js", () => ({
   db: { select: () => ({ from: () => ({ where: async () => selectQueue.shift() ?? [] }) }) },
 }));
 
+// The real guard, switched by `paused` so a test can run the routes under the cutover freeze.
+let paused = false;
+vi.mock("../../middleware/payments-paused.js", async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, paymentsPaused: actual.paymentsPausedGuard(() => paused) };
+});
+
 let details;
 vi.mock("../../services/authorizenet.service.js", () => ({ getTransactionDetails: async () => details }));
 let verifyResult = null;
@@ -50,6 +57,7 @@ async function complete() {
 let errors;
 beforeEach(() => {
   store.clear(); store.set("rxpay:hosted:Habc", JSON.stringify(bound));
+  paused = false;
   selectQueue = [];
   recorded.length = 0; verifyResult = null; verifyCalls.length = 0;
   details = { orderInvoiceNumber: "Habc", responseCode: "1", transactionStatus: "settledSuccessfully", amount: 500, status: "ok" };
@@ -105,5 +113,41 @@ describe("POST /payments/hosted-token", () => {
     expect(res.statusCode).toBe(422);
     expect(verifyCalls).toHaveLength(1);
     expect(verifyCalls[0][2]).toEqual({ enforceCap: true });
+  });
+});
+
+// Behavioural replacement for the source-text wiring checks in payments-paused-wiring.test.js:
+// under PAYMENTS_PAUSED the routes that start a payment refuse, but the one that records a
+// capture Authorize.net already took must still run, and the banner's status read must answer.
+describe("while payments are paused", () => {
+  const call = async (method, url, payload) => {
+    const app = Fastify();
+    await app.register(invoicePaymentRoutes, { prefix: "/api/v1" });
+    const res = await app.inject({ method, url: `/api/v1${url}`, payload });
+    await app.close();
+    return res;
+  };
+
+  it("refuses to start a card payment", async () => {
+    paused = true;
+    for (const url of ["/payments/hosted-token", "/payments/charge-saved"]) {
+      const res = await call("POST", url, {});
+      expect(res.statusCode, url).toBe(503);
+      expect(res.json().error.code).toBe("PAYMENTS_PAUSED");
+    }
+    expect(verifyCalls).toHaveLength(0);
+  });
+
+  it("still records a payment that was already captured (hosted-complete is never paused)", async () => {
+    paused = true;
+    const res = await call("POST", "/payments/hosted-complete", body);
+    expect(res.statusCode).toBe(200);
+    expect(recorded).toHaveLength(1);
+  });
+
+  it("still answers the status read the banner depends on", async () => {
+    paused = true;
+    const res = await call("GET", "/payments/status");
+    expect(res.statusCode).toBe(200);
   });
 });

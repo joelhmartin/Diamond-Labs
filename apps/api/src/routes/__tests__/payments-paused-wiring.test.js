@@ -45,14 +45,6 @@ test("every payment-starting route is behind the PAYMENTS_PAUSED guard", () => {
   for (const src of manual) assert.match(src, /paymentsPaused/, src.slice(0, 80));
 });
 
-test("hosted-complete is never paused: the card was already captured when it runs", () => {
-  const src = registration('fastify.post("/payments/hosted-complete",');
-  assert.ok(src);
-  assert.doesNotMatch(src, /paymentsPaused/);
-});
-
-test("the status endpoint exists and is never paused: the banner reads it while paused", () => {
-  const src = registration('fastify.get("/payments/status",');
-  assert.ok(src);
-  assert.doesNotMatch(src, /paymentsPaused/);
-});
+// "hosted-complete is never paused" and the /payments/status read are asserted behaviourally in
+// hosted-complete.routes.test.js, which can run them. The routes above are spread over files
+// with different auth/DB dependencies, so they stay as registration-source checks.

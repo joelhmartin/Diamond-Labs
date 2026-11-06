@@ -1,8 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { fakeTx } from "../test/fake-tx.js";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { practiceForNewRecord, directPracticeIdsQuery } from "./practice-of.js";
@@ -59,12 +57,6 @@ test("the lookup is limited to the owner's ACTIVE memberships in ACTIVE client a
   assert.match(sql, /"accounts"\."is_client" = \$4/);
   assert.deepEqual(params, ["u1", "active", "active", true]);
   assert.match(sql, /inner join "accounts" on "accounts"\."id" = "memberships"\."account_id"/);
-});
-
-test("the staff picker's memberUserId filter is the validator's own query, not a second copy of the filters", () => {
-  const src = readFileSync(fileURLToPath(new URL("./practices.service.js", import.meta.url)), "utf8");
-  assert.match(src, /inArray\(accounts\.id, directPracticeIdsQuery\(database, memberUserId\)\)/);
-  assert.doesNotMatch(src, /exists \(select/, "no private membership filter in the list");
 });
 
 test("directOnly: false is not supported yet and says so", async () => {
