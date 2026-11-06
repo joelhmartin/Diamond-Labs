@@ -164,7 +164,7 @@ The `clients` step reads its plan before it writes, so it runs here, inside the 
 export PRODUCTION_DATABASE_URL="postgresql://<admin user>:$(gcloud secrets versions access latest --secret=<the secret holding the admin password> --project=diamond-labs-prod)@127.0.0.1:6001/diamond_labs"
 T="--target production --confirm-production diamond_labs"
 S="--invoice-start <INVOICE_NUMBER_START> --order-start <LAB_ORDER_NUMBER_START>"
-pnpm --filter @my-app/api import:load clients  $T [--no-email placeholder|skip]            # dry run, read it, then add --live
+pnpm --filter @my-app/api import:load clients  $T [--no-email placeholder|skip] --email-taken placeholder # dry run, read it, then add --live
 pnpm --filter @my-app/api db:backfill-practices                                            # dry run (counts only), read it, then re-run with --live
 pnpm --filter @my-app/api import:load invoices $T $S                                       # dry run, then --live
 pnpm --filter @my-app/api import:load balances $T $S --balances <path> --file-id <final export id> --cutover-at <ISO of step 1> # dry run, then --live
