@@ -188,6 +188,7 @@ export function derivedFileInfo(stored) {
 
 /** One printable line saying the balances are derived, and from what (counts and a timestamp only). */
 export function derivedLine(p) {
+  if (p.method === "account-balance") return `These balances are DERIVED from the Account Balance report and ${(p.sourceFiles ?? 1) - 1} Payments export(s) at ${p.derivedAt ?? "an unknown time"} (statements through ${p.statementThrough ?? "?"}; payments through ${p.paymentsThrough ?? "the report"}; ${p.derivedRows ?? "?"} invoice row(s) from ${p.invoiceRecords ?? "?"} invoice record(s); highest invoice ${p.maxInvoiceNumber ?? "?"}). An issued invoice the file does not list stays OPEN; re-derive after fetching newer invoices.`;
   return `These balances are DERIVED from ${p.sourceFiles ?? "?"} Payments export(s) at ${p.derivedAt ?? "an unknown time"} (--unclear ${p.unclear ?? "?"}; ${p.derivedRows ?? "?"} invoice row(s) from ${p.invoiceRecords ?? "?"} invoice record(s); highest invoice ${p.maxInvoiceNumber ?? "?"}). An issued invoice the file does not list stays OPEN; re-derive after fetching newer invoices.`;
 }
 
