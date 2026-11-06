@@ -14,8 +14,8 @@ test("ledgerRowDayBetween: paid_on in range, or no paid_on and created in the la
   assert.equal(
     both.text,
     "((invoice_payments.paid_on >= $1::date and invoice_payments.paid_on <= $2::date) or (invoice_payments.paid_on is null and "
-      + "invoice_payments.created_at >= ($3::date)::timestamp at time zone 'America/Chicago' and "
-      + "invoice_payments.created_at < (($4::date + 1)::timestamp at time zone 'America/Chicago')))",
+      + "invoice_payments.created_at >= ($3::date)::timestamp at time zone 'America/Los_Angeles' and "
+      + "invoice_payments.created_at < (($4::date + 1)::timestamp at time zone 'America/Los_Angeles')))",
   );
   assert.deepEqual(both.params, ["2026-10-01", "2026-10-31", "2026-10-01", "2026-10-31"]);
   const from = renderSql(ledger.ledgerRowDayBetween({ from: "2026-10-01" }));

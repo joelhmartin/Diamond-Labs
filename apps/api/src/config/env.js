@@ -80,7 +80,7 @@ const envSchema = z.object({
   // Enrollment floor in dollars. An admin may override it per doctor.
   AUTOPAY_MIN_AMOUNT: z.coerce.number().positive().default(200),
   // What "the 15th" means. The lab is in San Antonio.
-  AUTOPAY_TIMEZONE: z.string().default("America/Chicago"),
+  AUTOPAY_TIMEZONE: z.string().default("America/Los_Angeles"),
   // Consecutive declines before an enrollment is paused.
   AUTOPAY_MAX_FAILURES: z.coerce.number().int().positive().default(3),
   // ── Lab orders ──

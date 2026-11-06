@@ -7,6 +7,7 @@ import { pageOf, containsPattern, prefixPattern } from "../../lib/list-query.js"
 import { carrierRegistry } from "./carrier-registry.js";
 import { ShippingError, CarrierError, carrierProblem } from "./shipping-errors.js";
 import { planVoided } from "./shipment-rules.js";
+import { afterLabDay, startOfLabDay } from "../../lib/lab-day-sql.js";
 
 /**
  * Generic shipments: carrier calls and shipments-table reads/writes. Knows
@@ -189,8 +190,8 @@ export function shipmentListWhere({ status, carrier, from, to, q } = {}) {
   const conds = [];
   if (status) conds.push(eq(shipments.status, status));
   if (carrier) conds.push(eq(shipments.carrier, carrier));
-  if (from) conds.push(gte(shipments.purchasedAt, sql`(${from}::date)::timestamp at time zone 'America/Chicago'`));
-  if (to) conds.push(lt(shipments.purchasedAt, sql`((${to}::date + 1)::timestamp) at time zone 'America/Chicago'`));
+  if (from) conds.push(gte(shipments.purchasedAt, startOfLabDay(from)));
+  if (to) conds.push(lt(shipments.purchasedAt, afterLabDay(to)));
   if (q) {
     conds.push(or(
       ilike(shipments.trackingNumber, containsPattern(q)),

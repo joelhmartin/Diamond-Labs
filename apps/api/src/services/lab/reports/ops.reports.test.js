@@ -11,7 +11,7 @@ import { PLANNING_REPORTS } from "./planning.reports.js";
 const ALL = [...OPERATIONS_REPORTS, ...PRODUCTIVITY_REPORTS, ...DEPARTMENT_REPORTS, ...PLANNING_REPORTS];
 const report = (key) => ALL.find((r) => r.key === key);
 const range = (from, to) => ({ from, to, previous: { from: "2000-01-01", to: "2000-01-31" } });
-const ctx = (over = {}) => ({ page: null, now: new Date("2026-11-01T15:00:00Z"), today: "2026-11-01", tz: "America/Chicago", ...over });
+const ctx = (over = {}) => ({ page: null, now: new Date("2026-11-01T15:00:00Z"), today: "2026-11-01", tz: "America/Los_Angeles", ...over });
 const paged = (page) => ctx({ page: { limit: 50, offset: 0, sort: null, ...page } });
 // Never patients, Rx form data, or any free-text note column (lab_order_events.note, hold_reason, lab_notes).
 const PHI = /legacy_patient|patient_|form_data|notes|hold_reason|lab_notes|source_label|lab_order_events\.note\b|\bnote as\b/;
@@ -63,7 +63,7 @@ test("case submission: digital = records method, scan file or a promoted scanner
   assert.doesNotMatch(text, /select[^(]*lab_orders\.enclosures[^)]*from/, "the sealed enclosures are never selected");
   assert.equal(executedSql(tx)[0].params[0], "lab_order");
   assert.match(text, /lab_orders\.is_remake = false/);
-  assert.match(text, /lab_orders\.received_at at time zone 'America\/Chicago'/);
+  assert.match(text, /lab_orders\.received_at at time zone 'America\/Los_Angeles'/);
   assert.doesNotMatch(text, PHI);
   assert.deepEqual(out.rows, [
     { day: "2026-10-01", digital: 0, physical: 0, unknown: 0, total: 0, digitalShare: 0 },
@@ -82,7 +82,7 @@ test("turnaround shapes rows and the summary and asks Postgres for percentile_co
   const [{ text }] = executedSql(tx);
   assert.match(text, /lab_orders\.status = 'shipped' and lab_orders\.shipped_at is not null/);
   assert.match(text, /percentile_cont\(0\.5\) within group \(order by x\.days\)/);
-  assert.match(text, /greatest\(0, \(lab_orders\.shipped_at at time zone 'America\/Chicago'\)::date - \(lab_orders\.received_at at time zone 'America\/Chicago'\)::date\)/); // clamped like turnaroundDays()
+  assert.match(text, /greatest\(0, \(lab_orders\.shipped_at at time zone 'America\/Los_Angeles'\)::date - \(lab_orders\.received_at at time zone 'America\/Los_Angeles'\)::date\)/); // clamped like turnaroundDays()
   assert.match(text, /lab_orders\.shipped_at >= /);
   assert.match(text, /grouping sets \(\(x\.month, x\.category\), \(\)\)/);
   // The one shipped-in-range rule (order-metrics shippedInSql), the same filter the turnaround tiles use.

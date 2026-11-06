@@ -15,7 +15,7 @@ const range = (from, to) => ({ from, to });
 
 // Piece 7's board fixture: Friday 2026-11-06, 9am in Chicago; Sat/Sun closed, so "tomorrow" is Monday 11-09.
 const NOW = new Date("2026-11-06T15:00:00Z");
-const CAL_ROW = { key: "default", timezone: "America/Chicago", leadDays: 0, closedWeekdays: [0, 6], capacityBasis: "none", capacityByWeekday: {} };
+const CAL_ROW = { key: "default", timezone: "America/Los_Angeles", leadDays: 0, closedWeekdays: [0, 6], capacityBasis: "none", capacityByWeekday: {} };
 const open = (id, status, dueDate, heldFrom = null) => ({ id, status, heldFrom, dueDate });
 const LATE_PLAN = {
   recordType: "lab_order", recordId: "g", workflowKey: "10d", workflowName: "10d", startDate: "2026-10-26", dueDate: "2026-11-30", direction: "forward",
@@ -99,7 +99,7 @@ test("ordersByDay buckets live orders by lab-local received day and fills empty 
     { day: "2026-10-03", orders: 0, rush: 0, remakes: 0, units: 0 },
   ]);
   const [{ text }] = executedSql(tx);
-  assert.match(text, /lab_orders\.received_at at time zone 'America\/Chicago'/);
+  assert.match(text, /lab_orders\.received_at at time zone 'America\/Los_Angeles'/);
   assert.match(text, /lab_orders\.status <> 'cancelled'/);
   assert.match(text, /lab_order_lines\.note_only = false/);
 });
@@ -142,12 +142,12 @@ test("turnaround average and weekly trend use the clamped received -> shipped la
   const [{ text }] = executedSql(tx);
   assert.match(text, /lab_orders\.status = 'shipped' and lab_orders\.shipped_at is not null/);
   // No calendar row: every day is open, so business days are plain lab-day arithmetic.
-  assert.match(text, /avg\(greatest\(0, \(lab_orders\.shipped_at at time zone 'America\/Chicago'\)::date - \(lab_orders\.received_at at time zone 'America\/Chicago'\)::date\)\)/);
+  assert.match(text, /avg\(greatest\(0, \(lab_orders\.shipped_at at time zone 'America\/Los_Angeles'\)::date - \(lab_orders\.received_at at time zone 'America\/Los_Angeles'\)::date\)\)/);
   // With the weekend closed and a holiday, the average counts open days only (the SQL twin of turnaroundDays).
   const biz = fakeTx({ selects: [[CAL_ROW], [{ id: "h1", date: "2026-11-26", label: "Thanksgiving" }]], executes: [[{ orders: "1", avgDays: "2" }]] });
   await turnaroundAverage(biz, range("2026-11-01", "2026-11-30"));
   const [{ text: bt }] = executedSql(biz);
-  assert.match(bt, /generate_series\(\(\(lab_orders\.received_at at time zone 'America\/Chicago'\)::date \+ 1\)::timestamp, \(\(lab_orders\.shipped_at at time zone 'America\/Chicago'\)::date\)::timestamp, interval '1 day'\)/);
+  assert.match(bt, /generate_series\(\(\(lab_orders\.received_at at time zone 'America\/Los_Angeles'\)::date \+ 1\)::timestamp, \(\(lab_orders\.shipped_at at time zone 'America\/Los_Angeles'\)::date\)::timestamp, interval '1 day'\)/);
   assert.match(bt, /extract\(dow from g\.d\)::int not in \(0, 6\) and g\.d::date not in \('2026-11-26'\)/);
 
   assert.equal(weekStart("2026-11-05"), "2026-11-02"); // a Thursday -> its Monday
@@ -159,5 +159,5 @@ test("turnaround average and weekly trend use the clamped received -> shipped la
     { week: "2026-10-19", orders: 0, avgDays: null }, { week: "2026-10-26", orders: 2, avgDays: 4 }, { week: "2026-11-02", orders: 0, avgDays: null },
   ]);
   const [{ text: wt }] = executedSql(wk);
-  assert.match(wt, /date_trunc\('week', \(lab_orders\.shipped_at at time zone 'America\/Chicago'\)::date\)/);
+  assert.match(wt, /date_trunc\('week', \(lab_orders\.shipped_at at time zone 'America\/Los_Angeles'\)::date\)/);
 });

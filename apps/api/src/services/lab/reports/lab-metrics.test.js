@@ -20,9 +20,9 @@ test("daily sales buckets by lab-local issue day", async () => {
   assert.deepEqual(rows, [{ day: "2026-10-31", cents: 5000, invoices: 1 }, { day: "2026-11-01", cents: 0, invoices: 0 }]);
   const [{ text, params }] = executed(tx);
   // Bucketed and filtered on the lab-local day, never the UTC day.
-  assert.match(text, /\(invoices\.issued_at at time zone 'America\/Chicago'\)::date/);
-  assert.match(text, /invoices\.issued_at >= \(\$\d+::date\)::timestamp at time zone 'America\/Chicago'/);
-  assert.match(text, /invoices\.issued_at < \(\(\$\d+::date \+ 1\)::timestamp at time zone 'America\/Chicago'\)/);
+  assert.match(text, /\(invoices\.issued_at at time zone 'America\/Los_Angeles'\)::date/);
+  assert.match(text, /invoices\.issued_at >= \(\$\d+::date\)::timestamp at time zone 'America\/Los_Angeles'/);
+  assert.match(text, /invoices\.issued_at < \(\(\$\d+::date \+ 1\)::timestamp at time zone 'America\/Los_Angeles'\)/);
   assert.ok(params.includes("2026-10-31") && params.includes("2026-11-01"));
 });
 
@@ -56,7 +56,7 @@ test("monthly sales fill every month in the range with zeros", async () => {
   const tx = fakeTx({ executes: [[{ month: "2026-02", cents: "700" }]] });
   const rows = await salesByMonth(tx, { from: "2026-01-15", to: "2026-03-02" });
   assert.deepEqual(rows, [{ month: "2026-01", cents: 0 }, { month: "2026-02", cents: 700 }, { month: "2026-03", cents: 0 }]);
-  assert.match(executed(tx)[0].text, /to_char\(\(invoices\.issued_at at time zone 'America\/Chicago'\)::date, 'YYYY-MM'\)/);
+  assert.match(executed(tx)[0].text, /to_char\(\(invoices\.issued_at at time zone 'America\/Los_Angeles'\)::date, 'YYYY-MM'\)/);
 });
 
 test("the client name is the practice, falling back to the user's name", () => {
