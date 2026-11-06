@@ -1,8 +1,9 @@
-import { and, asc, eq, ilike, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { db as appDb } from "../config/database.js";
 import { accounts, memberships } from "../db/schema/index.js";
 import { organizations, organizationAccounts } from "../modules/organizations/index.js";
 import { containsPattern } from "../lib/list-query.js";
+import { directPracticeIdsQuery } from "./practice-of.js";
 
 /**
  * Practices: the client accounts (`accounts.is_client`). Admin > Practices and
@@ -10,8 +11,8 @@ import { containsPattern } from "../lib/list-query.js";
  * arrive with the practices admin routes.
  *
  * Filters: `q` (name or account number), `organizationId`, `missingNumber`
- * (no lab account number yet) and `memberUserId` (practices where that user has
- * an ACTIVE membership). Returns `{ rows, total }`; each row is
+ * (no lab account number yet) and `memberUserId` (the practices that login can create records for:
+ * active direct membership in an active client account). Returns `{ rows, total }`; each row is
  * `{ id, name, accountNumber, organization: { id, name } | null, memberCount }`.
  */
 export async function listPractices({ q, organizationId, missingNumber, memberUserId, limit = 25, offset = 0 } = {}, database = appDb) {
@@ -22,9 +23,8 @@ export async function listPractices({ q, organizationId, missingNumber, memberUs
   }
   if (organizationId) conds.push(eq(organizationAccounts.organizationId, organizationId));
   if (missingNumber === true) conds.push(or(sql`${accounts.accountNumber} is null`, eq(accounts.accountNumber, "")));
-  if (memberUserId) {
-    conds.push(sql`exists (select 1 from ${memberships} m where m.account_id = ${accounts.id} and m.user_id = ${memberUserId} and m.status = 'active')`);
-  }
+  // The same query practiceForNewRecord validates against, so a picker never offers a practice the create path would refuse.
+  if (memberUserId) conds.push(inArray(accounts.id, directPracticeIdsQuery(database, memberUserId)));
   const where = and(...conds);
   const base = (select) => database
     .select(select)

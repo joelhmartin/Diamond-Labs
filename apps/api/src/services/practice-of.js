@@ -3,6 +3,25 @@ import { accounts, memberships } from "../db/schema/index.js";
 import { InvoiceError } from "./billing/invoice-rules.js";
 
 /**
+ * THE definition of "a practice this login can create records for": ACTIVE, DIRECT
+ * memberships in ACTIVE client accounts. An unawaited query (account ids), shared by
+ * practiceForNewRecord and every picker (listPractices memberUserId), so the list a
+ * person is offered and the list the validator accepts cannot drift.
+ */
+export function directPracticeIdsQuery(tx, userId) {
+  return tx
+    .select({ accountId: memberships.accountId })
+    .from(memberships)
+    .innerJoin(accounts, eq(accounts.id, memberships.accountId))
+    .where(and(
+      eq(memberships.userId, userId),
+      eq(memberships.status, "active"),
+      eq(accounts.status, "active"),
+      eq(accounts.isClient, true),
+    ));
+}
+
+/**
  * Which practice (client account) a NEW case, order or invoice belongs to.
  * THE one rule every create path uses (rx submit, staff order entry, shop
  * checkout), so a record is stamped the same way wherever it starts.
@@ -28,17 +47,7 @@ export async function practiceForNewRecord(tx, { ownerUserId, requestedAccountId
     if (requestedAccountId) throw new InvoiceError("NOT_FOUND", "Not found.");
     return null;
   }
-  const rows = await tx
-    .select({ accountId: memberships.accountId })
-    .from(memberships)
-    .innerJoin(accounts, eq(accounts.id, memberships.accountId))
-    .where(and(
-      eq(memberships.userId, ownerUserId),
-      eq(memberships.status, "active"),
-      eq(accounts.status, "active"),
-      eq(accounts.isClient, true),
-    ))
-    .orderBy(asc(memberships.accountId));
+  const rows = await directPracticeIdsQuery(tx, ownerUserId).orderBy(asc(memberships.accountId));
   const candidates = rows.map((r) => r.accountId);
   if (requestedAccountId) {
     if (!candidates.includes(requestedAccountId)) throw new InvoiceError("NOT_FOUND", "Not found.");
