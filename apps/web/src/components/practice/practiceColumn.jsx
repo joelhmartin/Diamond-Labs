@@ -1,11 +1,12 @@
-import { practiceIdOf, practiceLabelOf } from "../../lib/practices.js";
+import { practiceLabel } from "@my-app/shared";
+import { practiceIdOf } from "../../lib/practices.js";
 
 /** The Practice column for a DataTable. Rows that carry accountName/accountNumber use them; else the scope's practice. */
 export function practiceColumn(accounts) {
   const byId = new Map(accounts.map((a) => [a.id, a]));
   const text = (row) => {
     const a = byId.get(practiceIdOf(row));
-    return a ? practiceLabelOf(a) : practiceLabelOf({ name: row.accountName, accountNumber: row.accountNumber }) || "—";
+    return a ? practiceLabel(a) : practiceLabel({ name: row.accountName, accountNumber: row.accountNumber }) || "—";
   };
   return {
     id: "practice", header: "Practice", sortValue: text, exportValue: text,

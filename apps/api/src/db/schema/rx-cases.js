@@ -1,4 +1,5 @@
 import { pgTable, varchar, text, boolean, timestamp, index } from "drizzle-orm/pg-core";
+import { accounts } from "./accounts.js";
 
 // A submitted Digital Rx case. Local-first authoritative record; status gates the
 // (later) Seazona push. seazonaClientId is captured from the doctor's account at
@@ -8,7 +9,8 @@ export const rxCases = pgTable("rx_cases", {
   caseNumber: varchar("case_number", { length: 32 }).notNull(),
   userId: varchar("user_id", { length: 128 }).notNull(),
   // The practice (accounts.id) the case belongs to, stamped at create. Null on an owned case = a backfill gap; scope checks fail closed.
-  accountId: varchar("account_id", { length: 128 }),
+  // FK restrict: accounts are only soft-deleted (status "deleted"), so a hard delete of a practice with records is refused, never orphaned.
+  accountId: varchar("account_id", { length: 128 }).references(() => accounts.id, { onDelete: "restrict" }),
   seazonaClientId: varchar("seazona_client_id", { length: 100 }),
   seazonaAccountNumber: varchar("seazona_account_number", { length: 50 }),
   practiceName: varchar("practice_name", { length: 200 }),

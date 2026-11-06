@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { render, screen, cleanup, waitFor, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { ToastProvider } from "../../components/ui/Toast.jsx";
+import { ROW_BOX } from "../../components/ui/data-table/testing.js";
 
 const get = vi.fn();
 const post = vi.fn();
@@ -39,7 +40,7 @@ test("past-due filter hides current-only clients and the totals row follows it",
 test('"Monthly statements" replaces the old per-row bulk email and opens the run panel', async () => {
   mount();
   await screen.findByText("Alpha Dental");
-  for (const box of screen.getAllByLabelText("Select row")) fireEvent.click(box);
+  for (const box of screen.getAllByLabelText(ROW_BOX)) fireEvent.click(box);
   assert.equal(screen.queryByRole("button", { name: "Email statements" }), null);
   get.mockResolvedValue({ data: { data: [] } });
   fireEvent.click(screen.getByRole("button", { name: "Monthly statements" }));
@@ -98,4 +99,16 @@ test("Account credit… on a practice row credits that practice only (never its 
   const old = screen.getByText("Old Client").closest("tr");
   fireEvent.click(within(old).getByRole("button", { name: /Account credit/ }));
   await waitFor(() => assert.ok(get.mock.calls.some((c) => c[0] === "/admin/clients/u9/account-credit/invoices")));
+});
+
+test("the empty message names the search that matched nothing, and the totals row lines up with the checkbox column", async () => {
+  mount();
+  await screen.findByText("Alpha Dental");
+  const totals = screen.getByText("Total (3 practices)").closest("tr");
+  const headerCells = screen.getAllByRole("columnheader").length;
+  const spanned = [...totals.children].reduce((n, td) => n + (td.colSpan || 1), 0);
+  assert.equal(spanned, headerCells, "every header cell (checkbox, expander, data) is covered once");
+
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: "zzz" } });
+  assert.ok(await screen.findByText('No practices match "zzz".'));
 });

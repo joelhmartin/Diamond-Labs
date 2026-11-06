@@ -48,7 +48,13 @@ from the query for server paging).
 - `today`: `now`'s calendar day, `"YYYY-MM-DD"`, in `tz`.
 - `tz`: the app's timezone (`createReportRoutes({ tz })`, default UTC).
 
-A metric's `run` gets the same `{ now, today, tz }` (no `page`). Use
+- `memo(key, fn)`: shares work between the tiles of ONE dashboard run. The first
+  caller for a `key` runs `fn`; later callers get the same promise (a failed
+  `fn` is forgotten so the next caller retries). Key it on everything the result
+  depends on (e.g. include `now`). Outside a dashboard it just calls `fn`. The
+  work runs on the first caller's transaction, so use it for reads only.
+
+A metric's `run` gets the same `{ now, today, tz, memo }` (no `page`). Use
 `ctx.today` for "today" rather than reading the clock, so a run and its tests
 agree on the day.
 
@@ -90,7 +96,12 @@ reports read `limit` (default 50, max 500), `offset` and `sort` from the query;
 client-paged results are cut at 5000 rows with `truncated` (a run that cuts its
 own list returns `truncated: true` and `total`, and the same note shows). `streamCsv`
 pages a server report by 2000 up to 100000 rows, one short transaction per page,
-and cuts a client-paged report at 100000 rows, not 5000.
+and cuts a client-paged report at 100000 rows, not 5000. It writes the report as
+an export source (its columns are the fields) through the shared paged writer and
+CSV format in `packages/shared/src/exports` (`openExportStream`, `csvFormat`), the
+same code the exports module's downloads use; a report file starts
+with a UTF-8 BOM, like the exports downloads and the browser's selected-rows export,
+so Excel reads non-ASCII names correctly.
 
 `createReportRoutes({ registry, db, preHandler, audit, favorites, tz?, slots?, dashboardCache? })`
 returns a Fastify plugin: `GET /reports` (with the registry's `featuredTitle`,
@@ -161,6 +172,12 @@ complete in-memory implementation (forgets on restart):
 None. Reports read the host's tables through the `db` handle passed to `run`.
 
 ## Wiring it into another app
+
+0. **Copy the code.** This directory, `packages/shared/src/reports` and
+   `packages/shared/src/exports` (the CSV encoder, paged writer and CSV format the
+   export uses), re-exported from the shared package's index, plus
+   `apps/web/src/modules/reports` and `apps/web/src/components/ui/params` (the
+   param controls and lookup picker the form draws) for the screens.
 
 1. **Registry.** One registry per app, with the roles that may view a report that lists none:
 

@@ -56,6 +56,18 @@ export function useDataTable(options) {
   const [pageSize, setPageSizeState] = useState(initialPageSize);
   const [sel, setSel] = useState(Sel.emptySelection);
   const debouncedQ = useDebouncedValue(q, 300);
+  // After the URL changes q (back/forward, a sidebar link) the new text applies at once, not 300 ms later.
+  const [forcedQ, setForcedQ] = useState(null);
+  const requestQ = forcedQ !== null && forcedQ === q ? q : debouncedQ;
+
+  // Server mode: the page goes back to 1 when the *request's* q changes, not on every keystroke, so a
+  // search is one fetch (page 1 with the new text) rather than a page-1 fetch with the old text first.
+  const [seenQ, setSeenQ] = useState(requestQ);
+  const [adoptedQ, setAdoptedQ] = useState(null); // q taken from the URL by adopt(), which brought its own page
+  if (!Object.is(seenQ, requestQ)) {
+    setSeenQ(requestQ);
+    if (server && requestQ !== adoptedQ) setPage(1);
+  }
 
   // `resetOn` (optional): when this value changes (e.g. the caller's own query params), go back to
   // page 1 and clear the selection. Done during render, so a server fetch sees page 1 the first time.
@@ -82,14 +94,19 @@ export function useDataTable(options) {
   }, []);
 
   const resetView = () => { setPage(1); setSel(Sel.clear()); };
-  const setQ = (v) => { setQState(v); resetView(); };
+  const setQ = (v) => {
+    setQState(v);
+    setAdoptedQ(null);
+    if (server) setSel(Sel.clear()); // the page follows the debounced q (above)
+    else resetView();
+  };
   const setFilter = (id, v) => { setFilters((f) => ({ ...f, [id]: v })); resetView(); };
   const resetFilters = () => { setFilters(initialFilters ?? {}); setQState(""); resetView(); };
   const setSort = (next) => { setSortState(next); resetView(); };
 
   const remote = useServerRows({
     enabled: server, fetchPage, deps, getRowId, setSel,
-    request: { page, pageSize, q: debouncedQ, filters, sort },
+    request: { page, pageSize, q: requestQ, filters, sort },
   });
 
   // Client pipeline. searchFn/filterDefs are read through a ref so inline definitions don't recompute every render.
@@ -119,7 +136,20 @@ export function useDataTable(options) {
     setSel((s) => (s.ids.size === 0 ? s : shrinkTo(s, allRows.map(getRowId))));
   }, [server, allRows, getRowId]);
 
-  useUrlMirror({ urlKey, filterDefs, searchParams, setSearchParams, state: { q: debouncedQ, filters, page } });
+  useUrlMirror({
+    urlKey, filterDefs, searchParams, setSearchParams,
+    state: { q: requestQ, filters, page },
+    // The URL changed on its own (back/forward, a link to this page without params): take its view.
+    adopt: (fromUrl) => {
+      const nextQ = fromUrl.q ?? "";
+      setAdoptedQ(nextQ);
+      setForcedQ(nextQ);
+      setQState(nextQ);
+      setFilters({ ...initialFilters, ...fromUrl.filters });
+      setPage(fromUrl.page ?? 1);
+      setSel(Sel.clear());
+    },
+  });
 
   const selection = useSelectionApi({
     sel, setSel, visible, matching: server ? null : matching, allRows,
@@ -158,6 +188,7 @@ function useServerRows({ enabled, fetchPage, deps, request, getRowId, setSel }) 
   fetchRef.current = fetchPage;
   const knownRows = useRef(new Map());
   const pruneNext = useRef(false);
+  const shownIds = useRef(EMPTY);
   const [rows, setRows] = useState(EMPTY);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(enabled);
@@ -179,8 +210,13 @@ function useServerRows({ enabled, fetchPage, deps, request, getRowId, setSel }) 
         setLoading(false);
         if (pruneNext.current) {
           pruneNext.current = false;
-          setSel((s) => shrinkTo(s, pageRows.map(getRowId)));
+          // Only this page can be judged: a row that was shown before the reload and is gone now left the
+          // list. Selections on other pages are kept (their rows are simply not in this response).
+          const present = new Set(pageRows.map(getRowId));
+          const gone = shownIds.current.filter((id) => !present.has(id));
+          if (gone.length) setSel((s) => Sel.setPage(s, gone, false));
         }
+        shownIds.current = pageRows.map(getRowId);
       })
       .catch((err) => {
         setError(err);
@@ -232,6 +268,8 @@ function useSelectionApi({ sel, setSel, visible, matching, allRows, knownRows, g
     allMatchingAvailable,
     matchingCount: matchingIds.length,
     clear: () => setSel(Sel.clear()),
+    // Take these ids out of the selection (a server-mode bulk action's rows that are on other pages).
+    drop: (ids) => setSel((s) => Sel.setPage(s, ids, false)),
     selectedRows,
   };
 }
@@ -270,12 +308,48 @@ function writeUrlState(params, urlKey, { q, filters, page }, filterDefs) {
   return next;
 }
 
-function useUrlMirror({ urlKey, filterDefs, searchParams, setSearchParams, state }) {
+/** This table's own `<urlKey>.*` params, as a stable string (the part of the URL it mirrors). */
+function ownParams(params, urlKey) {
+  const out = new URLSearchParams();
+  for (const [k, v] of params) if (k.startsWith(`${urlKey}.`)) out.append(k, v);
+  return out.toString();
+}
+
+/**
+ * Keeps `<urlKey>.*` params and the table state in step both ways. State → URL on every change.
+ * URL → state when the table's params changed to something it did not write itself and did not
+ * see on the previous run (back/forward, a nav link back to the bare page): `adopt` gets the parsed view.
+ */
+function useUrlMirror({ urlKey, filterDefs, searchParams, setSearchParams, state, adopt }) {
   const { q, filters, page } = state;
+  const written = useRef(new Set()); // values this hook wrote that the router may not have published yet
+  const lastSeen = useRef(null);
+  const adoptRef = useRef(adopt);
+  adoptRef.current = adopt;
   useEffect(() => {
     if (!urlKey) return;
+    const cur = ownParams(searchParams, urlKey);
+    const ours = written.current.has(cur);
+    const external = lastSeen.current !== null && cur !== lastSeen.current && !ours;
+    lastSeen.current = cur;
+    if (ours) {
+      // The router has caught up to this write: it and every earlier one are no longer pending, so a later
+      // navigation to the same URL counts as external.
+      const keep = [...written.current];
+      written.current = new Set(keep.slice(keep.indexOf(cur) + 1));
+    }
+    if (external) {
+      written.current = new Set([cur]);
+      adoptRef.current(readUrlState(searchParams, urlKey, filterDefs));
+      return;
+    }
     const next = writeUrlState(searchParams, urlKey, { q, filters, page }, filterDefs);
-    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+    const nextOwn = ownParams(next, urlKey);
+    if (nextOwn !== cur) {
+      if (written.current.size > 20) written.current = new Set();
+      written.current.add(nextOwn);
+      setSearchParams(next, { replace: true });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- filterDefs is read, not watched
   }, [urlKey, q, filters, page, searchParams, setSearchParams]);
 }

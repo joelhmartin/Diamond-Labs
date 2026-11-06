@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { ToastProvider } from "../../components/ui/Toast.jsx";
+import { ROW_BOX } from "../../components/ui/data-table/testing.js";
 
 const get = vi.fn();
 const post = vi.fn();
@@ -36,7 +37,7 @@ test("bulk discard uses ConfirmButton", async () => {
   post.mockResolvedValue({ data: { data: { id: "x" } } });
   mount();
   await screen.findByText("Sam");
-  screen.getAllByLabelText("Select row").slice(0, 2).forEach((b) => fireEvent.click(b));
+  screen.getAllByLabelText(ROW_BOX).slice(0, 2).forEach((b) => fireEvent.click(b));
   const bulk = await screen.findByRole("button", { name: "Discard selected" });
   fireEvent.click(bulk);
   assert.equal(post.mock.calls.length, 0, "the first click only arms it");

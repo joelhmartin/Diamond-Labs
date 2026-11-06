@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { isoDateIn, LAB_TIMEZONE, CREDIT_SOURCE, manualPaymentSource } from "@my-app/shared";
+import { isStaffRole, isoDateIn, LAB_TIMEZONE, CREDIT_SOURCE, manualPaymentSource } from "@my-app/shared";
 import { db } from "../../config/database.js";
 import { redis } from "../../config/redis.js";
 import { env } from "../../config/env.js";
@@ -8,7 +8,7 @@ import { invoices, invoicePayments, users } from "../../db/schema/index.js";
 import { createId } from "../../lib/id.js";
 import { withInvoiceLocks, InvoiceLockedError } from "../../lib/payment-helpers.js";
 import { paidCentsByInvoice, openInvoicesForAccounts } from "./ledger.service.js";
-import { loadClientScope, payableAccountIds } from "../client-scope.js";
+import { administersAPractice, loadClientScope, payableAccountIds } from "../client-scope.js";
 import { auditInvoice, loadLines, applyLinePlan, commitPatch } from "./invoices.service.js";
 import { openInvoice, sealLedgerRow } from "./invoice-crypto.js";
 import {
@@ -133,18 +133,20 @@ export function recordCredit(id, { amountCents, reason, byUserId }, database = d
 }
 
 /**
- * Record a check / cash / ACH / other payment staff received for a client:
- * oldest-first or to the invoices they chose, never more than is owed.
- * Re-verified inside the lock (a card payment may have landed since the read),
- * then written through recordPaymentAndAllocations like every card payment:
- * ledger rows, a "recorded, not charged" receipt, an audit entry.
+ * The client staff record a payment or account credit for: a doctor, or a
+ * non-staff login that runs a practice (an active owner/admin member, or an active
+ * group admin: client-scope administersAPractice, read from the TARGET's own
+ * scope). Anyone else (a shopper, a plain member, any staff role, even with a membership) is NOT_FOUND.
  */
 export async function loadPayingClient(clientUserId, database) {
   const [client] = await database
     .select({ id: users.id, email: users.email, name: users.name, role: users.role })
     .from(users)
     .where(eq(users.id, clientUserId));
-  if (!client || client.role !== "doctor") throw new InvoiceError("NOT_FOUND", "Client not found.");
+  if (!client) throw new InvoiceError("NOT_FOUND", "Client not found.");
+  if (client.role === "doctor") return client;
+  if (isStaffRole(client.role)) throw new InvoiceError("NOT_FOUND", "Client not found.");
+  if (!administersAPractice(await loadClientScope(client.id, database))) throw new InvoiceError("NOT_FOUND", "Client not found.");
   return client;
 }
 
@@ -165,6 +167,13 @@ export async function openInvoicesForClientUser(clientUserId, database = db) {
   return (await payableOpenInvoices(await loadPayingClient(clientUserId, database), database)).openInvoices;
 }
 
+/**
+ * Record a check / cash / ACH / other payment staff received for a client:
+ * oldest-first or to the invoices they chose, never more than is owed.
+ * Re-verified inside the lock (a card payment may have landed since the read),
+ * then written through recordPaymentAndAllocations like every card payment:
+ * ledger rows, a "recorded, not charged" receipt, an audit entry.
+ */
 export async function recordManualPayment(
   { clientUserId, method, reference = null, amountCents, paidOn, allocations, byUserId },
   database = db,

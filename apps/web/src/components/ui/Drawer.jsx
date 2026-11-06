@@ -15,7 +15,10 @@ export function Drawer({ onClose, label, children, className }) {
   onCloseRef.current = onClose;
   useEffect(() => {
     const onKeyDown = (e) => {
-      if (e.key === "Escape" && !e.defaultPrevented) onCloseRef.current?.();
+      if (e.key === "Escape" && !e.defaultPrevented) {
+        e.preventDefault(); // tells a DataTable behind the drawer that this Esc was spent closing it
+        onCloseRef.current?.();
+      }
     };
     document.addEventListener("keydown", onKeyDown);
     panelRef.current?.focus();

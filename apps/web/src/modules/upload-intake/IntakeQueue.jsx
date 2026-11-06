@@ -84,7 +84,7 @@ export function IntakeQueue({ basePath = "/intake", createHref, createLabel = "C
             await discard(i.id);
             ok += 1;
           } catch (err) {
-            failed.push({ id: i.id, message: errorText(err) });
+            failed.push({ id: i.id, rowId: i.id, message: errorText(err) });
           }
         }
         table.selection.clear();

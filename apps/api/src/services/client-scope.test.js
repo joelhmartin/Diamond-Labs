@@ -19,7 +19,7 @@ vi.mock("../config/database.js", () => ({
   get db() { return holder.db; },
 }));
 
-const { loadClientScope, requireClientPortal, canActForAccount, requestedAccounts, emptyClientScope, toClientScope } = await import("./client-scope.js");
+const { usersAdministeringAPractice, loadClientScope, requireClientPortal, canActForAccount, requestedAccounts, emptyClientScope, toClientScope } = await import("./client-scope.js");
 const { authenticate } = await import("../middleware/authenticate.js");
 const { signAccessToken } = await import("../lib/tokens.js");
 
@@ -113,9 +113,9 @@ test("requestedAccounts: all, one in scope, and refusals that read as not found"
   const scope = toClientScope({ accountIds: ["a1", "a2"], roles: new Map(), via: new Map(), organizations: [] });
   assert.deepEqual(requestedAccounts(scope, undefined), ["a1", "a2"]);
   assert.deepEqual(requestedAccounts(scope, "all"), ["a1", "a2"]);
-  assert.deepEqual(requestedAccounts(scope, ""), ["a1", "a2"]);
   assert.deepEqual(requestedAccounts(scope, "a2"), ["a2"]);
-  for (const bad of ["a9", "organization:o1", ["a1"], "ALL"]) {
+  // An empty `?account=` names no practice: 404 like any other unknown value, never "all" (spec).
+  for (const bad of ["", "a9", "organization:o1", ["a1"], "ALL"]) {
     assert.throws(() => requestedAccounts(scope, bad), (e) => e.statusCode === 404 && e.code === "NOT_FOUND", String(bad));
   }
   // Never widens: an empty scope asking for "all" gets nothing.
@@ -143,10 +143,10 @@ test("requireClientPortal: a scoped login or an approved doctor; anyone else 403
   assert.equal(await run(undefined), 403);
 });
 
-test("isAllAccounts: absent, empty or \"all\" ask for the whole scope; anything else does not", async () => {
+test("isAllAccounts: only absent or \"all\" ask for the whole scope; empty and anything else do not", async () => {
   const { isAllAccounts, requestedAccounts } = await import("./client-scope-rules.js");
-  for (const v of [undefined, null, "", "all"]) assert.equal(isAllAccounts(v), true, String(v));
-  for (const v of ["ALL", "a1", ["all"], 0]) assert.equal(isAllAccounts(v), false, String(v));
+  for (const v of [undefined, null, "all"]) assert.equal(isAllAccounts(v), true, String(v));
+  for (const v of ["", "ALL", "a1", ["all"], 0]) assert.equal(isAllAccounts(v), false, String(v));
   const scope = { accountIds: ["a1", "a2"], payable: new Set() };
   assert.deepEqual(requestedAccounts(scope, "all"), ["a1", "a2"]);
 });
@@ -173,4 +173,54 @@ test("requestedStatementSubject: one practice, or the combined statement for an 
   assert.throws(() => requestedStatementSubject(emptyClientScope(), undefined), notFound, "no practice yet");
   // Every other ?account= caller still refuses the organization form.
   assert.throws(() => requestedAccounts(admin, "organization:g1"), notFound);
+});
+
+test("administersAPractice: an owner/admin member or a group admin of any practice in scope; members, managers and viewers do not", async () => {
+  const { administersAPractice } = await import("./client-scope-rules.js");
+  const scope = (roles) => toClientScope({ accountIds: Object.keys(roles), roles: new Map(Object.entries(roles)), via: new Map(), organizations: [] });
+  for (const role of ["owner", "admin", "org-admin"]) assert.equal(administersAPractice(scope({ a1: "viewer", a2: role })), true, role);
+  for (const role of ["member", "manager", "viewer"]) assert.equal(administersAPractice(scope({ a1: role })), false, role);
+  assert.equal(administersAPractice(emptyClientScope()), false);
+  assert.equal(administersAPractice(undefined), false);
+});
+
+test("usersAdministeringAPractice: the same answer as administersAPractice(loadClientScope) - an admin of an EMPTY group is not one", async () => {
+  const { administersAPractice } = await import("./client-scope.js");
+  // The set query joins the group's ACTIVE client accounts, so a group with none yields no row for g1.
+  const { db } = queueDb([], []);
+  assert.deepEqual([...await usersAdministeringAPractice(["g1"], db)], []);
+  // loadClientScope + administersAPractice, the loadPayingClient path: a grant on o1, o1 holds no accounts.
+  const again = queueDb([], [grant("o1")], []);
+  assert.equal(administersAPractice(await loadClientScope("g1", again.db)), false);
+});
+
+test("usersAdministeringAPractice: direct owners/admins and group admins qualify, in a CONSTANT two queries however many ids", async () => {
+  const ids = Array.from({ length: 50 }, (_, i) => `u${i}`);
+  const { db, calls } = queueDb([["u1"], ["u2"]], [["u2"], ["u7"]]);
+  assert.deepEqual([...await usersAdministeringAPractice(ids, db)].sort(), ["u1", "u2", "u7"]);
+  assert.equal(calls.length, 2, "one direct-admin query + one group-admin query, not per user");
+});
+
+test("usersAdministeringAPractice: the queries keep only ACTIVE client accounts, active memberships, owner/admin roles, active grants and groups", async () => {
+  const { db, calls } = queueDb([], []);
+  await usersAdministeringAPractice(["u1"], db);
+  const [direct, group] = calls;
+  // An owner of a non-client or inactive account, or a viewer/member, never matches the direct query.
+  assert.match(direct.sql, /"memberships"\."status" = \$/);
+  assert.match(direct.sql, /"accounts"\."status" = \$/);
+  assert.match(direct.sql, /"accounts"\."is_client" = \$/);
+  assert.match(direct.sql, /"memberships"\."role" in \(/);
+  assert.ok(direct.params.includes("owner") && direct.params.includes("admin") && direct.params.includes(true));
+  assert.ok(!direct.params.includes("member") && !direct.params.includes("viewer"));
+  // A group admin needs an active grant, an active group, and an active client account inside it.
+  assert.match(group.sql, /"organization_admins"\."status" = \$/);
+  assert.match(group.sql, /"organizations"\."status" = \$/);
+  assert.match(group.sql, /"accounts"\."status" = \$/);
+  assert.match(group.sql, /"accounts"\."is_client" = \$/);
+});
+
+test("usersAdministeringAPractice: no ids, no queries", async () => {
+  const none = queueDb();
+  assert.equal((await usersAdministeringAPractice([], none.db)).size, 0);
+  assert.equal(none.calls.length, 0);
 });

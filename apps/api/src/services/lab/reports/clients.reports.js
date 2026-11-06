@@ -3,6 +3,11 @@
  * (sameClientPricingGroups, run in the report's transaction). Clients are doctor users; orders are non-cancelled lab orders by lab-local received day;
  * sales are the one sales rule in lab-metrics.js. Every report is admin only
  * except the two lists, which carry no money and are staff.
+ *
+ * The practice/group filter (PRACTICE_PARAMS) limits a report to the orders
+ * and invoices of those practices, so a client's figures, first order and last
+ * order are their activity THERE. The two lists and Same Pricing have rows of
+ * people and prices, not records, and take no such filter.
  */
 import { sql } from "drizzle-orm";
 import { addDays, daysBetween } from "@my-app/shared";
@@ -12,7 +17,7 @@ import {
 } from "./lab-metrics.js";
 import { HEALTH_BANDS, clientHealthRows, healthCounts } from "./client-health.js";
 import { sameClientPricingGroups } from "../../same-pricing.service.js";
-import { ADMIN, clientsOnlyJoin, money, share, sumOf } from "./report-helpers.js";
+import { ADMIN, PRACTICE_PARAMS, andPractice, clientsOnlyJoin, money, practiceScope, share, sumOf } from "./report-helpers.js";
 
 const GROUP = "clients";
 const RANGE = { name: "range", label: "Dates", type: "dateRange", default: "last12m", maxDays: 1100 };
@@ -39,7 +44,7 @@ const health = {
     "Each client's orders in the last 30 days against their monthly average over the 6 months before (days 31–210). " +
     "Inactive: no order in 90 days. Declining: under 50% of their average. Stable: 50–85%. Healthy: 85% or more, or a new client. " +
     "Clients who have never ordered are not listed; cancelled orders do not count.",
-  params: [{ name: "band", label: "Band", type: "select", options: HEALTH_BANDS }],
+  params: [{ name: "band", label: "Band", type: "select", options: HEALTH_BANDS }, ...PRACTICE_PARAMS],
   columns: [
     CLIENT_COL, { id: "band", label: "Health", type: "badge" }, { id: "trend", label: "Trend", type: "pct" },
     { id: "recent", label: "Orders (30 days)", type: "int" }, { id: "baseline", label: "Monthly average", type: "int" },
@@ -48,7 +53,7 @@ const health = {
     { id: "lastOrder", label: "Last order", type: "date" },
   ],
   async run(tx, params, _actor, ctx) {
-    const all = await clientHealthRows(tx, { asOf: asOfOf(ctx) });
+    const all = await clientHealthRows(tx, { asOf: asOfOf(ctx), scope: practiceScope(params) });
     const picked = params?.band ? all.filter((r) => r.band === params.band) : all;
     const rows = picked
       .sort((a, b) => BAND_ORDER[a.band] - BAND_ORDER[b.band] || b.sales30Cents - a.sales30Cents || String(a.client).localeCompare(String(b.client)))
@@ -145,20 +150,21 @@ const RANKED_COLUMNS = [
  * client with a non-cancelled order in the 12 months ending with the range,
  * $0 included. Share is of all client-attributed sales in the range.
  */
-async function rankedClients(tx, { range, count, bottom }) {
+async function rankedClients(tx, { range, count, bottom, params }) {
+  const scope = practiceScope(params);
   const eligible = bottom
     ? sql`exists (select 1 from ${labOrders} where ${labOrders.clientUserId} = ${users.id} and ${isLiveOrder}
-        and ${labDayBetween(labOrders.receivedAt, { from: addDays(range.to, -364), to: range.to })})`
+        and ${labDayBetween(labOrders.receivedAt, { from: addDays(range.to, -364), to: range.to })}${andPractice(params, labOrders.accountId)})`
     : sql`s.cents is not null`;
   const raw = await rowsOf(tx, sql`
     select ${users.id} as "clientUserId", ${clientName} as "client", ${users.seazonaAccountNumber} as "accountNumber",
       coalesce(s.invoices, 0) as "invoices", coalesce(s.cents, 0) as "cents",
-      (select coalesce(sum(${invoices.subtotalCents}), 0) from ${invoices} where ${salesWhere(range)} and ${invoices.clientUserId} is not null) as "total"
+      (select coalesce(sum(${invoices.subtotalCents}), 0) from ${invoices} where ${salesWhere(range, scope)} and ${invoices.clientUserId} is not null) as "total"
     from ${users}
     left join ${doctorProfiles} on ${doctorProfiles.userId} = ${users.id}
     left join (
       select ${invoices.clientUserId} as client_user_id, count(*) as invoices, sum(${invoices.subtotalCents}) as cents
-      from ${invoices} where ${salesWhere(range)} group by 1
+      from ${invoices} where ${salesWhere(range, scope)} group by 1
     ) s on s.client_user_id = ${users.id}
     where ${isClient} and ${eligible}
     order by coalesce(s.cents, 0) ${sql.raw(bottom ? "asc" : "desc")}, ${users.id} asc
@@ -172,9 +178,9 @@ async function rankedClients(tx, { range, count, bottom }) {
 const top = {
   key: "clients.top", group: GROUP, roles: ADMIN, title: "Top Clients",
   description: "The clients with the most sales in the range.",
-  params: [RANGE, COUNT], columns: RANKED_COLUMNS,
+  params: [RANGE, COUNT, ...PRACTICE_PARAMS], columns: RANKED_COLUMNS,
   async run(tx, params) {
-    const rows = await rankedClients(tx, { range: params.range, count: whole(params.count, 25), bottom: false });
+    const rows = await rankedClients(tx, { range: params.range, count: whole(params.count, 25), bottom: false, params });
     return { rows, summary: { client: "Total", invoices: sumOf(rows, "invoices"), sales: sumOf(rows, "sales") } };
   },
 };
@@ -182,9 +188,9 @@ const top = {
 const bottomClients = {
   key: "clients.bottom", group: GROUP, roles: ADMIN, title: "Bottom Clients",
   description: "The clients with the least sales in the range, among clients with an order in the 12 months ending with the range (including $0).",
-  params: [RANGE, COUNT], columns: RANKED_COLUMNS,
+  params: [RANGE, COUNT, ...PRACTICE_PARAMS], columns: RANKED_COLUMNS,
   async run(tx, params) {
-    const rows = await rankedClients(tx, { range: params.range, count: whole(params.count, 25), bottom: true });
+    const rows = await rankedClients(tx, { range: params.range, count: whole(params.count, 25), bottom: true, params });
     return { rows, summary: { client: "Total", invoices: sumOf(rows, "invoices"), sales: sumOf(rows, "sales") } };
   },
 };
@@ -194,7 +200,7 @@ const bottomClients = {
 const inactive = {
   key: "clients.inactive", group: GROUP, roles: ADMIN, title: "Inactive Clients",
   description: "Clients whose last order was more than the chosen number of lab days ago (default 90, the Client Health \"Inactive\" rule), with their lifetime sales. Clients who have never ordered are not listed.",
-  params: [DAYS],
+  params: [DAYS, ...PRACTICE_PARAMS],
   columns: [
     CLIENT_COL, ACCOUNT_COL, { id: "lastOrder", label: "Last order", type: "date" },
     { id: "daysSince", label: "Days since", type: "int" }, money("lifetimeSales", "Lifetime sales"),
@@ -210,9 +216,10 @@ const inactive = {
       from ${labOrders}
       ${clientsOnlyJoin(labOrders.clientUserId)}
       left join (
-        select ${invoices.clientUserId} as client_user_id, sum(${invoices.subtotalCents}) as cents from ${invoices} where ${isSale} group by 1
+        select ${invoices.clientUserId} as client_user_id, sum(${invoices.subtotalCents}) as cents from ${invoices}
+        where ${isSale}${andPractice(params, invoices.accountId)} group by 1
       ) ls on ls.client_user_id = ${users.id}
-      where ${isLiveOrder}
+      where ${isLiveOrder}${andPractice(params, labOrders.accountId)}
       group by ${clientGroup}, ls.cents
       having max(${labOrders.receivedAt}) < ${afterLabDay(cut)}
       order by max(${labOrders.receivedAt}) desc, ${users.id}`);
@@ -227,13 +234,14 @@ const inactive = {
 const newOrders = {
   key: "clients.new-orders", group: GROUP, roles: ADMIN, title: "New Client Orders",
   description: "Clients whose first-ever order (cancelled orders aside) was received in the range.",
-  params: [{ ...RANGE, default: "last30" }],
+  params: [{ ...RANGE, default: "last30" }, ...PRACTICE_PARAMS],
   columns: [
     CLIENT_COL, ACCOUNT_COL, { id: "firstOrder", label: "First order", type: "date" },
     { id: "firstOrderNumber", label: "First order #", type: "text", link: ORDER_LINK.replace("{labOrderId}", "{firstOrderId}") },
     { id: "orders", label: "Orders in range", type: "int" },
   ],
-  async run(tx, { range }) {
+  async run(tx, params) {
+    const { range } = params;
     const first = sql`min(${labOrders.receivedAt})`;
     const raw = await rowsOf(tx, sql`
       select ${users.id} as "clientUserId", ${clientName} as "client", ${users.seazonaAccountNumber} as "accountNumber",
@@ -243,7 +251,7 @@ const newOrders = {
         count(*) filter (where ${labDayBetween(labOrders.receivedAt, range)}) as "orders"
       from ${labOrders}
       ${clientsOnlyJoin(labOrders.clientUserId)}
-      where ${isLiveOrder}
+      where ${isLiveOrder}${andPractice(params, labOrders.accountId)}
       group by ${clientGroup}
       having ${labDayBetween(first, range)}
       order by ${first}, ${users.id}`);
@@ -258,7 +266,7 @@ const newOrders = {
 const noRecentSales = {
   key: "clients.no-recent-sales", group: GROUP, roles: ADMIN, title: "No Recent Sales",
   description: "Clients with sales in the 12 months before the last N days (default 90) but none in the last N days.",
-  params: [DAYS],
+  params: [DAYS, ...PRACTICE_PARAMS],
   columns: [CLIENT_COL, ACCOUNT_COL, money("priorSales", "Sales in the prior 12 months"), { id: "lastSale", label: "Last sale", type: "date" }],
   async run(tx, params, _actor, ctx) {
     const today = labToday(ctx);
@@ -270,7 +278,7 @@ const noRecentSales = {
         ${labDayText(sql`max(${invoices.issuedAt})`)} as "lastDay"
       from ${invoices}
       ${clientsOnlyJoin(invoices.clientUserId)}
-      where ${salesWhere({ from: prior.from, to: recent.to })}
+      where ${salesWhere({ from: prior.from, to: recent.to }, practiceScope(params))}
       group by ${clientGroup}
       having count(*) filter (where ${labDayBetween(invoices.issuedAt, recent)}) = 0
       order by 4 desc nulls last, ${users.id}`);

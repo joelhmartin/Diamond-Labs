@@ -124,7 +124,7 @@ describe("report routes", () => {
     const res = await app.inject({ method: "GET", url: "/api/v1/reports/r.one/export.csv?n=3" });
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toContain("text/csv");
-    expect(res.body).toBe("A\r\n1\r\n");
+    expect(res.body).toBe("\ufeffA\r\n1\r\n");
     expect(audit).toHaveBeenCalledTimes(1);
     const [, action, targetId, metadata] = audit.mock.calls[0];
     expect([action, targetId, metadata]).toEqual(["report.exported", "r.one", { params: ["n"] }]);

@@ -57,8 +57,14 @@ export function summarizePayments(rows) {
     const sourceRows = charge.length ? charge : reversals;
     const createdAt = sourceRows.reduce((min, r) => (r.createdAt && (!min || r.createdAt < min) ? r.createdAt : min), null);
 
+    // The practice(s) the money went to (rows from listPaymentHistory carry accountId). `accountId` is the
+    // practice when there is exactly one, else null (a payment split across practices has no single one).
+    const accountIds = [...new Set(sourceRows.map((r) => r.accountId).filter(Boolean))];
+
     summaries.push({
       transactionId: chargeTxn,
+      accountId: accountIds.length === 1 ? accountIds[0] : null,
+      accountIds,
       userId: sourceRows[0]?.userId || null,
       // doctor_card | doctor_hosted | admin_card | autopay | admin_check |
       // admin_cash | admin_ach | admin_other | credit (admin_offline on
@@ -81,4 +87,13 @@ export function summarizePayments(rows) {
   const ts = (x) => (x.createdAt ? new Date(x.createdAt).getTime() : 0);
   summaries.sort((a, b) => ts(b) - ts(a) || String(a.transactionId).localeCompare(String(b.transactionId)));
   return summaries;
+}
+
+/** Keep only the practices in `scopeIds` on each summary (an own-payment row may name a practice the login has left). */
+export function limitPaymentAccounts(payments, scopeIds) {
+  const allowed = new Set(scopeIds);
+  return payments.map((p) => {
+    const accountIds = (p.accountIds ?? []).filter((id) => allowed.has(id));
+    return { ...p, accountIds, accountId: accountIds.length === 1 ? accountIds[0] : null };
+  });
 }

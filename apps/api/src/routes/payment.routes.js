@@ -11,6 +11,7 @@ import { testModeError } from "../config/app-env.js";
 import { ERROR_CODES, adminPaymentsQuerySchema } from "@my-app/shared";
 import { validateQuery } from "../middleware/validate.js";
 import { pageOf, sliceRows } from "../lib/list-query.js";
+import { limitPaymentAccounts } from "../lib/payment-summary.js";
 
 // Checkout, saved cards, invoice payments and refunds live in their own route
 // modules (checkout.routes.js, saved-cards.routes.js, invoice-payment.routes.js,
@@ -32,7 +33,8 @@ export default async function paymentRoutes(fastify) {
     const param = request.query?.account;
     const accountIds = requestedAccounts(clientScopeOf(request.user), param);
     const includeOwn = isAllAccounts(param);
-    const payments = await listPaymentHistory({ accountIds, userId: request.user.id, includeOwn });
+    // Own-payment rows can name a practice the login has since left: expose only practices in its scope.
+    const payments = limitPaymentAccounts(await listPaymentHistory({ accountIds, userId: request.user.id, includeOwn }), clientScopeOf(request.user).accountIds);
     return { data: { payments } };
   });
 

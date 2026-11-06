@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { ToastProvider } from "../components/ui/Toast.jsx";
+import { ROW_BOX } from "../components/ui/data-table/testing.js";
 
 const get = vi.fn();
 const post = vi.fn();
@@ -20,7 +21,7 @@ test("HolidaysTable bulk Delete needs a second click and POSTs the selected ids"
   post.mockResolvedValue({ data: { data: { count: 2 } } });
   wrap(<HolidaysTable />);
   await screen.findByText("Thanksgiving");
-  screen.getAllByLabelText("Select row").forEach((b) => fireEvent.click(b));
+  screen.getAllByLabelText(ROW_BOX).forEach((b) => fireEvent.click(b));
   fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
   assert.equal(post.mock.calls.length, 0);
   fireEvent.click(screen.getByRole("button", { name: "Click again to delete" }));
@@ -49,7 +50,7 @@ test("WorkflowsTable bulk Deactivate POSTs the selected ids", async () => {
   post.mockResolvedValue({ data: { data: { count: 1 } } });
   wrap(<WorkflowsTable onOpen={() => {}} />);
   await screen.findByText("Standard");
-  fireEvent.click(screen.getByLabelText("Select row"));
+  fireEvent.click(screen.getByLabelText(ROW_BOX));
   fireEvent.click(await screen.findByRole("button", { name: "Deactivate" }));
   await waitFor(() => assert.equal(post.mock.calls.length, 1));
   assert.equal(post.mock.calls[0][0], "/scheduling/workflows/active");

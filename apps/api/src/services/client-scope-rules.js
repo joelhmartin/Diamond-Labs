@@ -64,9 +64,30 @@ export function payableAccountIds(scope) {
   return (scope?.accountIds ?? []).filter((id) => scope.payable?.has(id));
 }
 
-/** Does this `?account=` value ask for the whole scope (absent, empty or "all")? The one test requestedAccounts uses. */
+/** The roles that run a practice's account: a direct owner or admin member, or an admin of its group. */
+const PRACTICE_ADMIN_ROLES = new Set(["owner", "admin", "org-admin"]);
+
+/**
+ * Does this login run at least one practice in its scope (an ACTIVE owner or
+ * admin membership, or an ACTIVE admin of the practice's group)? Besides a
+ * doctor, the only kind of login staff may record a payment or credit for
+ * (billing/invoice-actions.service.js loadPayingClient): a DSO billing
+ * manager pays for the practices it runs. A "member", "manager" or "viewer"
+ * alone does not qualify.
+ */
+export function administersAPractice(scope) {
+  return (scope?.accountIds ?? []).some((id) => PRACTICE_ADMIN_ROLES.has(scope.roles?.get(id)));
+}
+
+/**
+ * Does this `?account=` value ask for the whole scope? Only absent or "all"
+ * (spec "Authorization seam"). An empty value (`?account=`) names nothing, so
+ * it is "anything else": requestedAccounts answers it 404, never falling back
+ * to all. The portal sends no `account` for "All practices", and the body
+ * schemas refuse an empty accountId, so no caller relies on "" meaning all.
+ */
 export function isAllAccounts(param) {
-  return param == null || param === "" || param === "all";
+  return param == null || param === "all";
 }
 
 /** 404 NOT_FOUND as an app error (the error handler sends statusCode + code). */
@@ -102,7 +123,7 @@ export function practiceRequired(message = "Choose a practice.") {
 
 /**
  * The accounts a `?account=` value asks for, never wider than the scope:
- *  - absent, empty or "all" → every account in scope (possibly none);
+ *  - absent or "all"        → every account in scope (possibly none);
  *  - an id in scope         → [id];
  *  - anything else          → throws 404 NOT_FOUND (out of scope reads the
  *    same as nonexistent, so ids can't be probed). That includes

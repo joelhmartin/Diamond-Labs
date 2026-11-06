@@ -93,10 +93,17 @@ export const catalogJoins = (line) => sql`
 /** The invoice is a sale (status and opening-balance rule; no date). */
 export const isSale = sql`${invoices.status} = 'issued' and not (${invoices.kind} = 'legacy' and coalesce(${invoices.legacySeazonaInvoiceId}, '') like ${`${OPENING_BALANCE_PREFIX}%`})`;
 
-/** Sales invoices issued on lab-local days `from`..`to`, optionally for one client. */
-export function salesWhere({ from, to, clientUserId }) {
+/**
+ * Sales invoices issued on lab-local days `from`..`to`, optionally for one
+ * client, and optionally within a practice/group: `scope` is
+ * report-helpers `practiceScope(params)` (a function of the account id
+ * column, or null for no filter). Every sales metric below takes the same
+ * optional `scope` last.
+ */
+export function salesWhere({ from, to, clientUserId }, scope = null) {
   const parts = [isSale, labDayBetween(invoices.issuedAt, { from, to })];
   if (clientUserId) parts.push(sql`${invoices.clientUserId} = ${clientUserId}`);
+  if (scope) parts.push(scope(invoices.accountId));
   return sql.join(parts, sql` and `);
 }
 
@@ -141,33 +148,33 @@ export function orderAndPage(page, sorts, fallback, tiebreak) {
 // ── Metrics (reports and dashboard tiles) ────────────────────────────────
 
 /** Sales cents for lab-local days `from`..`to` (optionally one client). */
-export async function salesCents(db, { from, to, clientUserId } = {}) {
-  const [r] = await rowsOf(db, sql`select coalesce(sum(${invoices.subtotalCents}), 0) as "cents" from ${invoices} where ${salesWhere({ from, to, clientUserId })}`);
+export async function salesCents(db, { from, to, clientUserId } = {}, scope = null) {
+  const [r] = await rowsOf(db, sql`select coalesce(sum(${invoices.subtotalCents}), 0) as "cents" from ${invoices} where ${salesWhere({ from, to, clientUserId }, scope)}`);
   return num(r?.cents);
 }
 
 /** Sales cents per client for lab-local days `from`..`to`: Map(clientUserId → cents). One grouped query. */
-export async function salesByClient(db, { from, to }) {
+export async function salesByClient(db, { from, to }, scope = null) {
   const rows = await rowsOf(db, sql`
     select ${invoices.clientUserId} as "clientUserId", sum(${invoices.subtotalCents}) as "cents"
-    from ${invoices} where ${salesWhere({ from, to })} and ${invoices.clientUserId} is not null group by 1`);
+    from ${invoices} where ${salesWhere({ from, to }, scope)} and ${invoices.clientUserId} is not null group by 1`);
   return new Map(rows.map((r) => [r.clientUserId, num(r.cents)]));
 }
 
 /** Sales per lab-local day, every day in the range (zeros filled). */
-export async function salesByDay(db, { from, to }) {
+export async function salesByDay(db, { from, to }, scope = null) {
   const rows = await rowsOf(db, sql`
     select ${labDayText(invoices.issuedAt)} as "day", sum(${invoices.subtotalCents}) as "cents", count(*) as "invoices"
-    from ${invoices} where ${salesWhere({ from, to })} group by 1 order by 1`);
+    from ${invoices} where ${salesWhere({ from, to }, scope)} group by 1 order by 1`);
   const byDay = new Map(rows.map((r) => [String(r.day), r]));
   return daysInRange(from, to).map((day) => ({ day, cents: num(byDay.get(day)?.cents), invoices: num(byDay.get(day)?.invoices) }));
 }
 
 /** Sales per lab-local month ("YYYY-MM"), every month the range touches (zeros filled). */
-export async function salesByMonth(db, { from, to }) {
+export async function salesByMonth(db, { from, to }, scope = null) {
   const rows = await rowsOf(db, sql`
     select ${labMonthText(invoices.issuedAt)} as "month", sum(${invoices.subtotalCents}) as "cents"
-    from ${invoices} where ${salesWhere({ from, to })} group by 1 order by 1`);
+    from ${invoices} where ${salesWhere({ from, to }, scope)} group by 1 order by 1`);
   const byMonth = new Map(rows.map((r) => [String(r.month), num(r.cents)]));
   return monthsBetween(from, to).map((month) => ({ month, cents: byMonth.get(month) ?? 0 }));
 }
@@ -179,7 +186,7 @@ export async function salesByMonth(db, { from, to }) {
  * stored, so its reduction cannot be counted. Gross = net − discounts, so the
  * three always reconcile with the invoices' subtotals.
  */
-export async function salesBreakdown(db, { from, to }) {
+export async function salesBreakdown(db, { from, to }, scope = null) {
   const [r = {}] = await rowsOf(db, sql`
     select coalesce(sum(${invoices.subtotalCents}), 0) as "net", coalesce(sum(neg.cents), 0) as "discount",
       coalesce(sum(${invoices.taxCents}), 0) as "tax", coalesce(sum(${invoices.shippingCents}), 0) as "shipping",
@@ -189,7 +196,7 @@ export async function salesBreakdown(db, { from, to }) {
       select ${invoiceLines.invoiceId} as invoice_id, sum(${invoiceLines.lineCents}) as cents from ${invoiceLines}
       where ${isDiscountLine} group by 1
     ) neg on neg.invoice_id = ${invoices.id}
-    where ${salesWhere({ from, to })}`);
+    where ${salesWhere({ from, to }, scope)}`);
   const netCents = num(r.net);
   const discountCents = num(r.discount);
   return {

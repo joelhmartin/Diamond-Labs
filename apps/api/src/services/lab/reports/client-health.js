@@ -14,6 +14,7 @@ import { LAB_TIMEZONE, addDays, isoDateIn } from "@my-app/shared";
 import { labOrders, users, doctorProfiles } from "../../../db/schema/index.js";
 import { activityHealth } from "../../../modules/reports/health.js";
 import { clientName, isClient, isLiveOrder, labCalendar, labDayBetween, labDayText, num, rowsOf, salesByClient, turnaroundDaysSql } from "./lab-metrics.js";
+import { andScope } from "./report-helpers.js";
 
 export const HEALTH_THRESHOLDS = { inactiveDays: 90, declining: 0.5, stable: 0.85 };
 
@@ -47,9 +48,11 @@ const dayStart = (iso) => (iso == null ? null : new Date(`${iso}T00:00:00Z`));
  * One row per client who has ever ordered:
  * { clientUserId, client, band, isNew, recent, baseline, trend, sales30Cents,
  *   avgTurnaroundDays, monthly: number[6], lastOrderAt, lastOrderDay }.
- * One grouped query over lab_orders plus one grouped sales query.
+ * One grouped query over lab_orders plus one grouped sales query. `scope`
+ * (report-helpers practiceScope) limits both to a practice or group: a
+ * client's activity at those practices only.
  */
-export async function clientHealthRows(db, { asOf, calendar = null }) {
+export async function clientHealthRows(db, { asOf, calendar = null, scope = null }) {
   const w = healthWindows(asOf);
   const cal = calendar ?? (await labCalendar(db));
   const monthly = w.monthly.map((m, i) => sql`count(*) filter (where ${received(m)}) as ${sql.identifier(`m${i}`)}`);
@@ -63,9 +66,9 @@ export async function clientHealthRows(db, { asOf, calendar = null }) {
     from ${labOrders}
     join ${users} on ${users.id} = ${labOrders.clientUserId} and ${isClient}
     left join ${doctorProfiles} on ${doctorProfiles.userId} = ${users.id}
-    where ${isLiveOrder}
+    where ${isLiveOrder}${andScope(scope, labOrders.accountId)}
     group by ${users.id}, ${doctorProfiles.companyName}, ${users.name}`);
-  const sales = await salesByClient(db, w.recent);
+  const sales = await salesByClient(db, w.recent, scope);
 
   return raw.map((r) => {
     const recent = num(r.recent);

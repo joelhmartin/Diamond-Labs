@@ -15,7 +15,7 @@ const getRowId = (a) => a.userId;
  * The people who act across a whole organization.
  *
  *   admins        [{ userId, status }] from the organization detail (only active ones are listed)
- *   usersSource   { list({ q, limit, offset }) -> { rows: [{ id, label, detail? }], total },
+ *   usersSource   { list({ q, limit, offset, excludeIds }) -> { rows: [{ id, label, detail? }], total },
  *                   labels(ids) -> { [id]: label } }
  *   onChanged     called after an add or remove (reload the detail)
  */
@@ -74,7 +74,7 @@ export function AdminsTab({ organizationId, admins, usersSource, base, onChanged
         toolbarRight={<Button size="sm" onClick={() => setPicking(true)}><Plus size={14} /> Add admin</Button>}
       />
       {picking && (
-        <PickerModal title="Add admins" source={usersSource} keep={(u) => !active.some((a) => a.userId === u.id)} onPick={add} onClose={() => setPicking(false)} itemLabel="people" />
+        <PickerModal title="Add admins" source={usersSource} excludeIds={active.map((a) => a.userId)} onPick={add} onClose={() => setPicking(false)} itemLabel="people" />
       )}
     </>
   );

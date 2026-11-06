@@ -17,7 +17,9 @@ import {
   CLIENT_LINK, INVOICE_LINK, clientLabel, discountNotices, clientName, isDiscountLine, labDayBetween, labDayText, labMonthText, labToday, num, orderAndPage,
   paymentDay, paymentDayBetween, rowsOf, salesWhere,
 } from "./lab-metrics.js";
-import { ADMIN, money, optionalClientJoin, sumOf, sums } from "./report-helpers.js";
+import {
+  ADMIN, PRACTICE_PARAMS, andPractice, hasPracticeFilter, money, optionalClientJoin, practiceAccountIds, practiceFilterSql, practiceScope, sumOf, sums,
+} from "./report-helpers.js";
 
 const GROUP = "accounting";
 
@@ -28,55 +30,72 @@ const invoiceCol = { id: "invoiceNumber", label: "Invoice", type: "text", link: 
 const invoiceNo = (v) => (v === null || v === undefined ? null : String(v));
 
 const AGING_COLUMNS = AGING_BUCKETS.map((b) => money(b.key, b.label));
+const AGING_KEYS = AGING_BUCKETS.map((b) => b.key);
+
+/**
+ * listReceivables' practice rows within the report's practice/group filter
+ * (all of them when none is set). The filter is resolved to account ids by
+ * the same SQL as every other report (any group status: listReceivables only
+ * names a row's ACTIVE group), and an unassigned row never matches it.
+ */
+async function receivablesIn(tx, params, ctx) {
+  const ids = await practiceAccountIds(tx, params);
+  const ar = await listReceivables({ pastDueOnly: Boolean(params?.pastDueOnly) }, tx, { today: labToday(ctx) });
+  const keep = ids && new Set(ids);
+  return { asOf: ar.asOf, rows: keep ? ar.rows.filter((r) => r.accountId && keep.has(r.accountId)) : ar.rows };
+}
 
 const accountBalance = {
   key: "accounting.account-balance", group: GROUP, roles: ADMIN, title: "Account Balance",
   description: "What each client owes today: open issued invoices, the past-due part and the oldest due date.",
+  params: [...PRACTICE_PARAMS],
   columns: [
     clientCol, { id: "accountNumber", label: "Account", type: "text" }, { id: "openInvoices", label: "Open invoices", type: "int" },
     money("pastDue", "Past due"), money("balance", "Balance"), { id: "oldestDue", label: "Oldest due", type: "date" },
   ],
-  async run(tx, _params, _actor, ctx) {
-    const ar = await listReceivables({}, tx, { today: labToday(ctx) });
+  async run(tx, params, _actor, ctx) {
+    const ar = await receivablesIn(tx, { ...params, pastDueOnly: false }, ctx);
     const rows = ar.rows.map((r) => ({
       clientUserId: r.ownerUserId, client: clientLabel(r), accountNumber: r.accountNumber, openInvoices: r.openInvoices,
       pastDue: r.pastDueCents, balance: r.balanceCents, oldestDue: r.oldestDueDate,
     }));
-    return { rows, summary: { openInvoices: sumOf(rows, "openInvoices"), pastDue: ar.totals.pastDueCents, balance: ar.totals.balanceCents }, notice: `As of ${ar.asOf}.` };
+    return { rows, summary: sums(rows, ["openInvoices", "pastDue", "balance"]), notice: `As of ${ar.asOf}.` };
   },
 };
 
 const agingSummary = {
   key: "accounting.aging-summary", group: GROUP, roles: ADMIN, title: "Aging Summary",
   description: "Open balances per client by days past due, with totals.",
-  params: [{ name: "pastDueOnly", label: "Past due only", type: "toggle", default: false }],
+  params: [{ name: "pastDueOnly", label: "Past due only", type: "toggle", default: false }, ...PRACTICE_PARAMS],
   columns: [clientCol, { id: "accountNumber", label: "Account", type: "text" }, ...AGING_COLUMNS, money("balance", "Total")],
   async run(tx, params, _actor, ctx) {
-    const ar = await listReceivables({ pastDueOnly: Boolean(params?.pastDueOnly) }, tx, { today: labToday(ctx) });
+    const ar = await receivablesIn(tx, params, ctx);
     const rows = ar.rows.map((r) => ({ clientUserId: r.ownerUserId, client: clientLabel(r), accountNumber: r.accountNumber, ...r.buckets, balance: r.balanceCents }));
-    return { rows, summary: { ...ar.totals.buckets, balance: ar.totals.balanceCents }, notice: `As of ${ar.asOf}.` };
+    return { rows, summary: sums(rows, [...AGING_KEYS, "balance"]), notice: `As of ${ar.asOf}.` };
   },
 };
 
 const adjustments = {
   key: "accounting.adjustments", group: GROUP, roles: ADMIN, title: "Adjustments",
   description: "Adjustment lines on issued invoices (by issue day) and staff credits (by the day applied). Negative amounts reduce what the client owes.",
-  params: [RANGE],
+  params: [RANGE, ...PRACTICE_PARAMS],
   columns: [
     { id: "day", label: "Date", type: "date" }, { id: "type", label: "Type", type: "text" }, invoiceCol, clientCol,
     { id: "description", label: "Description", type: "text" }, money("amount", "Amount"),
   ],
-  async run(tx, { range }) {
+  async run(tx, params) {
+    const { range } = params;
+    const inPractice = andPractice(params, invoices.accountId);
     const raw = await rowsOf(tx, sql`
       select 'Adjustment' as "type", ${labDayText(invoices.issuedAt)} as "day", ${invoices.id} as "invoiceId", ${invoices.invoiceNumber} as "invoiceNumber",
         ${invoices.clientUserId} as "clientUserId", ${clientName} as "client", ${invoiceLines.description} as "description", ${invoiceLines.lineCents} as "amount"
       from ${invoiceLines} join ${invoices} on ${invoices.id} = ${invoiceLines.invoiceId} ${optionalClientJoin(invoices.clientUserId)}
-      where ${invoiceLines.kind} = 'adjustment' and ${salesWhere(range)}
+      where ${invoiceLines.kind} = 'adjustment' and ${salesWhere(range)}${inPractice}
       union all
       select 'Credit', to_char(${paymentDay}, 'YYYY-MM-DD'), ${invoices.id}, ${invoices.invoiceNumber},
         ${invoices.clientUserId}, ${clientName}, null, -${invoicePayments.appliedCents}
       from ${invoicePayments} join ${invoices} on ${invoices.id} = ${invoicePayments.invoiceId} ${optionalClientJoin(invoices.clientUserId)}
-      where ${invoicePayments.source} = ${CREDIT_SOURCE} and ${paymentDayBetween(range)}
+      where ${invoicePayments.source} = ${CREDIT_SOURCE} and ${paymentDayBetween(range)}${inPractice}
       order by 2, 4, 1`);
     const rows = raw.map((r) => ({ ...r, invoiceNumber: invoiceNo(r.invoiceNumber), amount: num(r.amount) }));
     return { rows, summary: { amount: sumOf(rows, "amount") } };
@@ -102,19 +121,20 @@ export const OTHER_REASON = "Other";
 const discounts = {
   key: "accounting.discounts", group: GROUP, roles: ADMIN, title: "Discounts",
   description: "Negative adjustment lines on issued invoices, by issue day, with the reason picked from the lab's reason list (Other when typed by hand). The reason is matched by the line's description, so a discount whose reason was later renamed shows as Other.",
-  params: [RANGE],
+  params: [RANGE, ...PRACTICE_PARAMS],
   columns: [
     { id: "day", label: "Date", type: "date" }, invoiceCol, clientCol, { id: "reason", label: "Reason", type: "text" },
     { id: "description", label: "Description", type: "text" }, money("amount", "Amount"),
   ],
-  async run(tx, { range }) {
+  async run(tx, params) {
+    const { range } = params;
     const raw = await rowsOf(tx, sql`
       select ${labDayText(invoices.issuedAt)} as "day", ${invoices.id} as "invoiceId", ${invoices.invoiceNumber} as "invoiceNumber",
         ${invoices.clientUserId} as "clientUserId", ${clientName} as "client", reason.label as "reason",
         ${invoiceLines.description} as "description", ${invoiceLines.lineCents} as "amount"
       from ${invoiceLines} join ${invoices} on ${invoices.id} = ${invoiceLines.invoiceId} ${optionalClientJoin(invoices.clientUserId)}
       ${discountReason}
-      where ${isDiscountLine} and ${salesWhere(range)}
+      where ${isDiscountLine} and ${salesWhere(range, practiceScope(params))}
       order by 1, ${invoices.invoiceNumber}, ${invoiceLines.position}`);
     const rows = raw.map((r) => ({ ...r, reason: r.reason ?? OTHER_REASON, invoiceNumber: invoiceNo(r.invoiceNumber), amount: num(r.amount) }));
     return { rows, summary: { amount: sumOf(rows, "amount") }, notice: discountNotices(range) };
@@ -128,7 +148,7 @@ const STATUS_OPTIONS = [{ value: "all", label: "All" }, ...Object.entries(INVOIC
 const invoicesList = {
   key: "accounting.invoices", group: GROUP, roles: ADMIN, title: "Invoices", paging: "server",
   description: "Every invoice by issue date (drafts by the day started), status and client.",
-  params: [RANGE, { name: "status", label: "Status", type: "select", options: STATUS_OPTIONS, default: "all" }, CLIENT],
+  params: [RANGE, { name: "status", label: "Status", type: "select", options: STATUS_OPTIONS, default: "all" }, CLIENT, ...PRACTICE_PARAMS],
   columns: [
     invoiceCol, { id: "day", label: "Date", type: "date" }, { id: "status", label: "Status", type: "text" }, { id: "kind", label: "Kind", type: "text" },
     clientCol, money("subtotal", "Subtotal"), money("tax", "Tax"), money("shipping", "Shipping"), money("total", "Total"),
@@ -140,6 +160,7 @@ const invoicesList = {
       labDayBetween(invoiceDate, range),
       status !== "all" ? sql`${invoices.status} = ${status}` : undefined,
       client ? sql`${invoices.clientUserId} = ${client}` : undefined,
+      hasPracticeFilter(params) ? practiceFilterSql(params, invoices.accountId) : undefined,
     ].filter(Boolean), sql` and `);
     const sorts = {
       invoiceNumber: invoices.invoiceNumber, day: invoiceDate, status: invoices.status, kind: invoices.kind, client: clientName,
@@ -167,12 +188,13 @@ const SUMMARY_BY = [{ value: "day", label: "Day" }, { value: "month", label: "Mo
 const invoicesSummary = {
   key: "accounting.invoices-summary", group: GROUP, roles: ADMIN, title: "Invoices Summary",
   description: "Issued invoices counted and totalled by day, month or client (the sales rule: no drafts, voids or opening balances).",
-  params: [RANGE, { name: "by", label: "Group by", type: "select", options: SUMMARY_BY, default: "month" }],
+  params: [RANGE, { name: "by", label: "Group by", type: "select", options: SUMMARY_BY, default: "month" }, ...PRACTICE_PARAMS],
   columns: [
     { id: "bucket", label: "Day, month or client", type: "text", link: CLIENT_LINK }, { id: "invoices", label: "Invoices", type: "int" },
     money("subtotal", "Subtotal"), money("tax", "Tax"), money("shipping", "Shipping"), money("total", "Total"),
   ],
-  async run(tx, { range, by = "month" }) {
+  async run(tx, params) {
+    const { range, by = "month" } = params;
     const bucket = {
       day: sql`${labDayText(invoices.issuedAt)}`,
       month: labMonthText(invoices.issuedAt),
@@ -183,7 +205,7 @@ const invoicesSummary = {
       select ${bucket} as "bucket", ${clientId} as "clientUserId", count(*) as "invoices", sum(${invoices.subtotalCents}) as "subtotal",
         sum(${invoices.taxCents}) as "tax", sum(${invoices.shippingCents}) as "shipping", sum(${invoices.totalCents}) as "total"
       from ${invoices} ${optionalClientJoin(invoices.clientUserId)}
-      where ${salesWhere(range)}
+      where ${salesWhere(range, practiceScope(params))}
       group by 1, 2 order by ${by === "client" ? sql`4 desc, 1, 2` : sql`1`}`);
     const ids = ["invoices", "subtotal", "tax", "shipping", "total"];
     const rows = raw.map((r) => ({ bucket: r.bucket, clientUserId: r.clientUserId ?? null, ...Object.fromEntries(ids.map((k) => [k, num(r[k])])) }));
@@ -201,14 +223,16 @@ const ledgerTotals = sql`(
 const invoicesPayments = {
   key: "accounting.invoices-payments", group: GROUP, roles: ADMIN, title: "Invoices & Payments", paging: "server",
   description: "Each issued invoice with what has been paid, the balance and the last payment date.",
-  params: [RANGE, CLIENT],
+  params: [RANGE, CLIENT, ...PRACTICE_PARAMS],
   columns: [
     invoiceCol, { id: "day", label: "Issued", type: "date" }, clientCol, { id: "status", label: "Status", type: "text", sortable: false },
     money("total", "Total"), money("paid", "Paid"), money("balance", "Balance"), { id: "lastPaid", label: "Last payment", type: "date" },
   ],
-  async run(tx, { range, client }, _actor, ctx) {
+  async run(tx, params, _actor, ctx) {
+    const { range, client } = params;
     const where = sql.join([
       sql`${invoices.status} = 'issued'`, labDayBetween(invoices.issuedAt, range), client ? sql`${invoices.clientUserId} = ${client}` : undefined,
+      hasPracticeFilter(params) ? practiceFilterSql(params, invoices.accountId) : undefined,
     ].filter(Boolean), sql` and `);
     const paid = sql`coalesce(ledger.paid, 0)`;
     const sorts = {
@@ -256,12 +280,13 @@ const inList = (values) => sql.join(values.map((v) => sql`${v}`), sql`, `);
 const paymentsReceived = {
   key: "accounting.payments-received", group: GROUP, roles: ADMIN, title: "Payments Received", paging: "server",
   description: "Money received, one ledger row per invoice paid, by the day received. Refunds, credits and Seazona settlements are not payments and are left out.",
-  params: [RANGE, { name: "source", label: "Method", type: "select", options: SOURCE_OPTIONS, default: "all" }, CLIENT],
+  params: [RANGE, { name: "source", label: "Method", type: "select", options: SOURCE_OPTIONS, default: "all" }, CLIENT, ...PRACTICE_PARAMS],
   columns: [
     { id: "day", label: "Received", type: "date" }, clientCol, invoiceCol, { id: "sourceLabel", label: "Method", type: "text" },
     { id: "reference", label: "Reference", type: "text" }, money("amount", "Amount"),
   ],
-  async run(tx, { range, source = "all", client }, _actor, ctx) {
+  async run(tx, params, _actor, ctx) {
+    const { range, source = "all", client } = params;
     const payer = sql`coalesce(${invoices.clientUserId}, ${invoicePayments.userId})`;
     const where = sql.join([
       sql`${invoicePayments.appliedCents} > 0`,
@@ -269,6 +294,8 @@ const paymentsReceived = {
       paymentDayBetween(range),
       SOURCE_FILTERS[source] ? sql`${invoicePayments.source} in (${inList(SOURCE_FILTERS[source])})` : undefined,
       client ? sql`${payer} = ${client}` : undefined,
+      // A payment is in a practice through the invoice it paid; one with no invoice never matches a set filter.
+      hasPracticeFilter(params) ? practiceFilterSql(params, invoices.accountId) : undefined,
     ].filter(Boolean), sql` and `);
     const from = sql`from ${invoicePayments} left join ${invoices} on ${invoices.id} = ${invoicePayments.invoiceId} ${optionalClientJoin(payer)}`;
     const number = sql`coalesce(${invoices.invoiceNumber}::text, ${invoicePayments.invoiceNumber})`;
@@ -321,14 +348,14 @@ function summarizeStatements(activity, { startIso, endIso }) {
 const statementsSummary = {
   key: "accounting.statements-summary", group: GROUP, roles: ADMIN, title: "Statements Summary",
   description: "Per client for one month: opening balance, invoiced, paid and closing balance, as the statements show them.",
-  params: [{ name: "month", label: "Month (any day in it; default last month)", type: "date" }],
+  params: [{ name: "month", label: "Month (any day in it; default last month)", type: "date" }, ...PRACTICE_PARAMS],
   columns: [
     clientCol, { id: "accountNumber", label: "Account", type: "text" }, money("opening", "Opening"), money("invoiced", "Invoiced"),
     money("paid", "Paid"), money("closing", "Closing"),
   ],
   async run(tx, params, _actor, ctx) {
     const bounds = monthBounds((params?.month ?? lastMonthDay(ctx)).slice(0, 7));
-    const activity = await loadStatementActivity(null, tx, { through: bounds.endIso });
+    const activity = await loadStatementActivity(await practiceAccountIds(tx, params), tx, { through: bounds.endIso });
     const per = summarizeStatements(activity, bounds);
     const names = await loadClientNames([...per.keys()], tx);
     const rows = [...per.entries()]

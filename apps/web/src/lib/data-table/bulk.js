@@ -13,7 +13,7 @@ export async function eachRow(rows, fn, label) {
       await fn(row);
       ok += 1;
     } catch (err) {
-      failed.push({ id: label(row), message: errorText(err) });
+      failed.push({ id: label(row), rowId: row.id, message: errorText(err) });
     }
   }
   return { ok, failed };

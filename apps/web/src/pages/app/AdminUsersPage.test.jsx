@@ -4,14 +4,17 @@ import assert from "node:assert/strict";
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { ToastProvider } from "../../components/ui/Toast.jsx";
+import { ROW_BOX } from "../../components/ui/data-table/testing.js";
 
 const get = vi.fn();
 const post = vi.fn();
 vi.mock("../../config/api.js", () => ({ default: { get: (...a) => get(...a), post: (...a) => post(...a), put: vi.fn() } }));
 vi.mock("../../hooks/useAuth.js", () => ({ useAuth: () => ({ user: { id: "me" } }) }));
+let drawerProps = null;
+vi.mock("../../components/admin/DoctorPaymentDrawer.jsx", () => ({ DoctorPaymentDrawer: (p) => { drawerProps = p; return <div>PAYMENT DRAWER</div>; } }));
 const { AdminUsersPage } = await import("./AdminUsersPage.jsx");
 
-afterEach(() => { cleanup(); get.mockReset(); post.mockReset(); });
+afterEach(() => { cleanup(); get.mockReset(); post.mockReset(); drawerProps = null; });
 
 const USERS = [
   { id: "u1", email: "a@x.com", name: "Alice", role: "doctor", hasPassword: true, account: { name: "Smile Co" }, seazonaClientId: "s1" },
@@ -32,7 +35,7 @@ test('AdminUsersPage bulk "Send invitations" posts the selected user ids to /adm
   post.mockResolvedValue({ data: { data: { sent: 2, requested: 2 } } });
   mount();
   await screen.findByText("Alice");
-  const boxes = screen.getAllByLabelText("Select row");
+  const boxes = screen.getAllByLabelText(ROW_BOX);
   fireEvent.click(boxes[0]);
   fireEvent.click(boxes[2]);
   fireEvent.click(await screen.findByRole("button", { name: "Send invitations" }));
@@ -48,7 +51,7 @@ test("AdminUsersPage bulk send names the count and warns when fewer were sent th
   post.mockResolvedValue({ data: { data: { sent: 1, requested: 3 } } });
   mount();
   await screen.findByText("Alice");
-  for (const box of screen.getAllByLabelText("Select row")) fireEvent.click(box);
+  for (const box of screen.getAllByLabelText(ROW_BOX)) fireEvent.click(box);
   fireEvent.click(await screen.findByRole("button", { name: "Send password resets" }));
   fireEvent.click(await screen.findByRole("button", { name: "Click again to send 3 password resets" }));
   const toast = await screen.findByText("Sent 1/3 password resets");
@@ -75,7 +78,7 @@ test("Users bulk Assign price list posts clientUserIds and toasts ok/failed", as
     </MemoryRouter>,
   );
   await screen.findByText("Alice");
-  const boxes = screen.getAllByLabelText("Select row");
+  const boxes = screen.getAllByLabelText(ROW_BOX);
   fireEvent.click(boxes[0]);
   fireEvent.click(boxes[1]);
   fireEvent.click(await screen.findByRole("button", { name: "Assign price list…" }));
@@ -87,4 +90,22 @@ test("Users bulk Assign price list posts clientUserIds and toasts ok/failed", as
   assert.equal(path, "/admin/price-lists/assign");
   assert.deepEqual({ ...body, clientUserIds: [...body.clientUserIds].sort() }, { listId: "L1", mode: "add", clientUserIds: ["u1", "u2"] });
   assert.ok(await screen.findByText("1 done, 1 failed: u2 Not a client"));
+});
+
+test('AdminUsersPage "Record payment": only for a plain login that runs a practice, and it opens the record-only drawer', async () => {
+  const users = [
+    { id: "u1", email: "a@x.com", name: "Alice", role: "doctor", hasPassword: true },
+    { id: "u2", email: "b@x.com", name: "Bob", role: "user", hasPassword: true, runsPractice: true },
+    { id: "u3", email: "c@x.com", name: "Cara", role: "user", hasPassword: true, runsPractice: false },
+  ];
+  get.mockResolvedValue({ data: { data: { users, summary: null } } });
+  render(<MemoryRouter><ToastProvider><AdminUsersPage /></ToastProvider></MemoryRouter>);
+  await screen.findByText("Bob");
+  const buttons = screen.getAllByRole("button", { name: /Record payment/ });
+  assert.equal(buttons.length, 1, "not for the doctor, not for a login that runs no practice");
+  fireEvent.click(buttons[0]);
+  await screen.findByText("PAYMENT DRAWER");
+  assert.equal(drawerProps.recordOnly, true);
+  assert.equal(drawerProps.doctor.userId, "u2");
+  assert.equal(screen.getAllByRole("button", { name: /Payments/ }).length, 1, "the doctor keeps the full Payments drawer");
 });

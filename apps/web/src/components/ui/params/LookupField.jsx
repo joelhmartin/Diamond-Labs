@@ -1,21 +1,20 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Loader2, X } from "lucide-react";
-import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
-import { errorText } from "../../lib/requests.js";
-import { searchLookup, lookupLabel } from "./api.js";
+import { useDebouncedValue } from "../../../hooks/useDebouncedValue.js";
+import { errorText } from "../../../lib/requests.js";
 
 /**
- * Debounced typeahead over `/reports/lookups/:source`. `value` is the picked
- * value (a string; "" for none) and `onChange(value, option)` fires on pick and
- * on clear. A value that arrives without a pick (a shared link) shows the label
- * from `labelFor(source, value, { signal })`, or the raw value if unknown.
- * Self-contained: the only ties to reports are the `search` and `labelFor`
- * defaults, so it can move into components/ui as a general picker later.
+ * Debounced typeahead over a lookup source. `search(source, q, { signal })`
+ * returns `[{ value, label }]`. `value` is the picked value (a string; "" for
+ * none) and `onChange(value, option)` fires on pick and on clear. A value that
+ * arrives without a pick (a shared link) shows the label from the optional
+ * `labelFor(source, value, { signal })`, or the raw value if unknown. The
+ * caller supplies both functions (the reports screens pass their lookup API).
  *
- *   <LookupField source="client" value={v} onChange={setV} label="Client" />
+ *   <LookupField source="account" value={v} onChange={setV} label="Account" search={searchLookup} labelFor={lookupLabel} />
  */
 export function LookupField({
-  source, value, onChange, label, id, placeholder = "Type to search…", search = searchLookup, labelFor = lookupLabel,
+  source, value, onChange, label, id, placeholder = "Type to search…", search, labelFor,
 }) {
   const autoId = useId();
   const inputId = id ?? autoId;

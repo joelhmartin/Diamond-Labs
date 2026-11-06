@@ -22,6 +22,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { accounts, memberships } from "./schema/index.js";
 import { oldestByKey, isInvoiceOwner } from "../import/owners.js";
 import { createId } from "../lib/id.js";
+import { revokePendingInvitations } from "../services/invitation.service.js";
 
 const MEMBER_ROLE_FOR_SHARER = "admin";
 const NAME_MAX = 100;
@@ -129,7 +130,7 @@ const pairs = (entries) => sql.join(entries.map(([a, b]) => sql`(${a}, ${b})`), 
  */
 export async function writePracticeBackfill(plan, tx) {
   const counts = {
-    createdAccounts: 0, markedClient: 0, fieldsSet: 0, membershipsAdded: 0, accountsDeleted: 0, sharedReported: plan.reportShared.length,
+    createdAccounts: 0, markedClient: 0, invitationsRevoked: 0, fieldsSet: 0, membershipsAdded: 0, accountsDeleted: 0, sharedReported: plan.reportShared.length,
     conflicts: (plan.conflicts ?? []).length, blockedKeys: (plan.blockedKeys ?? []).length,
     rxCases: 0, labOrders: 0, invoices: 0, pickups: 0, messageThreads: 0, userKeyPickups: 0, userKeyMessageThreads: 0, statementSends: 0,
   };
@@ -152,6 +153,8 @@ export async function writePracticeBackfill(plan, tx) {
   if (plan.markClient.length) {
     await tx.update(accounts).set({ isClient: true, updatedAt: new Date() }).where(inArray(accounts.id, plan.markClient));
     counts.markedClient = plan.markClient.length;
+    // A practice's invitations can never be accepted (staff manage its members): revoke the pending ones.
+    counts.invitationsRevoked = await revokePendingInvitations(plan.markClient, tx);
   }
   if (plan.deleteAccounts.length) {
     await tx.update(accounts).set({ status: "deleted", updatedAt: new Date() }).where(and(inArray(accounts.id, plan.deleteAccounts), eq(accounts.status, "active")));

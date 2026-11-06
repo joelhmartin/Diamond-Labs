@@ -11,6 +11,8 @@ const SELF = fileURLToPath(import.meta.url);
 const ROOTS = [
   fileURLToPath(new URL(".", import.meta.url)),
   fileURLToPath(new URL("../../../web/src/modules", import.meta.url)),
+  // The param controls both module screens draw with.
+  fileURLToPath(new URL("../../../web/src/components/ui/params", import.meta.url)),
   fileURLToPath(new URL("../../../../packages/shared/src/business-calendar", import.meta.url)),
   fileURLToPath(new URL("../../../../packages/shared/src/workflows", import.meta.url)),
   ...["record-tags", "record-files", "barcode-lookup", "upload-intake", "organizations", "reports"].map((m) =>

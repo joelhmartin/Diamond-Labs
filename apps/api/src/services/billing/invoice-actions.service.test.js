@@ -178,6 +178,47 @@ test("recordManualPayment: a race lost under the lock is refused, nothing record
   );
 });
 
+test("loadPayingClient: a doctor, or a non-doctor who runs a practice (owner, admin or group admin), from their own scope", async () => {
+  const userRow = (role) => [[{ id: "u1", email: "u@x.com", name: "U", role }]];
+  // A doctor needs no scope read.
+  assert.equal((await actions.loadPayingClient("u1", fakeTx({ selects: userRow("doctor") }))).id, "u1");
+  assert.deepEqual(scopeCalls, []);
+  for (const role of ["owner", "admin", "org-admin"]) {
+    targetScope = scopeOf({ a1: "viewer", a2: role });
+    const client = await actions.loadPayingClient("u1", fakeTx({ selects: userRow("user") }));
+    assert.equal(client.id, "u1", role);
+  }
+  assert.deepEqual(scopeCalls, ["u1", "u1", "u1"], "the TARGET's scope, never the staff member's");
+});
+
+test("loadPayingClient refuses a staff login even when it holds an owner membership", async () => {
+  targetScope = scopeOf({ a1: "owner" });
+  for (const role of ["admin", "lab"]) {
+    await assert.rejects(actions.loadPayingClient("u1", fakeTx({ selects: [[{ id: "u1", role }]] })), isCode("NOT_FOUND"), role);
+  }
+});
+
+test("loadPayingClient refuses anyone else as NOT_FOUND: plain members, viewers, no practice, unknown users", async () => {
+  for (const roles of [{ a1: "member" }, { a1: "manager" }, { a1: "viewer" }, {}]) {
+    targetScope = scopeOf(roles);
+    await assert.rejects(actions.loadPayingClient("u1", fakeTx({ selects: [[{ id: "u1", role: "user" }]] })), isCode("NOT_FOUND"), JSON.stringify(roles));
+  }
+  targetScope = scopeOf({ a1: "owner" });
+  await assert.rejects(actions.loadPayingClient("nobody", fakeTx({ selects: [[]] })), isCode("NOT_FOUND"));
+});
+
+test("recordManualPayment for a group-admin billing manager (not a doctor): recorded against their payable practices", async () => {
+  targetScope = scopeOf({ a2: "org-admin" });
+  const db = fakeTx({ selects: [
+    [{ id: "bm1", email: "bm@x.com", name: "Billing", role: "user" }],
+    [{ id: "g", clientUserId: "doc9", accountId: "a2", invoiceNumber: 500009, status: "issued", totalCents: 8000, dueDate: "2026-09-30", issuedAt: new Date("2026-08-31T15:00:00Z") }],
+    [],
+  ] });
+  await actions.recordManualPayment({ clientUserId: "bm1", method: "ach", amountCents: 8000, paidOn: "2026-09-15", byUserId: "staff1" }, db);
+  assert.deepEqual(recorded[0].allocations, [{ invoiceId: "g", invoiceNumber: "500009", amountCents: 8000 }]);
+  assert.equal(recorded[0].user.id, "bm1", "receipted to the billing manager who paid");
+});
+
 test("every balance-changing action holds the same per-invoice lock card payments take", () => {
   const bodyOf = (marker) => {
     const start = source.indexOf(marker);

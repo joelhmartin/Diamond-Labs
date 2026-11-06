@@ -12,7 +12,7 @@ async function applyInChunks(client, recordType, rows, { add = [], remove = [] }
     const res = await client.post(`/tags/${recordType}/apply`, { ids, add, remove });
     const missed = res.data.data.failed ?? [];
     ok += ids.length - missed.length;
-    failed.push(...missed.map((f) => ({ id: byId.has(f.id) ? labelOf(byId.get(f.id)) : f.id, message: f.message })));
+    failed.push(...missed.map((f) => ({ id: byId.has(f.id) ? labelOf(byId.get(f.id)) : f.id, rowId: f.id, message: f.message })));
   }
   return { ok, failed };
 }

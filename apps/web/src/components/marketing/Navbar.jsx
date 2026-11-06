@@ -15,7 +15,8 @@ import {
 import gsap from "gsap";
 import LogoFull from "../../images/logoFull.jsx";
 import { useAuth } from "../../hooks/useAuth.js";
-import { ROUTES, roleHome } from "../../config/routes.js";
+import { ROUTES } from "../../config/routes.js";
+import { useRoleHome } from "../../lib/post-auth.js";
 
 const NAV_LINKS = [
   {
@@ -189,6 +190,7 @@ function MobileNavGroup({ link, isActive, onNavigate }) {
 /* ─── Mobile account strip (appears in the hamburger menu) ─── */
 function MobileAccount({ onNavigate }) {
   const { user, isAuthenticated, logout } = useAuth();
+  const { home } = useRoleHome(user);
 
   if (!isAuthenticated) {
     return (
@@ -203,7 +205,6 @@ function MobileAccount({ onNavigate }) {
     );
   }
 
-  const home = roleHome(user);
   const homeLabel =
     user?.role === "doctor" && user?.approvalStatus === "approved"
       ? "Doctor Portal"
@@ -245,6 +246,7 @@ function MobileAccount({ onNavigate }) {
 /* ─── Account button — Sign In when logged out; user menu when logged in ─── */
 function AccountButton({ scrolled }) {
   const { user, isAuthenticated, logout } = useAuth();
+  const { home } = useRoleHome(user);
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -273,7 +275,6 @@ function AccountButton({ scrolled }) {
     );
   }
 
-  const home = roleHome(user);
   const homeLabel =
     user?.role === "doctor" && user?.approvalStatus === "approved"
       ? "Doctor Portal"

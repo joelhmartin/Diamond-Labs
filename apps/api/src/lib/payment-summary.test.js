@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { summarizePayments } from "./payment-summary.js";
+import { summarizePayments, limitPaymentAccounts } from "./payment-summary.js";
 
 function row(over = {}) {
   return {
@@ -78,5 +78,20 @@ describe("summarizePayments", () => {
     // offset pages over the stable order never repeat or skip
     const all = ids([b, a, c]);
     expect([...all.slice(0, 1), ...all.slice(1, 2), ...all.slice(2, 3)]).toEqual(["TXN-C", "TXN-A", "TXN-B"]);
+  });
+
+  it("carries the practice of the invoices it paid: one practice -> accountId, split across practices -> null", () => {
+    const [one] = summarizePayments([row({ accountId: "ac1" }), row({ invoiceId: "inv-2", accountId: "ac1" })]);
+    expect([one.accountId, one.accountIds]).toEqual(["ac1", ["ac1"]]);
+    const [split] = summarizePayments([row({ accountId: "ac1" }), row({ invoiceId: "inv-2", accountId: "ac2" })]);
+    expect([split.accountId, split.accountIds]).toEqual([null, ["ac1", "ac2"]]);
+    const [none] = summarizePayments([row()]);
+    expect([none.accountId, none.accountIds]).toEqual([null, []]);
+  });
+
+  it("limitPaymentAccounts drops practices outside the scope and recomputes accountId", () => {
+    const [p] = summarizePayments([row({ accountId: "ac1" }), row({ invoiceId: "inv-2", accountId: "gone" })]);
+    const [kept] = limitPaymentAccounts([p], ["ac1"]);
+    expect([kept.accountId, kept.accountIds]).toEqual(["ac1", ["ac1"]]);
   });
 });

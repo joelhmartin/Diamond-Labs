@@ -23,12 +23,24 @@ import { createExportRegistry, csvFormat, createExportsRoutes, runExport, previe
   ```
   defineSource({
     key, label,
-    params: [{ id, label, type: "date" | "select" | "multiselect", options?, required? }],
+    params: [{ name, label, type, options?, required? }],  // report param specs, type in EXPORT_PARAM_TYPES
     paramsSchema,   // zod; params are validated against it before any read
-    fields: [{ key, label, type: "text" | "cents" | "date" | "int" }],
+    fields: [{ key, label, type, timeZone? }],             // type is a column type (COLUMN_TYPES)
     fetchPage(db, params, { limit, offset }) -> Promise<{ rows, total }>,
   })
   ```
+
+  Params and fields share the reports module's vocabulary (both lists live in
+  `packages/shared/src/reports`), so the web draws an export's params with the
+  same controls as a report's, and a cell is written the way a report column's
+  is: `money` is integer cents written "1234.50", `int` a number, `date` a
+  calendar day (in the field's `timeZone`, default UTC), `text` as is.
+  `defineSource` throws on an unknown field type, a param without a `name`,
+  and a param type outside `EXPORT_PARAM_TYPES` (`date`, `select`,
+  `multiselect`: the types the export path handles end to end; `dateRange`
+  presets need the app timezone and `lookup` a lookup endpoint, which exports
+  do not have). The query keys are the param names; the screen sends a multiselect
+  comma-joined, so a `paramsSchema` should accept a comma list.
 
   `fetchPage` must use a stable order so pages do not overlap or skip.
   A param named `from` plus one named `to` name the download file
@@ -47,11 +59,20 @@ import { createExportRegistry, csvFormat, createExportsRoutes, runExport, previe
   ```
 
 - `runExport({ registry, db, sourceKey, formatKey, params, pageSize = 1000 })`
-  returns `{ filename, contentType, params, stream, countPromise }`. It throws
+  validates, reads the first page, and returns
+  `{ filename, contentType, params, stream, countPromise }`. It throws
   `ExportError` with code `EXPORT_SOURCE_UNKNOWN` (404),
-  `EXPORT_FORMAT_UNSUPPORTED` (422) or `EXPORT_PARAMS_INVALID` (422).
+  `EXPORT_FORMAT_UNSUPPORTED` (422) or `EXPORT_PARAMS_INVALID` (422), and a
+  failing first read rejects too, so the route answers with an error rather
+  than an empty file. Pages after the first stop at the first page's `total`.
   `countPromise` resolves with the rows written when the stream ends or is
   abandoned.
+- The paging and writing are the shared paged writer,
+  `openExportStream({ source, format, readPage, pageSize, maxRows? })` in
+  `packages/shared/src/exports/stream.js`, and the built-in format is
+  `csvFormat` from `packages/shared/src/exports/csv-format.js` (re-exported
+  here). The reports module writes its CSV through the same two, so a report's
+  file and an export's are built by one implementation.
 - `previewExport({ registry, db, sourceKey, params, limit, offset })` returns
   `{ rows, total, fields }`.
 - `createExportsRoutes({ registry, db, preHandler, audit, pathPrefix = "/exports" })`
@@ -86,15 +107,20 @@ it next to the CSV format when the app builds its registry, and it shows up in
 
 ## Wiring it into another app
 
-The module has three parts: this server module, the pure CSV writer in
-`packages/shared/src/exports`, and the screen in `apps/web/src/modules/exports`.
-Everything app-specific lives in the app's own glue directory (here
+The module has three parts: this server module, the pure writer in
+`packages/shared/src/exports` (the CSV field encoder, the paged writer and the
+CSV format), and the screen in `apps/web/src/modules/exports`. Everything
+app-specific lives in the app's own glue directory (here
 `apps/api/src/exports/`), never inside the module.
 
-1. **Copy the code.** Copy `apps/api/src/modules/exports` and
-   `packages/shared/src/exports` (plus `apps/web/src/modules/exports` for the
-   screen). Re-export `exports/csv.js` from the shared package's index: the
-   module and any client-side CSV import their helpers from there.
+1. **Copy the code.** Copy `apps/api/src/modules/exports`,
+   `packages/shared/src/exports` and the shared report vocabulary it builds on,
+   `packages/shared/src/reports` (column and param types, `csvValue`) with
+   `packages/shared/src/money.js`; plus `apps/web/src/modules/exports` and the
+   param controls in `apps/web/src/components/ui/params` for the screen.
+   Re-export `exports/csv.js`, `exports/csv-format.js`, `exports/stream.js`
+   and `reports/index.js` from the shared package's index: the module and any
+   client-side CSV import their helpers from there.
 2. **Create the registry in the app's glue.** One file builds it once and
    registers the built-in format:
 

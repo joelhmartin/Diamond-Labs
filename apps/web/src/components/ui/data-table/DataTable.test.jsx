@@ -2,7 +2,7 @@
 import { test, afterEach, vi } from "vitest";
 import assert from "node:assert/strict";
 import { render, screen, fireEvent, cleanup, waitFor, act, within } from "@testing-library/react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { ToastProvider } from "../Toast.jsx";
 import { DataTable } from "./index.js";
 import { useDataTable } from "../../../hooks/useDataTable.js";

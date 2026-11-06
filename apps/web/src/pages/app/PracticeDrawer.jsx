@@ -160,7 +160,7 @@ export function PracticeDrawer({ practice, onClose, onChanged }) {
         <PickerModal
           title="Add members"
           source={usersSource}
-          keep={(u) => !members.some((m) => m.userId === u.id)}
+          excludeIds={members.map((m) => m.userId)}
           onPick={add}
           onClose={() => setPicking(false)}
           itemLabel="people"

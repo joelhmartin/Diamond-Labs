@@ -2,9 +2,9 @@ import { and, eq, inArray } from "drizzle-orm";
 import { ERROR_CODES } from "@my-app/shared";
 import { db as appDb } from "../config/database.js";
 import { accounts } from "../db/schema/index.js";
-import { organizations } from "../modules/organizations/index.js";
+import { organizations, organizationAdmins, organizationAccounts } from "../modules/organizations/index.js";
 import { organizationsService } from "./organizations.service.js";
-import { directPracticeMembershipsQuery } from "./practice-of.js";
+import { directPracticeAdminsQuery, directPracticeMembershipsQuery } from "./practice-of.js";
 import { clientScopeOf, emptyClientScope, toClientScope } from "./client-scope-rules.js";
 
 /**
@@ -23,7 +23,7 @@ import { clientScopeOf, emptyClientScope, toClientScope } from "./client-scope-r
  * browser), so a removed member loses access on their next request.
  */
 
-export { emptyClientScope, toClientScope, clientScopeOf, canActForAccount, requestedAccounts, isAllAccounts, payableAccountIds, scopeNotFound, practiceRequired, requestedStatementSubject } from "./client-scope-rules.js";
+export { emptyClientScope, toClientScope, clientScopeOf, canActForAccount, requestedAccounts, isAllAccounts, payableAccountIds, administersAPractice, scopeNotFound, practiceRequired, requestedStatementSubject } from "./client-scope-rules.js";
 
 /** Of a list of candidate accounts, those that are active client accounts (one query): the scope's eligibility, also the alert audience's. */
 export async function activeClientAccounts(ids, database) {
@@ -69,6 +69,34 @@ export async function loadClientScope(userId, database = appDb) {
     },
   }, database);
   return toClientScope(resolved, await organizationDetails(resolved.organizations.map((o) => o.id), database));
+}
+
+/**
+ * Of `userIds`, those who administer a practice: exactly administersAPractice(loadClientScope(id)), in a constant
+ * two queries however many ids. The scope's rule has two halves, each resolved in one set query: a DIRECT owner or
+ * admin of an active client account (practice-of.js), or an ACTIVE admin grant on an ACTIVE group (organizations
+ * rules resolveScope) that holds at least one active client account. A group admin whose group has none does not
+ * qualify, here or in loadPayingClient. This is the set loadPayingClient lets staff record a payment for.
+ */
+export async function usersAdministeringAPractice(userIds, database = appDb) {
+  if (!userIds.length) return new Set();
+  const [direct, grants] = await Promise.all([
+    directPracticeAdminsQuery(database, userIds),
+    database
+      .selectDistinct({ userId: organizationAdmins.userId })
+      .from(organizationAdmins)
+      .innerJoin(organizations, eq(organizations.id, organizationAdmins.organizationId))
+      .innerJoin(organizationAccounts, eq(organizationAccounts.organizationId, organizations.id))
+      .innerJoin(accounts, eq(accounts.id, organizationAccounts.accountId))
+      .where(and(
+        inArray(organizationAdmins.userId, userIds),
+        eq(organizationAdmins.status, "active"),
+        eq(organizations.status, "active"),
+        eq(accounts.status, "active"),
+        eq(accounts.isClient, true),
+      )),
+  ]);
+  return new Set([...direct, ...grants].map((r) => r.userId));
 }
 
 /**

@@ -34,7 +34,7 @@ import { atRiskCutoff } from "../lab-schedule-flags.js";
 import {
   catalogJoins, clientName, isLiveOrder, labCalendar, labDay, labDayBetween, labDayText, num, rowsOf, turnaroundDaysSql,
 } from "./lab-metrics.js";
-import { optionalClientJoin, uncategorizedSql } from "./report-helpers.js";
+import { andScope, optionalClientJoin, uncategorizedSql } from "./report-helpers.js";
 
 // ── SQL building blocks ──────────────────────────────────────────────────
 
@@ -191,14 +191,17 @@ export async function dueByDay(db, range) {
   return daysInRange(range.from, range.to).map((day) => ({ day, orders: num(byDay.get(day)?.orders), rush: num(byDay.get(day)?.rush) }));
 }
 
-/** Orders received per lab day, every day in the range: [{ day, orders, rush, remakes, units }]. Cancelled orders do not count. */
-export async function ordersByDay(db, range) {
+/**
+ * Orders received per lab day, every day in the range: [{ day, orders, rush, remakes, units }]. Cancelled orders do not count.
+ * `scope` (optional, here and in shippedByDay) is report-helpers practiceScope(params): a practice/group filter.
+ */
+export async function ordersByDay(db, range, scope = null) {
   const raw = await rowsOf(db, sql`
     select ${labDayText(labOrders.receivedAt)} as "day", count(*) as "orders",
       count(*) filter (where ${labOrders.rush}) as "rush", count(*) filter (where ${labOrders.isRemake}) as "remakes",
       coalesce(sum(u.units), 0) as "units"
     from ${labOrders} ${unitsJoin}
-    where ${isLiveOrder} and ${labDayBetween(labOrders.receivedAt, range)}
+    where ${isLiveOrder} and ${labDayBetween(labOrders.receivedAt, range)}${andScope(scope, labOrders.accountId)}
     group by 1 order by 1`);
   const byDay = new Map(raw.map((r) => [String(r.day), r]));
   return daysInRange(range.from, range.to).map((day) => {
@@ -214,14 +217,14 @@ export async function ordersByDay(db, range) {
  * once; an order shipped with no shipment record (imported history) counts
  * under noShipment.
  */
-export async function shippedByDay(db, range) {
+export async function shippedByDay(db, range, scope = null) {
   const perCarrier = CARRIERS.map((c) => sql`count(distinct ${shipments.id}) filter (where ${shipments.carrier} = ${c}) as ${sql.identifier(c)}`);
   const raw = await rowsOf(db, sql`
     select ${labDayText(labOrders.shippedAt)} as "day", count(*) as "orders", count(distinct ${shipments.id}) as "shipments",
       ${sql.join(perCarrier, sql`, `)}, count(*) filter (where ${shipments.id} is null) as "noShipment"
     from ${labOrders}
     left join ${shipments} on ${shipments.id} = ${labOrders.shipmentId}
-    where ${labOrders.status} = 'shipped' and ${labDayBetween(labOrders.shippedAt, range)}
+    where ${labOrders.status} = 'shipped' and ${labDayBetween(labOrders.shippedAt, range)}${andScope(scope, labOrders.accountId)}
     group by 1 order by 1`);
   const byDay = new Map(raw.map((r) => [String(r.day), r]));
   return daysInRange(range.from, range.to).map((day) => {

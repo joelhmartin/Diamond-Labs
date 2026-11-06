@@ -3,14 +3,14 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { z } from "zod";
 import { createExportRegistry } from "./registry.js";
-import { csvFormat } from "./formats/csv.js";
+import { csvFormat } from "./index.js";
 import { createExportsRoutes } from "./routes.js";
 
 function build({ order = [], audit = async () => {}, fetchPage, logLines } = {}) {
   const registry = createExportRegistry();
   registry.defineFormat(csvFormat);
   registry.defineSource({
-    key: "sales", label: "Sales", params: [{ id: "from", label: "From", type: "date" }],
+    key: "sales", label: "Sales", params: [{ name: "from", label: "From", type: "date" }],
     paramsSchema: z.object({ from: z.string().optional(), to: z.string().optional() }),
     fields: [{ key: "name", label: "Name", type: "text" }],
     fetchPage: fetchPage ?? (async () => ({ rows: [{ name: "a" }, { name: "b" }], total: 2 })),

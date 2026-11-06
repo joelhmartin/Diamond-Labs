@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), patch
 vi.mock("../../../config/api.js", () => ({ default: api }));
 
 import { InboxTable } from "../InboxTable.jsx";
+import { ROW_BOX } from "../../../components/ui/data-table/testing.js";
 
 const row = (id, over = {}) => ({
   id, recordType: "widget", recordId: `w${id}`, recordLabel: `Widget ${id}`, partyKey: "org:1", partyLabel: "Acme",
@@ -64,7 +65,7 @@ test("bulk Complete loops POST /complete per selected thread and toasts failures
   });
   mount();
   await screen.findByText("Subject t1");
-  const boxes = screen.getAllByLabelText("Select row");
+  const boxes = screen.getAllByLabelText(ROW_BOX);
   fireEvent.click(boxes[0]);
   fireEvent.click(boxes[1]);
   fireEvent.click(await screen.findByRole("button", { name: /^complete$/i }));

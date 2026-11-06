@@ -9,7 +9,7 @@ import { saveBlob } from "../../lib/download.js";
 import { pageParams } from "../../lib/data-table/server.js";
 import { blobErrorText, dispositionFilename, errorText } from "../../lib/requests.js";
 import { formatCents } from "../../lib/money.js";
-import { ParamsForm, paramsReady, paramsToQuery } from "./ParamsForm.jsx";
+import { ParamFields, paramsReady, paramsToQuery } from "../../components/ui/params/index.js";
 
 const getRowId = (r) => r.__i;
 
@@ -17,8 +17,8 @@ function columnsFor(fields) {
   return fields.map((f) => ({
     id: f.key,
     header: f.label,
-    align: f.type === "cents" || f.type === "int" ? "right" : "left",
-    cell: (r) => (f.type === "cents" ? formatCents(r[f.key]) : r[f.key] ?? ""),
+    align: f.type === "money" || f.type === "int" ? "right" : "left",
+    cell: (r) => (f.type === "money" ? formatCents(r[f.key]) : r[f.key] ?? ""),
   }));
 }
 
@@ -102,7 +102,7 @@ export function ExportScreen({ basePath, defaultSource }) {
             {sources.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
         )}
-        <ParamsForm params={source.params} values={values} onChange={(id, v) => setValues((cur) => ({ ...cur, [id]: v }))} />
+        <ParamFields specs={source.params} values={values} onChange={(name, v) => setValues((cur) => ({ ...cur, [name]: v }))} />
         <div className="ml-auto flex items-center gap-2">
           <select aria-label="Format" value={format?.key ?? ""} onChange={(e) => setFormatKey(e.target.value)} className={CONTROL}>
             {source.formats.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}

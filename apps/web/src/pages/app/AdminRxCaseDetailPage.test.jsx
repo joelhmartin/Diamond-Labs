@@ -1,8 +1,17 @@
-import { test } from "vitest";
-import { readFileSync } from "node:fs";
+// @vitest-environment jsdom
+import { test, afterEach, beforeEach, vi } from "vitest";
+import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
+import { MemoryRouter, Routes, Route } from "react-router-dom";
 import assert from "node:assert/strict";
-import { releaseBlockedReason } from "./AdminRxCaseDetailPage.jsx";
 import { caseStatusLabel } from "../../lib/rx-case-labels.js";
+
+const api = { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() };
+let role = "admin";
+vi.mock("../../config/api.js", () => ({ default: { get: (...a) => api.get(...a), post: (...a) => api.post(...a), put: (...a) => api.put(...a), delete: (...a) => api.delete(...a) } }));
+vi.mock("../../hooks/useAuth.js", () => ({ useAuth: () => ({ user: { role } }) }));
+vi.mock("../../components/ui/Toast.jsx", () => ({ useToast: () => ({ addToast: () => {} }) }));
+vi.mock("../../modules/messaging/index.js", () => ({ RecordThreads: () => null }));
+const { AdminRxCaseDetailPage, releaseBlockedReason } = await import("./AdminRxCaseDetailPage.jsx");
 
 test("the release button explains why it is disabled, rather than just being grey", () => {
   const reason = releaseBlockedReason([{ status: "open", noteOnly: false, sourceLabel: "Anterior Pad" }]);
@@ -46,11 +55,125 @@ test("every case status has a human label", () => {
   }
 });
 
-// Source pin: lab-role staff can USE Release; only admins edit lines. The card
-// must stay on the staff check (not canEdit) and stay hidden for cancelled cases.
-test("the Release card is staff-gated, hidden when cancelled; line editing stays admin-only", () => {
-  const src = readFileSync(new URL("./AdminRxCaseDetailPage.jsx", import.meta.url), "utf8");
-  assert.match(src, /\{!locked && caseRow\.status !== "cancelled" && isStaffRole\(user\?\.role\) && \(/);
-  assert.match(src, /const canEdit = user\?\.role === "admin"/);
-  assert.match(src, /const readOnly = locked \|\| !canEdit/);
+// ── Rendered page: the case shows, gating holds, and every destructive step takes two clicks ──
+
+const OPEN_LINE = { id: "l1", name: "Anterior Pad", sourceLabel: "Anterior Pad", status: "open", noteOnly: false };
+const OK_LINE = { id: "l2", name: "Night Guard", sourceLabel: "Night Guard", status: "confirmed", noteOnly: false, seazonaCode: "2608" };
+
+function mockCase({ status = "new", lines = [OPEN_LINE, OK_LINE] } = {}) {
+  api.get.mockResolvedValue({
+    data: { data: { case: { id: "c1", caseNumber: "RX-100", status, patientFirst: "Pat", patientLast: "Ient" }, lines, files: [], prescription: {}, labOrder: null } },
+  });
+}
+
+async function renderPage() {
+  render(
+    <MemoryRouter initialEntries={["/cases/c1"]}>
+      <Routes>
+        <Route path="/cases/:id" element={<AdminRxCaseDetailPage />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+  await screen.findByText("RX-100");
+}
+
+beforeEach(() => {
+  role = "admin";
+  Object.values(api).forEach((f) => f.mockReset());
+});
+afterEach(cleanup);
+
+test("the page renders the case and its lines", async () => {
+  mockCase();
+  await renderPage();
+  assert.ok(screen.getByText("Night Guard"));
+  assert.ok(screen.getByText(/Order lines/));
+  assert.ok(screen.getByText(/Staff-edited lines are kept; only untouched auto lines are replaced/));
+});
+
+test("the Release card is staff-gated and hidden once cancelled", async () => {
+  mockCase();
+  await renderPage();
+  assert.ok(screen.getByRole("button", { name: /Release to lab/ }));
+  cleanup();
+  role = "user";
+  await renderPage();
+  assert.equal(screen.queryByRole("button", { name: /Release to lab/ }), null);
+  cleanup();
+  role = "admin";
+  mockCase({ status: "cancelled" });
+  await renderPage();
+  assert.equal(screen.queryByRole("button", { name: /Release to lab/ }), null);
+});
+
+test("line editing is admin-only: lab staff can release but not add or re-resolve", async () => {
+  role = "lab";
+  mockCase();
+  await renderPage();
+  assert.ok(screen.getByRole("button", { name: /Release to lab/ }));
+  assert.equal(screen.queryByRole("button", { name: /Re-resolve/ }), null);
+  assert.equal(screen.queryByRole("button", { name: /Add line/ }), null);
+});
+
+test("Re-resolve needs a second click before it posts", async () => {
+  mockCase();
+  await renderPage();
+  api.post.mockResolvedValue({ data: { data: { lines: [OK_LINE], replaced: 1, kept: 0 } } });
+  fireEvent.click(screen.getByRole("button", { name: /Re-resolve/ }));
+  assert.equal(api.post.mock.calls.length, 0);
+  fireEvent.click(screen.getByRole("button", { name: /Click again to re-resolve/ }));
+  await waitFor(() => assert.equal(api.post.mock.calls.length, 1));
+  assert.equal(api.post.mock.calls[0][0], "/admin/rx-cases/c1/re-resolve");
+});
+
+test("removing a line needs a second click before it deletes", async () => {
+  mockCase({ lines: [OK_LINE] });
+  await renderPage();
+  api.delete.mockResolvedValue({});
+  fireEvent.click(screen.getByTitle("Delete Night Guard"));
+  assert.equal(api.delete.mock.calls.length, 0);
+  fireEvent.click(screen.getByRole("button", { name: /Click again to remove/ }));
+  await waitFor(() => assert.equal(api.delete.mock.calls.length, 1));
+  assert.equal(api.delete.mock.calls[0][0], "/admin/rx-cases/c1/lines/l2");
+});
+
+test("a once-off save is one click; an 'always' save (changes future cases) takes two", async () => {
+  mockCase({ lines: [OPEN_LINE] });
+  await renderPage();
+  api.put.mockResolvedValue({ data: { data: { ...OPEN_LINE, noteOnly: true } } });
+  const noteLabel = /Not a line item/;
+  fireEvent.click(screen.getByRole("button", { name: noteLabel }));
+  await waitFor(() => assert.equal(api.put.mock.calls.length, 1));
+  assert.deepEqual(api.put.mock.calls[0][1], { noteOnly: true, scope: "once" });
+
+  // The saved line becomes note-only and the editor closes; reopen it, choose "always".
+  fireEvent.click(await screen.findByTitle("Edit this line"));
+  fireEvent.click(screen.getByLabelText(/Always \(future cases too\)/));
+  fireEvent.click(screen.getByRole("button", { name: noteLabel }));
+  assert.equal(api.put.mock.calls.length, 1, "first click only arms it");
+  fireEvent.click(screen.getByRole("button", { name: /changes ALL future prescriptions/ }));
+  await waitFor(() => assert.equal(api.put.mock.calls.length, 2));
+  assert.deepEqual(api.put.mock.calls[1][1], { noteOnly: true, scope: "always" });
+});
+
+test("an 'always' Assign takes two clicks, and changing the selection disarms it", async () => {
+  mockCase({ lines: [OPEN_LINE] });
+  await renderPage();
+  const catalog = [{ code: "A1", name: "Pad One" }, { code: "B2", name: "Pad Two" }];
+  api.get.mockResolvedValue({ data: { data: catalog } });
+  api.put.mockResolvedValue({ data: { data: { ...OPEN_LINE, status: "confirmed", seazonaCode: "A1" } } });
+  const pick = async (name) => {
+    fireEvent.change(screen.getByPlaceholderText(/Search catalog/), { target: { value: "pad" } });
+    fireEvent.click(await screen.findByText(name));
+  };
+  fireEvent.click(screen.getByLabelText(/Always \(future cases too\)/));
+  await pick("Pad One");
+  fireEvent.click(screen.getByRole("button", { name: "Assign" }));
+  assert.ok(screen.getByRole("button", { name: /changes ALL future prescriptions/ }), "armed");
+  await pick("Pad Two");
+  assert.equal(screen.queryByRole("button", { name: /changes ALL future prescriptions/ }), null, "a new selection disarms it");
+  fireEvent.click(screen.getByRole("button", { name: "Assign" }));
+  fireEvent.click(screen.getByRole("button", { name: /changes ALL future prescriptions/ }));
+  await waitFor(() => assert.equal(api.put.mock.calls.length, 1));
+  assert.deepEqual(api.put.mock.calls[0][1], { seazonaCode: "B2", name: "Pad Two", noteOnly: false, scope: "always" });
 });

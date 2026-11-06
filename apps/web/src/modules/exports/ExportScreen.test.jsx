@@ -18,11 +18,11 @@ const SOURCES = [
   {
     key: "sales", label: "Sales",
     params: [
-      { id: "from", label: "From", type: "date", required: true },
-      { id: "kind", label: "Kind", type: "select", required: true, options: [{ value: "a", label: "Alpha" }] },
-      { id: "tags", label: "Tags", type: "multiselect", options: [{ value: "x", label: "Ex" }, { value: "y", label: "Why" }] },
+      { name: "from", label: "From", type: "date", required: true },
+      { name: "kind", label: "Kind", type: "select", required: true, options: [{ value: "a", label: "Alpha" }] },
+      { name: "tags", label: "Tags", type: "multiselect", options: [{ value: "x", label: "Ex" }, { value: "y", label: "Why" }] },
     ],
-    fields: [{ key: "name", label: "Name", type: "text" }, { key: "total", label: "Total", type: "cents" }],
+    fields: [{ key: "name", label: "Name", type: "text" }, { key: "total", label: "Total", type: "money" }],
     formats: [CSV, { key: "iif", label: "Ledger file", extension: "iif" }],
   },
   { key: "stock", label: "Stock", params: [], fields: [{ key: "sku", label: "SKU", type: "text" }], formats: [CSV] },
@@ -48,7 +48,7 @@ test("renders params from the source descriptor and previews on change", async (
   await screen.findByLabelText("From");
   assert.equal(screen.getByLabelText("From").type, "date");
   assert.ok(screen.getByLabelText("Kind"));
-  assert.ok(screen.getByRole("button", { name: /Tags/ }));
+  assert.ok(screen.getByRole("group", { name: "Tags" }), "the multiselect is the shared chip group");
   assert.equal(previewCalls().length, 0, "no preview until required params are set");
 
   fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-10-01" } });
@@ -96,8 +96,7 @@ test("multiselect values are sent as a comma list", async () => {
   await screen.findByLabelText("From");
   fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-10-01" } });
   fireEvent.change(screen.getByLabelText("Kind"), { target: { value: "a" } });
-  fireEvent.click(screen.getByRole("button", { name: /Tags/ }));
-  fireEvent.click(await screen.findByLabelText("Ex"));
-  fireEvent.click(screen.getByLabelText("Why"));
+  fireEvent.click(screen.getByRole("button", { name: "Ex" }));
+  fireEvent.click(screen.getByRole("button", { name: "Why" }));
   await waitFor(() => assert.equal(previewCalls().at(-1)[1].params.tags, "x,y"));
 });

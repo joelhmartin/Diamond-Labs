@@ -1,6 +1,6 @@
 import { db } from "../config/database.js";
 import { accounts, invitations, memberships, users } from "../db/schema/index.js";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { createId } from "../lib/id.js";
 import { generateSecureToken } from "../lib/tokens.js";
 import { ERROR_CODES } from "@my-app/shared";
@@ -156,6 +156,24 @@ export async function revokeInvitation(invitationId, accountId) {
     .update(invitations)
     .set({ status: "revoked", updatedAt: new Date() })
     .where(eq(invitations.id, invitationId));
+}
+
+/**
+ * A practice (an `is_client` account) is managed by staff only and its
+ * invitations can never be accepted (assertNotClientAccount), so when an
+ * account becomes a practice its PENDING invitations are revoked: a status
+ * change, kept for the record, never a delete. Idempotent. Returns how many.
+ * The practice backfill (db/backfill-practices.js) calls it for every account
+ * it marks client; migration 0046 did the same once for existing practices.
+ */
+export async function revokePendingInvitations(accountIds, database = db) {
+  if (!accountIds?.length) return 0;
+  const rows = await database
+    .update(invitations)
+    .set({ status: "revoked", updatedAt: new Date() })
+    .where(and(inArray(invitations.accountId, accountIds), eq(invitations.status, "pending")))
+    .returning({ id: invitations.id });
+  return rows.length;
 }
 
 export async function resendInvitation(invitationId, accountId) {

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
  * arms it ("Click again to …"), a second click within `windowMs` runs the
  * action. For irreversible or outward-facing actions: issue, void, email, remove.
  */
-export function ConfirmButton({ onConfirm, children, confirmLabel = "Click again to confirm", className = "", disabled = false, windowMs = 4000 }) {
+export function ConfirmButton({ onConfirm, children, confirmLabel = "Click again to confirm", className = "", disabled = false, windowMs = 4000, ...rest }) {
   const [armed, setArmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const timer = useRef(null);
@@ -29,6 +29,7 @@ export function ConfirmButton({ onConfirm, children, confirmLabel = "Click again
 
   return (
     <button
+      {...rest}
       type="button"
       onClick={click}
       disabled={disabled || busy}

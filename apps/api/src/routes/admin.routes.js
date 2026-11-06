@@ -1,89 +1,26 @@
-import { eq, and, ne, asc, desc, sql } from "drizzle-orm";
+import { eq, and, ne, asc, sql } from "drizzle-orm";
 import { db } from "../config/database.js";
-import { users, accounts, memberships, products } from "../db/schema/index.js";
+import { users, products } from "../db/schema/index.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requireAdmin } from "../middleware/require-role.js";
-import { validate } from "../middleware/validate.js";
+import { validate, validateQuery } from "../middleware/validate.js";
 import * as auditService from "../services/audit.service.js";
 import * as authService from "../services/auth.service.js";
 import * as emailService from "../services/email.service.js";
 import { syncSeazonaProducts, EmptyRemoteError } from "../db/sync-seazona-products.js";
 import { env } from "../config/env.js";
-import { ERROR_CODES, userRoleChangeSchema, roleChangeRefusal } from "@my-app/shared";
+import { listAdminUsers } from "../services/admin-users.service.js";
+import { ERROR_CODES, adminUsersQuerySchema, userRoleChangeSchema, roleChangeRefusal } from "@my-app/shared";
 
 export default async function adminRoutes(fastify) {
   // ──────────────────────────────────────────────────────────────
   // USERS
   // ──────────────────────────────────────────────────────────────
-
-  // List every user in the system with their primary account + linkage flags.
+  // List users with their primary account + linkage flags. Unpaged: everyone + summary
+  // (the Users screen). With `limit`: one filtered page + `total` (adminUsersQuerySchema).
   fastify.get("/admin/users", {
-    preHandler: [authenticate, requireAdmin],
-  }, async () => {
-    // Fetch all users
-    const userRows = await db
-      .select({
-        id: users.id,
-        email: users.email,
-        name: users.name,
-        role: users.role,
-        approvalStatus: users.approvalStatus,
-        status: users.status,
-        emailVerifiedAt: users.emailVerifiedAt,
-        lastLoginAt: users.lastLoginAt,
-        createdAt: users.createdAt,
-        seazonaClientId: users.seazonaClientId,
-        seazonaAccountNumber: users.seazonaAccountNumber,
-        hasPassword: sql`(${users.passwordHash} IS NOT NULL)`,
-      })
-      .from(users)
-      .orderBy(desc(users.createdAt));
-
-    // Fetch each user's primary (first) account
-    const primary = new Map();
-    const memberRows = await db
-      .select({
-        userId: memberships.userId,
-        accountId: memberships.accountId,
-        role: memberships.role,
-        accountName: accounts.name,
-        accountSlug: accounts.slug,
-      })
-      .from(memberships)
-      .innerJoin(accounts, eq(memberships.accountId, accounts.id))
-      .where(eq(memberships.status, "active"));
-
-    for (const m of memberRows) {
-      if (!primary.has(m.userId)) {
-        primary.set(m.userId, {
-          accountId: m.accountId,
-          name: m.accountName,
-          slug: m.accountSlug,
-          role: m.role,
-        });
-      }
-    }
-
-    const enriched = userRows.map((u) => ({
-      ...u,
-      account: primary.get(u.id) || null,
-    }));
-
-    return {
-      data: {
-        users: enriched,
-        summary: {
-          total: enriched.length,
-          admins:  enriched.filter((u) => u.role === "admin").length,
-          doctors: enriched.filter((u) => u.role === "doctor").length,
-          users:   enriched.filter((u) => u.role === "user").length,
-          seazonaLinked: enriched.filter((u) => u.seazonaClientId).length,
-          neverLoggedIn: enriched.filter((u) => !u.lastLoginAt).length,
-          passwordlessCount: enriched.filter((u) => !u.hasPassword).length,
-        },
-      },
-    };
-  });
+    preHandler: [authenticate, requireAdmin, validateQuery(adminUsersQuerySchema)],
+  }, async (request) => ({ data: await listAdminUsers(request.query) }));
 
   // Trigger a password reset email for a specific user.
   fastify.post("/admin/users/:id/send-password-reset", {

@@ -1,4 +1,4 @@
-import { CSV_EOL } from "@my-app/shared";
+import { openExportStream } from "@my-app/shared";
 
 /** An export failure with an HTTP status; the app's error handler renders { code, message, status }. */
 export class ExportError extends Error {
@@ -36,10 +36,12 @@ function filenameFor(sourceKey, params, extension) {
 }
 
 /**
- * Validate, then return a lazy stream of the export: the source is read one
- * page at a time (never all rows at once) and each row is serialized by the
- * format. `countPromise` resolves with the rows written once the stream ends
- * (or is abandoned), so a caller can audit it.
+ * Validate, read the first page, then return a lazy stream of the export,
+ * written by the shared paged writer (`openExportStream` in
+ * packages/shared/src/exports): the source is read one page at a time (never
+ * all rows at once) and each row is serialized by the format. A failing first
+ * read rejects here, before any byte is sent. `countPromise` resolves with the
+ * rows written once the stream ends (or is abandoned), so a caller can audit it.
  */
 export async function runExport({ registry, db, sourceKey, formatKey, params, pageSize = DEFAULT_PAGE_SIZE }) {
   const source = resolveSource(registry, sourceKey);
@@ -48,34 +50,10 @@ export async function runExport({ registry, db, sourceKey, formatKey, params, pa
     throw new ExportError("EXPORT_FORMAT_UNSUPPORTED", 422, "That format is not available for this export.");
   }
   const clean = validParams(source, params);
-
-  let rowCount = 0;
-  let settle;
-  const countPromise = new Promise((resolve) => { settle = resolve; });
-
-  async function* generate() {
-    try {
-      if (format.bom) yield "﻿";
-      if (format.header) yield format.header(source) + CSV_EOL;
-      for (let offset = 0; ; offset += pageSize) {
-        const { rows, total } = await source.fetchPage(db, clean, { limit: pageSize, offset });
-        if (rows.length) yield rows.map((row) => format.serializeRow(row, source) + CSV_EOL).join("");
-        rowCount += rows.length;
-        if (rows.length < pageSize || offset + rows.length >= total) break;
-      }
-      if (format.footer) yield format.footer(source);
-    } finally {
-      settle(rowCount);
-    }
-  }
-
-  return {
-    filename: filenameFor(sourceKey, clean, format.extension),
-    contentType: format.contentType,
-    params: clean,
-    stream: generate(),
-    countPromise,
-  };
+  const { stream, countPromise } = await openExportStream({
+    source, format, pageSize, readPage: (page) => source.fetchPage(db, clean, page),
+  });
+  return { filename: filenameFor(sourceKey, clean, format.extension), contentType: format.contentType, params: clean, stream, countPromise };
 }
 
 /** One page of a source plus its total, for an on-screen preview. */

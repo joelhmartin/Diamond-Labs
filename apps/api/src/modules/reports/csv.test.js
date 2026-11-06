@@ -39,7 +39,7 @@ describe("streamCsv", () => {
     const text = await drain(reply.body);
     expect(offsets).toEqual([0, 2000, 4000]);
     expect(text.split("\r\n").filter(Boolean)).toHaveLength(4501);
-    expect(text.startsWith("N\r\n0\r\n")).toBe(true);
+    expect(text.startsWith("\ufeffN\r\n0\r\n")).toBe(true);
   });
 
   test("a client-paged report exports past the on-screen cap (6000 rows, not 5000)", async () => {
@@ -81,7 +81,7 @@ describe("streamCsv", () => {
     });
     const reply = fakeReply();
     await call(reg, reply);
-    expect(await drain(reply.body)).toBe('"A ""x""",N\r\n"b""c,d",5\r\n"e\nf",0\r\n');
+    expect(await drain(reply.body)).toBe('\ufeff"A ""x""",N\r\n"b""c,d",5\r\n"e\nf",0\r\n');
   });
 
   test("errors before the first byte are thrown, not streamed", async () => {

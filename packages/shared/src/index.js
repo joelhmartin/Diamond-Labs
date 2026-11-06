@@ -42,9 +42,12 @@ export * from "./lab/logistics.js";
 export * from "./schemas/logistics.schema.js";
 export * from "./schemas/lab-desk.schema.js";
 export * from "./schemas/practices.schema.js";
+export * from "./practices/practices.js";
 
 // Exports
 export * from "./exports/csv.js";
+export * from "./exports/csv-format.js";
+export * from "./exports/stream.js";
 export * from "./schemas/exports.schema.js";
 
 // Money (integer cents)

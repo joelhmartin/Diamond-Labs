@@ -161,7 +161,7 @@ export function paymentHistoryWhere({ accountIds = [], userId, includeOwn = fals
 /** A client's transaction-level payment history over their scope (paymentHistoryWhere). */
 export async function listPaymentHistory({ accountIds, userId, includeOwn }, database = db) {
   const rows = await database
-    .select(getTableColumns(invoicePayments))
+    .select({ ...getTableColumns(invoicePayments), accountId: invoices.accountId })
     .from(invoicePayments)
     .leftJoin(invoices, eq(invoices.id, invoicePayments.invoiceId))
     .where(paymentHistoryWhere({ accountIds, userId, includeOwn }));

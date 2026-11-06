@@ -131,6 +131,21 @@ test("markShipmentShipped emits lab.order_shipped once for the claimant only: ev
   });
 });
 
+test("a practice's box alerts the practice's people (the party audience every practice alert uses), not just the doctor", async () => {
+  notified.length = 0;
+  const a = order({ shipmentId: "sh1", accountId: "acc1" });
+  const client = { id: "doc1", name: "Dr. Ada", email: "dr@x.com", role: "doctor", accountNumber: null, profile: null };
+  const tx = fakeTx({
+    selects: [[shipment], [a], [a], [], [], [a], [client]],
+    updates: [[{ id: "sh1" }], [{ ...a, status: "shipped", version: 4 }]],
+  });
+  await svc.markShipmentShipped("sh1", { byUserId: "u1" }, deps(tx));
+  assert.equal(notified.length, 1);
+  assert.deepEqual(notified[0].args.audience, { party: "practice:acc1", userIds: ["doc1"] });
+  // Order numbers, carrier and tracking only: nothing about the patient or the case.
+  assert.deepEqual(Object.keys(notified[0].args.data).sort(), ["carrier", "carrierCode", "moreOrders", "orderNumbers", "shopOrderNumber", "trackingNumber"]);
+});
+
 test("marking a legacy (Seazona) order shipped issues and drafts no invoice: its bill is the imported legacy invoice", async () => {
   notified.length = 0;
   const a = order({ shipmentId: "sh1", source: "legacy", sourceId: "ord-1" });
