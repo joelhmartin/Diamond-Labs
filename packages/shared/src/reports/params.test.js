@@ -86,6 +86,14 @@ test("spring-forward DST and 05:30Z cases", () => {
   assert.equal(resolveDateRange("today", new Date("2026-11-02T06:30:00Z"), CHI).to, "2026-11-02");
 });
 
+test("maxDays applies to presets too: ytd on a 63-day range throws, last30 does not", () => {
+  const now = new Date("2026-11-05T12:00:00Z");
+  assert.throws(() => resolveDateRange("ytd", now, CHI, { maxDays: 63 }), /63/);
+  assert.throws(() => resolveDateRange("last12m", now, CHI, { maxDays: 63 }), /63/);
+  assert.equal(resolveDateRange("last30", now, CHI, { maxDays: 63 }).from, "2026-10-07");
+  assert.equal(resolveDateRange("ytd", now, CHI).from, "2026-01-01", "no maxDays, no limit");
+});
+
 test("custom range rejects from after to and spans over maxDays", () => {
   const now = new Date("2026-11-05T12:00:00Z");
   const ok = resolveDateRange({ from: "2026-11-01", to: "2026-11-03" }, now, CHI);

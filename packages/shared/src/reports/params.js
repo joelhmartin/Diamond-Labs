@@ -130,12 +130,15 @@ export function resolvePreset(preset, today) {
  * Resolve a preset name or custom { from, to } into inclusive "YYYY-MM-DD"
  * ends plus the period to compare with (`previous`): for a calendar preset the
  * matching calendar period one period back (previousFor), for a rolling preset
- * or a custom range the equal-length window immediately before.
+ * or a custom range the equal-length window immediately before. `maxDays`
+ * applies to presets too: "ytd" on a 63-day report throws like a custom range would.
  */
 export function resolveDateRange(value, now, tz = "UTC", { maxDays } = {}) {
   if (typeof value === "string") {
     const r = resolvePreset(value, localDay(now, tz));
     if (!r) throw new Error(`Unknown date preset "${value}"`);
+    const problem = checkCustomRange(r, { maxDays });
+    if (problem) throw new Error(problem);
     return r;
   }
   const problem = checkCustomRange(value, { maxDays });

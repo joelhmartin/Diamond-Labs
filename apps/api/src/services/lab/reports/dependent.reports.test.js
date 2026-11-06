@@ -9,9 +9,10 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { STAFF_ROLES, LAB_TIMEZONE } from "@my-app/shared";
 import { createRegistry } from "../../../modules/reports/registry.js";
+import { runReport, createRunSlots, ReportError } from "../../../modules/reports/runner.js";
 import { capacityFor, toCalendar } from "../../../modules/business-calendar/index.js";
 import { planWith } from "../../../modules/workflows/index.js";
-import { fakeTx } from "../../../test/fake-tx.js";
+import { fakeTx, fakeDb } from "../../../test/fake-tx.js";
 import { executedSql } from "../../../test/sql-text.js";
 import { LAB_CAPABILITIES, registerLabReports } from "./index.js";
 import { NO_REP } from "./sales.reports.js";
@@ -206,6 +207,21 @@ test("pan numbers, pickups and deliveries read pieces 6 and 8 without notes or p
   }]);
   assert.ok(!JSON.stringify(route).includes("gate code"), "the practice's delivery notes never reach the report");
   assert.equal(report("operations.deliveries").params[0].maxDays, 63, "listStops' 62-day span, inclusive");
+});
+
+test("deliveries: a preset longer than 63 days is INVALID on the range, never a 500", async () => {
+  const run = (query) => runReport({
+    registry: reg, db: fakeDb(fakeTx({ selects: [] })), key: "operations.deliveries", query, actor: boss, now: NOW, tz: LAB_TIMEZONE, slots: createRunSlots(),
+  });
+  for (const range of ["ytd", "last12m", "lastYear"]) {
+    await assert.rejects(run({ range }), (err) => err instanceof ReportError && err.code === "INVALID" && err.field === "range", range);
+  }
+  assert.ok(Array.isArray((await run({ range: "last30" })).rows));
+  // listStops' own refusal is mapped at the report boundary too (a range the param check let through).
+  await assert.rejects(
+    report("operations.deliveries").run(fakeTx(), { range: { from: "2026-11-05", to: "2027-02-01" } }, boss, ctx()),
+    (err) => err instanceof ReportError && err.code === "INVALID" && err.field === "range" && /62 days/.test(err.message),
+  );
 });
 
 test("materials used lists piece 6's materials and lots per line, staff (no money columns)", async () => {

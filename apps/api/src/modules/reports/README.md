@@ -72,7 +72,8 @@ compare with: for `mtd`, `qtd`, `ytd`, `lastMonth`, `lastYear` and `last12m`
 the matching calendar period one back (days clamped to the month's length),
 for the rolling presets and custom ranges the equal-length window just
 before. `resolvePreset(preset, day)` gives the same `{ from, to, previous }`
-for a known day. Custom ranges are checked for `from <= to` and `maxDays`.
+for a known day. Custom ranges are checked for `from <= to`; custom ranges and
+resolved presets alike are checked against `maxDays` (a too-long preset is INVALID on that param).
 
 `activityHealth({ recent, baseline, lastAt, asOf }, { inactiveDays, declining, stable })`
 returns `{ band: "healthy" | "stable" | "declining" | "inactive", trend, isNew }`.

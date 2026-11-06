@@ -34,6 +34,15 @@ describe("paramsSchema", () => {
     expect(() => parse(params, { range: "nonsense" })).toThrow();
   });
 
+  test("dateRange: a preset longer than maxDays is a ZodError on that param", () => {
+    const params = [{ name: "range", type: "dateRange", default: "last7", maxDays: 40 }];
+    let err;
+    try { parse(params, { range: "ytd" }); } catch (e) { err = e; }
+    expect(err?.issues?.[0]?.path).toEqual(["range"]);
+    expect(err.issues[0].message).toMatch(/40/);
+    expect(parse(params, { range: "last30" }).range.from).toBe("2026-10-07");
+  });
+
   test("date, toggle, multiselect, lookup and required", () => {
     const params = [
       { name: "on", type: "date" },

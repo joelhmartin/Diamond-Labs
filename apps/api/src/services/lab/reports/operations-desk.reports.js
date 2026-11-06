@@ -14,7 +14,9 @@ import { sql } from "drizzle-orm";
 import { PICKUP_STATUS_LABELS, TIME_PREFERENCE_LABELS } from "@my-app/shared";
 import { labOrders, pickups, users } from "../../../db/schema/index.js";
 import { businessDaysBetween } from "../../../modules/business-calendar/index.js";
+import { ReportError } from "../../../modules/reports/runner.js";
 import { listStops } from "../deliveries.service.js";
+import { LabOrderError } from "../lab-order-rules.js";
 import {
   ORDER_LINK, clientName, labCalendar, labToday, num, orderAndPage, rowsOf,
 } from "./lab-metrics.js";
@@ -137,6 +139,16 @@ const pickupsReport = {
 
 const addressLine = (a) => (a ? [a.address1, a.address2, a.city, [a.state, a.zip].filter(Boolean).join(" ")].filter(Boolean).join(", ") : null);
 
+/** listStops, with its own range refusal (INVALID) reported on the range param instead of as a 500. */
+async function stopsFor(tx, range, ctx) {
+  try {
+    return await listStops(tx, { from: range.from, to: range.to, todayIso: labToday(ctx) });
+  } catch (err) {
+    if (err instanceof LabOrderError && err.code === "INVALID") throw new ReportError("INVALID", err.message, "range");
+    throw err;
+  }
+}
+
 const deliveries = {
   key: "operations.deliveries", group: GROUP, title: "Deliveries", requires: ["deliveries"],
   description: "The local-delivery route list by day: each stop (a practice), its orders due that day and the pickups the driver collects there. A late stop carries an order due before the range. At most 63 days.",
@@ -147,7 +159,7 @@ const deliveries = {
     int("orders", "Orders"), { id: "orderNumbers", label: "Order #s", type: "text", sortable: false }, int("pickups", "Pickups"), int("boxes", "Boxes"),
   ],
   async run(tx, { range }, _actor, ctx) {
-    const stops = await listStops(tx, { from: range.from, to: range.to, todayIso: labToday(ctx) });
+    const stops = await stopsFor(tx, range, ctx);
     const perDay = new Map();
     const rows = stops.map((s) => {
       const stop = (perDay.get(s.day) ?? 0) + 1;

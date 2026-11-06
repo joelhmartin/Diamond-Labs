@@ -29,6 +29,19 @@ function dateRangeSchema(p) {
   });
 }
 
+/**
+ * Resolve one dateRange value. A preset is only measurable once `now` is known,
+ * so its `maxDays` check lands here; a failure is raised as a ZodError on the
+ * param so callers report it like any other invalid value.
+ */
+function resolveRange(p, value, now, tz) {
+  try {
+    return resolveDateRange(value, now, tz, { maxDays: p.maxDays });
+  } catch (err) {
+    throw new z.ZodError([{ code: "custom", path: [p.name], message: err.message }]);
+  }
+}
+
 function baseSchema(p) {
   switch (p.type) {
     case "dateRange": return dateRangeSchema(p);
@@ -69,9 +82,7 @@ export function paramsSchema(def) {
         if (!p.required && Object.hasOwn(query, p.name) && isBlank(query[p.name])) delete out[p.name];
       }
       for (const p of specs) {
-        if (p.type === "dateRange" && out[p.name] !== undefined) {
-          out[p.name] = resolveDateRange(out[p.name], now, tz, { maxDays: p.maxDays });
-        }
+        if (p.type === "dateRange" && out[p.name] !== undefined) out[p.name] = resolveRange(p, out[p.name], now, tz);
       }
       return out;
     },
