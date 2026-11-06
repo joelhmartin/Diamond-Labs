@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Loader2, RefreshCw, Search, AlertCircle, Truck, LayoutGrid, Rows3, X } from "lucide-react";
 import { LAB_BOARD_COLUMNS, LAB_BOARD_TILES, LAB_STATUS_LABELS, formatUsDate, isTerminalLabStatus } from "@my-app/shared";
@@ -14,6 +14,7 @@ import { BoardTiles } from "../../components/lab/BoardTiles.jsx";
 import { ScanBox } from "../../modules/barcode-lookup/index.js";
 import { TagPicker, useTagDefinitions } from "../../modules/record-tags/index.js";
 import { SegmentedControl } from "../../components/ui/SegmentedControl.jsx";
+import { useLatestRequest } from "../../hooks/useLatestRequest.js";
 import { INPUT_BASE } from "../../components/lab/form-styles.js";
 
 const PAGE_STEP = 25;
@@ -95,21 +96,19 @@ export function LabBoardPage() {
 
   // Only the newest request may write results: a slow response for an older
   // filter must not overwrite what the current filter shows.
-  const requestSeq = useRef(0);
+  const latest = useLatestRequest();
   const load = useCallback(async () => {
-    const seq = ++requestSeq.current;
     try {
-      const res = await api.get("/lab/orders", { params: boardParams({ ...filters, tile, dueOn }) });
-      if (seq !== requestSeq.current) return;
+      const { stale, value: res } = await latest(() => api.get("/lab/orders", { params: boardParams({ ...filters, tile, dueOn }) }));
+      if (stale) return;
       setCards(res.data.data.orders);
       setError(null);
+      setLoading(false);
     } catch (err) {
-      if (seq !== requestSeq.current) return;
       setError(errorText(err));
-    } finally {
-      if (seq === requestSeq.current) setLoading(false);
+      setLoading(false);
     }
-  }, [filters, tile, dueOn]);
+  }, [latest, filters, tile, dueOn]);
 
   // The tile counts cover every open order, so they reload with Refresh and after moves, not on a filter change.
   const loadTiles = useCallback(async () => {

@@ -39,7 +39,7 @@ function mount() {
 test('editor "Set to base price" sends one bulk call with the selected variants', async () => {
   mount();
   await screen.findByText("Crown");
-  for (const box of screen.getAllByLabelText("Select row")) fireEvent.click(box);
+  for (const box of screen.getAllByLabelText(/^Select (?!page|group|all)/)) fireEvent.click(box);
   fireEvent.click(await screen.findByRole("button", { name: "Set to base price" }));
   fireEvent.click(await screen.findByRole("button", { name: "Click again to set 2 to base" }));
   await waitFor(() => assert.equal(post.mock.calls.length, 1));
@@ -54,7 +54,7 @@ test('editor "Set to base price" sends one bulk call with the selected variants'
 test("adjust by percent shows a preview and sends rounded prices", async () => {
   mount();
   await screen.findByText("Crown");
-  fireEvent.click(screen.getAllByLabelText("Select row")[0]);
+  fireEvent.click(screen.getAllByLabelText(/^Select (?!page|group|all)/)[0]);
   fireEvent.change(await screen.findByLabelText("Adjust by percent"), { target: { value: "-10" } });
   assert.ok(await screen.findByText("$90.00 → $81.00"));
   fireEvent.click(screen.getByRole("button", { name: "Adjust 1 by -10%" }));

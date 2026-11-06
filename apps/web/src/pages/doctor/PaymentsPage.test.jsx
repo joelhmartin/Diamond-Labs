@@ -3,6 +3,7 @@ import { test, afterEach, vi } from "vitest";
 import assert from "node:assert/strict";
 import { render, screen, cleanup } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { ToastProvider } from "../../components/ui/Toast.jsx";
 
 const get = vi.fn();
 vi.mock("../../config/api.js", () => ({ default: { get: (...a) => get(...a) } }));
@@ -16,7 +17,7 @@ const acct = (id, name, n) => ({ id, name, accountNumber: n, organizationId: nul
 const setScope = (accounts) => useAccountStore.setState({ clientScope: { accounts, organizations: [] }, practiceScope: "all", clientScopeLoaded: true });
 const mount = () => {
   get.mockResolvedValue({ data: { data: { payments: [pay("T1", "a1"), pay("T2", "a2"), pay("T3", null)] } } });
-  render(<MemoryRouter><PaymentsPage /></MemoryRouter>);
+  render(<MemoryRouter><ToastProvider><PaymentsPage /></ToastProvider></MemoryRouter>);
 };
 
 test("PaymentsPage: a login with several practices gets a Practice column naming each payment's practice", async () => {

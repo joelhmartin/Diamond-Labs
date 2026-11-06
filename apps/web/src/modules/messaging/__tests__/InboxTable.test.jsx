@@ -64,7 +64,7 @@ test("bulk Complete loops POST /complete per selected thread and toasts failures
   });
   mount();
   await screen.findByText("Subject t1");
-  const boxes = screen.getAllByLabelText("Select row");
+  const boxes = screen.getAllByLabelText(/^Select (?!page|group|all)/);
   fireEvent.click(boxes[0]);
   fireEvent.click(boxes[1]);
   fireEvent.click(await screen.findByRole("button", { name: /^complete$/i }));

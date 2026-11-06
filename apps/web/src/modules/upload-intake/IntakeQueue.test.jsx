@@ -36,7 +36,7 @@ test("bulk discard uses ConfirmButton", async () => {
   post.mockResolvedValue({ data: { data: { id: "x" } } });
   mount();
   await screen.findByText("Sam");
-  screen.getAllByLabelText("Select row").slice(0, 2).forEach((b) => fireEvent.click(b));
+  screen.getAllByLabelText(/^Select (?!page|group|all)/).slice(0, 2).forEach((b) => fireEvent.click(b));
   const bulk = await screen.findByRole("button", { name: "Discard selected" });
   fireEvent.click(bulk);
   assert.equal(post.mock.calls.length, 0, "the first click only arms it");

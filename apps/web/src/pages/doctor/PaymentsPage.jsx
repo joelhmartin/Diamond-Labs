@@ -118,6 +118,8 @@ export function PaymentsPage() {
         columns={columns}
         searchPlaceholder="Invoice # or reference"
         itemLabel="payments"
+        selectable={false}
+        exportFilteredList
         exportFileName="payments.csv"
         emptyText="No payments yet."
       />

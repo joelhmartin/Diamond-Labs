@@ -43,7 +43,7 @@ test('selecting two rows offers "Move to <label>" for their common move', async 
   const onChanged = vi.fn();
   mount({ post, onChanged });
   fireEvent.click(screen.getByRole("button", { name: /Received/ }));
-  const boxes = screen.getAllByRole("checkbox", { name: "Select row" });
+  const boxes = screen.getAllByRole("checkbox", { name: /^Select (?!page|group|all)/ });
   fireEvent.click(boxes[0]);
   fireEvent.click(boxes[1]);
   const action = screen.getByRole("button", { name: /Move to In production/ });

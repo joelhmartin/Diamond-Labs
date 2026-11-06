@@ -28,7 +28,7 @@ function mount() {
 
 async function selectRows(...indexes) {
   await screen.findByText("Alpha");
-  const boxes = screen.getAllByLabelText("Select row");
+  const boxes = screen.getAllByLabelText(/^Select (?!page|group|all)/);
   indexes.forEach((i) => fireEvent.click(boxes[i]));
 }
 

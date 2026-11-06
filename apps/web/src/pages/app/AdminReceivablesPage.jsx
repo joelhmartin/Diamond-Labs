@@ -30,6 +30,14 @@ const searchText = (r) => [r.name, r.accountNumber, r.organizationName].filter(B
 const searchFn = (r, q) =>
   [searchText(r), ...(r.isGroup ? r.members.map(searchText) : [])].join(" ").toLowerCase().includes(q.toLowerCase());
 
+const SELECTABLE = true; // the totals row mirrors the leading checkbox column
+
+/** Why the table is empty: a search or filter that matches nothing, or truly no balances. */
+function emptyMessage(table) {
+  if (table.q.trim()) return `No practices match "${table.q.trim()}".`;
+  return table.filters.pastDue ? "Nothing past due." : "No open balances.";
+}
+
 const dollars = (cents) => (cents / 100).toFixed(2);
 
 function receivableColumns({ lastMonth, emailStatement, openCredit }) {
@@ -92,17 +100,17 @@ function GroupPractices({ group }) {
 }
 
 /** Totals for the rows the table currently matches (search + filters), so the footer follows the filter. */
-function TotalsRow({ rows, columnCount }) {
+function TotalsRow({ rows, columnCount, selectable }) {
   const sum = (pick) => rows.reduce((s, r) => s + (pick(r) || 0), 0);
   const cell = "px-4 py-3 text-right text-sm";
   return (
     <tr className="bg-surface-50 font-semibold text-navy">
-      <td className="w-10 px-4 py-3" />
+      {selectable && <td className="w-10 px-4 py-3" />}
       <td className="w-8 px-4 py-3" />
       <td className="px-4 py-3 text-sm">Total ({rows.reduce((n, r) => n + practiceCount(r), 0)} practices)</td>
       <td className={cell}>{formatCents(sum((r) => r.balanceCents))}</td>
       {AGING_BUCKETS.map((b) => <td key={b.key} className={cell}>{formatCents(sum((r) => r.buckets[b.key]))}</td>)}
-      <td colSpan={columnCount - 4 - AGING_BUCKETS.length} />
+      <td colSpan={columnCount - 3 - AGING_BUCKETS.length} />
     </tr>
   );
 }
@@ -154,7 +162,7 @@ export function AdminReceivablesPage() {
     }
   };
   const columns = receivableColumns({ lastMonth, emailStatement, openCredit: setCreditFor });
-  const footer = table.matchingRows.length > 0 ? <TotalsRow rows={table.matchingRows} columnCount={columns.length + 2} /> : null;
+  const footer = table.matchingRows.length > 0 ? <TotalsRow rows={table.matchingRows} columnCount={columns.length + 1} selectable={SELECTABLE} /> : null;
 
   return (
     <div className="mx-auto max-w-7xl p-6 md:p-8">
@@ -190,8 +198,9 @@ export function AdminReceivablesPage() {
             By group
           </button>
         )}
+        selectable={SELECTABLE}
         exportFileName="receivables.csv"
-        emptyText={table.filters.pastDue ? "Nothing past due." : "No open balances."}
+        emptyText={emptyMessage(table)}
       />
       {creditFor && (
         <AccountCreditModal creditPath={creditPathOf(creditFor)} clientName={rowName(creditFor)} onClose={() => setCreditFor(null)} onRecorded={load} />

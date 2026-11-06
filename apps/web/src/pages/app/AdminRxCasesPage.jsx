@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { RefreshCw } from "lucide-react";
 import api from "../../config/api.js";
@@ -194,6 +194,13 @@ export function AdminRxCasesPage() {
     mode: "client", rows: cases, searchFn, filters, initialFilters: { status: QUEUE_STATUSES },
     loading: loading || resolvedLoading, error, reload: refresh,
   });
+
+  // Clearing the status picker goes back to the open queue (the default), never to every loaded row.
+  const statusPicked = table.filters.status;
+  useLayoutEffect(() => {
+    if (!statusPicked?.length) table.setFilter("status", QUEUE_STATUSES);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setFilter is a fresh function every render
+  }, [statusPicked]);
 
   // Resolved rows aren't in the default fetch; pull them the first time that option is picked.
   const wantsResolved = table.filters.status?.includes(RESOLVED_FILTER);

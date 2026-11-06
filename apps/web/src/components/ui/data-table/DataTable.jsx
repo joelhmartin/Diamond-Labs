@@ -3,8 +3,29 @@ import { AlertCircle, ArrowDown, ArrowUp, ChevronRight, Loader2 } from "lucide-r
 import { Pagination } from "../Pagination.jsx";
 import { errorText } from "../../../lib/requests.js";
 import { groupRows } from "../../../lib/data-table/table-state.js";
+import { toCsv, downloadCsv } from "../../../lib/data-table/csv.js";
 import { DataTableToolbar } from "./DataTableToolbar.jsx";
 import { BulkBar } from "./BulkBar.jsx";
+
+/**
+ * Esc that means something else: typed in a field, or an open dialog is taking it (it closes the
+ * modal; the selection behind it stays).
+ */
+function escapeBelongsElsewhere(e) {
+  const t = e.target;
+  if (t?.closest?.("input, textarea, select, [contenteditable=''], [contenteditable='true'], [role='dialog'], [aria-modal='true']")) return true;
+  return Boolean(document.querySelector("[role='dialog'], [aria-modal='true']"));
+}
+
+/** "Select <first text cell>" so each row's checkbox is named for the row it picks. */
+function rowLabelFor(row, columns) {
+  for (const col of columns) {
+    if (col.export === false && !col.exportValue) continue;
+    const v = col.exportValue ? col.exportValue(row) : col.cell(row);
+    if ((typeof v === "string" && v.trim()) || typeof v === "number") return `Select ${v}`;
+  }
+  return "Select row";
+}
 
 /** Clicks on these inside a row never select it and never fire onRowClick. */
 const IGNORE = "a, button, input, select, textarea, label, [data-row-ignore]";
@@ -41,6 +62,7 @@ export function DataTable({
   exportable = true,
   exportFileName = "export.csv",
   exportAll,
+  exportFilteredList = false,
   emptyText = "Nothing to show.",
   notice,
   selectable = true,
@@ -55,11 +77,16 @@ export function DataTable({
 
   useLayoutEffect(() => registerColumns(columns), [registerColumns, columns]);
 
+  // `exportFilteredList` (client mode): the toolbar gets an "Export CSV" that saves the filtered list, for a table with no row selection (so no bulk bar to export from).
+  const exportFiltered = !exportAll && exportFilteredList && table.mode === "client"
+    ? () => downloadCsv(exportFileName, toCsv(table.matchingRows, columns))
+    : exportAll;
+
   const hasSelection = selectable && selection.count > 0;
   useEffect(() => {
     if (!hasSelection) return undefined;
     const onKey = (e) => {
-      if (e.key === "Escape" && !e.defaultPrevented) selection.clear();
+      if (e.key === "Escape" && !e.defaultPrevented && !escapeBelongsElsewhere(e)) selection.clear();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -90,7 +117,6 @@ export function DataTable({
           aria-current={highlighted ? "true" : undefined}
           onClick={(e) => handleRowClick(e, row)}
           onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }}
-          aria-selected={selectable ? selected : undefined}
           className={[
             "border-t border-surface-300/40 transition-colors",
             selected ? "bg-brand-500/5" : "hover:bg-surface-50/60",
@@ -104,7 +130,7 @@ export function DataTable({
             <td className={`${cellPad} w-10`}>
               <input
                 type="checkbox"
-                aria-label="Select row"
+                aria-label={rowLabelFor(row, columns)}
                 checked={selected}
                 disabled={!canSelect}
                 onChange={() => {}}
@@ -148,7 +174,7 @@ export function DataTable({
       {hasSelection ? (
         <BulkBar table={table} columns={columns} bulkActions={bulkActions} exportable={exportable} exportFileName={exportFileName} />
       ) : (
-        <DataTableToolbar table={table} searchable={searchable} searchPlaceholder={searchPlaceholder} toolbarRight={toolbarRight} exportAll={exportAll} />
+        <DataTableToolbar table={table} searchable={searchable} searchPlaceholder={searchPlaceholder} toolbarRight={toolbarRight} exportAll={exportFiltered} />
       )}
       {selectable && selection.allMatchingAvailable && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl bg-brand-500/5 px-4 py-2 text-xs text-navy/70">

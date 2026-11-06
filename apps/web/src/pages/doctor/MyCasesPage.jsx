@@ -149,6 +149,8 @@ export function MyCasesPage() {
         columns={columns}
         searchPlaceholder="Case #, device, or patient"
         itemLabel="cases"
+        selectable={false}
+        exportFilteredList
         exportFileName="my-cases.csv"
         highlightRowId={linkedId}
         emptyText="No cases yet. Submitted prescriptions appear here with their production status."

@@ -38,7 +38,7 @@ test("row click navigates to link and marks read", async () => {
 test("bulk Mark read posts the selected ids", async () => {
   mount();
   await screen.findByText("Order 100 shipped");
-  const boxes = screen.getAllByLabelText("Select row");
+  const boxes = screen.getAllByLabelText(/^Select (?!page|group|all)/);
   fireEvent.click(boxes[0]);
   fireEvent.click(boxes[1]);
   fireEvent.click(await screen.findByRole("button", { name: /mark read/i }));
