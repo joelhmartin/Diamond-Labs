@@ -66,6 +66,7 @@ const ref = (p) => ({ pickupNumber: p.pickupNumber, pickupId: p.id });
  * yet stays keyed to themself.
  */
 async function staffEntryPartyKey(tx, clientUserId, requestedAccountId) {
+  // Never "": labPickupRequestSchema's accountId is id.optional(), which refuses an empty string (logistics.schema.test.js).
   const accountId = await practiceForNewRecord(tx, { ownerUserId: clientUserId, requestedAccountId: isAllAccounts(requestedAccountId) ? null : requestedAccountId });
   return practiceKeyFor({ accountId, ownerId: clientUserId });
 }

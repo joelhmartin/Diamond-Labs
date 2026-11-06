@@ -102,7 +102,9 @@ test("ship-to from a shop order: the checkout's address and phone", () => {
 
 test("shipped alert audience: the box's one practice, else the doctor, else a guest's address", () => {
   const doctor = { userId: "doc1", email: "dr@x.com" };
-  assert.deepEqual(shippedAudience([o({ accountId: "a1" }), o({ id: "lo2", accountId: "a1" })], doctor), { party: "practice:a1" });
+  assert.deepEqual(shippedAudience([o({ accountId: "a1" }), o({ id: "lo2", accountId: "a1" })], doctor), { party: "practice:a1", userIds: ["doc1"] });
+  // A practice order with no client user: the party alone.
+  assert.deepEqual(shippedAudience([o({ clientUserId: null, accountId: "a1" })], { userId: null, email: "x@example.test" }), { party: "practice:a1" });
   // No practice yet (a doctor the backfill has not reached): the doctor, as before.
   assert.deepEqual(shippedAudience([o({ accountId: null })], doctor), { userIds: ["doc1"] });
   assert.deepEqual(shippedAudience([o({})], doctor), { userIds: ["doc1"] });
@@ -111,4 +113,16 @@ test("shipped alert audience: the box's one practice, else the doctor, else a gu
   assert.deepEqual(shippedAudience([o({ accountId: "a1" }), o({ id: "lo2", accountId: null })], doctor), { userIds: ["doc1"] });
   // A guest shop order: its address only.
   assert.deepEqual(shippedAudience([o({ clientUserId: null, accountId: null })], { userId: null, email: "guest@x.com" }), { addresses: { email: ["guest@x.com"] } });
+});
+
+test("a practice box whose practice resolves to nobody (inactive, not a client, no active members) still reaches the doctor", async () => {
+  const { audienceMembers } = await import("./lab-notifications.js");
+  const rows = [{ id: "doc1", email: "dr@example.test", role: "doctor", status: "active", approvalStatus: "approved" }];
+  // practiceAudience returns no members for such a practice; the doctor rides along by userIds.
+  const audience = shippedAudience([o({ accountId: "a1" })], { userId: "doc1", email: "dr@example.test" });
+  assert.deepEqual(audienceMembers(rows, audience, { accountMembers: [], orgAdmins: [] }).map((u) => u.id), ["doc1"]);
+  // With members, the doctor (also a member) appears once.
+  const members = [{ userId: "doc1", accountId: "a1", status: "active" }, { userId: "m2", accountId: "a1", status: "active" }];
+  const rows2 = [...rows, { id: "m2", email: "m2@example.test", role: "user", status: "active" }];
+  assert.deepEqual(audienceMembers(rows2, audience, { accountMembers: members, orgAdmins: [] }).map((u) => u.id).sort(), ["doc1", "m2"]);
 });

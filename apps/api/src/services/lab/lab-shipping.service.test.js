@@ -141,7 +141,7 @@ test("a practice's box alerts the practice's people (the party audience every pr
   });
   await svc.markShipmentShipped("sh1", { byUserId: "u1" }, deps(tx));
   assert.equal(notified.length, 1);
-  assert.deepEqual(notified[0].args.audience, { party: "practice:acc1" });
+  assert.deepEqual(notified[0].args.audience, { party: "practice:acc1", userIds: ["doc1"] });
   // Order numbers, carrier and tracking only: nothing about the patient or the case.
   assert.deepEqual(Object.keys(notified[0].args.data).sort(), ["carrier", "carrierCode", "moreOrders", "orderNumbers", "shopOrderNumber", "trackingNumber"]);
 });
