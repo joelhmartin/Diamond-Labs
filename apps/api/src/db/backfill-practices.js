@@ -121,14 +121,17 @@ const pairs = (entries) => sql.join(entries.map(([a, b]) => sql`(${a}, ${b})`), 
 /**
  * Applies a plan on `tx` (the caller owns the transaction). Returns counts
  * only. Record updates touch only rows still to be mapped: `account_id` where
- * null, party keys equal to the legacy `practice:<client id>`, and
- * statement_sends whose subject_key is still ''.
+ * null, party keys equal to the legacy `practice:<client id>`, a practice
+ * doctor's own `user:<id>` party keys (pickups and threads from before they had
+ * a practice; only users in plan.practiceOfUser, never a practice-less
+ * shopper's), and statement_sends whose subject_key is still ''. All in the
+ * caller's one transaction; a re-run finds nothing left to rewrite.
  */
 export async function writePracticeBackfill(plan, tx) {
   const counts = {
     createdAccounts: 0, markedClient: 0, fieldsSet: 0, membershipsAdded: 0, accountsDeleted: 0, sharedReported: plan.reportShared.length,
     conflicts: (plan.conflicts ?? []).length, blockedKeys: (plan.blockedKeys ?? []).length,
-    rxCases: 0, labOrders: 0, invoices: 0, pickups: 0, messageThreads: 0, statementSends: 0,
+    rxCases: 0, labOrders: 0, invoices: 0, pickups: 0, messageThreads: 0, userKeyPickups: 0, userKeyMessageThreads: 0, statementSends: 0,
   };
   if (plan.createAccounts.length) {
     await tx.insert(accounts).values(plan.createAccounts.map((c) => ({
@@ -163,11 +166,19 @@ export async function writePracticeBackfill(plan, tx) {
     counts.invoices = affected(await tx.execute(sql`update invoices t set account_id = m.account_id from (values ${map}) as m(user_id, account_id) where t.client_user_id = m.user_id and t.account_id is null`));
     counts.statementSends = affected(await tx.execute(sql`update statement_sends t set subject_key = 'account:' || m.account_id from (values ${map}) as m(user_id, account_id) where t.client_user_id = m.user_id and t.subject_key = ''`));
   }
-  const keys = [...plan.accountByLegacyKey].map(([legacy, id]) => [`practice:${legacy}`, `practice:${id}`]);
-  if (keys.length) {
-    const map = pairs(keys);
-    counts.pickups = affected(await tx.execute(sql`update pickups t set party_key = m.new_key from (values ${map}) as m(old_key, new_key) where t.party_key = m.old_key`));
-    counts.messageThreads = affected(await tx.execute(sql`update message_threads t set party_key = m.new_key from (values ${map}) as m(old_key, new_key) where t.party_key = m.old_key`));
-  }
+  const legacyKeys = [...plan.accountByLegacyKey].map(([legacy, id]) => [`practice:${legacy}`, `practice:${id}`]);
+  ({ pickups: counts.pickups, threads: counts.messageThreads } = await rewritePartyKeys(tx, legacyKeys));
+  const userKeys = [...plan.practiceOfUser].map(([userId, id]) => [`user:${userId}`, `practice:${id}`]);
+  ({ pickups: counts.userKeyPickups, threads: counts.userKeyMessageThreads } = await rewritePartyKeys(tx, userKeys));
   return counts;
+}
+
+/** pickups and message_threads whose party_key is an old key → its new key; counts per table. */
+async function rewritePartyKeys(tx, keyPairs) {
+  if (!keyPairs.length) return { pickups: 0, threads: 0 };
+  const map = pairs(keyPairs);
+  return {
+    pickups: affected(await tx.execute(sql`update pickups t set party_key = m.new_key from (values ${map}) as m(old_key, new_key) where t.party_key = m.old_key`)),
+    threads: affected(await tx.execute(sql`update message_threads t set party_key = m.new_key from (values ${map}) as m(old_key, new_key) where t.party_key = m.old_key`)),
+  };
 }

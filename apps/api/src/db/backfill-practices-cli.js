@@ -61,6 +61,7 @@ export async function main(argv, deps = {}) {
   }
   const written = await database.transaction((tx) => writePracticeBackfill(plan, tx));
   print(`written: ${JSON.stringify(written)}`);
+  print(`own user: keys moved to the doctor's practice: pickups ${written.userKeyPickups}, message threads ${written.userKeyMessageThreads}`);
   return 0;
 }
 

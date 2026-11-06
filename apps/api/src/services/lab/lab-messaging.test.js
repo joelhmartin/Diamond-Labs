@@ -96,6 +96,18 @@ test("a client starts a general thread for one practice: the only one, a named o
   await assert.rejects(messaging.createThread(d1, { party: "practice:P2", body: "Hi" }), (e) => e.code === "NOT_FOUND");
 });
 
+test("a client with a practice cannot name their own user: key to sidestep choosing one; a practice-less login still can", async () => {
+  const messaging = createLabMessaging({ db: fakeRootDb(), labName: "L", log: quiet, notify: async () => {}, overrides: { store: createFakeStore(), describeParty: async () => new Map() } });
+  const both = { id: "ga", role: "user", scope: inPractices("A", "B") };
+  const choose = (e) => e.statusCode === 422 && e.code === "PRACTICE_REQUIRED" && e.message === "Choose a practice.";
+  await assert.rejects(messaging.createThread(both, { party: "user:ga", body: "Hi" }), choose);
+  await assert.rejects(messaging.createThread(both, { party: " user:ga ", body: "Hi" }), choose);
+  await assert.rejects(messaging.createThread(d1, { party: "user:d1", body: "Hi" }), choose, "one practice: also refused");
+  const shopper = { id: "d6", role: "doctor", approvalStatus: "approved", scope: inPractices() };
+  assert.equal((await messaging.createThread(shopper, { party: "user:d6", body: "Hi" })).partyKey, "user:d6");
+  assert.equal((await messaging.createThread(staff, { party: "user:d6", body: "Hi" })).partyKey, "user:d6", "staff may address a practice-less client");
+});
+
 test("lab_order for a guest shop order has no party → null for staff thread creation", async () => {
   assert.equal(await labRecordResolvers.lab_order.resolve(queueDb(orderRow(null, null)).db, "o1", staff), null);
   assert.equal(await labRecordResolvers.lab_order.resolve(queueDb(orderRow(null, null)).db, "o1", admin), null);

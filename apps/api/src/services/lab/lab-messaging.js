@@ -7,7 +7,7 @@ import { createMessaging } from "../../modules/messaging/index.js";
 import * as recordFiles from "../../modules/record-files/index.js";
 import * as auditService from "../audit.service.js";
 import { markReadFor as markReadSeam, notify as notifySeam } from "../notify-seam.js";
-import { newPartyKey, parsePartyKey, partyKeysFor, practiceKeyFor, practiceLabel } from "../practice.js";
+import { assertNamedPartyKey, newPartyKey, parsePartyKey, partyKeysFor, practiceKeyFor, practiceLabel } from "../practice.js";
 
 /**
  * Lab glue for the generic messaging module: lab staff are the host, a
@@ -345,7 +345,7 @@ export async function labMessagingGuard(request, reply) {
 export function createLabMessaging({
   db, labName, notify = notifySeam, markRead = markReadSeam, log = console, fileService = recordFiles, overrides = {},
 }) {
-  return createMessaging({
+  const messaging = createMessaging({
     db,
     records: labRecordResolvers,
     isHost: isLabHost,
@@ -361,4 +361,12 @@ export function createLabMessaging({
     log,
     ...overrides,
   });
+  return {
+    ...messaging,
+    // A client's general thread for a named party: never their own `user:` key while they have a practice.
+    async createThread(user, input = {}) {
+      if (!isLabHost(user) && !input.recordType && typeof input.party === "string") assertNamedPartyKey(user, input.party.trim());
+      return messaging.createThread(user, input);
+    },
+  };
 }

@@ -39,8 +39,8 @@ const ALLOWED = new Map();
 const MENTION = /seazona_?client_?id/i;
 // JS comparisons and query/collection membership tests. Whitespace before "(" is allowed.
 const COMPARISON = /===|!==|[^=!<>]==[^=]|!=[^=]|\b(eq|ne|inArray|notInArray)\s*\(|\.(includes|has|indexOf)\s*\(|\bObject\.is\s*\(/;
-// Raw SQL: the column (or an interpolated field) followed by =, <>, !=, IN or ANY.
-const RAW_SQL = /seazona_?client_?id["\w.]*\)?\s*(=(?!=)|<>|!=|\bin\b|=\s*any\b)/i;
+// Raw SQL: the column (or an interpolated field), optionally cast (::text), followed by =, <>, !=, IN or ANY.
+const RAW_SQL = /seazona_?client_?id["\w.]*\)?\s*(::\w+)?\s*(=(?!=)|<>|!=|\bin\b|=\s*any\b)/i;
 const LEGACY_RULES = /\b(canActOnInvoiceLegacy|practiceUserIds|openInvoicesForClient|doctorStatementUserIds)\b/;
 
 /** Does one statement (see statements()) authorize by the Seazona id? */
@@ -141,6 +141,9 @@ test("the guard catches every comparison form, across lines", () => {
     "const q = 'select id from users where seazona_client_id = $1';",
     "const q = `where u.seazona_client_id in (${ids})`;",
     "const q = 'where seazona_client_id <> $1';",
+    "const q = 'where seazona_client_id::text = $1';",
+    "const q = sql`${users.seazonaClientId}::text = ${x}`;",
+    "const q = `where (u.seazona_client_id)::text in (${ids})`;",
     "canActOnInvoiceLegacy(user, inv, inv.ownerSeazonaClientId);",
     "const ids = await practiceUserIds(user);",
   ]) assert.ok(caught(src), src);
@@ -153,6 +156,7 @@ test("display uses of the column are not offenders", () => {
     "const { id, seazonaClientId } = request.user;",
     "// if (a.seazonaClientId === b) a comment is not code",
     "/* eq(users.seazonaClientId, x) */ const y = 1;",
+    "const q = 'select seazona_client_id::text as legacy from users';",
     "const row = { seazonaClientId: seazonaClientId || null, name };",
     "return { admins: rows.filter((u) => u.role === \"admin\").length, linked: rows.filter((u) => u.seazonaClientId).length };",
   ]) assert.ok(!caught(src), src);

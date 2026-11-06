@@ -133,7 +133,30 @@ test("party keys rewritten only for practice:<legacy key> rows", async () => {
   assert.match(threads, /where[\s\S]*party_key = /i);
   const values = JSON.stringify(executed(tx).map((e) => e.q.queryChunks));
   assert.ok(values.includes("practice:C1") && values.includes("practice:a1"));
-  assert.ok(!/user:/.test(values), "user: keys are never touched");
+  assert.ok(!/user:/.test(values), "no user: key is touched without a practiceOfUser entry");
+});
+
+test("a practice doctor's own user:<id> keys move to their practice; nobody else's user: key is touched", async () => {
+  const tx = fakeTx({ executes: [[], [], [], [], { count: 2 }, { count: 3 }] });
+  const p = { ...emptyPlan(), practiceOfUser: new Map([["u1", "a1"], ["u2", "a1"]]), stampOfUser: new Map([["u9", "a1"]]) };
+  const counts = await writePracticeBackfill(p, tx);
+  const rewrites = executed(tx).filter((e) => /update (pickups|message_threads)/i.test(sqlText(e.q)));
+  assert.equal(rewrites.length, 2, "one statement per table, in the same transaction");
+  for (const e of rewrites) {
+    assert.match(sqlText(e.q), /where t\.party_key = m\.old_key/i, "exact key match only");
+    const values = JSON.stringify(e.q.queryChunks);
+    assert.ok(values.includes("user:u1") && values.includes("user:u2") && values.includes("practice:a1"));
+    assert.ok(!values.includes("user:u9"), "a stamped former doctor has no practice of their own: their key stays");
+  }
+  assert.equal(counts.userKeyPickups, 2);
+  assert.equal(counts.userKeyMessageThreads, 3);
+  assert.equal(counts.pickups, 0, "legacy practice: keys counted apart");
+  // Idempotent: a re-run matches no row (the keys are gone), and an empty practiceOfUser runs no rewrite at all.
+  const again = await writePracticeBackfill(p, fakeTx({ executes: [[], [], [], [], { count: 0 }, { count: 0 }] }));
+  assert.equal(again.userKeyPickups + again.userKeyMessageThreads, 0);
+  const none = fakeTx();
+  await writePracticeBackfill({ ...emptyPlan(), stampOfUser: new Map([["u9", "a1"]]) }, none);
+  assert.ok(!executed(none).some((e) => /party_key/i.test(sqlText(e.q))));
 });
 
 test("account_id filled only where null", async () => {
@@ -157,7 +180,7 @@ test("the writer applies the plan's rows and returns counts", async () => {
     createAccounts: [{ accountId: "n1", ownerId: "u9", name: "Co", accountNumber: null, legacyClientKey: "C9" }],
   }, tx);
   assert.equal(tx.log.filter((e) => e.op === "insert").length, 2, "new account + memberships");
-  assert.deepEqual(counts, { createdAccounts: 1, markedClient: 1, fieldsSet: 1, membershipsAdded: 1, accountsDeleted: 1, sharedReported: 1, conflicts: 0, blockedKeys: 0, rxCases: 0, labOrders: 0, invoices: 0, pickups: 0, messageThreads: 0, statementSends: 0 });
+  assert.deepEqual(counts, { createdAccounts: 1, markedClient: 1, fieldsSet: 1, membershipsAdded: 1, accountsDeleted: 1, sharedReported: 1, conflicts: 0, blockedKeys: 0, rxCases: 0, labOrders: 0, invoices: 0, pickups: 0, messageThreads: 0, userKeyPickups: 0, userKeyMessageThreads: 0, statementSends: 0 });
 });
 
 test("the CLI dry run writes nothing and prints counts only", async () => {

@@ -45,6 +45,16 @@ export function newPartyKey(user, accountId) {
   return defaultPartyKey(user);
 }
 
+/**
+ * A client naming the key of a NEW general thread: their own `user:<id>` key
+ * is a practice-less login's only, so a login with any practice in scope is
+ * refused it (422 "Choose a practice."), as newPartyKey refuses "All
+ * practices". Without this, naming the own key would sidestep the choice.
+ */
+export function assertNamedPartyKey(user, partyKey) {
+  if (partyKey === `user:${user?.id}` && clientScopeOf(user).accountIds.length > 0) throw practiceRequired();
+}
+
 /** A practice (client account) as staff and clients read it: "Name (account number)". */
 export function practiceLabel({ name, accountNumber } = {}) {
   const n = String(name ?? "").trim();
