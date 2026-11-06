@@ -1,4 +1,4 @@
-import gsap from "gsap";
+import { glideTo, isGliding } from "./scroll";
 
 /* Turns a run of scroll positions into pages: one scroll gesture moves exactly one stop,
    so the visitor always comes to rest on a finished view. Wheel, trackpad, touch and
@@ -6,75 +6,83 @@ import gsap from "gsap";
    resize, restored scroll) settles on the nearest stop. Scrolling past the last stop
    releases the page, so the content below scrolls normally.
 
-   A faster gesture turns the page faster. It never skips a stop. */
+   Every turn is committed for a moment, which is what stops one gesture turning two pages.
+   After that a new gesture can move on before the turn has landed, so getting through the
+   stops doesn't take as long as all their animations added together. A gesture moves one
+   stop at most, a faster one turns the page faster, and the page only rests on a stop. */
 
 const STOP_TOLERANCE_PX = 2;
 const SETTLE_DELAY_MS = 200;
-const SETTLE_SECONDS = 0.6;
-const SLOWEST_TURN_SECONDS = 1.25;
-const FASTEST_TURN_SECONDS = 0.85;
-const SECONDS_PER_VELOCITY = 0.1; // seconds taken off a turn per px/ms of gesture speed
+const SETTLE_SMOOTH_TIME = 0.2;
+const SLOWEST_TURN_SMOOTH_TIME = 0.3;
+const FASTEST_TURN_SMOOTH_TIME = 0.2;
+const SMOOTH_TIME_PER_VELOCITY = 0.025; // taken off a turn per px/ms of gesture speed
+const COMMITTED_MS = 450; // input is ignored this long after a turn starts
 const SWIPE_DISTANCE_PX = 16;
 
 const WHEEL_DISTANCE_PX = 12; // scrolled before a gesture counts, so a nudge does nothing
 const WHEEL_QUIET_MS = 180; // a gap this long ends a gesture
-const WHEEL_STRONG_DELTA_PX = 60; // a trackpad's coasting has faded below this by the time a turn ends
+const WHEEL_SPIN_DELTA_PX = 60; // a mouse wheel notch is at least this big
+const WHEEL_SPIN_EVENT_GAP_MS = 30; // a trackpad sends events every 16ms or so; a wheel's notches are further apart
 const VELOCITY_WINDOW_MS = 100;
 
 const KEY_DIRECTIONS = { ArrowDown: 1, PageDown: 1, ArrowUp: -1, PageUp: -1 };
 
 /* Tells one wheel gesture from the next. A trackpad keeps sending wheel events long after
    the fingers lift, and those must not turn a second page. A new gesture is a quiet gap, a
-   change of direction, a jump above the fading deltas, or (for a mouse wheel spun without
-   a pause, which never goes quiet) a strong delta once the turn has finished. */
+   change of direction, a sharp jump after the deltas had clearly faded, or the next notch
+   of a mouse wheel being spun without a pause. Nothing can turn during the committed
+   window, and a gesture that starts in it is dropped, not queued. */
 export function createWheelReader() {
   let lastTime = -Infinity;
+  let lastTurn = -Infinity;
   let direction = 0;
   let distance = 0;
   let spent = false;
-  let recent = [];
+  let peak = 0;
+  let last = 0;
   let samples = [];
 
   return {
     get spent() {
       return spent;
     },
-    read(delta, now, locked) {
+    read(delta, now) {
       const size = Math.abs(delta);
       const sign = Math.sign(delta);
-      const fading = recent.length ? recent.reduce((sum, d) => sum + d, 0) / recent.length : 0;
-      const isNew =
-        now - lastTime > WHEEL_QUIET_MS ||
-        sign !== direction ||
-        size > fading * 1.6 + 4 ||
-        (!locked && spent && size >= WHEEL_STRONG_DELTA_PX);
+      const gap = now - lastTime;
+      const isJump = last < peak * 0.5 && size > last * 2 + 10;
+      const isNextNotch = size >= WHEEL_SPIN_DELTA_PX && gap >= WHEEL_SPIN_EVENT_GAP_MS;
 
-      if (isNew) {
+      if (gap > WHEEL_QUIET_MS || sign !== direction || isJump || isNextNotch) {
         distance = 0;
         spent = false;
+        peak = 0;
         samples = [];
       }
       lastTime = now;
       direction = sign;
-      recent = [...recent.slice(-2), size];
+      peak = Math.max(peak, size);
+      last = size;
       samples = [...samples.filter((s) => now - s.time <= VELOCITY_WINDOW_MS), { time: now, size }];
 
-      if (locked) {
-        spent = true; // A gesture that starts during a turn is ignored, not queued.
+      if (now - lastTurn < COMMITTED_MS) {
+        spent = true;
         return { turn: 0, velocity: 0 };
       }
       if (spent) return { turn: 0, velocity: 0 };
       distance += size;
       if (distance < WHEEL_DISTANCE_PX) return { turn: 0, velocity: 0 };
       spent = true;
+      lastTurn = now;
       const velocity = samples.reduce((sum, s) => sum + s.size, 0) / VELOCITY_WINDOW_MS;
       return { turn: sign, velocity };
     },
   };
 }
 
-export function turnSeconds(velocity = 0) {
-  return Math.max(FASTEST_TURN_SECONDS, SLOWEST_TURN_SECONDS - velocity * SECONDS_PER_VELOCITY);
+export function turnSmoothTime(velocity = 0) {
+  return Math.max(FASTEST_TURN_SMOOTH_TIME, SLOWEST_TURN_SMOOTH_TIME - velocity * SMOOTH_TIME_PER_VELOCITY);
 }
 
 /* The stop one step from y in a direction, or undefined past either end. */
@@ -100,41 +108,40 @@ function isTypingOrActivating(event) {
   return event.key === " " && /^(BUTTON|A|SUMMARY)$/.test(target?.tagName ?? "");
 }
 
-/* A short pause after landing, so the next gesture can't begin before the page has stopped. */
-const LAND_PAUSE_SECONDS = 0.1;
-
 /* getStops returns ascending scroll positions in px. It is read on every use, so the
    stops follow layout changes. */
 export function createScrollPager({ getStops }) {
   const wheel = createWheelReader();
-  let locked = false;
-  let tween = null;
-  let unlock = null;
+  let target = null; // the stop a turn is heading to, or null at rest
+  let glide = null;
+  let lastTurnAt = -Infinity;
   let settleTimer = null;
   let touch = null;
 
-  const scrollTo = (top) => window.scrollTo({ top, behavior: "instant" }); // The site sets smooth scrolling.
+  const moving = () => target !== null;
+  const here = () => (moving() ? target : window.scrollY);
 
-  function moveTo(target, seconds) {
-    locked = true;
+  function moveTo(stop, smoothTime) {
     clearTimeout(settleTimer);
-    const position = { y: window.scrollY };
-    tween = gsap.to(position, {
-      y: target,
-      duration: seconds,
-      ease: "power2.inOut",
-      onUpdate: () => scrollTo(position.y),
+    glide = glideTo(stop, {
+      smoothTime,
       onComplete: () => {
-        unlock = gsap.delayedCall(LAND_PAUSE_SECONDS, () => {
-          locked = false;
-        });
+        target = null;
+      },
+      onInterrupt: () => {
+        target = null;
       },
     });
+    target = stop; // After glideTo, which interrupts any turn already running.
   }
 
   function turn(direction, velocity) {
-    const target = neighbourStop(getStops(), window.scrollY, direction);
-    if (target !== undefined) moveTo(target, turnSeconds(velocity));
+    const now = performance.now();
+    if (now - lastTurnAt < COMMITTED_MS) return;
+    const stop = neighbourStop(getStops(), here(), direction);
+    if (stop === undefined) return;
+    lastTurnAt = now;
+    moveTo(stop, turnSmoothTime(velocity));
   }
 
   /* Where the page is relative to the stops, for an input heading in `direction`. */
@@ -152,9 +159,10 @@ export function createScrollPager({ getStops }) {
     if (event.ctrlKey) return; // pinch zoom
     const delta = wheelPixels(event);
     if (!delta) return;
-    const { turn: direction, velocity } = wheel.read(delta, event.timeStamp, locked);
-    if (locked) {
+    const { turn: direction, velocity } = wheel.read(delta, event.timeStamp);
+    if (moving()) {
       event.preventDefault();
+      if (direction) turn(direction, velocity);
       return;
     }
     const { place, last } = route(Math.sign(delta));
@@ -162,7 +170,7 @@ export function createScrollPager({ getStops }) {
       // Scrolling back up from the content below: stop at the last page rather than run past it.
       if (delta < 0 && window.scrollY + delta < last) {
         event.preventDefault();
-        moveTo(last, SETTLE_SECONDS);
+        moveTo(last, SETTLE_SMOOTH_TIME);
       }
       return;
     }
@@ -185,18 +193,16 @@ export function createScrollPager({ getStops }) {
   function onTouchMove(event) {
     if (!touch || event.touches.length !== 1) return;
     const block = () => event.cancelable && event.preventDefault();
-    if (locked) {
-      block();
-      return;
-    }
     const dy = touch.y - event.touches[0].clientY;
     const dx = touch.x - event.touches[0].clientX;
     if (!touch.turned && Math.abs(dx) > Math.abs(dy)) return; // Sideways turns the appliance.
-    const { place } = route(Math.sign(dy) || 1);
-    if (place === "below" || place === "top") return;
-    if (place === "leaving") {
-      if (touch.turned) block();
-      return;
+    if (!moving()) {
+      const { place } = route(Math.sign(dy) || 1);
+      if (place === "below" || place === "top") return;
+      if (place === "leaving") {
+        if (touch.turned) block();
+        return;
+      }
     }
     block();
     if (!touch.turned && Math.abs(dy) >= SWIPE_DISTANCE_PX) {
@@ -206,12 +212,12 @@ export function createScrollPager({ getStops }) {
   }
 
   function settle() {
-    if (locked || touch) return;
+    if (isGliding() || touch) return;
     const stops = getStops();
     const y = window.scrollY;
     if (y > stops.at(-1) + STOP_TOLERANCE_PX) return;
-    const target = nearestStop(stops, y);
-    if (Math.abs(target - y) > STOP_TOLERANCE_PX) moveTo(target, SETTLE_SECONDS);
+    const stop = nearestStop(stops, y);
+    if (Math.abs(stop - y) > STOP_TOLERANCE_PX) moveTo(stop, SETTLE_SMOOTH_TIME);
   }
 
   function settleSoon() {
@@ -228,17 +234,13 @@ export function createScrollPager({ getStops }) {
     if (event.altKey || event.ctrlKey || event.metaKey || isTypingOrActivating(event)) return;
     const direction = event.key === " " ? (event.shiftKey ? -1 : 1) : KEY_DIRECTIONS[event.key];
     if (!direction) return;
-    if (locked) {
-      event.preventDefault();
-      return;
-    }
-    if (route(direction).place !== "inside") return;
+    if (!moving() && route(direction).place !== "inside") return;
     event.preventDefault();
     turn(direction, 0);
   }
 
   function onScroll() {
-    if (!locked) settleSoon();
+    if (!isGliding()) settleSoon();
   }
 
   const active = { passive: false };
@@ -255,8 +257,7 @@ export function createScrollPager({ getStops }) {
   return {
     destroy() {
       clearTimeout(settleTimer);
-      tween?.kill();
-      unlock?.kill();
+      glide?.interrupt();
       window.removeEventListener("wheel", onWheel, active);
       window.removeEventListener("touchstart", onTouchStart);
       window.removeEventListener("touchmove", onTouchMove, active);

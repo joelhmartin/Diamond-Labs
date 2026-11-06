@@ -3,6 +3,7 @@ import { ApplianceFilm } from "../../components/marketing/film/ApplianceFilm.jsx
 import { CtaBand } from "../../components/marketing/CtaBand.jsx";
 import { StatRow } from "../../components/marketing/StatRow.jsx";
 import { Reveal } from "../../components/marketing/Reveal.jsx";
+import { ScrollToTop } from "../../components/marketing/ScrollToTop.jsx";
 import { Features } from "./Home.jsx";
 
 /* A preview of Home built around the lab's real 3D appliances. It sits on its own
@@ -49,6 +50,7 @@ export function HomeCinematicPage() {
   useNoIndex();
   return (
     <>
+      <ScrollToTop />
       <ApplianceFilm />
       <Proof />
       <Features />
