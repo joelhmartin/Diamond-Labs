@@ -309,6 +309,13 @@
       "when": 1793919294400,
       "tag": "0043_outgoing_silk_fever",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1793933715866,
+      "tag": "0044_empty_mongoose",
+      "breakpoints": true
     }
   ]
 }
