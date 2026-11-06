@@ -180,7 +180,7 @@ test("the writer applies the plan's rows and returns counts", async () => {
     createAccounts: [{ accountId: "n1", ownerId: "u9", name: "Co", accountNumber: null, legacyClientKey: "C9" }],
   }, tx);
   assert.equal(tx.log.filter((e) => e.op === "insert").length, 2, "new account + memberships");
-  assert.deepEqual(counts, { createdAccounts: 1, markedClient: 1, fieldsSet: 1, membershipsAdded: 1, accountsDeleted: 1, sharedReported: 1, conflicts: 0, blockedKeys: 0, rxCases: 0, labOrders: 0, invoices: 0, pickups: 0, messageThreads: 0, userKeyPickups: 0, userKeyMessageThreads: 0, statementSends: 0 });
+  assert.deepEqual(counts, { createdAccounts: 1, markedClient: 1, invitationsRevoked: 0, fieldsSet: 1, membershipsAdded: 1, accountsDeleted: 1, sharedReported: 1, conflicts: 0, blockedKeys: 0, rxCases: 0, labOrders: 0, invoices: 0, pickups: 0, messageThreads: 0, userKeyPickups: 0, userKeyMessageThreads: 0, statementSends: 0 });
 });
 
 test("the CLI dry run writes nothing and prints counts only", async () => {
@@ -239,4 +239,18 @@ test("an orphaned former doctor (no eligible doctor shares the client id) is nei
   assert.equal(p.stampOfUser.has("u9"), false);
   assert.equal(p.stampOfUser.has("u8"), false);
   assert.equal(p.accountByLegacyKey.has("C9"), false);
+});
+
+test("an account marked client has its pending invitations revoked (a status change, never a delete), in the same transaction", async () => {
+  const tx = fakeTx({ updates: [[], [{ id: "inv1" }, { id: "inv2" }]] });
+  const counts = await writePracticeBackfill({ ...emptyPlan(), markClient: ["a1", "a2"] }, tx);
+  const sets = tx.log.filter((e) => e.op === "set").map((e) => e.values);
+  assert.equal(sets[0].isClient, true);
+  assert.equal(sets[1].status, "revoked");
+  assert.ok(!tx.log.some((e) => e.op === "delete"), "nothing deleted");
+  assert.equal(counts.invitationsRevoked, 2);
+  // Nothing marked: no invitation is touched.
+  const none = fakeTx();
+  assert.equal((await writePracticeBackfill(emptyPlan(), none)).invitationsRevoked, 0);
+  assert.ok(!none.log.some((e) => e.op === "update"));
 });

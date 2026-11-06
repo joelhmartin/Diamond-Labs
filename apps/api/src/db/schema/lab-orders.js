@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { pgTable, varchar, text, integer, boolean, date, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { accounts } from "./accounts.js";
 
 // Lab orders: one job on the bench. Every Rx case released to the lab and
 // every paid shop order produces exactly one (a remake adds another, flagged
@@ -36,7 +37,8 @@ export const labOrders = pgTable("lab_orders", {
   source: varchar("source", { length: 20 }).notNull(),
   sourceId: varchar("source_id", { length: 128 }).notNull(),
   // The practice (accounts.id), stamped at create. Null on an owned order = a backfill gap; scope checks fail closed.
-  accountId: varchar("account_id", { length: 128 }),
+  // FK restrict: accounts are only soft-deleted (status "deleted"), so a hard delete of a practice with records is refused, never orphaned.
+  accountId: varchar("account_id", { length: 128 }).references(() => accounts.id, { onDelete: "restrict" }),
   // Piece 5: a legacy (Seazona) order has no Rx case to read the patient from,
   // so its patient lives here. Encrypted (lab-orders.service sealOrder). Null otherwise.
   legacyPatient: text("legacy_patient"),

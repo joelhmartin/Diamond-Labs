@@ -1,4 +1,5 @@
 import { pgTable, varchar, text, integer, boolean, date, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { accounts } from "./accounts.js";
 
 // Invoices (own-the-lab piece 3): what each client owes. One per lab order
 // (kind "order"), one per paid shop order (kind "shop") and, from piece 5's
@@ -24,7 +25,8 @@ export const invoices = pgTable("invoices", {
   // The doctor billed. Null only for a guest's shop invoice (never on a statement).
   clientUserId: varchar("client_user_id", { length: 128 }),
   // The practice (accounts.id) billed, stamped at create. Null on an owned invoice = a backfill gap; scope checks fail closed.
-  accountId: varchar("account_id", { length: 128 }),
+  // FK restrict: accounts are only soft-deleted (status "deleted"), so a hard delete of a practice with records is refused, never orphaned.
+  accountId: varchar("account_id", { length: 128 }).references(() => accounts.id, { onDelete: "restrict" }),
   labOrderId: varchar("lab_order_id", { length: 128 }),
   // Piece 5's import key.
   legacySeazonaInvoiceId: varchar("legacy_seazona_invoice_id", { length: 128 }),
