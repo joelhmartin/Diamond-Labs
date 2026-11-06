@@ -93,9 +93,11 @@ test("parity counts owned records without account", async () => {
   assert.ok(report.differences.includes("records_without_account"));
 });
 
-test("the without-account count covers an approved doctor, or any owner with a client id, and no one else", async () => {
+test("the without-account count covers an eligible doctor, or an owner whose trimmed client id keys an active client account", async () => {
   const { PgDialect } = await import("drizzle-orm/pg-core");
   const { ownerCouldBeMapped } = await import("./parity-queries.js");
   const { sql } = new PgDialect().sqlToQuery(ownerCouldBeMapped);
-  assert.match(sql, /\("users"\."role" = \$1 and "users"\."approval_status" = \$2 and "users"\."status" <> \$3\) or "users"\."seazona_client_id" is not null/);
+  assert.match(sql, /"users"\."role" = \$1 and "users"\."approval_status" = \$2 and "users"\."status" <> \$3/);
+  assert.match(sql, /exists \(select 1 from "accounts" where "accounts"\."status" = 'active' and "accounts"\."is_client" and "accounts"\."legacy_client_key" = nullif\(btrim\("users"\."seazona_client_id"\), ''\)\)/);
+  assert.doesNotMatch(sql, /seazona_client_id" is not null/);
 });

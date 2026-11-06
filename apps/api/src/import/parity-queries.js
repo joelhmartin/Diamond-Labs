@@ -1,7 +1,7 @@
-import { and, eq, ne, or, inArray, isNotNull, isNull, count } from "drizzle-orm";
+import { and, eq, ne, or, inArray, isNotNull, isNull, count, exists, sql } from "drizzle-orm";
 import { isPossiblyIncomplete } from "./seazona-fetch.js";
 import { isOpeningBalanceInvoice, isoDateIn, LAB_TIMEZONE, LEGACY_SETTLEMENT_SOURCE, OPENING_BALANCE_PREFIX, TERMINAL_LAB_STATUSES } from "@my-app/shared";
-import { users, invoices, invoicePayments, labOrders, rxCases } from "../db/schema/index.js";
+import { users, accounts, invoices, invoicePayments, labOrders, rxCases } from "../db/schema/index.js";
 import { paidCentsFor } from "../services/billing/paid-cents.js";
 import { deriveBalance } from "../services/billing/invoice-rules.js";
 import { orderStatusFor } from "./seazona-records.js";
@@ -97,12 +97,18 @@ async function legacyMoney({ db, raw, legacy, accountOfUser }) {
 /**
  * Owned records (a doctor's rx case, lab order or invoice) with no practice:
  * a backfill gap, which every scope check fails closed on. Counted only when
- * the owner could have been mapped: an approved, non-deleted doctor, or any
- * user with a Seazona client id (the practice keeps a former doctor's records).
+ * the backfill could have stamped it (backfill-practices.js): the owner is an
+ * eligible doctor (approved, not deleted; owners.js isInvoiceOwner), OR the
+ * owner's trimmed, non-empty client id is the legacy_client_key of an active
+ * client account (a former doctor's records stay with the practice). A former
+ * doctor whose key has no practice stays null (fail closed) and is not counted;
+ * blocked or conflicting keys are surfaced by the backfill's own counts.
  */
 export const ownerCouldBeMapped = or(
   and(eq(users.role, "doctor"), eq(users.approvalStatus, "approved"), ne(users.status, "deleted")),
-  isNotNull(users.seazonaClientId),
+  exists(
+    sql`(select 1 from ${accounts} where ${accounts.status} = 'active' and ${accounts.isClient} and ${accounts.legacyClientKey} = nullif(btrim(${users.seazonaClientId}), ''))`.mapWith(Boolean),
+  ),
 );
 
 async function recordsWithoutAccount(db) {

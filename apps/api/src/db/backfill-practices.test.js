@@ -208,3 +208,12 @@ test("a non-active account holding the client id blocks the key: skipped and rep
   const blockedCreate = plan({ users: [doctor("u5", { seazonaClientId: "C1" })], accounts: [accounts[1]] });
   assert.equal(blockedCreate.createAccounts[0].legacyClientKey, null);
 });
+
+test("an orphaned former doctor (no eligible doctor shares the client id) is neither stamped nor given a practice", () => {
+  const orphan = doctor("u9", { seazonaClientId: "C9", status: "deleted" });
+  const blank = doctor("u8", { seazonaClientId: "  ", approvalStatus: "pending" });
+  const p = plan({ users: [doctor("u1", { seazonaClientId: "C1" }), orphan, blank], accounts: [account("a1", "u1")] });
+  assert.equal(p.stampOfUser.has("u9"), false);
+  assert.equal(p.stampOfUser.has("u8"), false);
+  assert.equal(p.accountByLegacyKey.has("C9"), false);
+});
