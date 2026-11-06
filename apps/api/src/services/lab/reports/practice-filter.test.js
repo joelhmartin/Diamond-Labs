@@ -204,7 +204,7 @@ test("the practice lookup lists only client accounts, by name or account number,
     { value: "A2", name: "Two Ortho", accountNumber: null, status: "suspended" },
   ]);
   const found = await lookup("practice").search(db, " 100 ");
-  assert.deepEqual(found, [{ value: "A1", label: "One Dental · 1001" }, { value: "A2", label: "Two Ortho (suspended)" }]);
+  assert.deepEqual(found, [{ value: "A1", label: "One Dental (1001)" }, { value: "A2", label: "Two Ortho (suspended)" }]);
   const where = renderSql(calls.where[0]);
   assert.match(where.text, /accounts\.is_client = \$1 and \(accounts\.name ilike \$2 or accounts\.account_number ilike \$3\)/);
   assert.equal(where.params[0], true);

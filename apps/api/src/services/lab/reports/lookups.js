@@ -12,7 +12,7 @@
  * archived group, so both list every status and say which is no longer active.
  */
 import { and, asc, eq, ilike, inArray, isNotNull, or } from "drizzle-orm";
-import { STAFF_ROLES } from "@my-app/shared";
+import { STAFF_ROLES, practiceLabel } from "@my-app/shared";
 import {
   users, doctorProfiles, productVariants, productFamilies, labDepartments, tagDefinitions, priceLists, accounts, organizations,
 } from "../../../db/schema/index.js";
@@ -33,8 +33,8 @@ const variantLabel = (v) => (v.code ? `${v.code} · ${v.name}` : v.name);
 /** A name with "(inactive)" / "(archived)" when it no longer applies. */
 const withState = (name, off, word) => (off ? `${name} (${word})` : name);
 
-/** A practice as picked: "Name · account number", with its status when not active. */
-const practiceLabel = (a) => withState(a.accountNumber ? `${a.name} · ${a.accountNumber}` : a.name, a.status !== "active", a.status);
+/** A practice as picked: the shared "Name (account number)" label, with its status when not active. */
+const pickedPractice = (a) => withState(practiceLabel(a), a.status !== "active", a.status);
 const practiceColumns = { value: accounts.id, name: accounts.name, accountNumber: accounts.accountNumber, status: accounts.status };
 
 export const LAB_LOOKUPS = [
@@ -146,11 +146,11 @@ export const LAB_LOOKUPS = [
       const rows = await db.select(practiceColumns).from(accounts)
         .where(and(eq(accounts.isClient, true), term ? or(ilike(accounts.name, p), ilike(accounts.accountNumber, p)) : undefined))
         .orderBy(asc(accounts.name), asc(accounts.id)).limit(LOOKUP_LIMIT);
-      return rows.map((a) => ({ value: a.value, label: practiceLabel(a) }));
+      return rows.map((a) => ({ value: a.value, label: pickedPractice(a) }));
     },
     async label(db, value) {
       const [a] = await db.select(practiceColumns).from(accounts).where(and(eq(accounts.id, value), eq(accounts.isClient, true))).limit(1);
-      return a ? practiceLabel(a) : null;
+      return a ? pickedPractice(a) : null;
     },
   },
   {

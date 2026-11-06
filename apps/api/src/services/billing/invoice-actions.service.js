@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { isoDateIn, LAB_TIMEZONE, CREDIT_SOURCE, manualPaymentSource } from "@my-app/shared";
+import { isStaffRole, isoDateIn, LAB_TIMEZONE, CREDIT_SOURCE, manualPaymentSource } from "@my-app/shared";
 import { db } from "../../config/database.js";
 import { redis } from "../../config/redis.js";
 import { env } from "../../config/env.js";
@@ -134,9 +134,9 @@ export function recordCredit(id, { amountCents, reason, byUserId }, database = d
 
 /**
  * The client staff record a payment or account credit for: a doctor, or a
- * login that runs a practice (an active owner/admin member, or an active
+ * non-staff login that runs a practice (an active owner/admin member, or an active
  * group admin: client-scope administersAPractice, read from the TARGET's own
- * scope). Anyone else (a shopper, a plain member, staff) is NOT_FOUND.
+ * scope). Anyone else (a shopper, a plain member, any staff role, even with a membership) is NOT_FOUND.
  */
 export async function loadPayingClient(clientUserId, database) {
   const [client] = await database
@@ -145,6 +145,7 @@ export async function loadPayingClient(clientUserId, database) {
     .where(eq(users.id, clientUserId));
   if (!client) throw new InvoiceError("NOT_FOUND", "Client not found.");
   if (client.role === "doctor") return client;
+  if (isStaffRole(client.role)) throw new InvoiceError("NOT_FOUND", "Client not found.");
   if (!administersAPractice(await loadClientScope(client.id, database))) throw new InvoiceError("NOT_FOUND", "Client not found.");
   return client;
 }

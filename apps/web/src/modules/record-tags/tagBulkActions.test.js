@@ -41,7 +41,7 @@ test("rows the server could not find come back named, and are not counted done",
   const { byId, client } = setup(selected, { labelOf: (r) => `#${r.orderNumber}` });
   client.post.mockResolvedValueOnce({ data: { data: { ok: true, failed: [{ id: "r2", message: "not found" }] } } });
   const out = await byId["tag-add"].run(selected, "t1");
-  assert.deepEqual(out, { ok: 2, failed: [{ id: "#101", message: "not found" }] });
+  assert.deepEqual(out, { ok: 2, failed: [{ id: "#101", rowId: "r2", message: "not found" }] });
 });
 
 test("more than 500 rows go in chunks of 500, and the results add up", async () => {

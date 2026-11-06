@@ -191,6 +191,13 @@ test("loadPayingClient: a doctor, or a non-doctor who runs a practice (owner, ad
   assert.deepEqual(scopeCalls, ["u1", "u1", "u1"], "the TARGET's scope, never the staff member's");
 });
 
+test("loadPayingClient refuses a staff login even when it holds an owner membership", async () => {
+  targetScope = scopeOf({ a1: "owner" });
+  for (const role of ["admin", "lab"]) {
+    await assert.rejects(actions.loadPayingClient("u1", fakeTx({ selects: [[{ id: "u1", role }]] })), isCode("NOT_FOUND"), role);
+  }
+});
+
 test("loadPayingClient refuses anyone else as NOT_FOUND: plain members, viewers, no practice, unknown users", async () => {
   for (const roles of [{ a1: "member" }, { a1: "manager" }, { a1: "viewer" }, {}]) {
     targetScope = scopeOf(roles);

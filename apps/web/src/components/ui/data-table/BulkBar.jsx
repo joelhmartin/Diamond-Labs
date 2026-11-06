@@ -18,7 +18,7 @@ const TONE = {
 function dropOffPage(table, acted, result) {
   if (table.mode !== "server") return;
   const onPage = new Set(table.rows.map(table.getRowId));
-  const failed = new Set((result?.failed ?? []).map((f) => f.rowId ?? f.id));
+  const failed = new Set((result?.failed ?? []).map((f) => f.rowId));
   const ids = acted.map(table.getRowId).filter((id) => !onPage.has(id) && !failed.has(id));
   if (ids.length) table.selection.drop(ids);
 }
