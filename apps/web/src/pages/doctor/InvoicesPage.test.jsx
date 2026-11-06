@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { ToastProvider } from "../../components/ui/Toast.jsx";
+import { ROW_BOX } from "../../components/ui/data-table/testing.js";
 
 const get = vi.fn();
 let modalProps = null;
@@ -36,7 +37,7 @@ function mount() {
 test('doctor InvoicesPage: only payable invoices are selectable and "Pay selected" opens the payment modal with them', async () => {
   mount();
   await screen.findByText("#101");
-  const boxes = screen.getAllByLabelText(/^Select (?!page|group|all)/);
+  const boxes = screen.getAllByLabelText(ROW_BOX);
   // The paid invoice (second row) can't be selected.
   fireEvent.click(boxes[1]);
   assert.equal(screen.queryByText(/selected/), null);
@@ -84,7 +85,7 @@ test("All practices shows the Practice column and combined balance", async () =>
 test("pay selects invoices from two practices and hands both to one payment", async () => {
   mountMulti([acct("a1", "North Dental", "1001"), acct("a2", "South Dental", "1002")]);
   await screen.findByText("#201");
-  for (const box of screen.getAllByLabelText(/^Select (?!page|group|all)/)) fireEvent.click(box);
+  for (const box of screen.getAllByLabelText(ROW_BOX)) fireEvent.click(box);
   fireEvent.click(await screen.findByRole("button", { name: "Pay selected ($90.00)" }));
   await screen.findByText("PAYMENT MODAL");
   assert.deepEqual(modalProps.invoices.map((i) => [i.id, i.ownerName]).sort(), [["n1", "North Dental"], ["s1", "South Dental"]]);
@@ -93,7 +94,7 @@ test("pay selects invoices from two practices and hands both to one payment", as
 test("viewer rows are not selectable for pay", async () => {
   mountMulti([acct("a1", "North Dental", "1001"), acct("a2", "South Dental", "1002", false)]);
   await screen.findByText("#201");
-  const [north, south] = screen.getAllByLabelText(/^Select (?!page|group|all)/);
+  const [north, south] = screen.getAllByLabelText(ROW_BOX);
   fireEvent.click(south);
   assert.equal(screen.queryByText(/selected/), null);
   fireEvent.click(north);

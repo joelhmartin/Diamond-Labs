@@ -63,9 +63,13 @@ export function useDataTable(options) {
   // Server mode: the page goes back to 1 when the *request's* q changes, not on every keystroke, so a
   // search is one fetch (page 1 with the new text) rather than a page-1 fetch with the old text first.
   const [seenQ, setSeenQ] = useState(requestQ);
+  const adoptedQ = useRef(false); // set by adopt(): this q change came with its own page from the URL
+  const requestQRef = useRef(requestQ);
+  requestQRef.current = requestQ;
   if (!Object.is(seenQ, requestQ)) {
     setSeenQ(requestQ);
-    if (server) setPage(1);
+    if (server && !adoptedQ.current) setPage(1);
+    adoptedQ.current = false;
   }
 
   // `resetOn` (optional): when this value changes (e.g. the caller's own query params), go back to
@@ -140,6 +144,7 @@ export function useDataTable(options) {
     // The URL changed on its own (back/forward, a link to this page without params): take its view.
     adopt: (fromUrl) => {
       const nextQ = fromUrl.q ?? "";
+      adoptedQ.current = nextQ !== requestQRef.current;
       setForcedQ(nextQ);
       setQState(nextQ);
       setFilters({ ...initialFilters, ...fromUrl.filters });
@@ -265,6 +270,8 @@ function useSelectionApi({ sel, setSel, visible, matching, allRows, knownRows, g
     allMatchingAvailable,
     matchingCount: matchingIds.length,
     clear: () => setSel(Sel.clear()),
+    // Take these ids out of the selection (a server-mode bulk action's rows that are on other pages).
+    drop: (ids) => setSel((s) => Sel.setPage(s, ids, false)),
     selectedRows,
   };
 }
@@ -317,24 +324,25 @@ function ownParams(params, urlKey) {
  */
 function useUrlMirror({ urlKey, filterDefs, searchParams, setSearchParams, state, adopt }) {
   const { q, filters, page } = state;
-  const lastWritten = useRef(null);
+  const written = useRef(new Set()); // values this hook wrote that the router may not have published yet
   const lastSeen = useRef(null);
   const adoptRef = useRef(adopt);
   adoptRef.current = adopt;
   useEffect(() => {
     if (!urlKey) return;
     const cur = ownParams(searchParams, urlKey);
-    const external = lastSeen.current !== null && cur !== lastSeen.current && cur !== lastWritten.current;
+    const external = lastSeen.current !== null && cur !== lastSeen.current && !written.current.has(cur);
     lastSeen.current = cur;
     if (external) {
-      lastWritten.current = cur;
+      written.current = new Set([cur]);
       adoptRef.current(readUrlState(searchParams, urlKey, filterDefs));
       return;
     }
     const next = writeUrlState(searchParams, urlKey, { q, filters, page }, filterDefs);
     const nextOwn = ownParams(next, urlKey);
     if (nextOwn !== cur) {
-      lastWritten.current = nextOwn;
+      if (written.current.size > 20) written.current = new Set();
+      written.current.add(nextOwn);
       setSearchParams(next, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- filterDefs is read, not watched

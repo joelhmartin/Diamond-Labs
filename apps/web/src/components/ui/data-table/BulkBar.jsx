@@ -11,6 +11,17 @@ const TONE = {
   danger: `${BTN} bg-red-500/90 text-white hover:bg-red-500`,
 };
 
+/**
+ * Server mode: a bulk action's rows that sit on other pages can't be re-checked by the reload (their
+ * rows are not in its response), so they leave the selection instead of lingering as ghosts.
+ */
+function dropOffPage(table, acted) {
+  if (table.mode !== "server") return;
+  const onPage = new Set(table.rows.map(table.getRowId));
+  const ids = acted.map(table.getRowId).filter((id) => !onPage.has(id));
+  if (ids.length) table.selection.drop(ids);
+}
+
 /** "12 done, 1 failed: #100231 changed since you loaded it" (first three failures named). */
 export function summarizeResult({ ok = 0, failed = [] }) {
   if (failed.length === 0) return `${ok} done`;
@@ -51,7 +62,9 @@ export function BulkBar({ table, columns, bulkActions = [], exportable, exportFi
   const run = async (action) => {
     setBusy(action.id);
     try {
-      const result = await action.run(selectedRows, valueOf(action));
+      const acted = selectedRows;
+      const result = await action.run(acted, valueOf(action));
+      dropOffPage(table, acted);
       if (result && typeof result === "object") addToast(resultToast(result));
     } catch (err) {
       addToast({ message: errorText(err), type: "error" });

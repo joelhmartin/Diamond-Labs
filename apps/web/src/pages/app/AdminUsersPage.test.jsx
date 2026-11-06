@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { ToastProvider } from "../../components/ui/Toast.jsx";
+import { ROW_BOX } from "../../components/ui/data-table/testing.js";
 
 const get = vi.fn();
 const post = vi.fn();
@@ -34,7 +35,7 @@ test('AdminUsersPage bulk "Send invitations" posts the selected user ids to /adm
   post.mockResolvedValue({ data: { data: { sent: 2, requested: 2 } } });
   mount();
   await screen.findByText("Alice");
-  const boxes = screen.getAllByLabelText(/^Select (?!page|group|all)/);
+  const boxes = screen.getAllByLabelText(ROW_BOX);
   fireEvent.click(boxes[0]);
   fireEvent.click(boxes[2]);
   fireEvent.click(await screen.findByRole("button", { name: "Send invitations" }));
@@ -50,7 +51,7 @@ test("AdminUsersPage bulk send names the count and warns when fewer were sent th
   post.mockResolvedValue({ data: { data: { sent: 1, requested: 3 } } });
   mount();
   await screen.findByText("Alice");
-  for (const box of screen.getAllByLabelText(/^Select (?!page|group|all)/)) fireEvent.click(box);
+  for (const box of screen.getAllByLabelText(ROW_BOX)) fireEvent.click(box);
   fireEvent.click(await screen.findByRole("button", { name: "Send password resets" }));
   fireEvent.click(await screen.findByRole("button", { name: "Click again to send 3 password resets" }));
   const toast = await screen.findByText("Sent 1/3 password resets");
@@ -77,7 +78,7 @@ test("Users bulk Assign price list posts clientUserIds and toasts ok/failed", as
     </MemoryRouter>,
   );
   await screen.findByText("Alice");
-  const boxes = screen.getAllByLabelText(/^Select (?!page|group|all)/);
+  const boxes = screen.getAllByLabelText(ROW_BOX);
   fireEvent.click(boxes[0]);
   fireEvent.click(boxes[1]);
   fireEvent.click(await screen.findByRole("button", { name: "Assign price list…" }));

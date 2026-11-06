@@ -346,7 +346,7 @@ export function AdminJobsPage() {
         searchPlaceholder="Job, trigger, or error"
         itemLabel="runs"
         exportFileName="job-runs.csv"
-        emptyText="No runs recorded yet."
+        emptyText={runsTable.q.trim() || runsTable.filters.job || runsTable.filters.status ? "No runs match your search or filters." : "No runs recorded yet."}
       />
     </div>
   );

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { ToastProvider } from "../../components/ui/Toast.jsx";
+import { ROW_BOX } from "../../components/ui/data-table/testing.js";
 
 const get = vi.fn();
 const put = vi.fn();
@@ -28,7 +29,7 @@ function mount() {
 
 async function selectRows(...indexes) {
   await screen.findByText("Alpha");
-  const boxes = screen.getAllByLabelText(/^Select (?!page|group|all)/);
+  const boxes = screen.getAllByLabelText(ROW_BOX);
   indexes.forEach((i) => fireEvent.click(boxes[i]));
 }
 

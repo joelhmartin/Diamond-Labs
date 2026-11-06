@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { ToastProvider } from "../../../components/ui/Toast.jsx";
+import { ROW_BOX } from "../../../components/ui/data-table/testing.js";
 
 const get = vi.fn();
 const post = vi.fn();
@@ -26,7 +27,7 @@ test("groups table bulk archive asks inline confirm", async () => {
   patch.mockResolvedValue({ data: { data: {} } });
   wrap(<OrganizationsTable onOpen={() => {}} />);
   await screen.findByText("North Group");
-  screen.getAllByLabelText(/^Select (?!page|group|all)/).forEach((b) => fireEvent.click(b));
+  screen.getAllByLabelText(ROW_BOX).forEach((b) => fireEvent.click(b));
   fireEvent.click(await screen.findByRole("button", { name: "Archive" }));
   assert.equal(patch.mock.calls.length, 0, "the first click only arms it");
   fireEvent.click(screen.getByRole("button", { name: "Click again to archive" }));
@@ -50,7 +51,7 @@ test("add accounts picker asks the source for ungrouped accounts and shows exact
   assert.ok(screen.getByText("Free Two"), "no filtering after paging: the page is the source's");
   assert.equal(list.mock.calls[0][0].ungrouped, true, "the source is asked for ungrouped accounts only");
   const dialog = screen.getByText("Free One").closest(".relative");
-  fireEvent.click(within(dialog).getAllByLabelText(/^Select (?!page|group|all)/)[0]);
+  fireEvent.click(within(dialog).getAllByLabelText(ROW_BOX)[0]);
   fireEvent.click(await screen.findByRole("button", { name: "Add" }));
   await waitFor(() => assert.equal(post.mock.calls.length, 1));
   assert.deepEqual(post.mock.calls[0], ["/admin/organizations/g1/accounts", { accountIds: ["a1"] }]);
@@ -62,7 +63,7 @@ test("admins tab remove uses ConfirmButton", async () => {
   wrap(<AdminsTab organizationId="g1" admins={[{ userId: "u1", status: "active" }, { userId: "u2", status: "removed" }]} usersSource={usersSource} onChanged={() => {}} />);
   await screen.findByText("Dana Admin");
   assert.equal(screen.queryByText("u2"), null, "removed admins are not listed");
-  fireEvent.click(screen.getByLabelText(/^Select (?!page|group|all)/));
+  fireEvent.click(screen.getByLabelText(ROW_BOX));
   fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
   assert.equal(del.mock.calls.length, 0);
   fireEvent.click(screen.getByRole("button", { name: "Click again to remove" }));

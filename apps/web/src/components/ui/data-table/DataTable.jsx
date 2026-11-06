@@ -8,13 +8,11 @@ import { DataTableToolbar } from "./DataTableToolbar.jsx";
 import { BulkBar } from "./BulkBar.jsx";
 
 /**
- * Esc that means something else: typed in a field, or an open dialog is taking it (it closes the
- * modal; the selection behind it stays).
+ * Esc that means something else: typed in a field, or inside a dialog (the modal closes; the
+ * selection behind it stays). A modal that handles Esc elsewhere calls preventDefault, checked separately.
  */
 function escapeBelongsElsewhere(e) {
-  const t = e.target;
-  if (t?.closest?.("input, textarea, select, [contenteditable=''], [contenteditable='true'], [role='dialog'], [aria-modal='true']")) return true;
-  return Boolean(document.querySelector("[role='dialog'], [aria-modal='true']"));
+  return Boolean(e.target?.closest?.("input, textarea, select, [contenteditable=''], [contenteditable='true'], [role='dialog'], [aria-modal='true']"));
 }
 
 /** "Select <first text cell>" so each row's checkbox is named for the row it picks. */
@@ -77,7 +75,7 @@ export function DataTable({
 
   useLayoutEffect(() => registerColumns(columns), [registerColumns, columns]);
 
-  // `exportFilteredList` (client mode): the toolbar gets an "Export CSV" that saves the filtered list, for a table with no row selection (so no bulk bar to export from).
+  // `exportFilteredList` (client mode only; ignored in server mode, use `exportAll` there): the toolbar gets an "Export CSV" that saves the filtered list, for a table with no row selection (so no bulk bar to export from).
   const exportFiltered = !exportAll && exportFilteredList && table.mode === "client"
     ? () => downloadCsv(exportFileName, toCsv(table.matchingRows, columns))
     : exportAll;

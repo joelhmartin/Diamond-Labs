@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { render, screen, cleanup, waitFor, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { ToastProvider } from "../../components/ui/Toast.jsx";
+import { ROW_BOX } from "../../components/ui/data-table/testing.js";
 
 const get = vi.fn();
 const post = vi.fn();
@@ -39,7 +40,7 @@ test("past-due filter hides current-only clients and the totals row follows it",
 test('"Monthly statements" replaces the old per-row bulk email and opens the run panel', async () => {
   mount();
   await screen.findByText("Alpha Dental");
-  for (const box of screen.getAllByLabelText(/^Select (?!page|group|all)/)) fireEvent.click(box);
+  for (const box of screen.getAllByLabelText(ROW_BOX)) fireEvent.click(box);
   assert.equal(screen.queryByRole("button", { name: "Email statements" }), null);
   get.mockResolvedValue({ data: { data: [] } });
   fireEvent.click(screen.getByRole("button", { name: "Monthly statements" }));

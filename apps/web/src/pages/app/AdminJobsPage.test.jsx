@@ -44,7 +44,7 @@ test("Jobs runs table: the Job and Status filters narrow the runs together", asy
   assert.equal(rows.length, 1);
   assert.equal(rows[0][0], "autopay-sweep");
   fireEvent.change(screen.getByRole("combobox", { name: "Job" }), { target: { value: "statement-email" } });
-  assert.ok(screen.getByText("No runs recorded yet."), "no failed statement-email run");
+  assert.ok(screen.getByText("No runs match your search or filters."), "no failed statement-email run");
 });
 
 test("Jobs runs table: search matches the error text", async () => {

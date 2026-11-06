@@ -37,7 +37,7 @@ const mount = (ui, entries) => render(
 );
 const rowOf = (name) => screen.getByText(name).closest("tr");
 
-test("Esc clears the selection, but not when typed in a field or while a dialog is open", () => {
+test("Esc clears the selection, but not when typed in a field or inside a dialog", () => {
   mount(<><Client /><input aria-label="Elsewhere" /></>);
   const selected = () => screen.queryByText(/1 selected/i);
   fireEvent.click(rowOf("Row 01"), { metaKey: true });
@@ -46,9 +46,12 @@ test("Esc clears the selection, but not when typed in a field or while a dialog 
   assert.ok(selected(), "Esc typed in an input keeps the selection");
   const dialog = document.createElement("div");
   dialog.setAttribute("role", "dialog");
+  const inside = document.createElement("button");
+  dialog.appendChild(inside);
   document.body.appendChild(dialog);
-  fireEvent.keyDown(document.body, { key: "Escape" });
-  assert.ok(selected(), "Esc that closes a modal keeps the selection");
+  fireEvent.keyDown(inside, { key: "Escape" });
+  assert.ok(selected(), "Esc inside a modal keeps the selection");
+  fireEvent.keyDown(document.body, { key: "Escape", defaultPrevented: true });
   dialog.remove();
   fireEvent.keyDown(document.body, { key: "Escape" });
   assert.equal(selected(), null, "Esc on the page clears it");

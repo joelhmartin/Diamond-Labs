@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), patch
 vi.mock("../../../config/api.js", () => ({ default: api }));
 
 import { AlertCenter } from "../AlertCenter.jsx";
+import { ROW_BOX } from "../../../components/ui/data-table/testing.js";
 
 const ROWS = [
   { id: "n1", title: "Order 100 shipped", link: "/orders/100", count: 1, readAt: null, updatedAt: "2026-11-05T15:00:00Z" },
@@ -38,7 +39,7 @@ test("row click navigates to link and marks read", async () => {
 test("bulk Mark read posts the selected ids", async () => {
   mount();
   await screen.findByText("Order 100 shipped");
-  const boxes = screen.getAllByLabelText(/^Select (?!page|group|all)/);
+  const boxes = screen.getAllByLabelText(ROW_BOX);
   fireEvent.click(boxes[0]);
   fireEvent.click(boxes[1]);
   fireEvent.click(await screen.findByRole("button", { name: /mark read/i }));
