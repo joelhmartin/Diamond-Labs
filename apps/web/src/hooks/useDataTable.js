@@ -63,13 +63,10 @@ export function useDataTable(options) {
   // Server mode: the page goes back to 1 when the *request's* q changes, not on every keystroke, so a
   // search is one fetch (page 1 with the new text) rather than a page-1 fetch with the old text first.
   const [seenQ, setSeenQ] = useState(requestQ);
-  const adoptedQ = useRef(false); // set by adopt(): this q change came with its own page from the URL
-  const requestQRef = useRef(requestQ);
-  requestQRef.current = requestQ;
+  const [adoptedQ, setAdoptedQ] = useState(null); // q taken from the URL by adopt(), which brought its own page
   if (!Object.is(seenQ, requestQ)) {
     setSeenQ(requestQ);
-    if (server && !adoptedQ.current) setPage(1);
-    adoptedQ.current = false;
+    if (server && requestQ !== adoptedQ) setPage(1);
   }
 
   // `resetOn` (optional): when this value changes (e.g. the caller's own query params), go back to
@@ -99,6 +96,7 @@ export function useDataTable(options) {
   const resetView = () => { setPage(1); setSel(Sel.clear()); };
   const setQ = (v) => {
     setQState(v);
+    setAdoptedQ(null);
     if (server) setSel(Sel.clear()); // the page follows the debounced q (above)
     else resetView();
   };
@@ -144,7 +142,7 @@ export function useDataTable(options) {
     // The URL changed on its own (back/forward, a link to this page without params): take its view.
     adopt: (fromUrl) => {
       const nextQ = fromUrl.q ?? "";
-      adoptedQ.current = nextQ !== requestQRef.current;
+      setAdoptedQ(nextQ);
       setForcedQ(nextQ);
       setQState(nextQ);
       setFilters({ ...initialFilters, ...fromUrl.filters });
@@ -331,8 +329,15 @@ function useUrlMirror({ urlKey, filterDefs, searchParams, setSearchParams, state
   useEffect(() => {
     if (!urlKey) return;
     const cur = ownParams(searchParams, urlKey);
-    const external = lastSeen.current !== null && cur !== lastSeen.current && !written.current.has(cur);
+    const ours = written.current.has(cur);
+    const external = lastSeen.current !== null && cur !== lastSeen.current && !ours;
     lastSeen.current = cur;
+    if (ours) {
+      // The router has caught up to this write: it and every earlier one are no longer pending, so a later
+      // navigation to the same URL counts as external.
+      const keep = [...written.current];
+      written.current = new Set(keep.slice(keep.indexOf(cur) + 1));
+    }
     if (external) {
       written.current = new Set([cur]);
       adoptRef.current(readUrlState(searchParams, urlKey, filterDefs));

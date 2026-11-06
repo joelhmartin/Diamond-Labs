@@ -93,7 +93,7 @@ test("moveOrders keeps going after a stale failure", async () => {
   };
   const res = await moveOrders(cards, "in_production", post);
   assert.equal(res.ok, 2);
-  assert.deepEqual(res.failed, [{ id: "#102", message: "Changed since you loaded it." }]);
+  assert.deepEqual(res.failed.map(({ id, message }) => ({ id, message })), [{ id: "#102", message: "Changed since you loaded it." }]);
 });
 
 test("moveOrders sends each card's own expectedVersion", async () => {
@@ -125,7 +125,7 @@ test("moveOrders to shipped reports a failure, and a failed box is still tried f
   const res = await moveOrders([ready(1, "sh1"), ready(2, "sh1"), ready(3)], "shipped", post);
   assert.deepEqual(calls, ["o1", "o2", "o3"]);
   assert.equal(res.ok, 2);
-  assert.deepEqual(res.failed, [{ id: "#101", message: "This order changed — reload." }]);
+  assert.deepEqual(res.failed.map(({ id, message }) => ({ id, message })), [{ id: "#101", message: "This order changed — reload." }]);
 });
 
 test("moveOrders only dedupes boxes for a shipped move", async () => {
@@ -143,7 +143,7 @@ test("moveBulkActions: Move to Shipped needs a second click and reports failures
   assert.equal(ship.confirmLabel, "Click again to ship 2 orders");
   assert.equal(ship.tone, "danger");
   const res = await ship.run(rows);
-  assert.deepEqual(res, { ok: 1, failed: [{ id: "#102", message: "This order changed — reload." }] });
+  assert.deepEqual({ ...res, failed: res.failed.map(({ id, message }) => ({ id, message })) }, { ok: 1, failed: [{ id: "#102", message: "This order changed — reload." }] });
   assert.equal(reloaded, 1);
 });
 

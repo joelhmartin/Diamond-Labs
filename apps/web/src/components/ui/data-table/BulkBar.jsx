@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Download, X } from "lucide-react";
 import { ConfirmButton } from "../ConfirmButton.jsx";
 import { useToast } from "../Toast.jsx";
@@ -15,10 +15,11 @@ const TONE = {
  * Server mode: a bulk action's rows that sit on other pages can't be re-checked by the reload (their
  * rows are not in its response), so they leave the selection instead of lingering as ghosts.
  */
-function dropOffPage(table, acted) {
+function dropOffPage(table, acted, result) {
   if (table.mode !== "server") return;
   const onPage = new Set(table.rows.map(table.getRowId));
-  const ids = acted.map(table.getRowId).filter((id) => !onPage.has(id));
+  const failed = new Set((result?.failed ?? []).map((f) => f.rowId ?? f.id));
+  const ids = acted.map(table.getRowId).filter((id) => !onPage.has(id) && !failed.has(id));
   if (ids.length) table.selection.drop(ids);
 }
 
@@ -58,13 +59,15 @@ export function BulkBar({ table, columns, bulkActions = [], exportable, exportFi
   const [inputs, setInputs] = useState({});
   const [picked, setPicked] = useState({});
   const { count, selectedRows, clear } = table.selection;
+  const tableRef = useRef(table); // read at completion: the page may have changed while the action ran
+  tableRef.current = table;
 
   const run = async (action) => {
     setBusy(action.id);
     try {
       const acted = selectedRows;
       const result = await action.run(acted, valueOf(action));
-      dropOffPage(table, acted);
+      dropOffPage(tableRef.current, acted, result);
       if (result && typeof result === "object") addToast(resultToast(result));
     } catch (err) {
       addToast({ message: errorText(err), type: "error" });
