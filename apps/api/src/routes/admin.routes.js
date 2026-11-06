@@ -9,6 +9,8 @@ import * as authService from "../services/auth.service.js";
 import * as emailService from "../services/email.service.js";
 import { syncSeazonaProducts, EmptyRemoteError } from "../db/sync-seazona-products.js";
 import { env } from "../config/env.js";
+import { tagsFor } from "../modules/record-tags/index.js";
+import { CLIENT_REP_RECORD_TYPE } from "../services/lab/lab-tags.js";
 import { ERROR_CODES, userRoleChangeSchema, roleChangeRefusal } from "@my-app/shared";
 
 export default async function adminRoutes(fastify) {
@@ -64,9 +66,12 @@ export default async function adminRoutes(fastify) {
       }
     }
 
+    // A client's sales rep (the client_rep record tag), for the Users screen.
+    const reps = await tagsFor(CLIENT_REP_RECORD_TYPE, userRows.filter((u) => u.role === "doctor").map((u) => u.id));
     const enriched = userRows.map((u) => ({
       ...u,
       account: primary.get(u.id) || null,
+      repTags: reps.get(u.id) ?? [],
     }));
 
     return {

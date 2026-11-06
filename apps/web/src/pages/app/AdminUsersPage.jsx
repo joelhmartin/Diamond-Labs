@@ -8,6 +8,8 @@ import { DoctorPaymentDrawer } from "../../components/admin/DoctorPaymentDrawer.
 import { useToast } from "../../components/ui/Toast.jsx";
 import { AssignPriceListModal } from "../../components/admin/AssignPriceListModal.jsx";
 import { CopyPricesModal } from "../../components/admin/CopyPricesModal.jsx";
+import { ClientRepPicker } from "../../components/admin/ClientRepPicker.jsx";
+import { TagChips } from "../../modules/record-tags/index.js";
 import { DataTable, resultToast } from "../../components/ui/data-table/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
 import { errorText } from "../../lib/requests.js";
@@ -51,7 +53,7 @@ function Stat({ label, value, tint = "text-navy" }) {
   );
 }
 
-function userColumns({ me, busyId, send, changeRole, setPaymentsUser }) {
+function userColumns({ me, busyId, send, changeRole, setPaymentsUser, setRepUser }) {
   return [
     {
       id: "user", header: "User", exportValue: (u) => `${userLabel(u)} <${u.email}>`,
@@ -76,6 +78,16 @@ function userColumns({ me, busyId, send, changeRole, setPaymentsUser }) {
           {u.seazonaAccountNumber && <div className="text-[10px] font-mono text-navy/30 mt-0.5">Seazona #{u.seazonaAccountNumber}</div>}
         </div>
       ),
+    },
+    {
+      id: "rep", header: "Sales rep", exportValue: (u) => (u.repTags ?? []).map((t) => t.label).join(", "),
+      cell: (u) => (u.role === "doctor"
+        ? (
+          <button type="button" aria-label={`Sales rep for ${userLabel(u)}`} onClick={() => setRepUser(u)} className="text-left text-xs hover:underline">
+            {u.repTags?.length ? <TagChips tags={u.repTags} /> : <span className="text-navy/30">Set rep</span>}
+          </button>
+        )
+        : <span className="text-navy/20">—</span>),
     },
     {
       id: "role", header: "Role", exportValue: (u) => u.role, sortValue: (u) => u.role,
@@ -152,6 +164,7 @@ export function AdminUsersPage() {
   const [data, setData] = useState({ users: [], summary: null });
   const [busyId, setBusyId] = useState(null);
   const [paymentsUser, setPaymentsUser] = useState(null); // { userId, name, email, accountNumber }
+  const [repUser, setRepUser] = useState(null); // the client whose sales-rep drawer is open
   const [assignIds, setAssignIds] = useState(null); // client ids the "Assign price list…" modal is open for
   const [copyIds, setCopyIds] = useState(null); // target client ids the "Copy prices from…" modal is open for
 
@@ -251,7 +264,7 @@ export function AdminUsersPage() {
 
       <DataTable
         table={table}
-        columns={userColumns({ me, busyId, send, changeRole, setPaymentsUser })}
+        columns={userColumns({ me, busyId, send, changeRole, setPaymentsUser, setRepUser })}
         bulkActions={bulkActions}
         searchPlaceholder="Name, email, practice, or Seazona account #"
         itemLabel="users"
@@ -261,6 +274,7 @@ export function AdminUsersPage() {
 
       {assignIds && <AssignPriceListModal clientUserIds={assignIds} onDone={assignDone} onClose={() => setAssignIds(null)} />}
       {copyIds && <CopyPricesModal targetIds={copyIds} onDone={copyDone} onClose={() => setCopyIds(null)} />}
+      {repUser && <ClientRepPicker client={repUser} onClose={() => setRepUser(null)} onChanged={load} />}
       {paymentsUser && <DoctorPaymentDrawer doctor={paymentsUser} onClose={() => setPaymentsUser(null)} />}
 
       <p className="mt-6 text-[11px] font-mono text-navy/30 text-center">
