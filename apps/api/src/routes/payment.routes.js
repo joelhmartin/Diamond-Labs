@@ -1,6 +1,6 @@
 import { authenticate } from "../middleware/authenticate.js";
 import { requireClientPortal, requireAdmin } from "../middleware/require-role.js";
-import { clientScopeOf, requestedAccounts } from "../services/client-scope.js";
+import { clientScopeOf, requestedAccounts, isAllAccounts } from "../services/client-scope.js";
 import * as authorizenetService from "../services/authorizenet.service.js";
 import { listPaymentHistory, listAllPayments } from "../services/billing/ledger.service.js";
 import { db } from "../config/database.js";
@@ -31,7 +31,7 @@ export default async function paymentRoutes(fastify) {
   }, async (request) => {
     const param = request.query?.account;
     const accountIds = requestedAccounts(clientScopeOf(request.user), param);
-    const includeOwn = param == null || param === "" || param === "all";
+    const includeOwn = isAllAccounts(param);
     const payments = await listPaymentHistory({ accountIds, userId: request.user.id, includeOwn });
     return { data: { payments } };
   });

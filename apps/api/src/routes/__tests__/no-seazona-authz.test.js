@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
  * seazonaClientId (any casing, any prefix such as ownerSeazonaClientId) and
  * compares (===, !==, ==, !=, eq(, ne(, inArray() is an offender, and so is
  * any call of the pre-scope rules built on it (canActOnInvoiceLegacy,
- * practiceUserIds, openInvoicesForClient), so a caller can't hide behind them.
+ * practiceUserIds, openInvoicesForClient, doctorStatementUserIds), so a caller can't hide behind them.
  *
  * Excluded: the import pipeline and db scripts (identity matching), auth.service.js
  * (the Seazona link at registration is identity, not authorization), tests, and the
@@ -39,6 +39,8 @@ const ALLOWED = new Map([
   // Task 7 (statements): the per-practice statement run (practiceKey, practiceUserIds), and
   // the doctor's own statement download, which borrows practiceUserIds from it until then.
   ["services/billing/statement-run.service.js", "Task 7"],
+  // Task 7: the doctor's statement download (doctorStatementUserIds) until statements move onto { accountIds }.
+  ["routes/invoice.routes.js", "Task 7"],
 ]);
 
 const MENTION = /seazona_?client_?id/i;
@@ -46,7 +48,7 @@ const MENTION = /seazona_?client_?id/i;
 const COMPARISON = /===|!==|[^=!<>]==[^=]|!=[^=]|\b(eq|ne|inArray|notInArray)\s*\(|\.(includes|has|indexOf)\s*\(|\bObject\.is\s*\(/;
 // Raw SQL: the column (or an interpolated field) followed by =, <>, !=, IN or ANY.
 const RAW_SQL = /seazona_?client_?id["\w.]*\)?\s*(=(?!=)|<>|!=|\bin\b|=\s*any\b)/i;
-const LEGACY_RULES = /\b(canActOnInvoiceLegacy|practiceUserIds|openInvoicesForClient)\b/;
+const LEGACY_RULES = /\b(canActOnInvoiceLegacy|practiceUserIds|openInvoicesForClient|doctorStatementUserIds)\b/;
 
 /** Does one statement (see statements()) authorize by the Seazona id? */
 function offends(statement) {

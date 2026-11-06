@@ -63,6 +63,11 @@ export function payableAccountIds(scope) {
   return (scope?.accountIds ?? []).filter((id) => scope.payable?.has(id));
 }
 
+/** Does this `?account=` value ask for the whole scope (absent, empty or "all")? The one test requestedAccounts uses. */
+export function isAllAccounts(param) {
+  return param == null || param === "" || param === "all";
+}
+
 /** 404 NOT_FOUND as an app error (the error handler sends statusCode + code). */
 export function scopeNotFound() {
   const err = new Error(ERROR_CODES.NOT_FOUND.message);
@@ -82,7 +87,7 @@ export function scopeNotFound() {
  */
 export function requestedAccounts(scope, param) {
   const all = [...(scope?.accountIds ?? [])];
-  if (param == null || param === "" || param === "all") return all;
+  if (isAllAccounts(param)) return all;
   if (typeof param === "string" && all.includes(param)) return [param];
   throw scopeNotFound();
 }

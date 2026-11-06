@@ -142,3 +142,11 @@ test("requireClientPortal: a scoped login or an approved doctor; anyone else 403
   assert.equal(await run({ id: "s", role: "user" }), 403, "no scope at all");
   assert.equal(await run(undefined), 403);
 });
+
+test("isAllAccounts: absent, empty or \"all\" ask for the whole scope; anything else does not", async () => {
+  const { isAllAccounts, requestedAccounts } = await import("./client-scope-rules.js");
+  for (const v of [undefined, null, "", "all"]) assert.equal(isAllAccounts(v), true, String(v));
+  for (const v of ["ALL", "a1", ["all"], 0]) assert.equal(isAllAccounts(v), false, String(v));
+  const scope = { accountIds: ["a1", "a2"], payable: new Set() };
+  assert.deepEqual(requestedAccounts(scope, "all"), ["a1", "a2"]);
+});

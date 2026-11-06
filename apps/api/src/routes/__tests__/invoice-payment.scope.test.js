@@ -37,7 +37,8 @@ const chain = (result) => new Proxy(function () {}, {
 });
 vi.mock("../../config/database.js", () => ({
   db: {
-    select: (cols) => chain(cols && "paid" in cols ? [] : invoiceRows),
+    // Only verifyAllocations' invoice read gets rows; the paid sums and hosted-complete's dedup reads see none.
+    select: (cols) => chain(cols && "invoiceNumber" in cols ? invoiceRows : []),
     insert: () => ({ values: async (v) => { inserted.push(...v); } }),
   },
 }));
@@ -45,6 +46,7 @@ vi.mock("../../config/database.js", () => ({
 const gatewayCalls = [];
 vi.mock("../../services/authorizenet.service.js", () => ({
   chargeCustomerProfile: async (args) => { gatewayCalls.push(args); return { transactionId: "tx1", responseCode: "1", authCode: "A" }; },
+  getTransactionDetails: async () => ({ orderInvoiceNumber: "Hscope", responseCode: "1", transactionStatus: "settledSuccessfully", amount: 1, status: "ok" }),
 }));
 const receipts = [];
 vi.mock("../../services/email.service.js", () => ({ sendPaymentReceipt: async (a) => { receipts.push(a); return true; } }));
@@ -102,6 +104,31 @@ describe("POST /payments/charge-saved on the practice scope", () => {
     expect(gatewayCalls[0].amount).toBe("3.50");
     expect(inserted.map((r) => [r.invoiceId, r.transactionId, r.userId, r.appliedCents])).toEqual([["i1", "tx1", "gadmin", 100], ["i2", "tx1", "gadmin", 250]]);
     expect(receipts.map((r) => r.to)).toEqual(["ga@x.com"]);
+  });
+});
+
+describe("POST /payments/hosted-complete after the scope was lost", () => {
+  it("scope lost between token and complete: nothing recorded, the captured-not-recorded alert fires", async () => {
+    // The token was issued while a group admin of a1; removed from the group before completing.
+    store.set("rxpay:hosted:Hscope", JSON.stringify({ userId: "gadmin", amountCents: 100, allocations: [{ invoiceId: "i1", invoiceNumber: "500001", amountCents: 100 }] }));
+    user = { ...user, role: "user", scope: scopeOf({}) };
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const app = Fastify();
+    await app.register(invoicePaymentRoutes, { prefix: "/api/v1" });
+    const res = await app.inject({ method: "POST", url: "/api/v1/payments/hosted-complete", payload: { transId: "t-lost", refId: "Hscope", allocations: [{ invoiceId: "i1", amountCents: 100 }] } });
+    await app.close();
+    const alerts = errors.mock.calls.map((c) => String(c[0])).filter((l) => l.includes("[PAYMENT][CAPTURED_NOT_RECORDED]"));
+    errors.mockRestore();
+    expect(res.statusCode).toBe(404);
+    expect(inserted).toHaveLength(0);
+    expect(alerts).toHaveLength(1);
+    expect(JSON.parse(alerts[0].split("reconcile required ")[1])).toEqual({ transactionId: "t-lost", userId: "gadmin", amountCents: 100, invoiceIds: ["i1"] });
+  });
+
+  it("hosted-complete is guarded by authenticate only, so a lost scope reaches the alerting path", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../invoice-payment.routes.js", import.meta.url), "utf8");
+    expect(src).toMatch(/fastify\.post\("\/payments\/hosted-complete", \{ \.\.\.CHARGE_RATE_LIMIT, preHandler: \[authenticate, validate\(hostedCompleteSchema\)\] \}/);
   });
 });
 

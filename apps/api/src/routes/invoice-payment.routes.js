@@ -184,7 +184,8 @@ async function hostedComplete(request, reply) {
         // Under the locks, so two concurrent completes of one transaction can't both record it.
         const dup = await db.select({ id: invoicePayments.id }).from(invoicePayments).where(eq(invoicePayments.transactionId, String(transId)));
         if (dup.length) return { alreadyRecorded: dup.length };
-        // The scope as loaded for THIS request: access lost since the token was issued pays nothing.
+        // The scope as loaded for THIS request. Access lost since the token was issued is refused here,
+        // AFTER the card was captured: nothing is recorded and logCapturedNotRecorded alerts for a manual reconcile.
         const v = await verifyAllocations(boundAllocations, clientScopeOf(request.user), { enforceCap: true });
         if (v) return { allocationError: v };
         return {
@@ -237,7 +238,11 @@ async function hostedComplete(request, reply) {
 export default async function invoicePaymentRoutes(fastify) {
   fastify.post("/payments/charge-saved", { ...CHARGE_RATE_LIMIT, preHandler: [authenticate, requireClientPortal, paymentsPaused, validate(chargeSavedSchema)] }, chargeSaved);
   fastify.post("/payments/hosted-token", { ...CHARGE_RATE_LIMIT, preHandler: [authenticate, requireClientPortal, paymentsPaused, validate(hostedTokenSchema)] }, hostedToken);
-  fastify.post("/payments/hosted-complete", { ...CHARGE_RATE_LIMIT, preHandler: [authenticate, requireClientPortal, validate(hostedCompleteSchema)] }, hostedComplete);
+  // authenticate only, no portal guard: the card is already captured when this runs. The binding ties
+  // the session to this user, and a login that lost its scope since the token was issued is refused by
+  // verifyAllocations below, which raises the alertable [PAYMENT][CAPTURED_NOT_RECORDED] line. A portal
+  // guard here would 403 first, leaving captured money with no ledger row and no alert.
+  fastify.post("/payments/hosted-complete", { ...CHARGE_RATE_LIMIT, preHandler: [authenticate, validate(hostedCompleteSchema)] }, hostedComplete);
   // The doctor pages read this to show the pause banner instead of a Pay button.
   fastify.get("/payments/status", { preHandler: [authenticate] }, async () => ({ data: { paused: env.PAYMENTS_PAUSED === true } }));
 }
