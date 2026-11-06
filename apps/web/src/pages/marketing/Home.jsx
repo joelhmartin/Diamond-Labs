@@ -310,14 +310,14 @@ function TMJSleepCard() {
         ].map(({ label, Figure, on }) => (
           <div
             key={label}
-            className={`rounded-2xl px-3 pt-4 pb-3 flex flex-col items-center border transition-colors duration-700 ${
-              on ? "bg-brand-500/[0.08] border-brand-500/30" : "bg-navy/[0.03] border-transparent"
+            className={`rounded-2xl overflow-hidden flex flex-col items-center border transition-colors duration-700 ${
+              on ? "bg-brand-500/[0.1] border-brand-500/30" : "bg-navy/[0.03] border-transparent"
             }`}
           >
-            <div className="w-full max-w-[150px] aspect-[120/124] text-navy">
+            <span className="px-3 pt-4 text-sm font-semibold text-navy text-center">{label}</span>
+            <div className="w-full max-w-[190px] aspect-[240/260] mt-auto pt-3">
               <Figure active={on} />
             </div>
-            <span className="mt-3 text-sm font-semibold text-navy text-center">{label}</span>
           </div>
         ))}
         <span
