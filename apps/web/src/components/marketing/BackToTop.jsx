@@ -10,7 +10,7 @@ const goToTop = () => {
 
 /* A round button at the bottom left, the mirror of the cart button at the bottom right.
    It appears once the visitor has moved away from the top of the page. */
-export function ScrollToTop() {
+export function BackToTop() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
