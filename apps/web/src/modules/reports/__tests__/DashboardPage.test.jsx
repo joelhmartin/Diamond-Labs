@@ -153,7 +153,9 @@ test("the feed tile reloads just its own tile", async () => {
   };
   getDashboard.mockResolvedValueOnce({ ...PULSE, tiles: [feed] });
   getDashboard.mockResolvedValueOnce({ ...PULSE, tiles: [{ ...feed, data: { rows: [{ what: "Newer event" }] } }] });
-  vi.useFakeTimers({ shouldAdvanceTime: true });
+  // Fake only the refresh interval, and before render so the tile's interval is
+  // created on the fake clock; waitFor keeps its real timeouts (as in ReportPage.test).
+  vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   render(
     <MemoryRouter initialEntries={[dashboardPath("pulse")]}>
       <ToastProvider><Routes><Route path={ROUTES.LAB_DASHBOARD} element={<DashboardPage />} /></Routes></ToastProvider>
