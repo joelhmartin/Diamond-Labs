@@ -15,17 +15,17 @@ const client = alias(users, "client");
 
 const PARAMS = [
   {
-    id: "dateField", label: "Date to filter on", type: "select", required: true,
+    name: "dateField", label: "Date to filter on", type: "select", required: true,
     options: [
       { value: "ordered", label: "Order received" },
       { value: "issued", label: "Invoice issued" },
       { value: "due", label: "Due" },
     ],
   },
-  { id: "from", label: "From", type: "date", required: true },
-  { id: "to", label: "To", type: "date", required: true },
+  { name: "from", label: "From", type: "date", required: true },
+  { name: "to", label: "To", type: "date", required: true },
   {
-    id: "statuses", label: "Status", type: "multiselect",
+    name: "statuses", label: "Status", type: "multiselect",
     options: [
       { value: "open", label: "Open" },
       { value: "paid", label: "Paid" },
@@ -46,12 +46,12 @@ const FIELDS = [
   { key: "orderedOn", label: "Ordered", type: "date" },
   { key: "issuedOn", label: "Issued", type: "date" },
   { key: "dueOn", label: "Due", type: "date" },
-  { key: "subtotal", label: "Subtotal", type: "cents" },
-  { key: "tax", label: "Tax", type: "cents" },
-  { key: "shipping", label: "Shipping", type: "cents" },
-  { key: "total", label: "Total", type: "cents" },
-  { key: "paid", label: "Paid", type: "cents" },
-  { key: "balance", label: "Balance", type: "cents" },
+  { key: "subtotal", label: "Subtotal", type: "money" },
+  { key: "tax", label: "Tax", type: "money" },
+  { key: "shipping", label: "Shipping", type: "money" },
+  { key: "total", label: "Total", type: "money" },
+  { key: "paid", label: "Paid", type: "money" },
+  { key: "balance", label: "Balance", type: "money" },
 ];
 
 // Same sum withBalances uses, as a correlated subquery so a status filter

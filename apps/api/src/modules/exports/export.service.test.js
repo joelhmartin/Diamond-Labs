@@ -2,12 +2,12 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import { z } from "zod";
 import { createExportRegistry } from "./registry.js";
-import { csvFormat } from "./formats/csv.js";
+import { csvFormat } from "./index.js";
 import { runExport, previewExport } from "./export.service.js";
 
 const fields = [
   { key: "name", label: "Name", type: "text" },
-  { key: "amountCents", label: "Amount", type: "cents" },
+  { key: "amountCents", label: "Amount", type: "money" },
   { key: "on", label: "On", type: "date" },
 ];
 

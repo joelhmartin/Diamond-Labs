@@ -1,21 +1,21 @@
 /**
- * Streamed CSV export. Server-paged reports are read page by page, each page
- * in its own short read-only transaction, so no connection is held while the
- * client downloads. Cell text comes from the shared csvValue so the file
- * matches the screen; each field is encoded by the shared csvField (via
- * csvRow), the same encoder the browser's selected-rows export uses.
+ * Streamed CSV export. A report is written as an export source through the
+ * shared paged writer and CSV format (`openExportStream` and `csvFormat` in
+ * packages/shared/src/exports), the same path the exports module's downloads
+ * take: its columns are the fields, so each cell comes from the shared
+ * csvValue (the file matches the screen) and is encoded by the shared csvRow.
+ * Server-paged reports are read page by page, each page in its own short
+ * read-only transaction, so no connection is held while the client downloads.
  */
 import { Readable } from "node:stream";
-import { csvValue, csvRow, CSV_EOL } from "@my-app/shared";
+import { csvFormat, openExportStream } from "@my-app/shared";
 import { prepareRun, executePrepared, defaultRunSlots } from "./runner.js";
 
 export const CSV_ROW_CAP = 100000;
 export const CSV_PAGE_SIZE = 2000;
 
-/** One CSV record, CRLF terminated; fields go through the one shared encoder (quoting + formula neutralising). */
-const csvLine = (cells) => `${csvRow(cells)}${CSV_EOL}`;
-
-const rowsToCsv = (columns, rows) => rows.map((row) => csvLine(columns.map((c) => csvValue(c, row[c.id])))).join("");
+/** Report files start without a BOM (unlike the exports module's downloads); see the module README. */
+export const REPORT_CSV_FORMAT = Object.freeze({ ...csvFormat, bom: false });
 
 /**
  * Validate, run the first page (so a bad request or timeout is a normal JSON
@@ -30,26 +30,22 @@ export async function streamCsv({ registry, db, key, query, actor, reply, now = 
   const server = def.paging === "server";
   const sort = prepared.page?.sort ?? null;
 
-  const first = await exec(server ? { limit: CSV_PAGE_SIZE, offset: 0, sort } : null);
+  // The report as an export source: its columns are the fields (csvValue reads a column's type and timeZone).
+  const source = { key, fields: def.columns.map((c) => ({ ...c, key: c.id })) };
+  const readPage = server
+    ? ({ limit, offset }) => exec({ limit, offset, sort })
+    : async () => {
+        const { rows } = await exec(null);
+        return { rows, total: rows.length }; // one run is the whole file
+      };
+  const { stream } = await openExportStream({
+    source, format: REPORT_CSV_FORMAT, readPage, pageSize: server ? CSV_PAGE_SIZE : CSV_ROW_CAP, maxRows: CSV_ROW_CAP,
+  });
   onExport?.(Object.keys(params));
 
-  async function* lines() {
-    yield csvLine(def.columns.map((c) => c.label));
-    yield rowsToCsv(def.columns, first.rows);
-    if (!server) return;
-    const end = Math.min(first.total, CSV_ROW_CAP);
-    let sent = first.rows.length;
-    for (let offset = CSV_PAGE_SIZE; offset < end && sent > 0; offset += CSV_PAGE_SIZE) {
-      const next = await exec({ limit: Math.min(CSV_PAGE_SIZE, end - offset), offset, sort });
-      if (!next.rows.length) return;
-      sent = next.rows.length;
-      yield rowsToCsv(def.columns, next.rows);
-    }
-  }
-
   reply
-    .header("Content-Type", "text/csv; charset=utf-8")
+    .header("Content-Type", REPORT_CSV_FORMAT.contentType)
     .header("Content-Disposition", `attachment; filename="${key}-${prepared.clock.today}.csv"`)
     .header("Cache-Control", "no-store");
-  return reply.send(Readable.from(lines()));
+  return reply.send(Readable.from(stream));
 }

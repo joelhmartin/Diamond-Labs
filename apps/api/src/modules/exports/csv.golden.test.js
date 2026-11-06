@@ -11,7 +11,7 @@ const FIELDS = [
   { key: "number", label: "Number #", type: "int" },
   { key: "name", label: "Name, full", type: "text" },
   { key: "on", label: "On", type: "date" },
-  { key: "total", label: 'Total "net"', type: "cents" },
+  { key: "total", label: 'Total "net"', type: "money" },
 ];
 
 const NAMES = ["Ann", "=SUM(A1)", 'b"c,d', "e\nf", "-12.50", "+1 call", "@cmd", "Zoë Ünal", "", null];
