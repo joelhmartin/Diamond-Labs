@@ -61,7 +61,7 @@ const DAY_ORTHOTICS = [
 const NIGHT_ORTHOTICS = [
   {
     code: "ON-D",
-    image: "/images/ond-overview.webp",
+    image: "/images/ond-nylon.webp",
     alt: "ON-D decompressor, upper and lower elements on a model",
     name: "Decompressor — Acrylic",
     summary:

@@ -156,7 +156,7 @@ function DiagnosticShuffler() {
       label: "Olmos Neuromuscular Device",
       status: "TMD",
       color: "bg-accent-500",
-      image: "/images/ond-overview.webp",
+      image: "/images/ond-nylon.webp",
     },
     {
       label: "Olmos Neuromuscular Positioner",

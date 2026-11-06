@@ -59,7 +59,7 @@ const ADVANTAGES = [
 
 const APPLIANCES = [
   { name: "Diamond Digital Sleep Orthotic", short: "DDSO", image: "/images/ddso-post-iso.webp", to: "/services/sleep" },
-  { name: "Olmos Neuromuscular Device", short: "OND", image: "/images/ond-overview.webp", to: "/services/tmd" },
+  { name: "Olmos Neuromuscular Device", short: "OND", image: "/images/ond-nylon.webp", to: "/services/tmd" },
   { name: "Olmos Neuromuscular Positioner", short: "ONP", image: "/images/onp-nylon4.webp", to: "/services/tmd" },
 ];
 

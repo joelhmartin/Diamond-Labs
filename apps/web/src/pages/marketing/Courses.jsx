@@ -190,7 +190,7 @@ export function CoursesPage() {
         title="Courses for TMD"
         titleAccent="and sleep dentistry."
         intro="Continued education from TMJ & Sleep Therapy Centres International, directed by Dr. Steven R. Olmos. Beginning, intermediate, and advanced training in TMD and dental sleep medicine."
-        product="/images/ond-overview.webp"
+        product="/images/ond-nylon.webp"
         productAlt="An Olmos Neuromuscular Device appliance"
       />
       <Intro />

@@ -32,7 +32,7 @@ const VALUES = [
 const SHOWCASE = [
   { name: "DDSO Anterior", full: "Diamond Digital Sleep Orthotic, anterior contact design", image: "/images/ddso-ant-angle.webp", alt: "DDSO anterior sleep appliance on a dark dental model" },
   { name: "DDSO Posterior", full: "Diamond Digital Sleep Orthotic, full-arch posterior design", image: "/images/ddso-post-iso.webp", alt: "DDSO posterior sleep appliance with a nylon band" },
-  { name: "OND", full: "Olmos Neuromuscular Device", image: "/images/ond-overview.webp", alt: "Olmos Neuromuscular Device on upper and lower models" },
+  { name: "OND", full: "Olmos Neuromuscular Device", image: "/images/ond-nylon.webp", alt: "Olmos Neuromuscular Device on upper and lower models" },
   { name: "ONP", full: "Olmos Neuromuscular Positioner", image: "/images/onp-nylon4.webp", alt: "Olmos Neuromuscular Positioner on upper and lower models" },
 ];
 

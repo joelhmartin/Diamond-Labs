@@ -66,7 +66,6 @@ export const PRODUCTS = {
     categoryColor: "text-brand-500",
     categoryBg: "bg-brand-500/10",
     images: [
-      { src: "/images/ond-overview.webp", label: "OND — Overview" },
       { src: "/images/ond-nylon.webp",    label: "OND — Nylon" },
       { src: "/images/ond-trutaine.webp", label: "OND — Trutaine" },
       { src: "/images/ond-front.webp",    label: "OND — Front View" },
