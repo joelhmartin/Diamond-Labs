@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { MessageSquarePlus } from "lucide-react";
-import { LAB_TIMEZONE } from "@my-app/shared";
+import { LAB_TIMEZONE, practiceKeyFor, practiceLabel } from "@my-app/shared";
 import { doctorThreadPath } from "../../config/routes.js";
 import { InboxTable, NewThreadModal } from "../../modules/messaging/index.js";
 import { usePracticeScope } from "../../hooks/usePracticeScope.js";
-import { practiceLabelOf, practicePartyKey } from "../../lib/practices.js";
 
 const FOLDERS = [{ value: "inbox", label: "Inbox" }, { value: "archived", label: "Archived" }];
 
@@ -15,7 +14,7 @@ export function MessagesPage() {
   const [composing, setComposing] = useState(false);
   const { accounts, param, multi } = usePracticeScope();
   // A login with several practices sees each thread's practice, and starts a general thread for one of them.
-  const partyOptions = multi ? accounts.map((a) => ({ key: practicePartyKey(a.id), label: practiceLabelOf(a) })) : [];
+  const partyOptions = multi ? accounts.map((a) => ({ key: practiceKeyFor({ accountId: a.id }), label: practiceLabel(a) })) : [];
 
   return (
     <div className="mx-auto max-w-6xl space-y-4 px-6 py-8">
@@ -25,7 +24,7 @@ export function MessagesPage() {
         threadPath={doctorThreadPath}
         folders={FOLDERS}
         bulk={["read", "archive", "unarchive"]}
-        party={param ? practicePartyKey(param) : undefined}
+        party={param ? practiceKeyFor({ accountId: param }) : undefined}
         partyOptions={partyOptions}
         timeZone={LAB_TIMEZONE}
         onNewMessage={(
@@ -39,7 +38,7 @@ export function MessagesPage() {
         onClose={() => setComposing(false)}
         title="Message the lab"
         partyOptions={partyOptions}
-        defaultParty={param ? practicePartyKey(param) : ""}
+        defaultParty={param ? practiceKeyFor({ accountId: param }) : ""}
         onCreated={(thread) => { setComposing(false); navigate(doctorThreadPath(thread.id)); }}
       />
     </div>

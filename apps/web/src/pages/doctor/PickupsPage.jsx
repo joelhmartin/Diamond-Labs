@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Truck, XCircle } from "lucide-react";
-import { PICKUP_STATUSES, formatUsDate } from "@my-app/shared";
+import { PICKUP_STATUSES, formatUsDate, practiceLabel } from "@my-app/shared";
 import { DataTable } from "../../components/ui/data-table/index.js";
 import { ConfirmButton } from "../../components/ui/ConfirmButton.jsx";
 import { useToast } from "../../components/ui/Toast.jsx";
@@ -9,7 +9,6 @@ import { useDataTable } from "../../hooks/useDataTable.js";
 import { useLinkedRecord } from "../../hooks/useLinkedRecord.js";
 import { usePracticeScope } from "../../hooks/usePracticeScope.js";
 import { practiceColumn } from "../../components/practice/practiceColumn.jsx";
-import { practiceLabelOf } from "../../lib/practices.js";
 import { pageParams } from "../../lib/data-table/server.js";
 import { eachRow } from "../../lib/data-table/bulk.js";
 import { errorText } from "../../lib/requests.js";
@@ -40,7 +39,7 @@ export function PickupsPage() {
   const { accounts, param, multi } = usePracticeScope();
   // The table's own Practice filter narrows within the switcher's scope (the server answers 404 for a practice outside it).
   const filters = multi
-    ? [...FILTERS, { id: "practice", label: "Practice", type: "select", placeholder: "All practices", options: accounts.map((a) => ({ value: a.id, label: practiceLabelOf(a) })) }]
+    ? [...FILTERS, { id: "practice", label: "Practice", type: "select", placeholder: "All practices", options: accounts.map((a) => ({ value: a.id, label: practiceLabel(a) })) }]
     : FILTERS;
   const fetchPage = ({ page, pageSize, filters: f }) => {
     const account = f.practice || param;
