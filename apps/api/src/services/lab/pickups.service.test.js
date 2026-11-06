@@ -16,8 +16,10 @@ const { decryptField, encryptField } = await import("../../lib/crypto.js");
 beforeEach(() => { notified.length = 0; });
 
 const NOW = new Date("2026-11-05T15:00:00Z"); // 9:00 CT on 2026-11-05
-const d1 = { id: "d1", role: "doctor", approvalStatus: "approved", seazonaClientId: "P1" };
-const d4 = { id: "d4", role: "doctor", approvalStatus: "approved", seazonaClientId: "P2" };
+// Logins carry their client scope (services/client-scope.js), as authenticate attaches it.
+const inPractices = (...accountIds) => ({ accountIds, payable: new Set(accountIds), via: new Map(), roles: new Map(), organizations: [] });
+const d1 = { id: "d1", role: "doctor", approvalStatus: "approved", scope: inPractices("P1") };
+const d4 = { id: "d4", role: "doctor", approvalStatus: "approved", scope: inPractices("P2") };
 const staff = { id: "s1", role: "lab" };
 const input = { earliestDate: "2026-11-06", latestDate: "2026-11-07", timePreference: "am", boxCount: 3, notes: "Ring the back bell" };
 const clientRow = (over = {}) => ({
@@ -96,7 +98,8 @@ test("staff on-behalf request records source \"staff\"", async () => {
   assert.equal(v.source, "staff");
   assert.equal(v.clientUserId, "d4");
   assert.equal(v.requestedByUserId, "s1");
-  assert.equal(v.partyKey, "practice:P2");
+  // Staff entry is keyed to the client until Task 6 makes it name the practice.
+  assert.equal(v.partyKey, "user:d4");
   assert.deepEqual(notified[0].args.audience, { kinds: ["staff"], excludeUserIds: ["s1"] });
 });
 
@@ -119,7 +122,7 @@ function queueDb(...rowSets) {
   return { db, calls };
 }
 
-test("doctor lists practice-wide pickups (same seazonaClientId) and not another practice's", async () => {
+test("doctor lists practice-wide pickups (their scope's practices) and not another practice's", async () => {
   const { db, calls } = queueDb([], [[0]]);
   await svc.listPickups(d1, { limit: 25 }, { database: db });
   const rowsQuery = calls[0];
@@ -131,8 +134,8 @@ test("doctor lists practice-wide pickups (same seazonaClientId) and not another 
   assert.deepEqual(other.calls[0].params.slice(0, 2), ["user:d4", "practice:P2"]);
 });
 
-test("a doctor with no seazonaClientId lists only their own user:<id> pickups and can't cancel a practice pickup", async () => {
-  const solo = { id: "d6", role: "doctor", approvalStatus: "approved", seazonaClientId: null };
+test("a doctor with no practice lists only their own user:<id> pickups and can't cancel a practice pickup", async () => {
+  const solo = { id: "d6", role: "doctor", approvalStatus: "approved", scope: inPractices() };
   const { db, calls } = queueDb([], [[0]]);
   await svc.listPickups(solo, { limit: 25 }, { database: db });
   assert.match(calls[0].sql, /"party_key" in \(\$1\)/);

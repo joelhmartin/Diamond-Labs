@@ -5,12 +5,22 @@ import { InvoiceError } from "./billing/invoice-rules.js";
 /**
  * THE definition of "a practice this login can create records for": ACTIVE, DIRECT
  * memberships in ACTIVE client accounts. An unawaited query (account ids), shared by
- * practiceForNewRecord and every picker (listPractices memberUserId), so the list a
- * person is offered and the list the validator accepts cannot drift.
+ * practiceForNewRecord, every picker (listPractices memberUserId) and the client
+ * scope (loadClientScope), so the list a person is offered, the list the validator
+ * accepts and the practices a login may see cannot drift.
  */
 export function directPracticeIdsQuery(tx, userId) {
+  return directPracticeQuery(tx, userId, { accountId: memberships.accountId });
+}
+
+/** The same rows with the membership role: the client scope's direct half (services/client-scope.js). */
+export function directPracticeMembershipsQuery(tx, userId) {
+  return directPracticeQuery(tx, userId, { accountId: memberships.accountId, role: memberships.role });
+}
+
+function directPracticeQuery(tx, userId, columns) {
   return tx
-    .select({ accountId: memberships.accountId })
+    .select(columns)
     .from(memberships)
     .innerJoin(accounts, eq(accounts.id, memberships.accountId))
     .where(and(

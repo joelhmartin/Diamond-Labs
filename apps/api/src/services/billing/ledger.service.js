@@ -4,7 +4,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { db } from "../../config/database.js";
 import { invoices, invoicePayments, users } from "../../db/schema/index.js";
 import { summarizePayments } from "../../lib/payment-summary.js";
-import { deriveBalance, canActOnInvoice } from "./invoice-rules.js";
+import { deriveBalance, canActOnInvoiceLegacy } from "./invoice-rules.js";
 import { openLedgerRow } from "./invoice-crypto.js";
 import { paidCentsFor } from "./paid-cents.js";
 import { labDay, startOfLabDay, afterLabDay } from "../../lib/lab-day-sql.js";
@@ -115,7 +115,7 @@ export async function openInvoicesForClient(client, database = db) {
     .from(invoices)
     .leftJoin(owner, eq(owner.id, invoices.clientUserId))
     .where(and(inArray(invoices.clientUserId, ids), eq(invoices.status, "issued")));
-  const balanced = await withBalances(rows.filter((r) => canActOnInvoice(client, r, r.ownerSeazonaClientId)), database);
+  const balanced = await withBalances(rows.filter((r) => canActOnInvoiceLegacy(client, r, r.ownerSeazonaClientId)), database);
   return sortOldestFirst(
     balanced
       .filter((i) => i.balanceCents > 0)

@@ -9,7 +9,7 @@ import { pageOf, containsPattern, prefixPattern } from "../../lib/list-query.js"
 import { allocateSequenceNumber } from "../sequence.service.js";
 import { loadClient } from "../billing/statements.service.js";
 import { notify } from "../notify-seam.js";
-import { partyKeysFor, practiceKeyFor } from "../practice.js";
+import { defaultPartyKey, partyKeysFor, practiceKeyFor } from "../practice.js";
 import { searchApprovedDoctors } from "./lab-messaging.js";
 import { isAssignableStaff } from "./lab-orders.service.js";
 import { shipToFromClient } from "./lab-shipping-rules.js";
@@ -21,7 +21,7 @@ import { PickupError, planRequest, planSchedule, planComplete, planCancel } from
  * rules are pickup-rules.js; this file runs them in a transaction and emits
  * after commit through the notify seam, with ids and numbers only.
  *
- * Visibility is the canActOnInvoice rule as party keys (services/practice.js):
+ * Visibility is the client scope as party keys (services/practice.js):
  * a doctor sees and cancels the pickups whose party_key is one of
  * partyKeysFor(doctor); anything else is NOT_FOUND, never forbidden. Staff see
  * every pickup. `database` and `now` are injectable for the DB-free tests.
@@ -56,6 +56,10 @@ function present(row, user) {
 
 const ref = (p) => ({ pickupNumber: p.pickupNumber, pickupId: p.id });
 
+// A portal request takes the login's one practice (defaultPartyKey); staff entry is keyed to
+// the client until Task 6 makes every create name its practice.
+const pickupPartyKey = (user, byStaff, owner) => (byStaff ? practiceKeyFor({ ownerId: owner.id }) : defaultPartyKey(user));
+
 // ── Request ──────────────────────────────────────────────────────────────────
 
 /**
@@ -72,7 +76,7 @@ export async function requestPickup(user, input, { onBehalfOfClientUserId = null
     const owner = await loadClient(clientUserId, tx);
     if (!owner) throw new PickupError("NOT_FOUND", "Client not found.");
     const row = {
-      id: createId(), pickupNumber: await allocatePickupNumber(tx), clientUserId, partyKey: practiceKeyFor(owner),
+      id: createId(), pickupNumber: await allocatePickupNumber(tx), clientUserId, partyKey: pickupPartyKey(user, byStaff, owner),
       requestedByUserId: user.id, ...values, address: shipToFromClient(owner),
       status: "requested", scheduledDate: null, assigneeUserId: null, completedAt: null, completedByUserId: null,
       cancelledAt: null, cancelReason: null, source: byStaff ? "staff" : "portal", version: 1, createdAt: now, updatedAt: now,

@@ -3,7 +3,7 @@ import { requireApprovedDoctor } from "../middleware/require-role.js";
 import { listClientInvoices } from "../services/billing/invoice-queries.js";
 import { doctorInvoiceRow, doctorInvoiceView } from "../services/billing/invoice-views.js";
 import { practiceUserIds } from "../services/billing/ledger.service.js";
-import { canActOnInvoice } from "../services/billing/invoice-rules.js";
+import { canActOnInvoiceLegacy } from "../services/billing/invoice-rules.js";
 import { validateQuery } from "../middleware/validate.js";
 import { statementQuerySchema } from "@my-app/shared";
 import { invoiceDetailHandler, invoicePdfHandler, statementPdfHandler } from "./invoice-detail.handler.js";
@@ -18,7 +18,7 @@ export const DOCTOR = [authenticate, requireApprovedDoctor];
 
 /** May this doctor read (and so download or pay) this invoice? */
 function mayRead(user, detail) {
-  return detail.invoice.status !== "draft" && canActOnInvoice(user, detail.invoice, detail.client?.seazonaClientId ?? null);
+  return detail.invoice.status !== "draft" && canActOnInvoiceLegacy(user, detail.invoice, detail.client?.seazonaClientId ?? null);
 }
 
 export default async function invoiceRoutes(fastify) {

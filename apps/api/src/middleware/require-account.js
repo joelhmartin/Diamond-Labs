@@ -5,7 +5,7 @@ import { ERROR_CODES } from "@my-app/shared";
 
 /**
  * Resolves accountId from route params or x-account-id header,
- * then loads the user's membership for that account.
+ * then loads the user's ACTIVE membership for that account.
  */
 export async function requireAccount(request, reply) {
   const accountId = request.params.accountId || request.headers["x-account-id"];
@@ -38,7 +38,8 @@ export async function requireAccount(request, reply) {
     )
     .limit(1);
 
-  if (!membership) {
+  // A removed or suspended membership is no membership: it grants nothing.
+  if (!membership || membership.status !== "active") {
     return reply.code(403).send({ error: ERROR_CODES.NOT_ACCOUNT_MEMBER });
   }
 

@@ -7,11 +7,12 @@ const { listStops, deliveryRange } = await import("./deliveries.service.js");
 const { fakeTx } = await import("../../test/fake-tx.js");
 
 // listStops reads, in order: the local orders, the scheduled pickups, then the clients of both.
+// An order's stop is its practice (accountId); "P1" stands for an account id.
 const FROM = "2026-11-05";
 const TO = "2026-11-11";
 const order = (over = {}) => ({
   id: "o1", orderNumber: 100101, status: "in_production", version: 2, dueDate: "2026-11-06",
-  shippedAt: null, clientUserId: "d1", deliveryMethod: "local_delivery", ...over,
+  shippedAt: null, clientUserId: "d1", accountId: "P1", deliveryMethod: "local_delivery", ...over,
 });
 const pickup = (over = {}) => ({
   id: "p1", pickupNumber: 7, boxCount: 2, clientUserId: "d1", partyKey: "practice:P1", scheduledDate: "2026-11-06",
@@ -42,8 +43,8 @@ test("groups local orders by dueDate and practice into one stop", async () => {
 test("stops sort by day, then practice", async () => {
   const stops = await run([
     order({ id: "o1", dueDate: "2026-11-07" }),
-    order({ id: "o2", clientUserId: "d2", dueDate: "2026-11-06" }),
-    order({ id: "o3", clientUserId: "d3", dueDate: "2026-11-06" }),
+    order({ id: "o2", clientUserId: "d2", accountId: "P2", dueDate: "2026-11-06" }),
+    order({ id: "o3", clientUserId: "d3", accountId: "P3", dueDate: "2026-11-06" }),
   ], [], [
     client(),
     client({ id: "d2", seazonaClientId: "P2", companyName: "Zeta Ortho" }),

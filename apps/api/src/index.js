@@ -45,6 +45,7 @@ import themeRoutes from "./routes/theme.routes.js";
 import autopayRoutes from "./routes/autopay.routes.js";
 import adminPaymentRoutes from "./routes/admin-payment.routes.js";
 import adminPracticesRoutes from "./routes/admin-practices.routes.js";
+import clientScopeRoutes from "./routes/client-scope.routes.js";
 import reportsRoutes from "./routes/reports.routes.js";
 import adminPriceListsRoutes from "./routes/admin-price-lists.routes.js";
 import statementRunRoutes from "./routes/statement-run.routes.js";
@@ -270,6 +271,7 @@ await fastify.register(createExportsRoutes({ registry: appExports, db, preHandle
 await fastify.register(adminPriceListsRoutes, { prefix: "/api/v1" });
 await fastify.register(statementRunRoutes, { prefix: "/api/v1" });
 await fastify.register(adminPracticesRoutes, { prefix: "/api/v1" });
+await fastify.register(clientScopeRoutes, { prefix: "/api/v1" });
 await fastify.register(
   createOrganizationsRoutes({ service: organizationsService, guard: ADMIN, describeAccounts, userExists }),
   { prefix: "/api/v1/admin/organizations" },

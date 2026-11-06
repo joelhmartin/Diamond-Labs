@@ -17,7 +17,7 @@ test("doctor invoice routes are approved-doctor only, scoped to the caller's pra
   assert.match(handlerSource(doctor, 'fastify.get("/invoices",'), /listClientInvoices\(await practiceUserIds\(request\.user\)\)/);
   const detail = handlerSource(doctor, 'fastify.get("/invoices/:id",');
   assert.match(detail, /invoiceDetailHandler\(\{ mayRead, view: doctorInvoiceView \}\)/, "the shared handler, doctor access check and view");
-  assert.match(doctor, /canActOnInvoice\(user, detail\.invoice, detail\.client\?\.seazonaClientId \?\? null\)/, "one shared predicate");
+  assert.match(doctor, /canActOnInvoiceLegacy\(user, detail\.invoice, detail\.client\?\.seazonaClientId \?\? null\)/, "one shared predicate");
   assert.match(doctor, /detail\.invoice\.status !== "draft"/);
   assert.match(handler, /"invoice\.read"/, "every detail read is audited, in the one shared handler");
   assert.doesNotMatch(doctor, /seazonaService|seazona\.service/);

@@ -26,16 +26,18 @@ function queueDb(...rowSets) {
 
 const staff = { id: "s1", role: "lab", name: "Sam Staff" };
 const admin = { id: "a1", role: "admin" };
-const d1 = { id: "d1", role: "doctor", approvalStatus: "approved", seazonaClientId: "P1" };
-const d2 = { id: "d2", role: "doctor", approvalStatus: "approved", seazonaClientId: "P1" };
-const d4 = { id: "d4", role: "doctor", approvalStatus: "approved", seazonaClientId: "P2" };
-const d6 = { id: "d6", role: "doctor", approvalStatus: "approved", seazonaClientId: null };
-const d7 = { id: "d7", role: "doctor", approvalStatus: "approved", seazonaClientId: null };
+// Logins carry their client scope (services/client-scope.js), as authenticate attaches it.
+const inPractices = (...accountIds) => ({ accountIds, payable: new Set(accountIds), via: new Map(), roles: new Map(), organizations: [] });
+const d1 = { id: "d1", role: "doctor", approvalStatus: "approved", scope: inPractices("P1") };
+const d2 = { id: "d2", role: "doctor", approvalStatus: "approved", scope: inPractices("P1") };
+const d4 = { id: "d4", role: "doctor", approvalStatus: "approved", scope: inPractices("P2") };
+const d6 = { id: "d6", role: "doctor", approvalStatus: "approved", scope: inPractices() };
+const d7 = { id: "d7", role: "doctor", approvalStatus: "approved", scope: inPractices() };
 
-// rx_case resolve selects: id, caseNumber, ownerId, ownerClientId.
-const rxRow = (ownerId, ownerClientId) => [["c1", "RX-ABC", ownerId, ownerClientId]];
-// lab_order resolve selects: id, orderNumber, clientUserId, ownerClientId.
-const orderRow = (clientUserId, ownerClientId) => [["o1", 1042, clientUserId, ownerClientId]];
+// rx_case resolve selects: id, caseNumber, ownerId, accountId (the case's practice).
+const rxRow = (ownerId, accountId) => [["c1", "RX-ABC", ownerId, accountId]];
+// lab_order resolve selects: id, orderNumber, clientUserId, accountId.
+const orderRow = (clientUserId, accountId) => [["o1", 1042, clientUserId, accountId]];
 
 test("rx_case resolves for a doctor of the same practice and not for another practice", async () => {
   const expected = { label: "Case RX-ABC", partyKey: "practice:P1", hostPath: "/admin/rx-cases/c1", partyPath: "/doctor/cases?case=c1" };
@@ -46,7 +48,7 @@ test("rx_case resolves for a doctor of the same practice and not for another pra
   assert.equal(await labRecordResolvers.rx_case.resolve(queueDb([]).db, "nope", staff), null);
 });
 
-test("rx_case resolves for a doctor with null seazonaClientId only when owner", async () => {
+test("rx_case with no practice resolves for its owner only", async () => {
   const own = await labRecordResolvers.rx_case.resolve(queueDb(rxRow("d6", null)).db, "c1", d6);
   assert.equal(own.partyKey, "user:d6");
   assert.equal(await labRecordResolvers.rx_case.resolve(queueDb(rxRow("d6", null)).db, "c1", d7), null);
@@ -157,13 +159,12 @@ test("messageAlertArgs clips labels so the notifier's data guard never drops the
   assert.ok(a.data.recordLabel.length <= 200 && a.data.senderOrg.length <= 200);
 });
 
-// describe/list rows: id, name, seazonaClientId, companyName.
-test("describeLabParties: practice key → companyName, else the doctor name", async () => {
-  const { db } = queueDb([
-    ["d1", "Dr One", "P1", null],
-    ["d2", "Dr Two", "P1", "Smile Dental"],
-    ["d6", "Dr Six", null, null],
-  ]);
+// describe/list doctor rows: id, name, seazonaClientId, companyName; account rows: id, name.
+test("describeLabParties: practice key → the practice's account name, user key → the doctor", async () => {
+  const { db } = queueDb(
+    [["P1", "Smile Dental"]],
+    [["d6", "Dr Six", null, null]],
+  );
   const m = await describeLabParties(db, ["practice:P1", "user:d6", "practice:P9", "bogus"]);
   assert.deepEqual([...m].sort(), [["practice:P1", "Smile Dental"], ["user:d6", "Dr Six"]]);
   const { db: none, calls } = queueDb();
@@ -177,7 +178,8 @@ test("describeLabUsers maps ids to names", async () => {
   assert.equal(m.get("d1"), "Dr One");
 });
 
-test("listLabParties groups approved doctors by practice key, at most 20", async () => {
+// Until Task 6 lists practices (accounts) here, the picker keys each doctor to themself.
+test("listLabParties lists approved doctors by their own key, at most 20", async () => {
   const rows = [
     ["d1", "Dr One", "P1", null], ["d2", "Dr Two", "P1", "Smile Dental"], ["d6", "Dr Six", null, null],
     ...Array.from({ length: 30 }, (_, i) => [`x${i}`, `Zed X${String(i).padStart(2, "0")}`, `Q${i}`, null]),
@@ -186,8 +188,9 @@ test("listLabParties groups approved doctors by practice key, at most 20", async
   const out = await listLabParties(db, "dr");
   // Alphabetical by label, then capped.
   assert.equal(out.length, 20);
-  assert.deepEqual(out.find((p) => p.key === "practice:P1"), { key: "practice:P1", label: "Smile Dental" });
+  assert.deepEqual(out.find((p) => p.key === "user:d2"), { key: "user:d2", label: "Smile Dental" });
   assert.ok(out.some((p) => p.key === "user:d6"));
+  assert.ok(out.every((p) => p.key.startsWith("user:")), "no practice key from a doctor row");
   assert.equal(new Set(out.map((p) => p.key)).size, 20);
   assert.match(calls[0].sql, /approval_status/);
   assert.ok(calls[0].params.includes("approved"));
@@ -195,12 +198,13 @@ test("listLabParties groups approved doctors by practice key, at most 20", async
 
 test("search matches party names and record labels only, never message text", async () => {
   const { db, calls } = queueDb(
-    [["d1", "P1"], ["d6", null]], // doctors whose name/company matches: id, seazonaClientId
+    [["d1"], ["d6"]], // doctors whose name/company matches: id
     [["c1"]], // rx cases by number
     [["o1"]], // lab orders by number
   );
   const hit = await searchLabRecords(db, "Case 104");
-  assert.deepEqual(hit.partyKeys.sort(), ["practice:P1", "user:d1", "user:d6"]);
+  // Each matching doctor's own key; matching practices by account name arrives with Task 6.
+  assert.deepEqual(hit.partyKeys.sort(), ["user:d1", "user:d6"]);
   assert.deepEqual(hit.records, [{ recordType: "rx_case", recordId: "c1" }, { recordType: "lab_order", recordId: "o1" }]);
   assert.ok(calls.every((c) => !/"messages"|message_threads/.test(c.sql)));
   // Not a number: no lab order lookup.

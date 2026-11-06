@@ -1,13 +1,13 @@
 import { and, asc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { isStaffRole } from "@my-app/shared";
-import { doctorProfiles, labOrders, pickups, rxCases, users } from "../../db/schema/index.js";
+import { accounts, doctorProfiles, labOrders, pickups, rxCases, users } from "../../db/schema/index.js";
 import { containsPattern, prefixPattern } from "../../lib/list-query.js";
 import { requireApprovedDoctor } from "../../middleware/require-role.js";
 import { createMessaging } from "../../modules/messaging/index.js";
 import * as recordFiles from "../../modules/record-files/index.js";
 import * as auditService from "../audit.service.js";
 import { markReadFor as markReadSeam, notify as notifySeam } from "../notify-seam.js";
-import { parsePartyKey, partyKeysFor, practiceKeyFor } from "../practice.js";
+import { defaultPartyKey, parsePartyKey, partyKeysFor, practiceKeyFor } from "../practice.js";
 
 /**
  * Lab glue for the generic messaging module: lab staff are the host, a
@@ -16,9 +16,9 @@ import { parsePartyKey, partyKeysFor, practiceKeyFor } from "../practice.js";
  * labels, search, the staff "New message" picker, the route guard, the
  * message.received alert (and clearing it on open) and attachment storage (record-files). Boot (services/app-modules.js) wires it once.
  *
- * Visibility is canActOnInvoice restated as keys (practice.js): a doctor may
- * open a record exactly when partyKeysFor(doctor) includes
- * practiceKeyFor(record owner). Staff see every record that has an owner.
+ * Visibility is the client scope restated as keys (practice.js): a login may
+ * open a record exactly when partyKeysFor(login) includes
+ * practiceKeyFor(record's practice). Staff see every record that has an owner.
  * Message text is sealed and never leaves the module: search matches labels
  * and party names only, and the alert carries ids and labels only.
  */
@@ -30,30 +30,30 @@ const SEARCH_ROWS = 200;
 const PARTY_PICKER_MAX = 20;
 const LABEL_MAX = 200; // the notifier's data guard allows 200 chars a string
 
-const ownerKey = (ownerId, ownerClientId) => practiceKeyFor({ id: ownerId, seazonaClientId: ownerClientId ?? null });
+const ownerKey = (ownerId, accountId) => practiceKeyFor({ accountId: accountId ?? null, ownerId });
 const mayOpen = (user, partyKey) => isLabHost(user) || partyKeysFor(user).includes(partyKey);
 const clean = (v) => (v == null ? "" : String(v).trim());
 
 // ── Record resolvers ────────────────────────────────────────────────────────
 
-// Owner columns joined in: the practice key is computed from the owner's
-// current account, as canActOnInvoice does, never from a copy on the record.
-const rxSelect = { id: rxCases.id, caseNumber: rxCases.caseNumber, ownerId: rxCases.userId, ownerClientId: users.seazonaClientId };
-const orderSelect = { id: labOrders.id, orderNumber: labOrders.orderNumber, ownerId: labOrders.clientUserId, ownerClientId: users.seazonaClientId };
+// The practice key is the record's own practice (account_id, stamped at create),
+// as the client scope reads it; a record with no account is keyed to its owner.
+const rxSelect = { id: rxCases.id, caseNumber: rxCases.caseNumber, ownerId: rxCases.userId, accountId: rxCases.accountId };
+const orderSelect = { id: labOrders.id, orderNumber: labOrders.orderNumber, ownerId: labOrders.clientUserId, accountId: labOrders.accountId };
 
-const rxQuery = (db, where) => db.select(rxSelect).from(rxCases).leftJoin(users, eq(users.id, rxCases.userId)).where(where);
-const orderQuery = (db, where) => db.select(orderSelect).from(labOrders).leftJoin(users, eq(users.id, labOrders.clientUserId)).where(where);
+const rxQuery = (db, where) => db.select(rxSelect).from(rxCases).where(where);
+const orderQuery = (db, where) => db.select(orderSelect).from(labOrders).where(where);
 // A pickup carries its practice key (party_key, set at request time), so no owner join.
 const pickupQuery = (db, where) => db.select({ id: pickups.id, pickupNumber: pickups.pickupNumber, partyKey: pickups.partyKey }).from(pickups).where(where);
 
 const rxView = (r) => ({
-  label: `Case ${r.caseNumber}`, partyKey: ownerKey(r.ownerId, r.ownerClientId),
+  label: `Case ${r.caseNumber}`, partyKey: ownerKey(r.ownerId, r.accountId),
   hostPath: `/admin/rx-cases/${enc(r.id)}`, partyPath: `/doctor/cases?case=${enc(r.id)}`,
 });
 // Doctors don't see lab orders directly, so there is no party path. A guest
 // shop order has no owner, so no party: nobody can open a thread on it.
 const orderView = (r) => (r.ownerId
-  ? { label: `Case #${r.orderNumber}`, partyKey: ownerKey(r.ownerId, r.ownerClientId), hostPath: `/lab/orders/${enc(r.id)}`, partyPath: null }
+  ? { label: `Case #${r.orderNumber}`, partyKey: ownerKey(r.ownerId, r.accountId), hostPath: `/lab/orders/${enc(r.id)}`, partyPath: null }
   : null);
 
 const pickupView = (r) => ({
@@ -118,17 +118,17 @@ function labelsByKey(rows, keysOf) {
   return new Map([...best].map(([k, v]) => [k, v.label]));
 }
 
-/** Party key → the practice's companyName, or the doctor's name. Unknown keys are left out. */
+/** Party key → the practice's account name, or the doctor's companyName / name. Unknown keys are left out. */
 export async function describeLabParties(db, keys) {
   const parsed = (keys ?? []).map(parsePartyKey).filter(Boolean);
   const practices = [...new Set(parsed.filter((p) => p.practice != null).map((p) => p.practice))];
   const ids = [...new Set(parsed.filter((p) => p.userId != null).map((p) => p.userId))];
-  if (!practices.length && !ids.length) return new Map();
-  const conds = [];
-  if (practices.length) conds.push(inArray(users.seazonaClientId, practices));
-  if (ids.length) conds.push(inArray(users.id, ids));
-  const rows = await doctorQuery(db, or(...conds)).orderBy(asc(users.createdAt));
-  const labels = labelsByKey(rows, partyKeysFor);
+  const [accountRows, doctorRows] = await Promise.all([
+    practices.length ? db.select({ id: accounts.id, name: accounts.name }).from(accounts).where(inArray(accounts.id, practices)) : [],
+    ids.length ? doctorQuery(db, inArray(users.id, ids)).orderBy(asc(users.createdAt)) : [],
+  ]);
+  const labels = labelsByKey(doctorRows, (r) => [practiceKeyFor({ ownerId: r.id })]);
+  for (const a of accountRows) if (clean(a.name)) labels.set(practiceKeyFor({ accountId: a.id }), clean(a.name));
   const wanted = new Set(keys);
   return new Map([...labels].filter(([k]) => wanted.has(k)));
 }
@@ -155,7 +155,8 @@ export function searchApprovedDoctors(db, q = "", limit = SEARCH_ROWS) {
 /** Staff "New message" picker: approved, active doctors grouped by practice key, at most 20. */
 export async function listLabParties(db, q = "") {
   const rows = await searchApprovedDoctors(db, q);
-  const labels = labelsByKey(rows, (r) => [practiceKeyFor(r)]);
+  // Keyed per doctor until Task 6 lists practices (accounts) here.
+  const labels = labelsByKey(rows, (r) => [practiceKeyFor({ ownerId: r.id })]);
   return [...labels]
     .map(([key, label]) => ({ key, label }))
     .sort((a, b) => a.label.localeCompare(b.label))
@@ -176,7 +177,7 @@ export async function searchLabRecords(db, q) {
   const number = text.replace(/^(case|order)\b\s*/i, "").replace(/^#\s*/, "").trim();
   const pattern = containsPattern(text);
   const [doctors, cases, orders] = await Promise.all([
-    db.select({ id: users.id, seazonaClientId: users.seazonaClientId }).from(users)
+    db.select({ id: users.id }).from(users)
       .leftJoin(doctorProfiles, eq(doctorProfiles.userId, users.id))
       .where(and(eq(users.role, "doctor"), or(ilike(users.name, pattern), ilike(doctorProfiles.companyName, pattern))))
       .limit(SEARCH_ROWS),
@@ -186,7 +187,8 @@ export async function searchLabRecords(db, q) {
       : [],
   ]);
   return {
-    partyKeys: [...new Set(doctors.flatMap(partyKeysFor))],
+    // A matching doctor's own key; matching by practice (account) name arrives with Task 6.
+    partyKeys: [...new Set(doctors.map((d) => practiceKeyFor({ ownerId: d.id })))],
     records: [
       ...cases.map((r) => ({ recordType: "rx_case", recordId: r.id })),
       ...orders.map((r) => ({ recordType: "lab_order", recordId: r.id })),
@@ -336,7 +338,7 @@ export function createLabMessaging({
     records: labRecordResolvers,
     isHost: isLabHost,
     partyKeysFor,
-    defaultPartyKey: practiceKeyFor,
+    defaultPartyKey,
     describeParty: describeLabParties,
     describeUsers: describeLabUsers,
     search: (d, q) => searchLabRecords(d, q),

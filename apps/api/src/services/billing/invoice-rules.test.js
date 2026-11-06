@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { priceLines } from "../../lib/pricing.js";
 import {
   InvoiceError, computeTotals, hasUnpriced, asRemakeLines, planDraftInvoice, planShopInvoice,
-  assertFreshInvoice, planLineEdit, planIssue, planVoid, deriveBalance, canActOnInvoice, planCredit, planManualPayment, planAccountCredit,
+  assertFreshInvoice, planLineEdit, planIssue, planVoid, deriveBalance, canActOnInvoice, canActOnInvoiceLegacy, planCredit, planManualPayment, planAccountCredit,
   planShipmentLine, planShipmentLineRemoval, planLinkedLineAdd, planLinkedLineRemove, planLinkedLineQty, planDiscountLine,
   hasNoItems,
 } from "./invoice-rules.js";
@@ -234,16 +234,32 @@ test("balance = total − (payments + credits − refunds); a void owes nothing;
   assert.throws(() => deriveBalance(issued, 12.5), TypeError);
 });
 
-test("practice visibility: the owner, or a login of the same practice — nobody else", () => {
+test("canActOnInvoice: the invoice's practice is in the requester's scope; the owner no longer matters", () => {
+  const scope = { accountIds: ["a1", "a2"], payable: new Set(["a1"]) };
+  assert.equal(canActOnInvoice(scope, { accountId: "a1", clientUserId: "someone-else" }), true);
+  assert.equal(canActOnInvoice(scope, { accountId: "a2" }), true, "readable even where not payable");
+  assert.equal(canActOnInvoice(scope, { accountId: "a3" }), false, "a sibling practice");
+  assert.equal(canActOnInvoice(null, { accountId: "a1" }), false);
+  assert.equal(canActOnInvoice(scope, null), false);
+});
+
+test("canActOnInvoice is false for a null accountId", () => {
+  // A backfill gap, or a guest invoice: fails closed even for the owner.
+  const scope = { accountIds: ["a1"], payable: new Set(["a1"]) };
+  assert.equal(canActOnInvoice(scope, { accountId: null, clientUserId: "doc1" }), false);
+  assert.equal(canActOnInvoice(scope, { clientUserId: "doc1" }), false);
+});
+
+test("legacy practice visibility (until Task 5): the owner, or a login of the same practice — nobody else", () => {
   const invoice = { clientUserId: "doc1" };
-  assert.equal(canActOnInvoice({ id: "doc1", seazonaClientId: null }, invoice, null), true, "the owner always");
-  assert.equal(canActOnInvoice({ id: "frontdesk", seazonaClientId: "c1" }, invoice, "c1"), true, "a same-practice second login");
-  assert.equal(canActOnInvoice({ id: "other", seazonaClientId: "c2" }, invoice, "c1"), false, "another practice");
-  assert.equal(canActOnInvoice({ id: "frontdesk", seazonaClientId: null }, invoice, "c1"), false, "null on the user's side");
-  assert.equal(canActOnInvoice({ id: "frontdesk", seazonaClientId: "c1" }, invoice, null), false, "null on the owner's side");
-  assert.equal(canActOnInvoice({ id: "x", seazonaClientId: null }, invoice, null), false, "two nulls are not a match");
-  assert.equal(canActOnInvoice({ id: "doc1" }, { clientUserId: null }, null), false, "a guest invoice is nobody's to see");
-  assert.equal(canActOnInvoice(null, invoice, "c1"), false);
+  assert.equal(canActOnInvoiceLegacy({ id: "doc1", seazonaClientId: null }, invoice, null), true, "the owner always");
+  assert.equal(canActOnInvoiceLegacy({ id: "frontdesk", seazonaClientId: "c1" }, invoice, "c1"), true, "a same-practice second login");
+  assert.equal(canActOnInvoiceLegacy({ id: "other", seazonaClientId: "c2" }, invoice, "c1"), false, "another practice");
+  assert.equal(canActOnInvoiceLegacy({ id: "frontdesk", seazonaClientId: null }, invoice, "c1"), false, "null on the user's side");
+  assert.equal(canActOnInvoiceLegacy({ id: "frontdesk", seazonaClientId: "c1" }, invoice, null), false, "null on the owner's side");
+  assert.equal(canActOnInvoiceLegacy({ id: "x", seazonaClientId: null }, invoice, null), false, "two nulls are not a match");
+  assert.equal(canActOnInvoiceLegacy({ id: "doc1" }, { clientUserId: null }, null), false, "a guest invoice is nobody's to see");
+  assert.equal(canActOnInvoiceLegacy(null, invoice, "c1"), false);
 });
 
 test("invoice errors map to the status a screen can act on", () => {

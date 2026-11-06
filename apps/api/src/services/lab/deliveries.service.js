@@ -44,7 +44,7 @@ function loadOrders(database, { from, to }) {
   return database
     .select({
       id: labOrders.id, orderNumber: labOrders.orderNumber, status: labOrders.status, version: labOrders.version,
-      dueDate: labOrders.dueDate, shippedAt: labOrders.shippedAt, clientUserId: labOrders.clientUserId,
+      dueDate: labOrders.dueDate, shippedAt: labOrders.shippedAt, clientUserId: labOrders.clientUserId, accountId: labOrders.accountId,
       deliveryMethod: labOrders.deliveryMethod,
     })
     .from(labOrders)
@@ -101,9 +101,8 @@ export async function listStops(database, { from, to, todayIso = isoDateIn(LAB_T
     return stops.get(key);
   };
   for (const o of orders) {
-    const c = clients.get(o.clientUserId);
     // A guest order (no client) is a stop of its own rather than sharing one "nobody" practice.
-    const partyKey = o.clientUserId ? practiceKeyFor(c ?? { id: o.clientUserId }) : `order:${o.id}`;
+    const partyKey = o.clientUserId ? practiceKeyFor({ accountId: o.accountId, ownerId: o.clientUserId }) : `order:${o.id}`;
     const stop = stopFor(o.day, partyKey, o.clientUserId);
     if (o.status !== "shipped" && o.dueDate < range.from) stop.late = true;
     stop.orders.push({ id: o.id, orderNumber: o.orderNumber, status: o.status, version: o.version });

@@ -1,5 +1,6 @@
 import { INVOICE_LINE_KINDS, addIsoDays, allocateOldestFirst, isCalendarDate } from "@my-app/shared";
 import { assertCents, formatCents, mulCents, pctOfCents, sumCents } from "../../lib/money.js";
+import { canActForAccount } from "../client-scope-rules.js";
 
 /**
  * Pure invoice rules: totals, the draft → issued → void lifecycle, draft edit
@@ -400,19 +401,32 @@ export function deriveBalance(invoice, paidCents = 0) {
 }
 
 /**
- * THE doctor visibility and payment-rights rule. An invoice is owned by one
- * doctor (clientUserId), but every portal login of the same practice may see
- * and pay it, as they could when invoices lived in Seazona. A practice is a
- * shared, non-null seazonaClientId until piece 5 brings a real practice
- * entity. A null on either side matches the owner only. Used by every doctor
- * read (list, detail, PDF, statement), every payment (verifyAllocations) and
- * AutoPay.
+ * THE client visibility rule for an invoice (piece 11): its practice
+ * (`invoice.accountId`) is in the requester's ClientScope
+ * (services/client-scope.js). The owning doctor no longer matters: every login
+ * of the practice, and the group's admins, may see it. A null accountId (a
+ * guest invoice, or one the backfill has not reached) fails closed: only
+ * staff see it. Paying also needs the account payable:
+ * `canActForAccount(scope, invoice.accountId, { pay: true })`.
+ *
+ * @param {import("../client-scope-rules.js").ClientScope} scope
+ * @param {{ accountId: string|null }} invoice
+ */
+export function canActOnInvoice(scope, invoice) {
+  return canActForAccount(scope, invoice?.accountId ?? null);
+}
+
+/**
+ * The pre-piece-11 rule, kept only until Task 5 repoints its callers (invoice
+ * routes, verifyAllocations, the ledger) onto canActOnInvoice(scope, invoice)
+ * and deletes it: the owner, or a login sharing the owner's non-null
+ * seazonaClientId. A null on either side matches the owner only.
  *
  * @param {{ id: string, seazonaClientId?: string|null }} user  the requester (or the doctor being charged)
  * @param {{ clientUserId: string|null }} invoice
  * @param {string|null} ownerSeazonaClientId  the owning doctor's seazonaClientId
  */
-export function canActOnInvoice(user, invoice, ownerSeazonaClientId) {
+export function canActOnInvoiceLegacy(user, invoice, ownerSeazonaClientId) {
   if (!user?.id || !invoice?.clientUserId) return false;
   if (invoice.clientUserId === user.id) return true;
   return Boolean(user.seazonaClientId) && Boolean(ownerSeazonaClientId) && String(user.seazonaClientId) === String(ownerSeazonaClientId);

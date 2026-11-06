@@ -7,7 +7,7 @@ import { formatCents } from "../lib/money.js";
 import { sendPaymentReceipt } from "./email.service.js";
 import * as auditService from "./audit.service.js";
 import { paidCentsByInvoice } from "./billing/ledger.service.js";
-import { deriveBalance, canActOnInvoice } from "./billing/invoice-rules.js";
+import { deriveBalance, canActOnInvoiceLegacy } from "./billing/invoice-rules.js";
 
 const owner = alias(users, "owner");
 
@@ -112,7 +112,7 @@ export async function recordPaymentAndAllocations({
 
 /**
  * Check a payment's allocations against our invoices: each one exists, may be
- * paid by this user (canActOnInvoice: the owner, or a login of the same
+ * paid by this user (canActOnInvoiceLegacy until Task 5: the owner, or a login of the same
  * practice), is issued, appears once, and (with
  * `enforceCap`) is not paid past its balance after payments, credits and
  * refunds. Backfills `invoiceNumber`. Returns null when all good, else
@@ -144,7 +144,7 @@ export async function verifyAllocations(allocations, user, { enforceCap = false,
     const inv = byId.get(String(a.invoiceId));
     // Not found and not yours read the same, so invoice ids can't be probed.
     // The cap below stays per invoice id, so a second login can't re-pay.
-    if (!inv || !canActOnInvoice(user, inv, inv.ownerSeazonaClientId)) {
+    if (!inv || !canActOnInvoiceLegacy(user, inv, inv.ownerSeazonaClientId)) {
       return { kind: "forbidden", message: `Invoice ${a.invoiceNumber || a.invoiceId} is not on this account.` };
     }
     a.invoiceNumber = String(inv.invoiceNumber);
