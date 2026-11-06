@@ -76,6 +76,9 @@ export function existingFromRows(userRows, slugRows, profileRows) {
     userEmails: new Map(userRows.map((u) => [u.id, String(u.email).toLowerCase()])),
     byEmail,
     slugs: new Set(slugRows.map((r) => r.slug)),
+    // Taken practice numbers and client keys (accounts.account_number / legacy_client_key are unique), so a new practice never collides.
+    accountNumbers: new Set(slugRows.map((r) => r.accountNumber).filter(Boolean)),
+    clientKeys: new Set(slugRows.map((r) => r.legacyClientKey).filter(Boolean)),
     profileUserIds: new Set(profileRows.map((r) => r.userId)),
   };
 }
@@ -91,11 +94,17 @@ function uniqueSlug(name, taken) {
   return slug;
 }
 
-function newDoctor(client, id, email, placeholder, slugs, now) {
+function newDoctor(client, id, email, placeholder, slugs, now, taken) {
   const userId = createId();
   const name = firstString(client, ["fullName", "company"]) ?? email;
   const practice = firstString(client, ["company", "fullName"]) ?? email;
   const accountId = createId();
+  // The practice's lab number and Seazona key, only when free: a clash leaves the column empty rather than failing the whole load.
+  const rawNumber = client.accountNumber == null ? null : String(client.accountNumber).trim().slice(0, 100) || null;
+  const accountNumber = rawNumber && !taken.numbers.has(rawNumber) ? rawNumber : null;
+  if (accountNumber) taken.numbers.add(accountNumber);
+  const legacyClientKey = taken.keys.has(id) ? null : id.slice(0, 100);
+  if (legacyClientKey) taken.keys.add(legacyClientKey);
   return {
     user: {
       id: userId, email, name: name.slice(0, 100), passwordHash: null, emailVerifiedAt: null,
@@ -103,7 +112,10 @@ function newDoctor(client, id, email, placeholder, slugs, now) {
       seazonaClientId: id, seazonaAccountNumber: client.accountNumber == null ? null : String(client.accountNumber),
       createdAt: now, updatedAt: now,
     },
-    account: { id: accountId, name: practice.slice(0, 100), slug: uniqueSlug(practice, slugs), ownerId: userId, plan: "pro", status: "active", createdAt: now, updatedAt: now },
+    account: {
+      id: accountId, name: practice.slice(0, 100), slug: uniqueSlug(practice, slugs), ownerId: userId, plan: "pro", status: "active",
+      isClient: true, accountNumber, legacyClientKey, createdAt: now, updatedAt: now,
+    },
     membership: { id: createId(), userId, accountId, role: "owner", status: "active", createdAt: now, updatedAt: now },
   };
 }
@@ -120,6 +132,7 @@ function newDoctor(client, id, email, placeholder, slugs, now) {
  */
 export function planClients(clients, existing, { noEmail = "placeholder", emailTaken = "report", now = new Date() } = {}) {
   const slugs = new Set(existing.slugs);
+  const practiceTaken = { numbers: new Set(existing.accountNumbers), keys: new Set(existing.clientKeys) };
   const usedEmails = new Map(existing.byEmail);
   const withProfile = new Set(existing.profileUserIds);
   const plan = {
@@ -150,7 +163,7 @@ export function planClients(clients, existing, { noEmail = "placeholder", emailT
     const taken = usedEmails.get(address);
     if (taken?.ambiguous) { plan.skipped.emailCaseAmbiguous.push(id); continue; }
     const placeholderForTaken = () => {
-      const doctor = newDoctor(client, id, placeholderEmail(id), true, slugs, now);
+      const doctor = newDoctor(client, id, placeholderEmail(id), true, slugs, now, practiceTaken);
       plan.create.push(doctor);
       addProfile(client, doctor.user.id);
     };
@@ -172,7 +185,7 @@ export function planClients(clients, existing, { noEmail = "placeholder", emailT
       else plan.skipped.emailTaken.push(id);
       continue;
     }
-    const doctor = newDoctor(client, id, address, !email, slugs, now);
+    const doctor = newDoctor(client, id, address, !email, slugs, now, practiceTaken);
     plan.create.push(doctor);
     addProfile(client, doctor.user.id);
     usedEmails.set(address, { id: doctor.user.id, seazonaClientId: id, linkable: false, ambiguous: false });

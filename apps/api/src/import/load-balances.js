@@ -4,6 +4,7 @@ import { invoices, invoiceLines, invoicePayments } from "../db/schema/index.js";
 import { sealInvoice, sealLine } from "../services/billing/invoice-crypto.js";
 import { allocateSequenceNumber, INVOICE_NUMBER_LOCK } from "../services/sequence.service.js";
 import { loadOwners, normAccount, accountsByInvoice } from "./owners.js";
+import { loadAccountsByClientKey, accountByOwner } from "./practice-accounts.js";
 import {
   SETTLEMENT_PREFIX, planInvoiceSettlements, planClientOpenings, mapOpeningInvoice, settlementCandidates,
 } from "./balance-plan.js";
@@ -28,9 +29,10 @@ const TOTAL_MISMATCH_WARNING = "The rows do not add up to the export's own Total
 const noKeyRows = (parsed) => parsed.problems.find((p) => p.kind === EXPORT_PROBLEM_KINDS.noKey)?.count ?? 0;
 
 /** One opening-balance invoice in the caller's transaction, numbered from the live sequence. */
-export async function writeOpening(tx, { opening, start, cutoverAt }) {
+export async function writeOpening(tx, { opening, start, cutoverAt, accountId = null }) {
   const invoiceNumber = await allocateSequenceNumber(tx, { lockId: INVOICE_NUMBER_LOCK, table: invoices, column: invoices.invoiceNumber, start });
   const { invoice, lines } = mapOpeningInvoice({ opening, invoiceNumber, cutoverAt });
+  invoice.accountId = accountId; // the owner's practice, null for an unowned opening (reattach stamps it with the owner)
   await tx.insert(invoices).values(sealInvoice(invoice));
   await tx.insert(invoiceLines).values(lines.map(sealLine));
   return invoice;
@@ -92,11 +94,11 @@ async function accountOwners(db) {
   const unowned = new Map();
   for (const a of o.rejectedAccounts) unowned.set(a, "account_owner_not_approved_doctor");
   for (const a of o.ambiguousAccounts) unowned.set(a, "account_has_multiple_owners");
-  return { ownerByAccount: o.byAccount, unownedAccounts: unowned };
+  return { ownerByAccount: o.byAccount, unownedAccounts: unowned, ownerRows: o.rows };
 }
 
 async function perClient({ raw, db, live, target, legacy, parsed, existingTransactionIds, paidCents, starts, cutoverAt, report, guard }) {
-  const { ownerByAccount, unownedAccounts } = await accountOwners(db);
+  const { ownerByAccount, unownedAccounts, ownerRows } = await accountOwners(db);
   const accountOfInvoice = await accountsByInvoice(raw, legacy);
   const paidByInvoice = await paymentsOn(settlementCandidates(legacy, "per-client", existingTransactionIds), paidCents, db);
   const plan = planClientOpenings({
@@ -126,10 +128,11 @@ async function perClient({ raw, db, live, target, legacy, parsed, existingTransa
   if (!live) return report;
   const start = starts.invoice ?? (seeds.max.invoice ?? 0) + 1;
   const settlements = await writeSettlements(db, plan.settlements, existingTransactionIds, guard);
+  const practiceOfOwner = accountByOwner(ownerRows, await loadAccountsByClientKey(db));
   let openings = 0;
   for (const opening of plan.openings) {
     guard();
-    await db.transaction((tx) => writeOpening(tx, { opening, start, cutoverAt }));
+    await db.transaction((tx) => writeOpening(tx, { opening, start, cutoverAt, accountId: practiceOfOwner.get(opening.clientUserId) ?? null }));
     openings += 1;
   }
   report.written = { settlements, openings };

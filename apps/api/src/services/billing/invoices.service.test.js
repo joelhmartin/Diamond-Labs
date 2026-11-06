@@ -69,6 +69,22 @@ test("a paid shop order gets an issued invoice, paid in full by one shop_card le
   assert.equal(audit.action, "invoice.issued");
 });
 
+test("a draft invoice inherits the lab order's account", async () => {
+  const tx = fakeTx({ selects: [[{ id: "v1", basePriceCents: 45000, taxable: false }], [], [], [{ max: 500010 }]] });
+  await mod.createDraftForLabOrder(tx, { labOrder: { id: "lo5", clientUserId: "doc1", accountId: "acct1", isRemake: false }, lines: labLines.slice(0, 1) });
+  assert.equal(inserts(tx)[0].accountId, "acct1");
+});
+
+test("a shop invoice carries the buyer's practice; a guest's has none", async () => {
+  const quote = { lines: [], subtotalCents: 0, taxCents: 0, shippingCents: 0, totalCents: 0 };
+  const buyer = fakeTx({ selects: [[{ max: null }]] });
+  await mod.createShopInvoice(buyer, { labOrderId: "lo7", clientUserId: "doc1", accountId: "acct1", quote, transactionId: "t1" });
+  assert.equal(inserts(buyer)[0].accountId, "acct1");
+  const guest = fakeTx({ selects: [[{ max: null }]] });
+  await mod.createShopInvoice(guest, { labOrderId: "lo8", clientUserId: null, quote, transactionId: "t2" });
+  assert.equal(inserts(guest)[0].accountId, null, "guest shop invoice has null account");
+});
+
 const draftRow = { id: "inv1", invoiceNumber: 500001, status: "draft", version: 1, totalCents: 40500, notes: null, voidReason: null };
 
 test("shipping issues a priced draft, due on the lab-local ship date plus terms", async () => {

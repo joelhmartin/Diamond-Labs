@@ -15,6 +15,8 @@ import { encryptRxPhi, decryptRxPhi } from "../services/rx/phi-crypto.js";
 import * as auditService from "../services/audit.service.js";
 import { sendRxSubmissionReceived } from "../services/email.service.js";
 import { notify } from "../services/notify-seam.js";
+import { practiceForNewRecord } from "../services/practice-of.js";
+import { invoiceErrorReply } from "../services/billing/invoice-errors.js";
 
 // ─── Upload guards ────────────────────────────────────────────────────────────
 // Per-file size limit (75 MB — intraoral STL / 3D-scan files are large) is shared: MAX_FILE_SIZE_BYTES from @my-app/shared.
@@ -34,6 +36,21 @@ const FILE_FIELD_KINDS = new Set(["scan", "photo", "prescription", "sleep_study"
 // 'pending_approval' at the schema level while nothing ever queried for that
 // value, so the queue could never return a row).
 export const SUBMISSION_STATUS = "new";
+
+/**
+ * Which practice a new case belongs to: the form's `accountId` (a direct membership of the
+ * submitter, else NOT_FOUND), or the only one they have. Resolved BEFORE any upload so a
+ * refusal (PRACTICE_REQUIRED 422) leaves no orphaned files. Returns { accountId } or { refusal }.
+ */
+async function practiceForSubmission(userId, requested) {
+  try {
+    return { accountId: await practiceForNewRecord(db, { ownerUserId: userId, requestedAccountId: requested || null }) };
+  } catch (err) {
+    const refusal = invoiceErrorReply(err);
+    if (!refusal) throw err;
+    return { refusal };
+  }
+}
 
 export default async function rxRoutes(fastify) {
   // ─────────────────────────────────────────────────────────────────────────
@@ -177,6 +194,9 @@ export default async function rxRoutes(fastify) {
     // ── Identity — from the authenticated doctor, never the form body ─────────
     const { id: userId, seazonaClientId, seazonaAccountNumber } = request.user;
 
+    const practice = await practiceForSubmission(userId, fields.accountId);
+    if (practice.refusal) return reply.code(practice.refusal.status).send(practice.refusal.body);
+
     // Generate caseId BEFORE uploads so the GCS path is keyed by it.
     const caseId = createId();
     const caseNumber = `RX-${createId().slice(0, 12).toUpperCase()}`;
@@ -213,6 +233,7 @@ export default async function rxRoutes(fastify) {
           id: caseId,
           caseNumber,
           userId,
+          accountId: practice.accountId,
           seazonaClientId: seazonaClientId || null,
           seazonaAccountNumber: seazonaAccountNumber || null,
           patientFirst: data.patientFirst,
@@ -411,6 +432,9 @@ export default async function rxRoutes(fastify) {
     // ── Identity — from the authenticated doctor, never the form body ─────────
     const { id: userId, seazonaClientId, seazonaAccountNumber } = request.user;
 
+    const practice = await practiceForSubmission(userId, fields.accountId);
+    if (practice.refusal) return reply.code(practice.refusal.status).send(practice.refusal.body);
+
     const caseId = createId();
     const caseNumber = `RX-${createId().slice(0, 12).toUpperCase()}`;
 
@@ -470,6 +494,7 @@ export default async function rxRoutes(fastify) {
           id: caseId,
           caseNumber,
           userId,
+          accountId: practice.accountId,
           seazonaClientId: seazonaClientId || null,
           seazonaAccountNumber: seazonaAccountNumber || null,
           // Same source the arrival email uses, so the queue row and the

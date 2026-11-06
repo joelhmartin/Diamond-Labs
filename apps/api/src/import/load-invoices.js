@@ -9,6 +9,7 @@ import { insertMissing } from "./load-writer.js";
 import { enforceSeeds } from "./seed-check.js";
 import { problem } from "./problems.js";
 import { withLoadLock } from "./load-lock.js";
+import { loadAccountsByClientKey, accountByOwner } from "./practice-accounts.js";
 import { reattachOwners as reattachRows, planAttach, stillUnowned } from "./reattach.js";
 
 const BATCH = 500;
@@ -87,6 +88,7 @@ async function run({ raw, db, live, target, starts, guard, allowAfterBalances })
       + "Re-run with --allow-after-balances, then re-run `import:load balances` with the same --file-id before parity.");
   }
 
+  const accountByKey = await loadAccountsByClientKey(db);
   let written = 0;
   let conflicts = 0;
   const dropped = [];
@@ -94,7 +96,7 @@ async function run({ raw, db, live, target, starts, guard, allowAfterBalances })
     const chunk = plan.rows.slice(i, i + BATCH);
     guard();
     await db.transaction(async (tx) => {
-      const r = await insertMissing(tx, invoices, chunk.map((x) => sealInvoice(x.invoice)), {
+      const r = await insertMissing(tx, invoices, chunk.map((x) => sealInvoice({ ...x.invoice, accountId: accountByKey.get(x.clientKey) ?? null })), {
         keyOf: (inv) => inv.legacySeazonaInvoiceId, existingKeys: existingSeazonaIds,
       });
       const lines = chunk.filter((x) => r.insertedIds.has(x.invoice.id)).flatMap((x) => x.lines.map(sealLine));
@@ -107,7 +109,7 @@ async function run({ raw, db, live, target, starts, guard, allowAfterBalances })
   report.written = { invoices: written, conflicts };
   if (afterBalances && written > 0) report.next = RERUN_BALANCES_NOTE;
   if (dropped.length) report.problems.push(problem("invoice_not_loaded_conflict", dropped));
-  plan.counts.reattached = await reattachOwners(db, reattach, guard);
+  plan.counts.reattached = await reattachOwners(db, reattach, guard, accountByOwner(owners.rows, accountByKey));
   return report;
 }
 
@@ -128,10 +130,10 @@ export function reattachPlan(existing, summaries, owners) {
   return out;
 }
 
-/** Guarded (reattach.js): only a legacy invoice that is still unowned changes. Returns how many were attached. */
-export function reattachOwners(db, plan, guard) {
+/** Guarded (reattach.js): only a legacy invoice that is still unowned changes. Returns how many were attached; sets the owner's practice account with the owner. */
+export function reattachOwners(db, plan, guard, accountOf = new Map()) {
   return reattachRows(db, plan, {
-    guard,
+    guard, accountCol: invoices.accountId, accountOf: (owner) => accountOf.get(owner) ?? null,
     table: invoices, ownerField: "clientUserId", ownerCol: invoices.clientUserId, keyCol: invoices.legacySeazonaInvoiceId,
     versionCol: invoices.version, scope: eq(invoices.kind, "legacy"),
     action: "import.legacy_invoices_reattached", targetType: "invoice", metadataKey: "legacyInvoiceIds",

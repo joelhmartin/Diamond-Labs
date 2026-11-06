@@ -10,7 +10,7 @@ import { assertCents, formatCents, mulCents, pctOfCents, sumCents } from "../../
 
 export class InvoiceError extends Error {
   /**
-   * @param {"NOT_FOUND"|"STALE"|"LOCKED"|"INVALID"|"INVALID_TRANSITION"|"REASON_REQUIRED"|"OVERPAY"} code
+   * @param {"NOT_FOUND"|"PRACTICE_REQUIRED"|"STALE"|"LOCKED"|"INVALID"|"INVALID_TRANSITION"|"REASON_REQUIRED"|"OVERPAY"} code
    * @param {string} message  safe to show staff
    */
   constructor(code, message, extra = {}) {
@@ -79,9 +79,9 @@ export const asRemakeLines = (pricedLines, percent = 100) => {
   return pricedLines.map((l) => ({ ...l, unitCents: Math.round((l.unitCents * (100 - off)) / 100), priceSource: "remake" }));
 };
 
-function newInvoice({ invoiceId, invoiceNumber, kind, clientUserId, labOrderId, now }) {
+function newInvoice({ invoiceId, invoiceNumber, kind, clientUserId, accountId, labOrderId, now }) {
   return {
-    id: invoiceId, invoiceNumber, kind, clientUserId: clientUserId ?? null, labOrderId: labOrderId ?? null,
+    id: invoiceId, invoiceNumber, kind, clientUserId: clientUserId ?? null, accountId: accountId ?? null, labOrderId: labOrderId ?? null,
     legacySeazonaInvoiceId: null, status: "draft", version: 1, issuedAt: null, dueDate: null, voidedAt: null, voidReason: null,
     subtotalCents: 0, taxCents: 0, shippingCents: 0, totalCents: 0, notes: null, createdAt: now, updatedAt: now,
   };
@@ -100,7 +100,7 @@ function lineRow(invoiceId, position, l) {
 export function planDraftInvoice({ invoiceId, invoiceNumber, labOrder, pricedLines, now, taxRateBps }) {
   const lines = pricedLines.map((l, i) => lineRow(invoiceId, i, l));
   const invoice = {
-    ...newInvoice({ invoiceId, invoiceNumber, kind: "order", clientUserId: labOrder.clientUserId, labOrderId: labOrder.id, now }),
+    ...newInvoice({ invoiceId, invoiceNumber, kind: "order", clientUserId: labOrder.clientUserId, accountId: labOrder.accountId, labOrderId: labOrder.id, now }),
     ...computeTotals(lines, { taxRateBps }),
   };
   return { invoice, lines };
@@ -111,7 +111,7 @@ export function planDraftInvoice({ invoiceId, invoiceNumber, labOrder, pricedLin
  * and totals are COPIED from the checkout quote the card was charged for,
  * never recomputed, so the invoice always equals the charge.
  */
-export function planShopInvoice({ invoiceId, invoiceNumber, labOrderId, clientUserId, quote, now, todayIso }) {
+export function planShopInvoice({ invoiceId, invoiceNumber, labOrderId, clientUserId, accountId = null, quote, now, todayIso }) {
   const items = quote.lines.map((l) => ({
     kind: "item", variantId: l.variantId ?? null, code: l.code ?? null, description: l.name,
     qty: l.qty, unitCents: l.unitCents, taxable: l.taxable, priceSource: l.priceSource,
@@ -120,7 +120,7 @@ export function planShopInvoice({ invoiceId, invoiceNumber, labOrderId, clientUs
     items.push({ kind: "shipping", description: "Shipping", qty: 1, unitCents: quote.shippingCents, taxable: false, priceSource: "base" });
   }
   const invoice = {
-    ...newInvoice({ invoiceId, invoiceNumber, kind: "shop", clientUserId, labOrderId, now }),
+    ...newInvoice({ invoiceId, invoiceNumber, kind: "shop", clientUserId, accountId, labOrderId, now }),
     status: "issued", issuedAt: now, dueDate: todayIso,
     subtotalCents: quote.subtotalCents, taxCents: quote.taxCents, shippingCents: quote.shippingCents, totalCents: quote.totalCents,
   };

@@ -6,6 +6,7 @@ import { containsPattern } from "../../lib/list-query.js";
 import { applyTags } from "../../modules/record-tags/index.js";
 import { loadVariantsById, priceLabOrderLines } from "../pricing.service.js";
 import { createDraftForLabOrder } from "../billing/invoices.service.js";
+import { practiceForNewRecord } from "../practice-of.js";
 import { allocateOrderNumber, insertPlan } from "./lab-orders.service.js";
 import { LabOrderError } from "./lab-order-rules.js";
 import { planStaffOrder, catalogLines } from "./staff-order-rules.js";
@@ -45,7 +46,7 @@ async function openPanHolder(tx, panNumber, labOrderId) {
 const uniqueVariantIds = (lines = []) => [...new Set(lines.map((l) => l.variantId))];
 
 /**
- * One transaction: the client check, the due default, number allocation, the
+ * One transaction: the client check, the practice, the due default, number allocation, the
  * order with its lines and release event, the draft invoice, the labels and
  * the intake promotion. Any refusal rolls the whole entry back.
  *
@@ -54,13 +55,15 @@ const uniqueVariantIds = (lines = []) => [...new Set(lines.map((l) => l.variantI
 export function createStaffOrder({ input, byUserId = null }, database = db) {
   return database.transaction(async (tx) => {
     await assertActiveDoctor(tx, input.clientUserId);
+    // Which practice this order bills to; PRACTICE_REQUIRED (422) when the client has several and none was chosen.
+    const accountId = await practiceForNewRecord(tx, { ownerUserId: input.clientUserId, requestedAccountId: input.accountId ?? null });
     const variantIds = uniqueVariantIds(input.lines);
     const variantsById = await loadVariantsById(variantIds, tx);
     const now = new Date();
     const { dueDate, plan: schedule } = await defaultDueAt(tx, { variantIds, requestedDueDate: input.dueDate, rush: Boolean(input.rush), startAt: now });
     const orderNumber = await allocateOrderNumber(tx);
     const labOrderId = createId();
-    const plan = planStaffOrder({ input, variantsById, orderNumber, labOrderId, byUserId, now, dueDate });
+    const plan = planStaffOrder({ input: { ...input, accountId }, variantsById, orderNumber, labOrderId, byUserId, now, dueDate });
     const lines = await insertPlan(tx, { labOrder: plan.labOrder, lines: plan.lines, events: [plan.event] });
     await saveSchedule(tx, labOrderId, schedule);
     const invoice = await createDraftForLabOrder(tx, { labOrder: plan.labOrder, lines, byUserId });

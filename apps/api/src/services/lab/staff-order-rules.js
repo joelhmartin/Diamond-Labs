@@ -49,7 +49,7 @@ export function planStaffOrder({ input, variantsById, orderNumber, labOrderId, b
   if (dueDate != null && !parseDueDate(dueDate)) throw new LabOrderError("INVALID", "Due date must be a real date (YYYY-MM-DD).");
 
   const labOrder = {
-    ...newOrder({ labOrderId, orderNumber, source: "staff", sourceId: labOrderId, clientUserId: input.clientUserId, now }),
+    ...newOrder({ labOrderId, orderNumber, source: "staff", sourceId: labOrderId, clientUserId: input.clientUserId, accountId: input.accountId, now }),
     patientName,
     dueDate,
     rush: Boolean(input.rush),

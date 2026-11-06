@@ -127,7 +127,7 @@ export function planOrders({
       else unownedClients.set(clientId, ambiguousClients.has(clientId) ? "client_has_multiple_owners"
         : rejectedClients.has(clientId) ? "client_owner_not_approved_doctor" : "client_not_loaded");
     }
-    rows.push(mapped);
+    rows.push({ ...mapped, clientKey: clientId });
     counts.toInsert += 1;
     if (isOpen(mapped.order.status)) counts.open += 1;
     if (mapped.lines.length) counts.withLines += 1;

@@ -80,14 +80,14 @@ export async function createDraftForLabOrder(tx, { labOrder, lines, byUserId = n
 
 /**
  * A paid shop order's invoice: issued, and paid in full by one ledger row
- * carrying the checkout's transaction id. A guest's invoice has no client and
- * never reaches a statement.
+ * carrying the checkout's transaction id. `accountId` is the buyer's practice
+ * (null for a guest, whose invoice has no client and never reaches a statement).
  */
-export async function createShopInvoice(tx, { labOrderId, clientUserId = null, quote, transactionId }) {
+export async function createShopInvoice(tx, { labOrderId, clientUserId = null, accountId = null, quote, transactionId }) {
   const now = new Date();
   const plan = planShopInvoice({
     invoiceId: createId(), invoiceNumber: await allocateInvoiceNumber(tx),
-    labOrderId, clientUserId, quote, now, todayIso: isoDateIn(LAB_TIMEZONE, now),
+    labOrderId, clientUserId, accountId, quote, now, todayIso: isoDateIn(LAB_TIMEZONE, now),
   });
   await insertInvoice(tx, plan);
   await tx.insert(invoicePayments).values({

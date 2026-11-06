@@ -13,6 +13,7 @@ const NEW_ROUTES = [
   'fastify.post("/lab/orders/:id/lines",',
   'fastify.post("/lab/orders/merge",',
   'fastify.get("/lab/practices",',
+  'fastify.get("/lab/clients/:userId/practices",',
   'fastify.get("/lab/catalog/families",',
 ];
 

@@ -10,6 +10,7 @@ import { SegmentedControl } from "../../components/ui/SegmentedControl.jsx";
 import { ROUTES, labOrderPath } from "../../config/routes.js";
 import { INPUT } from "../../components/lab/form-styles.js";
 import { PracticePicker } from "../../components/lab/order-entry/PracticePicker.jsx";
+import { PracticeAccountSelect, usePracticeAccounts } from "../../components/lab/order-entry/PracticeAccountSelect.jsx";
 import { LinePicker } from "../../components/lab/order-entry/LinePicker.jsx";
 import { EnclosedFields } from "../../components/lab/order-entry/EnclosedFields.jsx";
 import { FileDrop, FileList, uploadRecordFiles } from "../../modules/record-files/index.js";
@@ -66,6 +67,9 @@ export function NewLabOrderPage() {
   const { addToast } = useToast();
   const [mode, setMode] = useState("quick");
   const [clientUserId, setClientUserId] = useState("");
+  const [accountId, setAccountId] = useState(""); // which of the client's practices; asked only when they have several
+  const practices = usePracticeAccounts(clientUserId);
+  const needsAccount = (practices?.length ?? 0) > 1;
   const [patientName, setPatientName] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [dueTouched, setDueTouched] = useState(false); // a typed date wins over the scheduled one
@@ -136,6 +140,7 @@ export function NewLabOrderPage() {
 
   const body = () => ({
     clientUserId,
+    ...(needsAccount ? { accountId } : {}),
     patientName: patientName.trim(),
     ...(intakeId ? { intakeId } : {}),
     // An untouched date is the scheduled one: let the server plan it forward rather than in reverse from it.
@@ -177,7 +182,7 @@ export function NewLabOrderPage() {
     navigate(labOrderPath(labOrder.id));
   };
 
-  const ready = Boolean(clientUserId) && patientName.trim().length > 0;
+  const ready = Boolean(clientUserId) && (!needsAccount || Boolean(accountId)) && patientName.trim().length > 0;
 
   return (
     <div className="mx-auto max-w-3xl p-6 md:p-8">
@@ -200,8 +205,9 @@ export function NewLabOrderPage() {
           <div className="space-y-3">
             <div>
               <span className="text-xs text-navy/50">Practice</span>
-              <PracticePicker value={clientUserId} onChange={setClientUserId} disabled={busy} />
+              <PracticePicker value={clientUserId} onChange={(id) => { setClientUserId(id); setAccountId(""); }} disabled={busy} />
             </div>
+            <PracticeAccountSelect practices={practices} value={accountId} onChange={setAccountId} disabled={busy} />
             <Field label="Patient">
               <input aria-label="Patient" className={INPUT} maxLength={LAB_PATIENT_NAME_MAX} disabled={busy} value={patientName} onChange={(e) => setPatientName(e.target.value)} />
             </Field>

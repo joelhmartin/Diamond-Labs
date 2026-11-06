@@ -6,6 +6,7 @@ import { loadOwners } from "./owners.js";
 import { planOrders, planLegacyFlagBackfill } from "./map-orders.js";
 import { insertMissing } from "./load-writer.js";
 import { enforceSeeds } from "./seed-check.js";
+import { loadAccountsByClientKey, accountByOwner } from "./practice-accounts.js";
 import { reattachOwners, planAttach, stillUnowned } from "./reattach.js";
 import { withLoadLock } from "./load-lock.js";
 import { problem } from "./problems.js";
@@ -67,6 +68,7 @@ async function run({ raw, db, live, target, starts, guard }) {
   }
 
   const variants = await variantIdsForCodes(db, plan.rows.flatMap((r) => r.lines.map((l) => l.code)));
+  const accountByKey = await loadAccountsByClientKey(db);
   let written = 0;
   let conflicts = 0;
   const dropped = [];
@@ -74,7 +76,7 @@ async function run({ raw, db, live, target, starts, guard }) {
     const chunk = plan.rows.slice(i, i + BATCH);
     guard();
     await db.transaction(async (tx) => {
-      const r = await insertMissing(tx, labOrders, chunk.map((x) => sealOrder(x.order)), { keyOf: (o) => o.sourceId, existingKeys: existingSourceIds });
+      const r = await insertMissing(tx, labOrders, chunk.map((x) => sealOrder({ ...x.order, accountId: accountByKey.get(x.clientKey) ?? null })), { keyOf: (o) => o.sourceId, existingKeys: existingSourceIds });
       const lines = chunk.filter((x) => r.insertedIds.has(x.order.id)).flatMap((x) => x.lines.map((l) => ({ ...l, variantId: variants.get(l.code) ?? null })));
       for (let j = 0; j < lines.length; j += BATCH) await tx.insert(labOrderLines).values(lines.slice(j, j + BATCH));
       written += r.insertedIds.size;
@@ -85,7 +87,7 @@ async function run({ raw, db, live, target, starts, guard }) {
   report.written = { orders: written, conflicts };
   if (dropped.length) report.problems.push(problem("order_not_loaded_conflict", dropped));
   Object.assign(plan.counts, await backfillLegacyFlags(db, flags, guard));
-  plan.counts.reattached = await reattachLegacyOrders(db, reattach, guard);
+  plan.counts.reattached = await reattachLegacyOrders(db, reattach, guard, accountByOwner(owners.rows, accountByKey));
   return report;
 }
 
@@ -136,8 +138,9 @@ export function reattachPlan(existing, summaries, ownerByClient) {
 }
 
 /** Guarded (reattach.js): only a legacy order that is still unowned changes. */
-export function reattachLegacyOrders(db, plan, guard) {
+export function reattachLegacyOrders(db, plan, guard, accountOf = new Map()) {
   return reattachOwners(db, plan, {
+    accountCol: labOrders.accountId, accountOf: (owner) => accountOf.get(owner) ?? null,
     table: labOrders, ownerField: "clientUserId", ownerCol: labOrders.clientUserId, keyCol: labOrders.sourceId,
     versionCol: labOrders.version, scope: eq(labOrders.source, "legacy"),
     action: "import.legacy_orders_reattached", targetType: "lab_order", metadataKey: "legacyOrderIds", guard,

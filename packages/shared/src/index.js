@@ -41,6 +41,7 @@ export * from "./schemas/lab.schema.js";
 export * from "./lab/logistics.js";
 export * from "./schemas/logistics.schema.js";
 export * from "./schemas/lab-desk.schema.js";
+export * from "./schemas/practices.schema.js";
 
 // Exports
 export * from "./exports/csv.js";

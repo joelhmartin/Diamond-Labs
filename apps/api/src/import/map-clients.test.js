@@ -145,3 +145,23 @@ test("plan: --email-taken placeholder gives a client on a taken email a suspende
   assert.equal(made.user.status, "suspended");
   assert.equal(made.user.passwordHash, null);
 });
+
+test("a new client's account is a practice: is_client, the lab account number and the Seazona key", () => {
+  const plan = planClients(clients, existingFromRows(userRows, [{ slug: slugify("Sample Ortho & Co") }], []), { now });
+  for (const c of plan.create) {
+    assert.equal(c.account.isClient, true);
+    assert.equal(c.account.legacyClientKey, c.user.seazonaClientId);
+    assert.equal(c.account.accountNumber, c.user.seazonaAccountNumber);
+  }
+});
+
+test("a practice number or key already taken (unique indexes) is left empty instead of failing the load", () => {
+  const one = clients.filter((c) => String(c.id) === "c-2001");
+  const free = planClients(one, existingFromRows([], [], []), { now }).create[0].account;
+  assert.ok(free.accountNumber);
+  const taken = existingFromRows([], [{ slug: "x", accountNumber: free.accountNumber, legacyClientKey: "c-2001" }], []);
+  const clash = planClients(one, taken, { now }).create[0].account;
+  assert.equal(clash.accountNumber, null);
+  assert.equal(clash.legacyClientKey, null);
+  assert.equal(clash.isClient, true);
+});

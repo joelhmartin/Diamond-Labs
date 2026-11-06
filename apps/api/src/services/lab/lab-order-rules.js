@@ -57,9 +57,9 @@ export function requestedDueDateOf(caseRow = {}) {
   return parseDueDate(caseRow.dueDate) ?? parseDueDate(caseRow.formData?.dueDate);
 }
 
-export function newOrder({ labOrderId, orderNumber, source, sourceId, clientUserId, now }) {
+export function newOrder({ labOrderId, orderNumber, source, sourceId, clientUserId, accountId = null, now }) {
   return {
-    id: labOrderId, orderNumber, source, sourceId, clientUserId: clientUserId ?? null,
+    id: labOrderId, orderNumber, source, sourceId, clientUserId: clientUserId ?? null, accountId: accountId ?? null,
     status: "received", heldFrom: null, departmentId: null, assigneeUserId: null,
     dueDate: null, rush: false, rushTier: null, isRemake: false, remakeOfOrderId: null,
     holdReason: null, labNotes: null, version: 1,
@@ -84,7 +84,7 @@ export function planRxRelease({
   const gate = canRelease(lines);
   if (!gate.ok) throw new LabOrderError("RELEASE_BLOCKED", gate.reason, { blocking: gate.blocking ?? [] });
   const labOrder = {
-    ...newOrder({ labOrderId, orderNumber, source: "rx_case", sourceId: caseRow.id, clientUserId: caseRow.userId, now }),
+    ...newOrder({ labOrderId, orderNumber, source: "rx_case", sourceId: caseRow.id, clientUserId: caseRow.userId, accountId: caseRow.accountId, now }),
     dueDate,
     ...rushFromCase(caseRow),
   };
@@ -109,8 +109,8 @@ export function planRxRelease({
  * service accepted: a guest, a codeless variant — all still make a job.
  * Shop lines are picked and shipped, not fabricated; same board.
  */
-export function planShopLabOrder({ orderId, clientUserId = null, quoteLines, orderNumber, labOrderId, now }) {
-  const labOrder = newOrder({ labOrderId, orderNumber, source: "shop_order", sourceId: orderId, clientUserId, now });
+export function planShopLabOrder({ orderId, clientUserId = null, accountId = null, quoteLines, orderNumber, labOrderId, now }) {
+  const labOrder = newOrder({ labOrderId, orderNumber, source: "shop_order", sourceId: orderId, clientUserId, accountId, now });
   const lines = quoteLines.map((l, position) => ({
     labOrderId, position, variantId: l.variantId ?? null, code: l.code ?? null,
     name: l.name || "Unnamed item", arch: null, qty: Number.isInteger(l.qty) && l.qty > 0 ? l.qty : 1, noteOnly: false, sourceLabel: null,
@@ -132,7 +132,7 @@ export function planRemake({ original, originalLines, reason, reasonId = null, r
   const why = [reasonLabel, reason].map((s) => (typeof s === "string" ? s.trim() : "")).filter(Boolean).join(" — ");
   if (!why) throw new LabOrderError("REASON_REQUIRED", "Say why this order is being remade.");
   const labOrder = {
-    ...newOrder({ labOrderId, orderNumber, source: original.source, sourceId: original.sourceId, clientUserId: original.clientUserId, now }),
+    ...newOrder({ labOrderId, orderNumber, source: original.source, sourceId: original.sourceId, clientUserId: original.clientUserId, accountId: original.accountId, now }),
     isRemake: true,
     remakeOfOrderId: original.id,
     dueDate,

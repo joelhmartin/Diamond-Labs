@@ -139,3 +139,13 @@ test("an order the database refused (number clash) is named in the report, not j
   assert.equal(report.written.conflicts, 4);
   assert.deepEqual(report.problems.find((p) => p.kind === "order_not_loaded_conflict").seazonaIds.sort(), ["ord-1", "ord-2", "ord-3", "ord-5"]);
 });
+
+test("import stamps account from legacy client key on loaded orders", async () => {
+  // Select order: seeds, owners, existing, variants by code, then the accounts by legacy client key.
+  const tx = fakeTx({ selects: [[{ n: 0 }], [{ n: 0 }], users, [], [{ id: "v-2608", code: "2608" }], [{ id: "acct-1324", key: "c-1324" }]] });
+  await loadOrders({ raw: rawWith(known), db: tx, live: true, target: "rehearsal", starts: {}, lock: lock() });
+  const orders = tx.log.filter((e) => e.op === "insert").map((e) => e.values).find((v) => v[0]?.source === "legacy");
+  const byClient = new Map(orders.map((o) => [o.clientUserId, o.accountId]));
+  assert.equal(byClient.get("u-1324"), "acct-1324");
+  assert.equal(byClient.get("u-2001"), null);
+});

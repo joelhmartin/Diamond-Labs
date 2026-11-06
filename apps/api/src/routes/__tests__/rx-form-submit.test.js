@@ -100,3 +100,19 @@ test("every submission waits for admin review: no auto-release path remains in t
   assert.doesNotMatch(body, /releaseRxCase|canRelease/);
   assert.match(body, /status: SUBMISSION_STATUS/);
 });
+
+test("both submit routes stamp the submitter's practice, resolved before any upload (a 422 leaves no orphan files)", () => {
+  const src = readFileSync(fileURLToPath(new URL("../rx.routes.js", import.meta.url)), "utf8");
+  for (const route of ['fastify.post("/rx/cases",', 'fastify.post("/rx/form-submissions",']) {
+    const body = handlerSource(src, route);
+    assert.match(body, /practiceForSubmission\(userId, fields\.accountId\)/, route);
+    assert.match(body, /practice\.refusal\) return reply\.code\(practice\.refusal\.status\)/, route);
+    assert.match(body, /accountId: practice\.accountId/, route);
+    assert.ok(body.indexOf("practiceForSubmission(") < body.indexOf("uploadCaseFile("), `${route} resolves the practice before uploading`);
+  }
+});
+
+test("the submit routes refuse a PRACTICE_REQUIRED as a 422 through the invoice error mapper", () => {
+  const src = readFileSync(fileURLToPath(new URL("../rx.routes.js", import.meta.url)), "utf8");
+  assert.match(src, /invoiceErrorReply\(err\)/);
+});
