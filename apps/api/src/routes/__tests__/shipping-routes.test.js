@@ -4,6 +4,13 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { handlerSource } from "./_source.js";
 import { fakeTx } from "../../test/fake-tx.js";
+// Static imports (vi.mock is hoisted above them): a cold dynamic import of the
+// routes' module graph inside the first test blew its 5 s budget under full-suite load.
+import shippingRoutes, { shippingReply } from "../shipping.routes.js";
+import { ShippingError } from "../../services/shipping/shipping-errors.js";
+import { LabOrderError } from "../../services/lab/lab-order-rules.js";
+import { listShipmentsForLab, shipContext } from "../../services/lab/lab-shipping-queries.js";
+import { SHIPMENT_LIST_LIMIT } from "../../services/shipping/shipments.service.js";
 
 const mocks = vi.hoisted(() => ({
   buyForOrders: vi.fn(), voidShipment: vi.fn(), markShipmentShipped: vi.fn(), markAllLabelledShipped: vi.fn(), rateShipment: vi.fn(), syncLabTracking: vi.fn(),
@@ -87,7 +94,6 @@ async function mountRoutes() {
   const handlers = {};
   const reg = (method) => (path, _opts, handler) => { handlers[`${method} ${path}`] = handler; };
   const fastify = { get: reg("GET"), post: reg("POST") };
-  const { default: shippingRoutes } = await import("../shipping.routes.js");
   await shippingRoutes(fastify);
   return handlers;
 }
@@ -102,9 +108,6 @@ function makeReply() {
 const req = (extra = {}) => ({ user: { id: "u1" }, ip: "1.1.1.1", log: { info() {}, warn() {}, error() {} }, params: {}, headers: {}, body: {}, query: {}, ...extra });
 
 test("shippingReply: a lab conflict behind LABEL_NOT_SAVED is told in one sentence", async () => {
-  const { shippingReply } = await import("../shipping.routes.js");
-  const { ShippingError } = await import("../../services/shipping/shipping-errors.js");
-  const { LabOrderError } = await import("../../services/lab/lab-order-rules.js");
   const err = new ShippingError("LABEL_NOT_SAVED", "The label was bought but couldn't be saved, so it was voided. Try again.", {
     cause: new LabOrderError("CONFLICT", "Order #100245 was labelled by someone else."),
   });
@@ -146,7 +149,6 @@ test("Buy: audits the purchase once; a replay of the same key returns the result
 });
 
 test("Buy: an uncertain purchase or an unsaved live label keeps the key locked, so a retry answers 409 and never buys again", async () => {
-  const { ShippingError } = await import("../../services/shipping/shipping-errors.js");
   for (const [code, label] of [["PURCHASE_UNCERTAIN", 504], ["LABEL_NOT_SAVED", 500]]) {
     mocks.redis.store.clear();
     mocks.buyForOrders.mockReset();
@@ -165,7 +167,6 @@ test("Buy: an uncertain purchase or an unsaved live label keeps the key locked, 
 });
 
 test("Buy: a definite refusal (not pending) releases the key for a corrected retry", async () => {
-  const { ShippingError } = await import("../../services/shipping/shipping-errors.js");
   mocks.buyForOrders.mockRejectedValueOnce(new ShippingError("NOT_SHIPPABLE", "Order is not ready."));
   mocks.buyForOrders.mockResolvedValueOnce({ shipmentId: "s2", carrier: "ups", chargeCents: 1, orderIds: ["o1"] });
   const h = await mountRoutes();
@@ -195,7 +196,6 @@ test("Void, mark-shipped and mark-all-shipped return the service result and audi
   assert.deepEqual(mocks.logSafe.mock.calls.map((c) => [c[0].action, c[0].targetType, c[0].targetId]), [
     ["shipment.voided", "shipment", "s1"], ["shipment.marked_shipped", "shipment", "s1"], ["shipment.marked_all_shipped", "shipment", null],
   ]);
-  const { ShippingError } = await import("../../services/shipping/shipping-errors.js");
   mocks.voidShipment.mockRejectedValue(new ShippingError("VOID_REFUSED", "UPS refused the void: picked up"));
   const r4 = makeReply();
   await h["POST /lab/shipments/:id/void"](req({ params: { id: "s1" } }), r4);
@@ -224,8 +224,6 @@ const shipmentRow = (over) => ({
 });
 
 test("the list returns canVoid / canMarkShipped per row, only a name for the ship-to, and truncated at the cap", async () => {
-  const { listShipmentsForLab } = await import("../../services/lab/lab-shipping-queries.js");
-  const { SHIPMENT_LIST_LIMIT } = await import("../../services/shipping/shipments.service.js");
   const rows = [
     shipmentRow({ id: "a" }),
     shipmentRow({ id: "b", shippedAt: new Date() }),
@@ -251,7 +249,6 @@ test("the list returns canVoid / canMarkShipped per row, only a name for the shi
 });
 
 test("the ship context route returns the context, or 404 for an unknown order", async () => {
-  const { shipContext } = await import("../../services/lab/lab-shipping-queries.js");
   const context = await shipContext("o1", fakeTx({
     selects: [[{ id: "o1", orderNumber: 100245, status: "ready_to_ship", source: "rx_case", sourceId: "r1", clientUserId: null, isRemake: false, shipmentId: null, version: 3 }]],
   }));
@@ -262,7 +259,6 @@ test("the ship context route returns the context, or 404 for an unknown order", 
 });
 
 test("a legacy (Seazona) order is not offered ship-together siblings and is never offered as one", async () => {
-  const { shipContext } = await import("../../services/lab/lab-shipping-queries.js");
   const legacy = { id: "o1", orderNumber: 98000, status: "ready_to_ship", source: "legacy", sourceId: "ord-1", clientUserId: "doc1", isRemake: false, shipmentId: null, version: 1 };
   const tx = fakeTx({ selects: [[legacy], [{ id: "doc1", name: "Dr. Ada" }], [{ id: "o2", orderNumber: 100246, source: "rx_case", isRemake: false }]] });
   const context = await shipContext("o1", tx);
@@ -288,8 +284,6 @@ test("shippingReply copies the error body instead of mutating the shared reply; 
 });
 
 test("Refresh tracking answers 422 when nothing was eligible to track", async () => {
-  const { shippingReply } = await import("../shipping.routes.js");
-  const { ShippingError } = await import("../../services/shipping/shipping-errors.js");
   const body = handlerSource(src, 'fastify.post("/lab/shipments/:id/refresh-tracking",');
   assert.match(body, /summary\.checked === 0\) throw new ShippingError\("INVALID", "This shipment can't be tracked\."\)/);
   assert.equal(shippingReply(new ShippingError("INVALID", "x")).status, 422);
