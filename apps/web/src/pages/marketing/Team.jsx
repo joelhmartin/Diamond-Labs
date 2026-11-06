@@ -63,26 +63,51 @@ const STATS = [
 // First letters of the first and last name; "RN, MSN" style suffixes live in the role, not the name.
 const initials = (name) => name.split(" ").filter(Boolean).map((w) => w[0]).slice(0, 2).join("");
 
+// Headshots in public/images/team, named by slug. Anyone without one shows their initials.
+const PHOTOS = new Set([
+  "austin-knutson", "barbara-rago", "crosby-hessel", "david-leonard", "edgar-aguillar", "elmer-onofre",
+  "franco-di-paolo", "inho-ko", "james-albrecht", "jose-martinez", "krystee-rago",
+]);
+const slug = (name) => name.toLowerCase().replace(/[^a-z]+/g, "-");
+
+function Portrait({ name, tone }) {
+  const id = slug(name);
+  if (PHOTOS.has(id)) {
+    return (
+      <img
+        src={`/images/team/${id}.webp`}
+        alt=""
+        loading="lazy"
+        className="w-28 h-28 rounded-full object-cover ring-4 ring-white shadow-lg shadow-navy/15"
+      />
+    );
+  }
+  return (
+    <span
+      aria-hidden="true"
+      className={`grid place-items-center w-28 h-28 rounded-full ring-4 ring-white shadow-lg shadow-navy/15 font-heading font-bold text-3xl text-white ${tone}`}
+    >
+      {initials(name)}
+    </span>
+  );
+}
+
 function Group({ label, tone, people }) {
   return (
-    <div className="mt-12 first:mt-10">
+    <div className="mt-14 first:mt-10">
       <h3 className="font-heading font-bold text-2xl tracking-tight text-navy">{label}</h3>
-      <ul className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <ul className="mt-6 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-5">
         {people.map((p) => (
           <li
             key={p.name}
-            className="flex items-center gap-4 rounded-[2rem] bg-white border border-surface-300/60 shadow-sm p-5 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-navy/10 transition-all duration-300"
+            className="group relative overflow-hidden flex flex-col items-center text-center rounded-[2rem] bg-white border border-surface-300/60 shadow-sm px-5 pt-8 pb-6 hover:-translate-y-1 hover:shadow-xl hover:shadow-navy/10 transition-all duration-300"
           >
-            <span
-              aria-hidden="true"
-              className={`grid flex-shrink-0 place-items-center w-14 h-14 rounded-full font-heading font-bold text-lg text-white ${tone}`}
-            >
-              {initials(p.name)}
-            </span>
-            <div className="min-w-0">
-              <span className="block font-semibold text-navy">{p.name}</span>
-              <span className="block text-sm text-navy/70 leading-snug">{p.role}</span>
+            <span aria-hidden="true" className={`absolute inset-x-0 top-0 h-20 opacity-10 ${tone}`} />
+            <div className="relative">
+              <Portrait name={p.name} tone={tone} />
             </div>
+            <span className="relative mt-5 font-heading font-bold text-lg tracking-tight text-navy">{p.name}</span>
+            <span className="relative mt-1 text-sm text-navy/70 leading-snug">{p.role}</span>
           </li>
         ))}
       </ul>
