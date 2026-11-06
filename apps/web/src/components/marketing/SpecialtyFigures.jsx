@@ -1,88 +1,75 @@
-/* A matching pair of medical-illustration figures: the same head and shoulders
-   in silhouette, showing the jaw joint for TMD and the airway for sleep. */
+/* A matching pair of clinical line drawings: the same head in profile, with the
+   jaw joint highlighted for TMD and the airway highlighted for sleep. */
 
-const VIEW_BOX = "0 0 240 260";
+const VIEW_BOX = "0 0 120 124";
 
-const SILHOUETTE =
-  "M6 260 C24 236 56 228 66 204 C71 192 60 172 50 156 C40 142 36 128 36 112 " +
-  "C32 60 72 18 112 18 C146 18 168 40 172 72 C173 78 171 82 170 87 " +
-  "C174 98 184 110 188 118 C190 123 186 127 180 127 C176 127 173 128 172 130 " +
-  "C172 134 177 137 177 141 C177 143 172 144 171 145 C174 147 175 151 172 154 " +
-  "C169 156 169 159 170 162 C172 170 168 180 156 182 C146 184 134 184 126 182 " +
-  "C124 196 124 214 134 230 C146 242 176 246 200 260 Z";
+/* From the back of the neck: nape, back of the skull, crown, forehead, brow, nose, lips, chin, throat. */
+const HEAD =
+  "M30 118 C31 108 35 100 35 92 C35 84 21 70 19 50 C18 28 38 11 62 11 C80 11 92 21 95 37 " +
+  "C96 41 96 44 95.5 46 C95 48 94 50 95 52 C97 57 103 62 106 66 C107.5 69 104 71 100 71 " +
+  "C99.5 73 101.5 75 101.5 77 C101.5 78.5 99 79 98.5 80 C100 81 101 83 99.5 85 " +
+  "C98 86 97.5 87 98 89 C100 92 98.5 96 94 97.5 C86 99.5 78 98 72 96 C70 102 70 110 74 118";
 
-/* Clockwise from the joint: condyle, notch, coronoid, tooth line, chin, lower border, jaw angle. */
 const MANDIBLE =
-  "M102 104 C102 97 114 97 115 104 C115 108 113 111 114 115 C116 120 120 120 123 116 " +
-  "C125 112 127 108 130 106 C133 112 134 126 133 138 C140 143 150 145 160 144 " +
-  "C164 149 165 158 163 165 C159 173 148 175 138 172 C126 169 112 169 103 160 " +
-  "C97 152 99 122 102 104 Z";
+  "M56 54 C60 52 63 55 62 59 L61 73 C63 79 70 83 80 83 L94 82 C98 83 99 89 96 93 " +
+  "C90 97 78 96 70 93 C60 90 53 85 52 77 L53 60 C53 57 54 55 56 54 Z";
 
-const LOWER_TEETH = [136, 142, 148, 154, 160];
-const UPPER_TEETH = [136, 142, 148, 154, 160, 166];
+const AIRWAY = "M101 65 C88 58 72 58 65 65 C59 72 59 84 61 96 C62 102 62 106 62 111";
 
-/* Nostril, across the nasal cavity, down the back of the throat into the windpipe. */
-const AIRWAY = "M176 122 C160 108 128 104 112 112 C102 120 104 140 108 158 C112 180 112 210 110 260";
-const TONGUE = "M124 160 C118 148 128 132 146 134 C158 135 168 142 170 150 C160 158 140 164 124 160 Z";
-const PALATE = "M172 128 C156 124 142 122 132 124 C126 126 122 132 121 140";
-const LOWER_JAW = "M170 162 C160 172 144 172 130 168 C126 166 124 164 122 162";
-
-function Bust({ label, children }) {
+function HeadProfile({ children, label }) {
   return (
-    <svg viewBox={VIEW_BOX} className="block w-full h-full" role="img" aria-label={label}>
-      <path d={SILHOUETTE} className="fill-navy" />
+    <svg viewBox={VIEW_BOX} className="w-full h-full" fill="none" role="img" aria-label={label}>
       {children}
+      <path
+        d={HEAD}
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
 
-function Teeth({ xs, y, height }) {
-  return xs.map((x) => (
-    <rect key={x} x={x - 2.5} y={y} width="5" height={height} rx="2" className="fill-white" />
-  ));
-}
-
 export function JawJointFigure({ active = true }) {
   return (
-    <Bust label="Head in profile showing the jawbone and the jaw joint">
-      <path d={MANDIBLE} className="fill-white/90" />
-      <Teeth xs={LOWER_TEETH} y={136} height={9} />
-      <Teeth xs={UPPER_TEETH} y={125} height={9} />
+    <HeadProfile label="Side profile of a head with the jaw joint highlighted">
       <path
-        d="M96 102 C100 90 118 90 123 102"
-        fill="none"
-        className="stroke-white/70"
-        strokeWidth="2.5"
+        d={MANDIBLE}
+        className="fill-brand-500/15 stroke-brand-600"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M47 51 C51 44 62 44 67 51"
+        className="stroke-navy/50"
+        strokeWidth="1.5"
         strokeLinecap="round"
       />
       {active && (
         <circle
-          cx="108.5"
-          cy="104"
-          r="11"
-          className="fill-accent-500/40 motion-safe:animate-ping [transform-box:fill-box] [transform-origin:center]"
+          cx="57.5"
+          cy="55"
+          r="7"
+          className="fill-accent-500/30 motion-safe:animate-ping [transform-box:fill-box] [transform-origin:center]"
         />
       )}
-      <circle cx="108.5" cy="104" r="7" className="fill-accent-500" />
-    </Bust>
+      <circle cx="57.5" cy="55" r="4" className="fill-accent-500" />
+    </HeadProfile>
   );
 }
 
-export function AirwayFigure({ active = true }) {
+export function AirwayFigure() {
   return (
-    <Bust label="Head in profile showing an open airway from the nose to the windpipe">
-      <path d={TONGUE} className="fill-white/25" />
-      <path d={PALATE} fill="none" className="stroke-white/60" strokeWidth="2.5" strokeLinecap="round" />
-      <path d={LOWER_JAW} fill="none" className="stroke-white/40" strokeWidth="2.5" strokeLinecap="round" />
-      <path d={AIRWAY} fill="none" className="stroke-brand-500" strokeWidth="13" strokeLinecap="round" />
+    <HeadProfile label="Side profile of a head with an open airway highlighted">
+      <path d={AIRWAY} className="stroke-brand-500/25" strokeWidth="9" strokeLinecap="round" />
       <path
         d={AIRWAY}
-        fill="none"
-        className={`stroke-white ${active ? "motion-safe:animate-[airflow_1.4s_linear_infinite]" : ""}`}
-        strokeWidth="2.5"
+        className="stroke-brand-600 motion-safe:animate-[airflow_0.9s_linear_infinite]"
+        strokeWidth="2"
         strokeLinecap="round"
         strokeDasharray="6 6"
       />
-    </Bust>
+    </HeadProfile>
   );
 }
