@@ -2,6 +2,8 @@ import { authenticate } from "../middleware/authenticate.js";
 import { organizationsService } from "../services/organizations.service.js";
 import { clientScopeOf } from "../services/client-scope.js";
 import { describePractices } from "../services/practices.service.js";
+import { directPracticeIdsQuery } from "../services/practice-of.js";
+import { db as appDb } from "../config/database.js";
 
 // Name and lab account number of each practice in scope (one query; scope ids are already active practices).
 const describeScopeAccounts = (ids) => describePractices(ids);
@@ -11,9 +13,18 @@ const describeScopeAccounts = (ids) => describePractices(ids);
  * shows. Built from the scope authenticate already loaded, so it can never
  * disagree with what the other routes enforce.
  */
-export async function clientScopeView(scope, { describeAccounts = describeScopeAccounts, organizationOf = (ids) => organizationsService.organizationOf(ids) } = {}) {
+// Which of the scope's practices the login is a DIRECT member of: the very definition
+// practiceForNewRecord accepts (practice-of.js), so a create form offers exactly what the server will take.
+const directAccountIdsOf = async (userId) => new Set((await directPracticeIdsQuery(appDb, userId)).map((r) => r.accountId));
+
+export async function clientScopeView(scope, {
+  describeAccounts = describeScopeAccounts, organizationOf = (ids) => organizationsService.organizationOf(ids),
+  userId = null, directAccountIds = directAccountIdsOf,
+} = {}) {
   const ids = scope.accountIds;
-  const [labels, orgs] = ids.length ? await Promise.all([describeAccounts(ids), organizationOf(ids)]) : [new Map(), new Map()];
+  const [labels, orgs, direct] = ids.length
+    ? await Promise.all([describeAccounts(ids), organizationOf(ids), userId ? directAccountIds(userId) : new Set()])
+    : [new Map(), new Map(), new Set()];
   return {
     accounts: ids.map((id) => ({
       id,
@@ -23,6 +34,8 @@ export async function clientScopeView(scope, { describeAccounts = describeScopeA
       via: scope.via.get(id) ?? null,
       role: scope.roles.get(id) ?? null,
       payable: scope.payable.has(id),
+      // A practice can be both direct and reached through a group (via "org-admin"); new records need direct.
+      direct: direct.has(id),
     })),
     organizations: scope.organizations.map((o) => ({ id: o.id, name: o.name, combinedStatement: o.combinedStatement })),
   };
@@ -32,7 +45,7 @@ export async function clientScopeView(scope, { describeAccounts = describeScopeA
 export function createClientScopeRoutes({ guard = [authenticate], view = clientScopeView } = {}) {
   return async function clientScopeRoutes(fastify) {
     fastify.get("/client/scope", { preHandler: guard }, async (request) => ({
-      data: await view(clientScopeOf(request.user)),
+      data: await view(clientScopeOf(request.user), { userId: request.user?.id }),
     }));
   };
 }

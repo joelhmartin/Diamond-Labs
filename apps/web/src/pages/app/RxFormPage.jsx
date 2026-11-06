@@ -74,7 +74,8 @@ export function RxFormPage({ slug: slugProp }) {
   const [error, setError] = useState(null);
   // A doctor in several practices says which one the case is for (the server only accepts a direct membership).
   const portal = usePracticeScope();
-  const directPractices = portal.accounts.filter((a) => a.via === "member");
+  // `direct` is the server's own definition (a practice can be direct AND reached through a group).
+  const directPractices = portal.accounts.filter((a) => a.direct);
   const [chosenPractice, setChosenPractice] = useState("");
   const practiceId = chosenPractice || (directPractices.some((a) => a.id === portal.scope) ? portal.scope : "");
   const mustChoose = needsPracticeChoice(directPractices);
@@ -106,6 +107,10 @@ export function RxFormPage({ slug: slugProp }) {
   }
 
   const handleSubmit = async (formData) => {
+    if (!portal.loaded) {
+      setError("Still loading your practices. Try again in a moment.");
+      return;
+    }
     if (mustChoose && !practiceId) {
       setError("Choose which practice this is for.");
       return;

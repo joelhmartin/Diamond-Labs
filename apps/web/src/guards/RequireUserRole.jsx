@@ -1,7 +1,8 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth.js";
 import { Spinner } from "../components/ui/Spinner.jsx";
-import { ROUTES, roleHome } from "../config/routes.js";
+import { ROUTES } from "../config/routes.js";
+import { useRoleHome } from "../lib/post-auth.js";
 
 /**
  * Gate on the user's own role (users.role), not their account membership
@@ -11,6 +12,7 @@ import { ROUTES, roleHome } from "../config/routes.js";
 export function RequireUserRole({ roles }) {
   const { isAuthenticated, isLoading, user } = useAuth();
   const location = useLocation();
+  const { home, pending } = useRoleHome(user);
 
   if (isLoading) {
     return (
@@ -25,7 +27,8 @@ export function RequireUserRole({ roles }) {
   }
 
   if (!roles.includes(user?.role)) {
-    return <Navigate to={roleHome(user)} replace />;
+    if (pending) return <div className="flex h-screen items-center justify-center"><Spinner size="lg" /></div>;
+    return <Navigate to={home} replace />;
   }
 
   return <Outlet />;
