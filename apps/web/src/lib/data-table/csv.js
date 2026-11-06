@@ -3,7 +3,6 @@
  * has one, else its cell when the cell is a plain string or number (rendered
  * nodes export blank). `export: false` leaves a column out.
  */
-
 import { csvRow, CSV_EOL } from "@my-app/shared";
 import { saveBlob } from "../download.js";
 

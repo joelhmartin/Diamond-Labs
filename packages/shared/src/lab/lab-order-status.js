@@ -88,11 +88,19 @@ export function reasonRequiredFor(to) {
 /** The lab is in San Antonio; "today" for due dates is the lab's today. */
 export const LAB_TIMEZONE = "America/Chicago";
 
+// One formatter per time zone: building an Intl.DateTimeFormat costs far more
+// than formatting with one, and statements/reports call this per row (tens of
+// thousands of times in one run).
+const DAY_FORMATS = new Map();
+
 /** "YYYY-MM-DD" for `now` in `timeZone`. */
 export function isoDateIn(timeZone = LAB_TIMEZONE, now = new Date()) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone, year: "numeric", month: "2-digit", day: "2-digit",
-  }).format(now);
+  let format = DAY_FORMATS.get(timeZone);
+  if (!format) {
+    format = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
+    DAY_FORMATS.set(timeZone, format);
+  }
+  return format.format(now);
 }
 
 /** Past its due date and still open. Due dates are "YYYY-MM-DD", so string order is date order. */

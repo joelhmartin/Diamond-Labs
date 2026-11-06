@@ -1,8 +1,9 @@
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lt, ne } from "drizzle-orm";
 import { isoDateIn, LAB_TIMEZONE } from "@my-app/shared";
 import { db } from "../../config/database.js";
 import { invoices, invoicePayments, labOrders, users, doctorProfiles } from "../../db/schema/index.js";
-import { openReceivableInvoices } from "./ledger.service.js";
+import { openReceivableInvoices, ledgerRowDayBetween } from "./ledger.service.js";
+import { afterLabDay } from "../../lib/lab-day-sql.js";
 import { buildReceivables } from "./aging.js";
 import { buildStatementModel } from "./statement-model.js";
 import { renderStatementPdf } from "./billing-pdf.js";
@@ -32,8 +33,32 @@ export async function loadClient(clientUserId, database = db) {
   };
 }
 
-/** Every money event on these clients' invoices (statement-model's `activity`). Drafts carry none. */
-export async function loadStatementActivity(clientUserIds, database = db) {
+/**
+ * The WHERE clauses of loadStatementActivity. `through` ("YYYY-MM-DD") keeps
+ * only invoices issued, and ledger rows dated (ledgerRowDay), on or before
+ * that lab-local day; everything earlier still loads, so opening balances stay
+ * whole. A void after `through` is dated by voidedAt and falls outside the
+ * period on its own (statementEvents).
+ */
+export function statementActivityFilters(clientUserIds, { through } = {}) {
+  const invoiceScope = and(
+    clientUserIds === null ? isNotNull(invoices.clientUserId) : inArray(invoices.clientUserId, clientUserIds),
+    ne(invoices.status, "draft"),
+    through ? lt(invoices.issuedAt, afterLabDay(through)) : undefined,
+  );
+  const paymentBound = through ? ledgerRowDayBetween({ to: through }) : undefined;
+  return { invoiceScope, paymentBound };
+}
+
+/**
+ * Every money event on these clients' invoices (statement-model's `activity`).
+ * Drafts carry none. `clientUserIds = null` means every client's invoices (the
+ * statements summary report); the payments are then joined, not listed by id,
+ * so the query does not grow with the invoice count. `{ through }` bounds it
+ * (statementActivityFilters).
+ */
+export async function loadStatementActivity(clientUserIds, database = db, { through } = {}) {
+  const { invoiceScope: scope, paymentBound } = statementActivityFilters(clientUserIds, { through });
   const invs = await database
     .select({
       id: invoices.id, clientUserId: invoices.clientUserId, invoiceNumber: invoices.invoiceNumber, status: invoices.status, totalCents: invoices.totalCents,
@@ -42,7 +67,7 @@ export async function loadStatementActivity(clientUserIds, database = db) {
     })
     .from(invoices)
     .leftJoin(labOrders, eq(labOrders.id, invoices.labOrderId))
-    .where(and(inArray(invoices.clientUserId, clientUserIds), ne(invoices.status, "draft")));
+    .where(scope);
   const payments = invs.length
     ? await database
         .select({
@@ -52,7 +77,7 @@ export async function loadStatementActivity(clientUserIds, database = db) {
         .from(invoicePayments)
         // The same invoice filter as above by join, not an id list: no bind-parameter ceiling on a large ledger.
         .innerJoin(invoices, eq(invoices.id, invoicePayments.invoiceId))
-        .where(and(inArray(invoices.clientUserId, clientUserIds), ne(invoices.status, "draft")))
+        .where(and(scope, paymentBound))
     : [];
   return { invoices: invs, payments };
 }
@@ -81,17 +106,29 @@ export async function statementPdfFor(clientUserId, month, { clientUserIds } = {
  * (deriveBalance, summed in SQL by openReceivableInvoices), aged and grouped per client (clientUserId). Grouping by
  * practice where seazonaClientId is shared is deferred to piece 5's practice
  * entity: every row action (invoice filter, statement PDF, statement email)
- * is per user today. Spec correction 6.
+ * is per user today. Spec correction 6. `today` ("YYYY-MM-DD", default the
+ * lab's today now) lets a report age against its run clock; it is a separate
+ * argument so a route passing its query object can never set it.
  */
-export async function listReceivables({ pastDueOnly = false } = {}, database = db) {
+export async function listReceivables({ pastDueOnly = false } = {}, database = db, { today } = {}) {
   const open = await openReceivableInvoices(database);
-  const ids = [...new Set(open.map((i) => i.clientUserId).filter(Boolean))]; // an unowned legacy invoice has no client yet
-  const clients = ids.length
-    ? await database
-        .select({ id: users.id, name: users.name, accountNumber: users.seazonaAccountNumber, practice: doctorProfiles.companyName })
-        .from(users)
-        .leftJoin(doctorProfiles, eq(doctorProfiles.userId, users.id))
-        .where(inArray(users.id, ids))
-    : [];
-  return buildReceivables(open, new Map(clients.map((c) => [c.id, c])), isoDateIn(LAB_TIMEZONE, new Date()), { pastDueOnly });
+  const clients = await loadClientNames(open.map((i) => i.clientUserId), database);
+  return buildReceivables(open, clients, today ?? isoDateIn(LAB_TIMEZONE, new Date()), { pastDueOnly });
+}
+
+/**
+ * Many clients' name, practice and account number in one query (the bulk
+ * sibling of loadClient), keyed by user id. Null/blank ids (an unowned legacy
+ * invoice has no client yet) are skipped.
+ * @returns {Promise<Map<string, { id, name, accountNumber, practice }>>}
+ */
+export async function loadClientNames(clientUserIds, database = db) {
+  const ids = [...new Set(clientUserIds.filter(Boolean))];
+  if (!ids.length) return new Map();
+  const rows = await database
+    .select({ id: users.id, name: users.name, accountNumber: users.seazonaAccountNumber, practice: doctorProfiles.companyName })
+    .from(users)
+    .leftJoin(doctorProfiles, eq(doctorProfiles.userId, users.id))
+    .where(inArray(users.id, ids));
+  return new Map(rows.map((c) => [c.id, c]));
 }

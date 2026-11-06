@@ -52,6 +52,9 @@ export const invoices = pgTable("invoices", {
   uniqueIndex("invoices_legacy_seazona_idx").on(t.legacySeazonaInvoiceId),
   index("invoices_client_idx").on(t.clientUserId),
   index("invoices_status_idx").on(t.status),
+  // Reports (piece 9): issued invoices by issue day, overall and per client.
+  index("invoices_status_issued_idx").on(t.status, t.issuedAt),
+  index("invoices_client_issued_idx").on(t.clientUserId, t.issuedAt),
 ]);
 
 export const invoiceLines = pgTable("invoice_lines", {
@@ -80,4 +83,9 @@ export const invoiceLines = pgTable("invoice_lines", {
   // The shipment that added this shipping line (piece 4), so voiding the label removes exactly it.
   shipmentId: varchar("shipment_id", { length: 128 }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [index("invoice_lines_invoice_idx").on(t.invoiceId), index("invoice_lines_shipment_idx").on(t.shipmentId)]);
+}, (t) => [
+  index("invoice_lines_invoice_idx").on(t.invoiceId),
+  index("invoice_lines_shipment_idx").on(t.shipmentId),
+  // Reports (piece 9): sales by product.
+  index("invoice_lines_variant_idx").on(t.variantId),
+]);

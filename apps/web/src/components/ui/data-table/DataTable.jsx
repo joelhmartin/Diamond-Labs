@@ -16,6 +16,10 @@ const ALIGN = { left: "text-left", right: "text-right", center: "text-center" };
  * the anchor, a plain click runs `onRowClick` (or selects only that row when
  * there is none), Esc clears. `highlightRowId` marks one row (a deep link's
  * target: aria-current and a ring) and scrolls it into view once.
+ *
+ * `exportAll` (optional): a function that exports the whole result (every
+ * matching row, not just this page; e.g. a server CSV). When set, the toolbar
+ * shows "Export CSV" for it; the selected-rows export in the bulk bar is separate.
  */
 export function DataTable({
   table,
@@ -32,6 +36,7 @@ export function DataTable({
   itemLabel = "rows",
   exportable = true,
   exportFileName = "export.csv",
+  exportAll,
   emptyText = "Nothing to show.",
   notice,
   selectable = true,
@@ -137,7 +142,7 @@ export function DataTable({
       {hasSelection ? (
         <BulkBar table={table} columns={columns} bulkActions={bulkActions} exportable={exportable} exportFileName={exportFileName} />
       ) : (
-        <DataTableToolbar table={table} searchable={searchable} searchPlaceholder={searchPlaceholder} toolbarRight={toolbarRight} />
+        <DataTableToolbar table={table} searchable={searchable} searchPlaceholder={searchPlaceholder} toolbarRight={toolbarRight} exportAll={exportAll} />
       )}
       {selectable && selection.allMatchingAvailable && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl bg-brand-500/5 px-4 py-2 text-xs text-navy/70">

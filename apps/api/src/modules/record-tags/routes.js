@@ -19,7 +19,9 @@ const asArray = (g) => (Array.isArray(g) ? g : [g]);
  *
  * @param {import("fastify").FastifyInstance} fastify
  * @param {object} opts
- * @param {Record<string, { exists: (ids: string[]) => Promise<Set<string>>, onChange?: Function }>} opts.recordTypes
+ * @param {Record<string, { exists: (ids: string[]) => Promise<Set<string>>, onChange?: Function, applyGuard?: Function|Function[] }>} opts.recordTypes
+ *   `applyGuard`: extra preHandler(s) for that type's apply route, run after staffGuard
+ *   (e.g. a type only admins may assign while staff may still read it)
  * @param {Function|Function[]} opts.staffGuard preHandler(s) for read, apply and star routes
  * @param {Function|Function[]} opts.adminGuard preHandler(s) for definition management
  * @param {object} [opts.service] defaults to ./service.js (tests pass a stub)
@@ -33,6 +35,14 @@ export async function recordTagRoutes(fastify, { recordTypes, staffGuard, adminG
   const knownType = async (request, reply) => {
     if (!Object.hasOwn(recordTypes, request.params.recordType)) {
       return reply.code(404).send({ error: { code: "NOT_FOUND", status: 404, message: "Unknown record type." } });
+    }
+  };
+
+  // A record type's own applyGuard, if it has one; stops at the first guard that answers.
+  const typeApplyGuard = async (request, reply) => {
+    for (const guard of asArray(recordTypes[request.params.recordType].applyGuard ?? [])) {
+      await guard(request, reply);
+      if (reply.sent) return reply;
     }
   };
 
@@ -63,7 +73,7 @@ export async function recordTagRoutes(fastify, { recordTypes, staffGuard, adminG
       return tag;
     }));
 
-  fastify.post("/tags/:recordType/apply", { preHandler: [...staff, knownType, validate(tagApplySchema)] }, (request, reply) =>
+  fastify.post("/tags/:recordType/apply", { preHandler: [...staff, knownType, typeApplyGuard, validate(tagApplySchema)] }, (request, reply) =>
     run(reply, () => {
       const { recordType } = request.params;
       const cfg = recordTypes[recordType];

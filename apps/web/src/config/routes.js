@@ -54,6 +54,13 @@ export const ROUTES = {
   LAB_DELIVERIES: "/lab/deliveries",
   LAB_DELIVERIES_PRINT: "/lab/deliveries/print",
 
+  // Reports (admin + lab staff; each report narrows further by role)
+  REPORTS: "/reports",
+  REPORT: "/reports/:key",
+  // Dashboards (staff; tiles narrow further by role). Not ROUTES.DASHBOARD: that is the account home.
+  LAB_DASHBOARD_HOME: "/lab/dashboard",
+  LAB_DASHBOARD: "/lab/dashboard/:key",
+
   // Doctor
   DOCTOR_INVOICES: "/doctor/invoices",
   DOCTOR_INVOICE_DETAIL: "/doctor/invoices/:id",
@@ -81,6 +88,8 @@ export const adminInvoicePath = (id) => `/admin/invoices/${id}`;
 export const labThreadPath = (id) => `/lab/messages/${id}`;
 export const doctorThreadPath = (id) => `/doctor/messages/${id}`;
 export const shipmentPrintPath = (id) => `/lab/shipments/${id}/print`;
+export const reportPath = (key) => `/reports/${encodeURIComponent(key)}`;
+export const dashboardPath = (key) => `/lab/dashboard/${encodeURIComponent(key)}`;
 
 /**
  * Given the current user, return the URL that should serve as their "home"
@@ -94,7 +103,8 @@ export function roleHome(user) {
     if (user.approvalStatus === "approved") return ROUTES.DOCTOR_INVOICES;
   }
   if (user.role === "lab") return ROUTES.LAB_BOARD;
-  // Everyone else (including admin) lands on the dashboard; the sidebar
-  // surfaces role-specific sections like /admin/*.
+  // Admins land on the lab dashboards (Pulse).
+  if (user.role === "admin") return ROUTES.LAB_DASHBOARD_HOME;
+  // Everyone else lands on the account dashboard.
   return ROUTES.DASHBOARD;
 }
