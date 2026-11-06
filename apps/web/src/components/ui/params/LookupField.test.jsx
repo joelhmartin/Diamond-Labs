@@ -3,7 +3,7 @@ import { test, afterEach, vi } from "vitest";
 import assert from "node:assert/strict";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { useState } from "react";
-import { LookupField } from "../LookupField.jsx";
+import { LookupField } from "./LookupField.jsx";
 
 afterEach(cleanup);
 

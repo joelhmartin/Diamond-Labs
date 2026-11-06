@@ -3,7 +3,9 @@
 ## Purpose
 
 `<ExportScreen basePath defaultSource? />` is the screen for the generic export
-API: a source picker, one control per declared parameter, a paged preview
+API: a source picker, one control per declared parameter (the shared
+`ParamFields` in `apps/web/src/components/ui/params`, the same controls the
+reports form draws, so a source's `params` are report param specs), a paged preview
 (`DataTable`, server mode), a format picker and a Download button. It reads
 everything from `GET <basePath>`; the contract (sources, params, fields,
 formats) is in `apps/api/src/modules/exports/README.md`.
@@ -28,7 +30,8 @@ stores nothing.
 
 ## Wiring it into another app
 
-1. Copy this directory. It depends on the app's shared `DataTable`,
+1. Copy this directory and `apps/web/src/components/ui/params` (the param
+   controls). It depends on the app's shared `DataTable`,
    `useDataTable` and filter controls, its `api` client, its toast and its
    small request, money and download helpers (`lib/`), the same pieces every
    list in the app uses.

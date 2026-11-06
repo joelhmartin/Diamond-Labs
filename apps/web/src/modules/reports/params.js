@@ -4,6 +4,8 @@
  * values:
  *   dateRange  preset name ("last30") or "YYYY-MM-DD..YYYY-MM-DD"
  *   multiselect  comma-joined values; toggle "true"/"false"; others String(v).
+ * The spec helpers (optionsOf, splitRange, isPartialRange) live with the shared
+ * param controls in components/ui/params.
  */
 export const URL_PREFIX = "p.";
 
@@ -15,17 +17,6 @@ export function encodeParam(spec, value) {
   if (typeof value === "boolean") return value ? "true" : "false";
   return String(value);
 }
-
-/** "a..b" -> { from: "a", to: "b" }; a preset name -> null. */
-export function splitRange(raw) {
-  if (typeof raw !== "string" || !raw.includes("..")) return null;
-  const [from, to] = raw.split("..");
-  return { from, to };
-}
-
-/** Option specs may be strings or { value, label }. */
-export const optionsOf = (spec) =>
-  (spec.options || []).map((o) => (typeof o === "object" ? { value: String(o.value), label: o.label ?? String(o.value) } : { value: String(o), label: String(o) }));
 
 /**
  * A param the person can clear even though it has a default: clearing must stick
@@ -63,12 +54,6 @@ export function writeParams(searchParams, params, specs = []) {
 
 /** `params` as they will read back after a round trip through the URL (for "did anything change?"). */
 export const normalizeParams = (specs, params) => readParams(specs, writeParams(new URLSearchParams(), params, specs));
-
-/** A dateRange value that is a custom range missing one end ("2026-10-01.."). */
-export const isPartialRange = (raw) => {
-  const r = splitRange(raw);
-  return Boolean(r) && (!r.from || !r.to);
-};
 
 /** Stable identity for a params object (effect deps). */
 export const paramsKey = (params) => JSON.stringify(Object.entries(params).sort(([a], [b]) => a.localeCompare(b)));
