@@ -14,8 +14,8 @@ import { prepareRun, executePrepared, defaultRunSlots } from "./runner.js";
 export const CSV_ROW_CAP = 100000;
 export const CSV_PAGE_SIZE = 2000;
 
-/** Report files start without a BOM (unlike the exports module's downloads); see the module README. */
-export const REPORT_CSV_FORMAT = Object.freeze({ ...csvFormat, bom: false });
+/** Report files are the shared CSV format, BOM included (as the browser's selected-rows export), so Excel reads UTF-8. */
+export const REPORT_CSV_FORMAT = csvFormat;
 
 /**
  * Validate, run the first page (so a bad request or timeout is a normal JSON

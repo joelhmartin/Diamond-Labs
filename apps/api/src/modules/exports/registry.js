@@ -1,4 +1,13 @@
-import { COLUMN_TYPES, PARAM_TYPES } from "@my-app/shared";
+import { COLUMN_TYPES } from "@my-app/shared";
+
+/**
+ * The report param types an export source may declare: the ones the export path
+ * handles end to end today (the screen sends their raw value; the source's own
+ * zod validates it). Not `dateRange` (a preset needs resolving in the app's
+ * timezone, which exports do not have) nor `lookup` (no lookup endpoint); add a
+ * type here only with that support and a test.
+ */
+export const EXPORT_PARAM_TYPES = Object.freeze(["date", "select", "multiselect"]);
 
 /**
  * Registry of export sources (what can be exported) and formats (how it is
@@ -25,9 +34,9 @@ export function createExportRegistry() {
     }
     for (const p of def.params ?? []) {
       if (!p.name) throw new Error(`${where}: every param needs a name.`);
-      if (!PARAM_TYPES.includes(p.type)) throw new Error(`${where}: param "${p.name}" has unknown type "${p.type}".`);
-      // The export screen has no lookup search endpoint to hand the picker.
-      if (p.type === "lookup") throw new Error(`${where}: param "${p.name}": lookup params are not supported by exports.`);
+      if (!EXPORT_PARAM_TYPES.includes(p.type)) {
+        throw new Error(`${where}: param "${p.name}" has type "${p.type}"; exports support ${EXPORT_PARAM_TYPES.join(", ")}.`);
+      }
     }
   }
 

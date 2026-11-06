@@ -99,8 +99,9 @@ pages a server report by 2000 up to 100000 rows, one short transaction per page,
 and cuts a client-paged report at 100000 rows, not 5000. It writes the report as
 an export source (its columns are the fields) through the shared paged writer and
 CSV format in `packages/shared/src/exports` (`openExportStream`, `csvFormat`), the
-same code the exports module's downloads use; the one difference is that a report
-file has no BOM (`REPORT_CSV_FORMAT`).
+same code the exports module's downloads use; a report file starts
+with a UTF-8 BOM, like the exports downloads and the browser's selected-rows export,
+so Excel reads non-ASCII names correctly.
 
 `createReportRoutes({ registry, db, preHandler, audit, favorites, tz?, slots?, dashboardCache? })`
 returns a Fastify plugin: `GET /reports` (with the registry's `featuredTitle`,

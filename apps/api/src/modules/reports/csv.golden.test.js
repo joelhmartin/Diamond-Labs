@@ -61,7 +61,7 @@ async function exportOf(def) {
 
 const sha = (s) => createHash("sha256").update(s, "utf8").digest("hex");
 
-test("client-paged report CSV: exact bytes, no BOM", async () => {
+test("client-paged report CSV: exact bytes, BOM first", async () => {
   const { reply, text } = await exportOf({ run: async () => ({ rows: Array.from({ length: 12 }, (_, i) => rowAt(i)) }) });
   expect(reply.headers).toEqual({
     "Content-Type": "text/csv; charset=utf-8",
@@ -83,11 +83,13 @@ test("server-paged report CSV over three pages: exact bytes", async () => {
   });
   expect(offsets).toEqual([[0, 2000], [2000, 2000], [4000, 500]]);
   expect(text.startsWith(GOLDEN_CLIENT.split("\r\n").slice(0, 3).join("\r\n"))).toBe(true);
-  expect(text.length).toBe(GOLDEN_SERVER_LENGTH);
-  expect(sha(text)).toBe(GOLDEN_SERVER_SHA);
+  // The BOM is the only change since capture: the body after it is the captured file.
+  expect(text.length).toBe(GOLDEN_SERVER_LENGTH + 1);
+  expect(sha(text.slice(1))).toBe(GOLDEN_SERVER_SHA);
 });
 
 const GOLDEN_CLIENT =
+  "\ufeff" +
   "\"Name, full\",N,Amount,On,At,Share,Age,Who,\"State \"\"now\"\"\"\r\n" +
   "Ann,,,2026-03-08,2026-10-31 19:00,,3,p0,\"closed, late\"\r\n" +
   "'=SUM(A1),-47,-88.63,2026-03-07,2026-11-01 01:11,-7.3,0.3,Person 1,open\r\n" +

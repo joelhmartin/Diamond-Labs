@@ -23,7 +23,7 @@ import { createExportRegistry, csvFormat, createExportsRoutes, runExport, previe
   ```
   defineSource({
     key, label,
-    params: [{ name, label, type, options?, required? }],  // report param specs (PARAM_TYPES)
+    params: [{ name, label, type, options?, required? }],  // report param specs, type in EXPORT_PARAM_TYPES
     paramsSchema,   // zod; params are validated against it before any read
     fields: [{ key, label, type, timeZone? }],             // type is a column type (COLUMN_TYPES)
     fetchPage(db, params, { limit, offset }) -> Promise<{ rows, total }>,
@@ -35,8 +35,11 @@ import { createExportRegistry, csvFormat, createExportsRoutes, runExport, previe
   same controls as a report's, and a cell is written the way a report column's
   is: `money` is integer cents written "1234.50", `int` a number, `date` a
   calendar day (in the field's `timeZone`, default UTC), `text` as is.
-  `defineSource` throws on an unknown field or param type, a param without a
-  `name`, and a `lookup` param (the export screen has no lookup endpoint). The query keys are the param names; the screen sends a multiselect
+  `defineSource` throws on an unknown field type, a param without a `name`,
+  and a param type outside `EXPORT_PARAM_TYPES` (`date`, `select`,
+  `multiselect`: the types the export path handles end to end; `dateRange`
+  presets need the app timezone and `lookup` a lookup endpoint, which exports
+  do not have). The query keys are the param names; the screen sends a multiselect
   comma-joined, so a `paramsSchema` should accept a comma list.
 
   `fetchPage` must use a stable order so pages do not overlap or skip.
