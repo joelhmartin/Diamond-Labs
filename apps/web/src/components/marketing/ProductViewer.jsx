@@ -13,6 +13,7 @@ export function ProductViewer({
   headingAs: Heading = "h2",
 }) {
   const [activeIdx, setActiveIdx] = useState(0);
+  const [lookIdx, setLookIdx] = useState(0);
   const mainRef = useRef(null);
 
   const handleThumbClick = (idx) => {
@@ -51,7 +52,7 @@ export function ProductViewer({
           )}
           {activeItem.is3D ? (
             <ModelViewer
-              model={activeItem.model}
+              model={{ device: activeItem.device, ...activeItem.looks[lookIdx] }}
               className="w-full h-full bg-navy text-white/80"
             />
           ) : activeItem.src ? (
@@ -82,8 +83,11 @@ export function ProductViewer({
               </span>
             )}
           </div>
+          {activeItem.is3D && activeItem.looks.length > 1 && (
+            <MaterialPicker looks={activeItem.looks} active={lookIdx} onPick={setLookIdx} />
+          )}
           {activeItem.is3D && (
-            <div className="absolute bottom-4 right-4 text-xs text-white/80 pointer-events-none">
+            <div className="absolute top-5 right-4 text-xs text-white/70 pointer-events-none hidden sm:block">
               drag to rotate · scroll to zoom
             </div>
           )}
@@ -107,9 +111,6 @@ export function ProductViewer({
                 <div className="w-full h-full bg-navy flex flex-col items-center justify-center gap-0.5">
                   <Box size={16} className="text-brand-400" />
                   <span className="text-[9px] font-mono text-white/70 leading-none">3D</span>
-                  {img.material && (
-                    <span className="text-[9px] text-white leading-none mt-0.5">{img.material}</span>
-                  )}
                 </div>
               ) : (
                 <img
@@ -184,6 +185,27 @@ export function ProductViewer({
           </Link>
         )}
       </div>
+    </div>
+  );
+}
+
+/* Material buttons over the 3D stage; the viewer repaints the trays in place. */
+function MaterialPicker({ looks, active, onPick }) {
+  return (
+    <div role="group" aria-label="Material" className="absolute inset-x-4 bottom-4 flex flex-wrap items-center justify-center gap-2">
+      {looks.map((look, i) => (
+        <button
+          key={look.label}
+          type="button"
+          aria-pressed={i === active}
+          onClick={() => onPick(i)}
+          className={`px-4 py-2 rounded-full text-xs font-semibold backdrop-blur-md transition-colors duration-200 ${
+            i === active ? "bg-white text-navy" : "bg-white/10 text-white border border-white/20 hover:bg-white/20"
+          }`}
+        >
+          {look.label}
+        </button>
+      ))}
     </div>
   );
 }

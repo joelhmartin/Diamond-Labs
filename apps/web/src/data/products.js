@@ -1,3 +1,5 @@
+/* A 3D entry is one view of `device` (public/models/appliances) with the material
+   looks it is made in. More than one look gives the viewer a material picker. */
 export const PRODUCTS = {
   ddsoAnt: {
     name: "DDSO",
@@ -15,7 +17,8 @@ export const PRODUCTS = {
       { src: "/images/ddso-ant-pair.webp",     label: "DDSO Anterior — Upper & Lower" },
       {
         is3D: true,
-        model: { device: "ddso-anterior", upper: "nylon", lower: "nylon" },
+        device: "ddso-anterior",
+        looks: [{ label: "Nylon", upper: "nylon", lower: "nylon" }],
         label: "DDSO Anterior — 3D View",
       },
     ],
@@ -43,7 +46,8 @@ export const PRODUCTS = {
       { src: "/images/ddso-isometric.webp",     label: "DDSO Posterior — Blue Bands" },
       {
         is3D: true,
-        model: { device: "ddso-posterior", upper: "nylon", lower: "nylon" },
+        device: "ddso-posterior",
+        looks: [{ label: "Nylon", upper: "nylon", lower: "nylon" }],
         label: "DDSO Posterior — 3D View",
       },
     ],
@@ -71,15 +75,12 @@ export const PRODUCTS = {
       { src: "/images/ond-bands.webp",    label: "OND — With Bands" },
       {
         is3D: true,
-        model: { device: "ond", upper: "nylon", lower: "trutaine" },
-        material: "Mixed",
-        label: "OND — Nylon and Trutaine, 3D View",
-      },
-      {
-        is3D: true,
-        model: { device: "ond", upper: "nylon", lower: "nylon" },
-        material: "Nylon",
-        label: "OND — Nylon, 3D View",
+        device: "ond",
+        looks: [
+          { label: "Nylon + Trutaine", upper: "nylon", lower: "trutaine" },
+          { label: "Nylon", upper: "nylon", lower: "nylon" },
+        ],
+        label: "OND — 3D View",
       },
     ],
     specs: [
@@ -106,21 +107,13 @@ export const PRODUCTS = {
       { src: "/images/onp-model.webp",       label: "ONP — On Model" },
       {
         is3D: true,
-        model: { device: "onp", upper: "trutaine", lower: "trutaine" },
-        material: "Trutaine",
-        label: "ONP — Trutaine, 3D View",
-      },
-      {
-        is3D: true,
-        model: { device: "onp", upper: "nylon", lower: "nylon" },
-        material: "Nylon",
-        label: "ONP — Nylon, 3D View",
-      },
-      {
-        is3D: true,
-        model: { device: "onp", upper: "bioflex", lower: "bioflex" },
-        material: "Bioflex",
-        label: "ONP — Bioflex, 3D View",
+        device: "onp",
+        looks: [
+          { label: "Trutaine", upper: "trutaine", lower: "trutaine" },
+          { label: "Nylon", upper: "nylon", lower: "nylon" },
+          { label: "Bioflex", upper: "bioflex", lower: "bioflex" },
+        ],
+        label: "ONP — 3D View",
       },
     ],
     specs: [

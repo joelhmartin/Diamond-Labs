@@ -84,7 +84,7 @@ export function PageHero({ variant = "compact", title, titleAccent, intro, image
                 data-hero-anim
                 src={product}
                 alt={productAlt}
-                className="block w-[80%] max-w-[420px] mx-auto lg:w-full lg:max-w-none h-auto object-contain drop-shadow-[0_30px_50px_rgba(0,20,60,0.45)]"
+                className="block w-[80%] max-w-[420px] mx-auto lg:w-auto lg:max-w-full lg:max-h-[420px] h-auto object-contain drop-shadow-[0_30px_50px_rgba(0,20,60,0.45)]"
               />
             )}
           </div>

@@ -19,6 +19,10 @@ import { createMaterialSet, createScanUniforms, disposeMaterialSet } from "./thr
 export function ModelViewer({ model: { device, upper, lower }, className = "", interactive = true }) {
   const mountRef = useRef(null);
   const [status, setStatus] = useState("loading");
+  // The loaded scene, so a look change repaints the trays without reloading the model.
+  const sceneRef = useRef(null);
+  const looksRef = useRef({ upper, lower });
+  looksRef.current = { upper, lower };
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -86,7 +90,11 @@ export function ModelViewer({ model: { device, upper, lower }, className = "", i
         if (disposed) return;
         parts = extractParts(gltf.scene);
         const appliance = new THREE.Group();
-        appliance.add(new THREE.Mesh(parts.upper, materials[upper]), new THREE.Mesh(parts.lower, materials[lower]));
+        const { upper: upperLook, lower: lowerLook } = looksRef.current;
+        const upperMesh = new THREE.Mesh(parts.upper, materials[upperLook]);
+        const lowerMesh = new THREE.Mesh(parts.lower, materials[lowerLook]);
+        sceneRef.current = { materials, upperMesh, lowerMesh };
+        appliance.add(upperMesh, lowerMesh);
         for (const band of parts.bands) appliance.add(new THREE.Mesh(band, materials.band));
 
         /* Fit using the bounding sphere, which guarantees no overflow at any rotation */
@@ -134,6 +142,7 @@ export function ModelViewer({ model: { device, upper, lower }, className = "", i
     /* ── Cleanup ── */
     return () => {
       disposed = true;
+      sceneRef.current = null;
       cancelAnimationFrame(animId);
       ro.disconnect();
       controls.dispose();
@@ -147,7 +156,14 @@ export function ModelViewer({ model: { device, upper, lower }, className = "", i
         mount.removeChild(renderer.domElement);
       }
     };
-  }, [device, upper, lower, interactive]);
+  }, [device, interactive]);
+
+  useEffect(() => {
+    const loaded = sceneRef.current;
+    if (!loaded) return;
+    loaded.upperMesh.material = loaded.materials[upper];
+    loaded.lowerMesh.material = loaded.materials[lower];
+  }, [upper, lower]);
 
   return (
     <div ref={mountRef} className={`w-full h-full relative ${className}`}>

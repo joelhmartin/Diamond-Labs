@@ -1,9 +1,10 @@
-import { BadgeCheck, Layers, Link2, Maximize2, MoveHorizontal, Scale } from "lucide-react";
+import { BadgeCheck, BatteryLow, Brain, CirclePause, Droplet, Focus, Layers, Link2, Maximize2, Moon, MoveHorizontal, Scale, Volume2, Wind } from "lucide-react";
 import { ProductCatalog } from "../../components/marketing/ProductCatalog";
 import { PageHero } from "../../components/marketing/PageHero";
 import { CtaBand } from "../../components/marketing/CtaBand";
 import { HeroStage } from "../../components/marketing/HeroStage";
 import { Reveal } from "../../components/marketing/Reveal";
+import { SymptomsSection } from "../../components/marketing/SymptomsSection";
 
 const SLEEP_TABS = [
   { key: "ddsoAnt", label: "DDSO — Anterior", sub: "Sleep Appliance" },
@@ -41,6 +42,17 @@ const CORE_FEATURES = [
     title: "5-Year Unconditional Warranty",
     body: "Every DDSO ships with a 5-year warranty. Digital design allows replacements to be made without new records.",
   },
+];
+
+const SYMPTOMS = [
+  { Icon: Volume2, text: "Loud, persistent snoring" },
+  { Icon: CirclePause, text: "Pauses in breathing noticed by a bed partner" },
+  { Icon: Wind, text: "Gasping or choking during sleep" },
+  { Icon: BatteryLow, text: "Daytime sleepiness despite a full night in bed" },
+  { Icon: Brain, text: "Morning headaches" },
+  { Icon: Droplet, text: "Dry mouth or sore throat on waking" },
+  { Icon: Focus, text: "Trouble concentrating or remembering" },
+  { Icon: Moon, text: "Restless sleep or waking often at night" },
 ];
 
 const VARIANTS = [
@@ -134,10 +146,16 @@ export function SleepPage() {
         title="Mandibular advancement,"
         titleAccent="engineered."
         intro="The Diamond Digital Sleep Orthotic (DDSO) is a custom CAD/CAM device for snoring and mild-to-moderate OSA in adults. FDA 510(k) cleared, fully digital."
-        product="/images/hero-ddso-reflection.webp"
+        product="/images/hero-ddso.webp"
         productAlt="DDSO sleep appliance with a blue adjustment strap"
       />
       <ProductCatalog tabs={SLEEP_TABS} spacing="pt-12 md:pt-14 pb-12 md:pb-16" />
+      <SymptomsSection
+        title="Signs of snoring and sleep apnea"
+        intro="Obstructive sleep apnea often goes unnoticed by the patient: a bed partner hears the snoring and the pauses, and the patient feels the tiredness. Diagnosis comes from a physician and a sleep study; the DDSO is made on that prescription."
+        photo={{ src: "/images/symptoms-sleep-tired.webp", alt: "Woman in bed yawning, with a sleep mask pushed up on her forehead" }}
+        symptoms={SYMPTOMS}
+      />
       <CoreFeatures />
       <Variants />
       <CtaBand

@@ -5,6 +5,7 @@ import { SectionHeading } from "../../components/marketing/SectionHeading";
 import { CtaBand } from "../../components/marketing/CtaBand";
 import { HeroStage } from "../../components/marketing/HeroStage";
 import { Reveal } from "../../components/marketing/Reveal";
+import { SymptomsSection } from "../../components/marketing/SymptomsSection";
 
 const TMD_TABS = [
   { key: "ond", label: "OND", sub: "Olmos Neuromuscular Device" },
@@ -262,41 +263,6 @@ function NightOrthotics() {
   );
 }
 
-function Symptoms() {
-  return (
-    <Reveal className="section-pad py-20 md:py-24 bg-surface-100">
-      <div className="max-w-6xl mx-auto grid lg:grid-cols-[1fr_1.4fr] gap-10 lg:gap-14 items-start">
-        <div className="lg:sticky lg:top-28">
-          <SectionHeading
-            title="Signs and symptoms of TMD"
-            intro="TMD transcends the boundaries of dentistry, neurology, physical therapy, and psychology. Symptoms often involve more than one of the numerous TMJ components: muscles, nerves, tendons, ligaments, bones, and connective tissue."
-          />
-          <div className="mt-8 rounded-[2rem] bg-white border border-surface-300/60 shadow-sm p-6 grid place-items-center">
-            <img
-              src="/images/onp-model.webp"
-              alt="ONP orthotic seated on a model of the teeth"
-              loading="lazy"
-              className="w-[55%] max-w-[240px] h-auto drop-shadow-[0_18px_28px_rgba(0,20,60,0.18)]"
-            />
-          </div>
-        </div>
-        <ul className="grid sm:grid-cols-2 gap-4">
-          {SYMPTOMS.map(({ Icon, text }) => (
-            <li
-              key={text}
-              className="flex items-center gap-4 rounded-[1.75rem] bg-white border border-surface-300/60 shadow-sm p-5 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-navy/10 transition-all duration-300"
-            >
-              <span className="flex-shrink-0 grid place-items-center w-12 h-12 rounded-2xl bg-brand-100 text-brand-700">
-                <Icon size={22} aria-hidden="true" />
-              </span>
-              <span className="text-navy leading-snug">{text}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </Reveal>
-  );
-}
 
 export function TmdPage() {
   return (
@@ -314,7 +280,12 @@ export function TmdPage() {
       <DayOrthotics />
       <Materials />
       <NightOrthotics />
-      <Symptoms />
+      <SymptomsSection
+        title="Signs and symptoms of TMD"
+        intro="TMD transcends the boundaries of dentistry, neurology, physical therapy, and psychology. Symptoms often involve more than one of the numerous TMJ components: muscles, nerves, tendons, ligaments, bones, and connective tissue."
+        photo={{ src: "/images/symptoms-tmd-jaw-pain.webp", alt: "Woman wincing and holding an ice pack to her jaw" }}
+        symptoms={SYMPTOMS}
+      />
       <CtaBand
         title="Start a case through the portal Rx form"
         intro="All Olmos TMD orthotics are Rx-only. Appliance selection is driven by comprehensive diagnosis. Unsure which variant fits? We'll help you decide."
