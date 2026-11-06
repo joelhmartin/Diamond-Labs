@@ -70,10 +70,11 @@ export default async function labDeskRoutes(fastify) {
   });
 
   // /tags/lab_order/... (staff) and /admin/tags/lab_order/... (admin). Labels never bump the order's version.
-  // /tags/client_rep/...: a client's sales rep (Sales By Rep); admins define the reps.
+  // /tags/client_rep/...: a client's sales rep (Sales By Rep, an admin money report): admins define and assign
+  // the reps; staff may read them.
   await fastify.register(recordTagRoutes, {
     recordTypes: { [LAB_ORDER_RECORD_TYPE]: { exists: (ids) => labOrderIdsThatExist(ids), onChange: onLabOrderTagsChanged },
-      [CLIENT_REP_RECORD_TYPE]: { exists: (ids) => clientIdsThatExist(ids) } },
+      [CLIENT_REP_RECORD_TYPE]: { exists: (ids) => clientIdsThatExist(ids), applyGuard: requireAdmin } },
     staffGuard: STAFF,
     adminGuard: [authenticate, requireAdmin],
     audit: (request, action, targetId, metadata) => audit(request, action, targetId, metadata, "tag_definition"),

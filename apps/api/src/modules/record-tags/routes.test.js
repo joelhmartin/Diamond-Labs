@@ -103,3 +103,25 @@ test("a known type reaches the service and TagError maps to its status", async (
   assert.equal(empty.statusCode, 422);
   await app.close();
 });
+
+test("a record type's applyGuard runs after staffGuard on apply only", async () => {
+  const app = Fastify();
+  app.addHook("onRequest", async (req) => { req.user = { id: "u1", role: req.headers["x-role"] }; });
+  const adminOnly = async (request, reply) => {
+    if (request.user.role !== "admin") return reply.code(403).send({ error: { code: "FORBIDDEN" } });
+  };
+  const applied = [];
+  await app.register(recordTagRoutes, {
+    recordTypes: { widget: { exists: async (ids) => new Set(ids) }, gated: { exists: async (ids) => new Set(ids), applyGuard: adminOnly } },
+    staffGuard: [async () => {}], adminGuard: [async () => {}],
+    service: { applyTags: async (a) => { applied.push(a.recordType); return { changed: 1 }; }, listDefinitions: async () => [] },
+  });
+  const apply = (type, role) => app.inject({ method: "POST", url: `/tags/${type}/apply`, headers: { "x-role": role }, payload: { ids: ["a"], add: ["t"] } });
+  assert.equal((await apply("gated", "staff")).statusCode, 403);
+  assert.equal((await apply("gated", "admin")).statusCode, 200);
+  assert.equal((await apply("widget", "staff")).statusCode, 200, "types without an applyGuard are unchanged");
+  assert.deepEqual(applied, ["gated", "widget"]);
+  const read = await app.inject({ method: "GET", url: "/tags/gated/definitions", headers: { "x-role": "staff" } });
+  assert.equal(read.statusCode, 200, "reading stays on staffGuard");
+  await app.close();
+});

@@ -58,6 +58,8 @@ test("files and tags are mounted for lab orders behind the lab guards", () => {
   assert.match(read("../../services/lab/lab-tags.js"), /export const LAB_ORDER_RECORD_TYPE = "lab_order";/);
   assert.match(desk, /staffGuard: STAFF/);
   assert.match(desk, /adminGuard: \[authenticate, requireAdmin\]/);
+  // Sales reps drive an admin money report: only admins assign them (staff still read them).
+  assert.match(desk, /\[CLIENT_REP_RECORD_TYPE\]: \{ exists: \(ids\) => clientIdsThatExist\(ids\), applyGuard: requireAdmin \}/);
   assert.match(desk, /onRead: /);
   assert.match(desk, /lab_order\.file_url_issued/);
 });
