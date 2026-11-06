@@ -65,7 +65,7 @@ const initials = (name) => name.split(" ").filter(Boolean).map((w) => w[0]).slic
 
 // Headshots in public/images/team, named by slug. Anyone without one shows their initials.
 const PHOTOS = new Set([
-  "austin-knutson", "barbara-rago", "crosby-hessel", "david-leonard", "edgar-aguillar", "elmer-onofre",
+  "austin-knutson", "barbara-rago", "matt-rago", "crosby-hessel", "david-leonard", "edgar-aguillar", "elmer-onofre",
   "franco-di-paolo", "inho-ko", "james-albrecht", "jose-martinez", "krystee-rago",
 ]);
 const slug = (name) => name.toLowerCase().replace(/[^a-z]+/g, "-");
