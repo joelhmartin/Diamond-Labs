@@ -1,5 +1,5 @@
 /**
- * Invariant: a `lab`-role user never sees money. Checked over the REAL
+ * Invariant: a `lab`-role user (any non-admin staff role) never sees money. Checked over the REAL
  * registry, built exactly as reports.routes.js builds it, so a new report,
  * metric or tile that forgets `roles: ADMIN` fails here.
  */
@@ -47,14 +47,24 @@ test("no report a lab user can see (the dependent ones included) has a money col
   assert.deepEqual(visible.flatMap(moneyColumns), []);
 });
 
-test("the live activity feed run as a lab actor has no payment entry, even with a payment row on offer", async () => {
+test("the live activity feed run as each non-admin staff role has real lines and no money, even with a payment row on offer", async () => {
   const registry = labRegistry();
-  const payment = { id: "p1", cents: "12550", at: new Date("2026-11-05T16:00:00Z"), invoiceId: "inv1", labOrderId: "lo1", orderNumber: 1041, client: "Acme Dental" };
-  const tx = fakeTx({ executes: [[], [], [payment]] });
-  const out = await registry.getReport("ops.activity-feed").run(tx, {}, lab, ctx);
-  assert.equal(out.rows.filter((r) => r.kind === "payment").length, 0);
-  assert.ok(out.rows.every((r) => !/\$|payment/i.test(r.text)), "no money in the feed's text");
-  assert.equal(tx.log.filter((e) => e.op === "execute").length, 2, "the payments query is never run for lab");
+  const roles = STAFF_ROLES.filter((r) => r !== "admin");
+  assert.ok(roles.length > 0);
+  const at = new Date("2026-11-05T16:00:00Z");
+  const order = { labOrderId: "lo1", orderNumber: 1041, client: "Acme Dental" };
+  const status = { id: "e1", kind: "status", fromStatus: "received", toStatus: "in_production", at, ...order };
+  const hold = { id: "e2", kind: "hold", fromStatus: null, toStatus: null, at, ...order };
+  const shipment = { id: "s1", carrier: "ups", at, ...order };
+  const payment = { id: "p1", cents: "12550", at, invoiceId: "inv1", ...order };
+  for (const role of roles) {
+    const tx = fakeTx({ executes: [[status, hold], [shipment], [payment]] });
+    const out = await registry.getReport("ops.activity-feed").run(tx, {}, { id: `u-${role}`, role }, ctx);
+    assert.equal(out.rows.length, 3, `${role}: the status, hold and shipment lines are there to check`);
+    assert.deepEqual(out.rows.map((r) => r.kind).sort(), ["hold", "shipment", "status"], role);
+    for (const r of out.rows) assert.doesNotMatch(r.text, /\$|payment|125\.50|12550/i, `${role}: no money in "${r.text}"`);
+    assert.equal(tx.log.filter((e) => e.op === "execute").length, 2, `${role}: the payments query is never run`);
+  }
 });
 
 test("no metric a lab user can see returns a money figure", async () => {
