@@ -1,6 +1,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { categoryCounts, inCategory, searchCatalog } from "../catalogFilter";
+import { SEED_CATALOG } from "../../data/catalog";
 
 const product = (id, name, categories, extra = {}) => ({
   id,
@@ -42,4 +43,10 @@ test("counts follow the search, and a category with no match stays listed at 0",
     { name: "Sleep", count: 0 },
     { name: "Tools", count: 1 },
   ]);
+});
+
+test("the shop does not sell appliances made per case", () => {
+  const forSale = ids(searchCatalog(SEED_CATALOG, ""));
+  for (const id of ["70", "109", "112"]) assert.ok(!forSale.includes(id), id);
+  assert.ok(forSale.includes("63"), "sample models stay");
 });
