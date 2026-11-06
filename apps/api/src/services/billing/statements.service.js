@@ -195,7 +195,8 @@ export async function listReceivables({ pastDueOnly = false, groupBy = "account"
   const accountIds = [...new Set(open.map((i) => i.accountId).filter(Boolean))];
   const practices = await loadPracticeNames(accountIds, database);
   const organizationOf = await organizationsService.organizationOf(accountIds, database);
-  const out = buildReceivables(open, practices, today ?? isoDateIn(LAB_TIMEZONE, new Date()), { pastDueOnly, organizationOf });
+  const clientsById = await loadClientNames(open.filter((i) => !i.accountId).map((i) => i.clientUserId), database);
+  const out = buildReceivables(open, practices, today ?? isoDateIn(LAB_TIMEZONE, new Date()), { pastDueOnly, organizationOf, clientsById });
   return groupBy === "organization" ? { ...out, groups: rollupGroups(out.rows) } : out;
 }
 

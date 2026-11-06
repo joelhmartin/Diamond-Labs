@@ -19,6 +19,7 @@ const ROWS = [
   { accountId: "a2", ownerUserId: "u2", name: "Beta Ortho", accountNumber: "1002", organizationId: "g1", organizationName: "North Group", balanceCents: 5000, pastDueCents: 0, buckets: bucket(5000, 0), oldestDueDate: null },
   { accountId: "a3", ownerUserId: "u3", name: "Gamma Perio", accountNumber: "1003", organizationId: null, organizationName: null, balanceCents: 2000, pastDueCents: 2000, buckets: bucket(0, 2000), oldestDueDate: "2026-10-01" },
 ];
+const UNASSIGNED = { accountId: null, unassigned: true, ownerUserId: "u9", name: "Old Client", accountNumber: null, organizationId: null, organizationName: null, balanceCents: 700, pastDueCents: 700, buckets: bucket(0, 700), oldestDueDate: "2026-08-01" };
 const GROUPS = [{ organizationId: "g1", name: "North Group", balanceCents: 15000, totalCents: 15000, pastDueCents: 4000, buckets: bucket(11000, 4000), oldestDueDate: "2026-09-01", openInvoices: 2, accountIds: ["a1", "a2"] }];
 
 function mount() {
@@ -72,4 +73,14 @@ test("By group toggle expands a group to its practices", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Expand row" }));
   assert.ok(await screen.findByText("Alpha Dental"));
   assert.ok(screen.getByText("Beta Ortho"));
+});
+
+test("an unassigned row (client, no practice) keeps invoices by client and credit, with no statement actions", async () => {
+  get.mockResolvedValue({ data: { data: { rows: [...ROWS, UNASSIGNED], groups: GROUPS, asOf: "2026-10-28", totals: {} } } });
+  render(<MemoryRouter><ToastProvider><AdminReceivablesPage /></ToastProvider></MemoryRouter>);
+  const row = (await screen.findByText("Old Client")).closest("tr");
+  assert.match(within(row).getByRole("link", { name: "Invoices" }).getAttribute("href"), /inv\.clientUserId=u9/);
+  assert.equal(within(row).queryByRole("button", { name: "Email statement" }), null);
+  assert.ok(within(row).getByRole("button", { name: /Account credit/ }));
+  assert.ok(screen.getByText("Total (4 practices)"));
 });

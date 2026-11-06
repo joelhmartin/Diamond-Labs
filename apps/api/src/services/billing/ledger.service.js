@@ -74,7 +74,7 @@ export async function openReceivableInvoices(database = db) {
     })
     .from(invoices)
     .leftJoin(totals, eq(totals.invoiceId, invoices.id))
-    .where(and(eq(invoices.status, "issued"), isNotNull(invoices.accountId), sql`${invoices.totalCents} - ${paidSql} > 0`));
+    .where(and(eq(invoices.status, "issued"), or(isNotNull(invoices.accountId), isNotNull(invoices.clientUserId)), sql`${invoices.totalCents} - ${paidSql} > 0`));
   return rows
     .map(({ paid, ...inv }) => ({ ...inv, ...deriveBalance(inv, Number(paid)) }))
     .filter((i) => i.balanceCents > 0);

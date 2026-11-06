@@ -111,12 +111,23 @@ test("loadClient carries the practice phone and delivery preferences (the Ship f
   assert.deepEqual([c.phone, c.deliveryMethod, c.deliveryNotes], ["512-555-0100", "UPS Ground", "Back door"]);
 });
 
-test("an unowned legacy invoice (no practice account) is left out of AR and never reaches the client lookup", async () => {
-  const db = fakeTx({ selects: [[{ id: "i1", clientUserId: null, accountId: null, status: "issued", totalCents: 100, dueDate: null, paid: "0" }]] });
-  const ar = await svc.listReceivables({}, db);
-  assert.equal(ar.rows.length, 0);
-  // The ledger's query builds two selects (a paid-sum subquery and the rows); a third would be the users lookup.
-  assert.equal(db.log.filter((e) => e.op === "select").length, 2, "no users query for an empty id list");
+test("an invoice with a client but no practice account is an Unassigned row keyed by the client; a guest invoice is left out", async () => {
+  const db = fakeTx({ selects: [
+    [
+      ...OPEN,
+      { id: "u1", clientUserId: "doc9", accountId: null, status: "issued", totalCents: 700, dueDate: "2000-01-01", paid: "0" },
+      { id: "g1", clientUserId: null, accountId: null, status: "issued", totalCents: 100, dueDate: null, paid: "0" },
+    ],
+    PRACTICES, ORGS,
+    [{ id: "doc9", name: "Dr Nine", accountNumber: "9", practice: "Nine Dental" }],
+  ] });
+  const ar = await svc.listReceivables({ groupBy: "organization" }, db);
+  const row = ar.rows.find((r) => r.unassigned);
+  assert.deepEqual([row.accountId, row.ownerUserId, row.name, row.organizationId, row.balanceCents, row.pastDueCents], [null, "doc9", "Nine Dental", null, 700, 700]);
+  assert.equal(ar.rows.length, 4);
+  assert.equal(ar.totals.balanceCents, 30700, "grand totals include the unassigned money");
+  assert.ok(ar.groups.every((g) => !g.accountIds.includes(null)), "never in a group");
+  assert.equal(ar.groups[0].totalCents, 28000);
 });
 
 test("statement activity can be bounded to a month end: invoices and ledger rows after it are not loaded", async () => {

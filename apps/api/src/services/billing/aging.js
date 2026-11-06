@@ -42,30 +42,38 @@ export function ageBalances(items, asOfIso) {
 
 /**
  * Admin › Accounts receivable: one row per practice account with a balance
- * (worst past due first), plus a totals row that follows the filter. Invoices
- * with no practice account (guest shop invoices, unstamped history) never appear.
+ * (worst past due first), plus a totals row that follows the filter. An issued
+ * invoice with a client but no practice account (unstamped history) is still
+ * money the lab is owed: staff see it as an "Unassigned" row per client
+ * (accountId null, no group, `unassigned: true`). Guest shop invoices (neither)
+ * never appear.
  *
  * @param {Array<{ accountId: string|null, dueDate: string|null, balanceCents: number }>} openInvoices
  * @param {Map<string, { name?: string, accountNumber?: string, ownerUserId?: string }>} practicesById
  * @param {Map<string, { id: string, name: string }>} [organizationOf] account id → its group (organizationOf of the organizations module)
+ * @param {Map<string, { name?: string, practice?: string, accountNumber?: string }>} [clientsById] client user id → name, for the unassigned rows
  */
-export function buildReceivables(openInvoices, practicesById, asOfIso, { pastDueOnly = false, organizationOf = new Map() } = {}) {
-  const byAccount = new Map();
+export function buildReceivables(openInvoices, practicesById, asOfIso, { pastDueOnly = false, organizationOf = new Map(), clientsById = new Map() } = {}) {
+  const byKey = new Map();
   for (const inv of openInvoices) {
-    if (!inv.accountId) continue;
-    if (!byAccount.has(inv.accountId)) byAccount.set(inv.accountId, []);
-    byAccount.get(inv.accountId).push(inv);
+    const key = inv.accountId ? `a:${inv.accountId}` : inv.clientUserId ? `u:${inv.clientUserId}` : null;
+    if (!key) continue;
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(inv);
   }
   const rows = [];
-  for (const [accountId, items] of byAccount) {
+  for (const [key, items] of byKey) {
+    const accountId = key.startsWith("a:") ? key.slice(2) : null;
     const aged = ageBalances(items, asOfIso);
     if (aged.totalCents <= 0) continue;
     const pastDueCents = aged.totalCents - aged.buckets.current;
     if (pastDueOnly && pastDueCents <= 0) continue;
-    const p = practicesById.get(accountId) ?? {};
-    const org = organizationOf.get(accountId);
+    const clientUserId = accountId ? null : items[0].clientUserId;
+    const c = clientUserId ? clientsById.get(clientUserId) ?? {} : {};
+    const p = accountId ? practicesById.get(accountId) ?? {} : { name: c.practice ?? c.name, accountNumber: c.accountNumber, ownerUserId: clientUserId };
+    const org = accountId ? organizationOf.get(accountId) : null;
     rows.push({
-      accountId, name: p.name ?? null, accountNumber: p.accountNumber ?? null, ownerUserId: p.ownerUserId ?? null,
+      accountId, unassigned: !accountId, name: p.name ?? null, accountNumber: p.accountNumber ?? null, ownerUserId: p.ownerUserId ?? null,
       organizationId: org?.id ?? null, organizationName: org?.name ?? null,
       balanceCents: aged.totalCents, pastDueCents, buckets: aged.buckets, oldestDueDate: aged.oldestDueDate,
       openInvoices: items.filter((i) => i.balanceCents > 0).length,
@@ -100,7 +108,7 @@ export function rollupGroups(rows) {
     }
     const g = groups.get(r.organizationId);
     g.balanceCents += r.balanceCents;
-    g.totalCents += r.balanceCents;
+    g.totalCents += r.balanceCents; // same number as balanceCents: balanceCents keeps the group row shaped like a practice row (the table's columns), totalCents is the rollup's own name
     g.pastDueCents += r.pastDueCents;
     for (const k of AGING_KEYS) g.buckets[k] += r.buckets[k];
     if (r.oldestDueDate && (!g.oldestDueDate || r.oldestDueDate < g.oldestDueDate)) g.oldestDueDate = r.oldestDueDate;

@@ -16,7 +16,8 @@ import { errorText } from "../../lib/requests.js";
 import { dateText, labToday, recentMonths } from "../../lib/invoices.js";
 
 // A table row is a practice (one per account) or, in "By group" view, a group of them.
-const getRowId = (r) => (r.isGroup ? `g:${r.organizationId}` : r.accountId);
+// An unassigned row (invoices with a client but no practice yet) is keyed by its client user.
+const getRowId = (r) => (r.isGroup ? `g:${r.organizationId}` : r.accountId ?? `u:${r.ownerUserId}`);
 const rowName = (r) => r.name || "—";
 const practiceCount = (r) => (r.isGroup ? r.members.length : 1);
 
@@ -37,7 +38,7 @@ function receivableColumns({ lastMonth, emailStatement, openCredit }) {
         <>
           <div className="font-medium text-navy">{rowName(r)}</div>
           <div className="text-xs text-navy/40">
-            {r.isGroup ? `Group · ${r.members.length} ${r.members.length === 1 ? "practice" : "practices"}` : [r.accountNumber && `Acct ${r.accountNumber}`, r.organizationName].filter(Boolean).join(" · ")}
+            {r.isGroup ? `Group · ${r.members.length} ${r.members.length === 1 ? "practice" : "practices"}` : [r.unassigned && "Unassigned (no practice yet)", r.accountNumber && `Acct ${r.accountNumber}`, r.organizationName].filter(Boolean).join(" · ")}
           </div>
         </>
       ),
@@ -54,12 +55,14 @@ function receivableColumns({ lastMonth, emailStatement, openCredit }) {
       id: "actions", header: "", align: "right", exportValue: () => "",
       cell: (r) => (r.isGroup ? null : (
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <Link to={`${ROUTES.ADMIN_INVOICES}?inv.accountId=${r.accountId}`} className="text-xs font-semibold text-brand-700 hover:underline">Invoices</Link>
-          <StatementDownload path={`/admin/practices/${r.accountId}/statement.pdf`} compact />
-          <ConfirmButton className="rounded-full bg-surface-100 px-3 py-1.5 text-xs font-semibold text-navy" confirmLabel={`Email ${lastMonth.label}?`}
-            onConfirm={() => emailStatement(r)}>
-            Email statement
-          </ConfirmButton>
+          <Link to={`${ROUTES.ADMIN_INVOICES}?${r.accountId ? `inv.accountId=${r.accountId}` : `inv.clientUserId=${r.ownerUserId}`}`} className="text-xs font-semibold text-brand-700 hover:underline">Invoices</Link>
+          {r.accountId && <StatementDownload path={`/admin/practices/${r.accountId}/statement.pdf`} compact />}
+          {r.accountId && (
+            <ConfirmButton className="rounded-full bg-surface-100 px-3 py-1.5 text-xs font-semibold text-navy" confirmLabel={`Email ${lastMonth.label}?`}
+              onConfirm={() => emailStatement(r)}>
+              Email statement
+            </ConfirmButton>
+          )}
           {r.ownerUserId && <button type="button" onClick={() => openCredit(r)} className="rounded-full bg-surface-100 px-3 py-1.5 text-xs font-semibold text-navy">Account credit…</button>}
         </div>
       )),
@@ -131,7 +134,7 @@ export function AdminReceivablesPage() {
   const tableRows = useMemo(() => {
     const rows = data?.rows ?? [];
     if (!byGroup) return rows;
-    const groups = (data?.groups ?? []).map((g) => ({ ...g, isGroup: true, members: rows.filter((r) => g.accountIds.includes(r.accountId)) }));
+    const groups = (data?.groups ?? []).map((g) => ({ ...g, isGroup: true, members: rows.filter((r) => new Set(g.accountIds).has(r.accountId)) }));
     return [...groups, ...rows.filter((r) => !r.organizationId)];
   }, [data, byGroup]);
 

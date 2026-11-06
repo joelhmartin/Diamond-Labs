@@ -219,3 +219,12 @@ test("lookups trim and cap the typed text; staff search filters the assignable l
   assert.equal(await client.label(fakeTx({ selects: [[]] }), "nobody"), null);
   assert.equal(await client.label(fakeTx({ selects: [[{ label: "One Dental" }]] }), "doc1"), "One Dental");
 });
+
+test("receivables reports include an invoice with a client but no practice account", async () => {
+  const unassigned = [{ id: "u1", clientUserId: "doc2", accountId: null, status: "issued", totalCents: 900, dueDate: "2000-01-01", paid: "0" }];
+  const extra = [{ id: "doc2", name: "Dr Two", accountNumber: "2", practice: "Two Dental" }];
+  const bal = await report("accounting.account-balance").run(fakeTx({ selects: [unassigned, extra] }), {});
+  assert.deepEqual(bal.rows.map((r) => [r.client, r.clientUserId, r.balance]), [["Two Dental", "doc2", 900]]);
+  const aging = await report("accounting.aging-summary").run(fakeTx({ selects: [unassigned, extra] }), {});
+  assert.equal(aging.summary.balance, 900);
+});
