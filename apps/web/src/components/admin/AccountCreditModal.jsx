@@ -33,11 +33,13 @@ function pickerColumns(chosen, setAmount) {
 }
 
 /**
- * "Account credit…" for a client: one write-off spread over the practice's open invoices,
- * oldest due first or onto the invoices staff choose. The reason is required and stored
- * encrypted; no email goes out. Committed with a two-step ConfirmButton.
+ * "Account credit…" for one receivables row: one write-off spread over that row's open invoices
+ * (a practice's own, or an Unassigned row's), oldest due first or onto the invoices staff choose.
+ * `creditPath` is the row's credit endpoint (/admin/practices/:id/account-credit or
+ * /admin/clients/:userId/account-credit); its /invoices is the exact list the credit plans against.
+ * The reason is required and stored encrypted; no email goes out. Committed with a two-step ConfirmButton.
  */
-export function AccountCreditModal({ clientUserId, clientName, onClose, onRecorded }) {
+export function AccountCreditModal({ creditPath, clientName, onClose, onRecorded }) {
   const { addToast } = useToast();
   const [invoices, setInvoices] = useState(null);
   const [amountStr, setAmountStr] = useState("");
@@ -62,10 +64,10 @@ export function AccountCreditModal({ clientUserId, clientName, onClose, onRecord
 
   // The server's own list of what a credit can be applied to, oldest due first.
   useEffect(() => {
-    api.get(`/admin/clients/${clientUserId}/invoices`, { params: { open: "true" } })
+    api.get(`${creditPath}/invoices`)
       .then((res) => setInvoices(res.data.data || []))
       .catch((e) => { setInvoices([]); setErr(errorText(e)); });
-  }, [clientUserId]);
+  }, [creditPath]);
 
   const table = useDataTable({ mode: "client", rows: invoices ?? [], getRowId, initialPageSize: 50, loading: invoices === null });
 
@@ -82,7 +84,7 @@ export function AccountCreditModal({ clientUserId, clientName, onClose, onRecord
     inFlight.current = true;
     setErr(null);
     try {
-      await api.post(`/admin/clients/${clientUserId}/account-credit`, {
+      await api.post(creditPath, {
         amountCents, reason: reason.trim(), ...(choose ? { allocations } : {}),
       });
       addToast({ message: `Credited ${formatCents(amountCents)} to ${clientName || "this client"}.`, type: "success" });
@@ -104,7 +106,7 @@ export function AccountCreditModal({ clientUserId, clientName, onClose, onRecord
         <button type="button" onClick={close} className="absolute right-4 top-4 text-navy/30 hover:text-navy" aria-label="Close"><X size={18} /></button>
         <h3 className="font-heading text-lg font-bold text-navy">Account credit</h3>
         <p className="mt-1 text-xs text-navy/50">
-          {clientName ? `${clientName} · ` : ""}practice open balance {invoices ? formatCents(openCents) : "…"}. No card is charged and no email is sent.
+          {clientName ? `${clientName} · ` : ""}open balance {invoices ? formatCents(openCents) : "…"}. No card is charged and no email is sent.
         </p>
 
         {invoices === null ? (

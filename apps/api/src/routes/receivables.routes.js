@@ -1,13 +1,12 @@
 import { validate, validateQuery } from "../middleware/validate.js";
 import { ERROR_CODES, receivablesQuerySchema, statementQuerySchema, accountCreditSchema } from "@my-app/shared";
 import { paymentsPaused } from "../middleware/payments-paused.js";
-import { recordAccountCredit } from "../services/billing/account-credit.service.js";
-import { invoiceErrorReply } from "../services/billing/invoice-errors.js";
+import { creditableInvoices, recordAccountCredit } from "../services/billing/account-credit.service.js";
 import { listReceivables } from "../services/billing/statements.service.js";
 import { sendStatementFor } from "../services/billing/statement-run.service.js";
 import { singlePracticeOf } from "../services/billing/statement-subjects.js";
 import { statementPdfHandler } from "./invoice-detail.handler.js";
-import { ADMIN } from "./admin-invoice.routes.js";
+import { ADMIN, run } from "./admin-invoice.routes.js";
 
 /** Admin › Accounts receivable and client statements. Admin-only: the lab role sees no money. */
 export default async function receivablesRoutes(fastify) {
@@ -25,18 +24,18 @@ export default async function receivablesRoutes(fastify) {
     subject: async (request) => ({ subject: "account", subjectId: await singlePracticeOf(request.params.userId) }),
   }));
 
-  // Account credit: one amount spread over the practice's open invoices. Reason is required and
-  // sealed on the ledger rows; no email goes out.
-  fastify.post("/admin/clients/:userId/account-credit", { preHandler: [...ADMIN, paymentsPaused, validate(accountCreditSchema)] }, async (request, reply) => {
-    try {
-      const data = await recordAccountCredit({ clientUserId: request.params.userId, ...request.body, byUserId: request.user.id });
-      return reply.code(201).send({ data });
-    } catch (err) {
-      const r = invoiceErrorReply(err);
-      if (r) return reply.code(r.status).send(r.body);
-      throw err;
-    }
-  });
+  // Account credit: one amount spread over ONE receivables row's open invoices: a practice's
+  // (never a sibling practice's), or a client's Unassigned ones. Reason is required and sealed on
+  // the ledger rows; no email goes out. The GET is the modal's picker: the exact list the POST plans against.
+  const practiceTarget = (request) => ({ accountId: request.params.id });
+  const unassignedTarget = (request) => ({ clientUserId: request.params.userId });
+  const credit = (targetOf) => (request, reply) =>
+    run(reply, () => recordAccountCredit({ ...targetOf(request), ...request.body, byUserId: request.user.id }), 201);
+  const CREDIT = [...ADMIN, paymentsPaused, validate(accountCreditSchema)];
+  fastify.get("/admin/practices/:id/account-credit/invoices", { preHandler: ADMIN }, (request, reply) => run(reply, () => creditableInvoices(practiceTarget(request))));
+  fastify.post("/admin/practices/:id/account-credit", { preHandler: CREDIT }, credit(practiceTarget));
+  fastify.get("/admin/clients/:userId/account-credit/invoices", { preHandler: ADMIN }, (request, reply) => run(reply, () => creditableInvoices(unassignedTarget(request))));
+  fastify.post("/admin/clients/:userId/account-credit", { preHandler: CREDIT }, credit(unassignedTarget));
 
   // Staff-triggered: a short notice with the practice's closing balance and a portal link, to every
   // approved doctor of the practice now. Writes statement_sends (per practice and recipient); an
@@ -63,3 +62,4 @@ export default async function receivablesRoutes(fastify) {
 }
 
 const noEmail = (reply, message) => reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message } });
+

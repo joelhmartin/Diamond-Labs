@@ -84,3 +84,18 @@ test("an unassigned row (client, no practice) keeps invoices by client and credi
   assert.ok(within(row).getByRole("button", { name: /Account credit/ }));
   assert.ok(screen.getByText("Total (4 practices)"));
 });
+
+test("Account credit… on a practice row credits that practice only (never its owner's whole scope); an Unassigned row credits the client's unassigned invoices", async () => {
+  get.mockImplementation(async (url) => (url === "/admin/receivables"
+    ? { data: { data: { rows: [...ROWS, UNASSIGNED], groups: GROUPS, asOf: "2026-10-28", totals: {} } } }
+    : { data: { data: [{ id: "i1", invoiceNumber: 1, dueDate: null, balanceCents: 500 }] } }));
+  render(<MemoryRouter><ToastProvider><AdminReceivablesPage /></ToastProvider></MemoryRouter>);
+  const alpha = (await screen.findByText("Alpha Dental")).closest("tr");
+  fireEvent.click(within(alpha).getByRole("button", { name: /Account credit/ }));
+  await waitFor(() => assert.ok(get.mock.calls.some((c) => c[0] === "/admin/practices/a1/account-credit/invoices")));
+  assert.ok(!get.mock.calls.some((c) => /\/admin\/clients\/u1/.test(c[0])), "never the owner's client path");
+  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  const old = screen.getByText("Old Client").closest("tr");
+  fireEvent.click(within(old).getByRole("button", { name: /Account credit/ }));
+  await waitFor(() => assert.ok(get.mock.calls.some((c) => c[0] === "/admin/clients/u9/account-credit/invoices")));
+});

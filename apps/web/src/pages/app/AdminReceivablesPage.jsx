@@ -19,6 +19,9 @@ import { dateText, labToday, recentMonths } from "../../lib/invoices.js";
 // An unassigned row (invoices with a client but no practice yet) is keyed by its client user.
 const getRowId = (r) => (r.isGroup ? `g:${r.organizationId}` : r.accountId ?? `u:${r.ownerUserId}`);
 const rowName = (r) => r.name || "—";
+// A credit is for exactly this row: the practice's own invoices, or an Unassigned row's client's unassigned ones.
+const creditPathOf = (r) =>
+  r.accountId ? `/admin/practices/${r.accountId}/account-credit` : r.ownerUserId ? `/admin/clients/${r.ownerUserId}/account-credit` : null;
 const practiceCount = (r) => (r.isGroup ? r.members.length : 1);
 
 const FILTERS = [{ id: "pastDue", label: "Past due only", type: "toggle", match: (r) => r.pastDueCents > 0 }];
@@ -63,7 +66,7 @@ function receivableColumns({ lastMonth, emailStatement, openCredit }) {
               Email statement
             </ConfirmButton>
           )}
-          {r.ownerUserId && <button type="button" onClick={() => openCredit(r)} className="rounded-full bg-surface-100 px-3 py-1.5 text-xs font-semibold text-navy">Account credit…</button>}
+          {!r.isGroup && creditPathOf(r) && <button type="button" onClick={() => openCredit(r)} className="rounded-full bg-surface-100 px-3 py-1.5 text-xs font-semibold text-navy">Account credit…</button>}
         </div>
       )),
     },
@@ -191,7 +194,7 @@ export function AdminReceivablesPage() {
         emptyText={table.filters.pastDue ? "Nothing past due." : "No open balances."}
       />
       {creditFor && (
-        <AccountCreditModal clientUserId={creditFor.ownerUserId} clientName={rowName(creditFor)} onClose={() => setCreditFor(null)} onRecorded={load} />
+        <AccountCreditModal creditPath={creditPathOf(creditFor)} clientName={rowName(creditFor)} onClose={() => setCreditFor(null)} onRecorded={load} />
       )}
     </div>
   );

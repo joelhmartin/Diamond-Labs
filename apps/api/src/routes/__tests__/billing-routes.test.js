@@ -71,8 +71,9 @@ const receivables = read("../receivables.routes.js");
 const statementRun = read("../../services/billing/statement-run.service.js");
 
 test("AR, client statements and notices are admin-only and audited; nothing patient-bearing is emailed", () => {
-  assert.match(receivables, /import \{ ADMIN \} from "\.\/admin-invoice\.routes\.js"/);
-  for (const m of markersOf(receivables)) assert.match(handlerSource(receivables, m), /preHandler: \[\.\.\.ADMIN/, m);
+  assert.match(receivables, /import \{ ADMIN, run \} from "\.\/admin-invoice\.routes\.js"/);
+  assert.match(receivables, /const CREDIT = \[\.\.\.ADMIN, paymentsPaused, validate\(accountCreditSchema\)\];/);
+  for (const m of markersOf(receivables)) assert.match(handlerSource(receivables, m), /preHandler: (\[\.\.\.ADMIN|ADMIN\b|CREDIT\b)/, m);
   assert.match(handlerSource(receivables, 'fastify.get("/admin/receivables",'), /validateQuery\(receivablesQuerySchema\)/);
   const practicePdf = handlerSource(receivables, 'fastify.get("/admin/practices/:id/statement.pdf",');
   assert.match(practicePdf, /statementPdfHandler\(\{\s*subject: \(request\) => \(\{ subject: "account", subjectId: request\.params\.id \}\)/, "the one shared statement handler, per practice");
