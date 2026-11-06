@@ -101,7 +101,7 @@ export const OTHER_REASON = "Other";
 
 const discounts = {
   key: "accounting.discounts", group: GROUP, roles: ADMIN, title: "Discounts",
-  description: "Negative adjustment lines on issued invoices, by issue day, with the reason picked from the lab's reason list (Other when typed by hand).",
+  description: "Negative adjustment lines on issued invoices, by issue day, with the reason picked from the lab's reason list (Other when typed by hand). The reason is matched by the line's description, so a discount whose reason was later renamed shows as Other.",
   params: [RANGE],
   columns: [
     { id: "day", label: "Date", type: "date" }, invoiceCol, clientCol, { id: "reason", label: "Reason", type: "text" },
