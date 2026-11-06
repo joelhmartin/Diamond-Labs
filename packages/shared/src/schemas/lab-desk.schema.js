@@ -25,6 +25,7 @@ const labLineInput = z.object({
 
 export const labOrderCreateSchema = z.object({
   clientUserId: id,
+  accountId: id.optional(), // which of the practice's accounts; required only when the client belongs to more than one
   patientName: z.string().trim().min(1, "Enter the patient's name.").max(LAB_PATIENT_NAME_MAX),
   dueDate: isoDate.optional(),
   pan: labPanSchema.nullable().optional(),

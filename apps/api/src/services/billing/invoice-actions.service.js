@@ -7,7 +7,8 @@ import { PRICING } from "../../config/pricing.js";
 import { invoices, invoicePayments, users } from "../../db/schema/index.js";
 import { createId } from "../../lib/id.js";
 import { withInvoiceLocks, InvoiceLockedError } from "../../lib/payment-helpers.js";
-import { paidCentsByInvoice, openInvoicesForClient } from "./ledger.service.js";
+import { paidCentsByInvoice, openInvoicesForAccounts } from "./ledger.service.js";
+import { loadClientScope, payableAccountIds } from "../client-scope.js";
 import { auditInvoice, loadLines, applyLinePlan, commitPatch } from "./invoices.service.js";
 import { openInvoice, sealLedgerRow } from "./invoice-crypto.js";
 import {
@@ -140,7 +141,7 @@ export function recordCredit(id, { amountCents, reason, byUserId }, database = d
  */
 export async function loadPayingClient(clientUserId, database) {
   const [client] = await database
-    .select({ id: users.id, email: users.email, name: users.name, role: users.role, seazonaClientId: users.seazonaClientId })
+    .select({ id: users.id, email: users.email, name: users.name, role: users.role })
     .from(users)
     .where(eq(users.id, clientUserId));
   if (!client || client.role !== "doctor") throw new InvoiceError("NOT_FOUND", "Client not found.");
@@ -148,13 +149,20 @@ export async function loadPayingClient(clientUserId, database) {
 }
 
 /**
- * What a payment recorded for this client can be applied to: the practice's open
- * invoices, oldest due first. The ONE list both Record payment's picker
- * (GET /admin/clients/:userId/invoices?open=true) and recordManualPayment's
- * default allocation read, so staff see exactly what the server plans against.
+ * Staff acting as the client (Record payment, an account credit): the client's
+ * OWN practice scope, loaded for this request (never the staff member's), and
+ * the open invoices of the practices it may pay, oldest due first. The ONE
+ * list Record payment's picker (GET /admin/clients/:userId/invoices?open=true),
+ * recordManualPayment's default allocation and the account credit read, so
+ * staff see exactly what the server plans against.
  */
+export async function payableOpenInvoices(client, database = db) {
+  const scope = await loadClientScope(client.id, database);
+  return { scope, openInvoices: await openInvoicesForAccounts(payableAccountIds(scope), database) };
+}
+
 export async function openInvoicesForClientUser(clientUserId, database = db) {
-  return openInvoicesForClient(await loadPayingClient(clientUserId, database), database);
+  return (await payableOpenInvoices(await loadPayingClient(clientUserId, database), database)).openInvoices;
 }
 
 export async function recordManualPayment(
@@ -162,12 +170,12 @@ export async function recordManualPayment(
   database = db,
 ) {
   const client = await loadPayingClient(clientUserId, database);
-  // Practice-wide, as a doctor paying online would see (canActOnInvoice).
-  const openInvoices = await openInvoicesForClient(client, database);
+  // What the client could pay online themselves: their payable practices.
+  const { scope, openInvoices } = await payableOpenInvoices(client, database);
   const planned = planManualPayment({ openInvoices, amountCents, allocations, paidOn, todayIso: isoDateIn(LAB_TIMEZONE, new Date()) });
 
   return underInvoiceLocks(planned.map((a) => a.invoiceId), async () => {
-    const capErr = await verifyAllocations(planned, client, { enforceCap: true, database });
+    const capErr = await verifyAllocations(planned, scope, { enforceCap: true, database });
     if (capErr) throw new InvoiceError(capErr.kind === "validation" ? "OVERPAY" : "INVALID", capErr.message);
     const transactionId = `OFFLINE-${createId()}`;
     const { ledgerWriteFailed } = await recordPaymentAndAllocations({

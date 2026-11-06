@@ -1,5 +1,7 @@
 import { INVOICE_LINE_KINDS, addIsoDays, allocateOldestFirst, isCalendarDate } from "@my-app/shared";
 import { assertCents, formatCents, mulCents, pctOfCents, sumCents } from "../../lib/money.js";
+import { canActForAccount } from "../client-scope-rules.js";
+import { InvoiceError } from "./invoice-error.js";
 
 /**
  * Pure invoice rules: totals, the draft → issued → void lifecycle, draft edit
@@ -8,18 +10,7 @@ import { assertCents, formatCents, mulCents, pctOfCents, sumCents } from "../../
  * the plans inside transactions.
  */
 
-export class InvoiceError extends Error {
-  /**
-   * @param {"NOT_FOUND"|"STALE"|"LOCKED"|"INVALID"|"INVALID_TRANSITION"|"REASON_REQUIRED"|"OVERPAY"} code
-   * @param {string} message  safe to show staff
-   */
-  constructor(code, message, extra = {}) {
-    super(message);
-    this.name = "InvoiceError";
-    this.code = code;
-    Object.assign(this, extra);
-  }
-}
+export { InvoiceError };
 
 const MAX_QTY = 999;
 
@@ -79,9 +70,9 @@ export const asRemakeLines = (pricedLines, percent = 100) => {
   return pricedLines.map((l) => ({ ...l, unitCents: Math.round((l.unitCents * (100 - off)) / 100), priceSource: "remake" }));
 };
 
-function newInvoice({ invoiceId, invoiceNumber, kind, clientUserId, labOrderId, now }) {
+function newInvoice({ invoiceId, invoiceNumber, kind, clientUserId, accountId, labOrderId, now }) {
   return {
-    id: invoiceId, invoiceNumber, kind, clientUserId: clientUserId ?? null, labOrderId: labOrderId ?? null,
+    id: invoiceId, invoiceNumber, kind, clientUserId: clientUserId ?? null, accountId: accountId ?? null, labOrderId: labOrderId ?? null,
     legacySeazonaInvoiceId: null, status: "draft", version: 1, issuedAt: null, dueDate: null, voidedAt: null, voidReason: null,
     subtotalCents: 0, taxCents: 0, shippingCents: 0, totalCents: 0, notes: null, createdAt: now, updatedAt: now,
   };
@@ -100,7 +91,7 @@ function lineRow(invoiceId, position, l) {
 export function planDraftInvoice({ invoiceId, invoiceNumber, labOrder, pricedLines, now, taxRateBps }) {
   const lines = pricedLines.map((l, i) => lineRow(invoiceId, i, l));
   const invoice = {
-    ...newInvoice({ invoiceId, invoiceNumber, kind: "order", clientUserId: labOrder.clientUserId, labOrderId: labOrder.id, now }),
+    ...newInvoice({ invoiceId, invoiceNumber, kind: "order", clientUserId: labOrder.clientUserId, accountId: labOrder.accountId, labOrderId: labOrder.id, now }),
     ...computeTotals(lines, { taxRateBps }),
   };
   return { invoice, lines };
@@ -111,7 +102,7 @@ export function planDraftInvoice({ invoiceId, invoiceNumber, labOrder, pricedLin
  * and totals are COPIED from the checkout quote the card was charged for,
  * never recomputed, so the invoice always equals the charge.
  */
-export function planShopInvoice({ invoiceId, invoiceNumber, labOrderId, clientUserId, quote, now, todayIso }) {
+export function planShopInvoice({ invoiceId, invoiceNumber, labOrderId, clientUserId, accountId = null, quote, now, todayIso }) {
   const items = quote.lines.map((l) => ({
     kind: "item", variantId: l.variantId ?? null, code: l.code ?? null, description: l.name,
     qty: l.qty, unitCents: l.unitCents, taxable: l.taxable, priceSource: l.priceSource,
@@ -120,7 +111,7 @@ export function planShopInvoice({ invoiceId, invoiceNumber, labOrderId, clientUs
     items.push({ kind: "shipping", description: "Shipping", qty: 1, unitCents: quote.shippingCents, taxable: false, priceSource: "base" });
   }
   const invoice = {
-    ...newInvoice({ invoiceId, invoiceNumber, kind: "shop", clientUserId, labOrderId, now }),
+    ...newInvoice({ invoiceId, invoiceNumber, kind: "shop", clientUserId, accountId, labOrderId, now }),
     status: "issued", issuedAt: now, dueDate: todayIso,
     subtotalCents: quote.subtotalCents, taxCents: quote.taxCents, shippingCents: quote.shippingCents, totalCents: quote.totalCents,
   };
@@ -400,22 +391,19 @@ export function deriveBalance(invoice, paidCents = 0) {
 }
 
 /**
- * THE doctor visibility and payment-rights rule. An invoice is owned by one
- * doctor (clientUserId), but every portal login of the same practice may see
- * and pay it, as they could when invoices lived in Seazona. A practice is a
- * shared, non-null seazonaClientId until piece 5 brings a real practice
- * entity. A null on either side matches the owner only. Used by every doctor
- * read (list, detail, PDF, statement), every payment (verifyAllocations) and
- * AutoPay.
+ * THE client visibility rule for an invoice (piece 11): its practice
+ * (`invoice.accountId`) is in the requester's ClientScope
+ * (services/client-scope.js). The owning doctor no longer matters: every login
+ * of the practice, and the group's admins, may see it. A null accountId (a
+ * guest invoice, or one the backfill has not reached) fails closed: only
+ * staff see it. Paying also needs the account payable:
+ * `canActForAccount(scope, invoice.accountId, { pay: true })`.
  *
- * @param {{ id: string, seazonaClientId?: string|null }} user  the requester (or the doctor being charged)
- * @param {{ clientUserId: string|null }} invoice
- * @param {string|null} ownerSeazonaClientId  the owning doctor's seazonaClientId
+ * @param {import("../client-scope-rules.js").ClientScope} scope
+ * @param {{ accountId: string|null }} invoice
  */
-export function canActOnInvoice(user, invoice, ownerSeazonaClientId) {
-  if (!user?.id || !invoice?.clientUserId) return false;
-  if (invoice.clientUserId === user.id) return true;
-  return Boolean(user.seazonaClientId) && Boolean(ownerSeazonaClientId) && String(user.seazonaClientId) === String(ownerSeazonaClientId);
+export function canActOnInvoice(scope, invoice) {
+  return canActForAccount(scope, invoice?.accountId ?? null);
 }
 
 /** A credit (write-off) on an issued invoice: a reason, and no more than is owed. */
@@ -443,7 +431,7 @@ export function planCredit(invoice, { amountCents, reason, balanceCents }) {
  * an allocated invoice was issued (the statement would show a payment against
  * an invoice that didn't exist yet).
  *
- * @param {Array<{ id, invoiceNumber, balanceCents, dueDate, issuedOn }>} openInvoices  ledger.openInvoicesForClient
+ * @param {Array<{ id, invoiceNumber, balanceCents, dueDate, issuedOn }>} openInvoices  ledger.openInvoicesForAccounts
  */
 export function planManualPayment({ openInvoices, amountCents, allocations, paidOn, todayIso }) {
   assertCents(amountCents, "amountCents");

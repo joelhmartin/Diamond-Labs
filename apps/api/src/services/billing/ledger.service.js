@@ -1,10 +1,10 @@
-import { and, asc, eq, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, eq, getTableColumns, inArray, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
 import { isoDateIn, LAB_TIMEZONE, HISTORY_EXCLUDED_SOURCES, sortOldestFirst } from "@my-app/shared";
 import { alias } from "drizzle-orm/pg-core";
 import { db } from "../../config/database.js";
 import { invoices, invoicePayments, users } from "../../db/schema/index.js";
 import { summarizePayments } from "../../lib/payment-summary.js";
-import { deriveBalance, canActOnInvoice } from "./invoice-rules.js";
+import { deriveBalance } from "./invoice-rules.js";
 import { openLedgerRow } from "./invoice-crypto.js";
 import { paidCentsFor } from "./paid-cents.js";
 import { labDay, startOfLabDay, afterLabDay } from "../../lib/lab-day-sql.js";
@@ -69,12 +69,12 @@ export async function openReceivableInvoices(database = db) {
   const paidSql = sql`coalesce(${totals.paid}, 0)`;
   const rows = await database
     .select({
-      id: invoices.id, clientUserId: invoices.clientUserId, status: invoices.status, totalCents: invoices.totalCents, dueDate: invoices.dueDate,
+      id: invoices.id, clientUserId: invoices.clientUserId, accountId: invoices.accountId, status: invoices.status, totalCents: invoices.totalCents, dueDate: invoices.dueDate,
       paid: sql`${paidSql}`.as("paid_cents"),
     })
     .from(invoices)
     .leftJoin(totals, eq(totals.invoiceId, invoices.id))
-    .where(and(eq(invoices.status, "issued"), isNotNull(invoices.clientUserId), sql`${invoices.totalCents} - ${paidSql} > 0`));
+    .where(and(eq(invoices.status, "issued"), or(isNotNull(invoices.accountId), isNotNull(invoices.clientUserId)), sql`${invoices.totalCents} - ${paidSql} > 0`));
   return rows
     .map(({ paid, ...inv }) => ({ ...inv, ...deriveBalance(inv, Number(paid)) }))
     .filter((i) => i.balanceCents > 0);
@@ -83,45 +83,49 @@ export async function openReceivableInvoices(database = db) {
 const owner = alias(users, "owner");
 
 /**
- * The doctors whose invoices `user` may see and pay: everyone sharing the
- * user's non-null seazonaClientId (one practice), else just the user. Always
- * includes the user. See canActOnInvoice (Spec correction 6).
+ * What a payment can be applied to, for a set of practices (client accounts,
+ * normally a login's payable scope: payableAccountIds in client-scope-rules.js):
+ * their issued invoices that still owe, oldest due first (undated last), each
+ * with its lab-local issue date and its account. No accounts, no query.
+ * Rows are re-filtered by account in JS so the answer can never be wider than
+ * the ids asked for (a null-account invoice never matches); verifyAllocations
+ * enforces the same rule on the way in.
+ * @param {string[]} accountIds
  */
-export async function practiceUserIds(user, database = db) {
-  if (!user?.seazonaClientId) return [user.id];
-  const rows = await database
-    .select({ id: users.id })
-    .from(users)
-    .where(and(eq(users.seazonaClientId, String(user.seazonaClientId)), eq(users.role, "doctor")));
-  return [...new Set([...rows.map((r) => r.id), user.id])];
+export async function openInvoicesForAccounts(accountIds, database = db) {
+  const wanted = new Set((accountIds ?? []).filter(Boolean));
+  if (!wanted.size) return [];
+  return openIssuedInvoices(inArray(invoices.accountId, [...wanted]), (r) => r.accountId != null && wanted.has(r.accountId), database);
 }
 
 /**
- * What a payment by (or for) `client` can be applied to: the practice's
- * issued invoices that still owe, oldest due first (undated last), each with
- * its lab-local issue date. Filtered through canActOnInvoice, the same rule
- * verifyAllocations enforces.
- * @param {{ id: string, seazonaClientId?: string|null }} client
+ * The same list for one client's UNASSIGNED invoices (account_id null, the
+ * receivables page's "Unassigned" row): staff only, never a client's own
+ * read (a null-account invoice fails closed for clients). No client, no query.
  */
-export async function openInvoicesForClient(client, database = db) {
-  if (!client?.id) throw new Error("invoice ledger: a client is required");
-  const ids = await practiceUserIds(client, database);
+export async function openUnassignedInvoicesForClient(clientUserId, database = db) {
+  if (!clientUserId) return [];
+  return openIssuedInvoices(and(isNull(invoices.accountId), eq(invoices.clientUserId, clientUserId)), (r) => r.accountId == null && r.clientUserId === clientUserId, database);
+}
+
+// Issued invoices matching `where` (re-checked by `keep` in JS) that still owe, oldest due first.
+async function openIssuedInvoices(where, keep, database) {
   const rows = await database
     .select({
-      id: invoices.id, clientUserId: invoices.clientUserId, ownerSeazonaClientId: owner.seazonaClientId, ownerName: owner.name,
+      id: invoices.id, clientUserId: invoices.clientUserId, accountId: invoices.accountId, ownerName: owner.name,
       invoiceNumber: invoices.invoiceNumber, status: invoices.status,
       totalCents: invoices.totalCents, dueDate: invoices.dueDate, issuedAt: invoices.issuedAt,
     })
     .from(invoices)
     .leftJoin(owner, eq(owner.id, invoices.clientUserId))
-    .where(and(inArray(invoices.clientUserId, ids), eq(invoices.status, "issued")));
-  const balanced = await withBalances(rows.filter((r) => canActOnInvoice(client, r, r.ownerSeazonaClientId)), database);
+    .where(and(where, eq(invoices.status, "issued")));
+  const balanced = await withBalances(rows.filter(keep), database);
   return sortOldestFirst(
     balanced
       .filter((i) => i.balanceCents > 0)
       .map((i) => ({
-        id: i.id, clientUserId: i.clientUserId, ownerName: i.ownerName ?? null, invoiceNumber: i.invoiceNumber, balanceCents: i.balanceCents, dueDate: i.dueDate ?? null,
-        issuedOn: isoDateIn(LAB_TIMEZONE, new Date(i.issuedAt)),
+        id: i.id, clientUserId: i.clientUserId, accountId: i.accountId, ownerName: i.ownerName ?? null, invoiceNumber: i.invoiceNumber,
+        balanceCents: i.balanceCents, dueDate: i.dueDate ?? null, issuedOn: isoDateIn(LAB_TIMEZONE, new Date(i.issuedAt)),
       }))
   );
 }
@@ -141,9 +145,26 @@ export async function ledgerRowsForInvoice(invoiceId, database = db) {
 // history (and so out of the refund screen).
 const IN_HISTORY = or(isNull(invoicePayments.source), notInArray(invoicePayments.source, HISTORY_EXCLUDED_SOURCES));
 
-/** A doctor's own transaction-level payment history. */
-export async function listPaymentsForUser(userId, database = db) {
-  const rows = await database.select().from(invoicePayments).where(and(eq(invoicePayments.userId, userId), IN_HISTORY));
+/**
+ * The WHERE of a client's payment history: ledger rows whose invoice is in
+ * `accountIds` (the requested practices of the scope), plus, with `includeOwn`,
+ * the login's own payments wherever they went (a payer keeps seeing what their
+ * card paid, even after leaving the practice). Matches nothing when neither applies.
+ */
+export function paymentHistoryWhere({ accountIds = [], userId, includeOwn = false }) {
+  const parts = [];
+  if (accountIds.length) parts.push(inArray(invoices.accountId, accountIds));
+  if (includeOwn && userId) parts.push(eq(invoicePayments.userId, userId));
+  return and(parts.length ? or(...parts) : sql`false`, IN_HISTORY);
+}
+
+/** A client's transaction-level payment history over their scope (paymentHistoryWhere). */
+export async function listPaymentHistory({ accountIds, userId, includeOwn }, database = db) {
+  const rows = await database
+    .select(getTableColumns(invoicePayments))
+    .from(invoicePayments)
+    .leftJoin(invoices, eq(invoices.id, invoicePayments.invoiceId))
+    .where(paymentHistoryWhere({ accountIds, userId, includeOwn }));
   return summarizePayments(rows);
 }
 

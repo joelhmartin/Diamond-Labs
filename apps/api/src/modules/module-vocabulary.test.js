@@ -13,7 +13,7 @@ const ROOTS = [
   fileURLToPath(new URL("../../../web/src/modules", import.meta.url)),
   fileURLToPath(new URL("../../../../packages/shared/src/business-calendar", import.meta.url)),
   fileURLToPath(new URL("../../../../packages/shared/src/workflows", import.meta.url)),
-  ...["record-tags", "record-files", "barcode-lookup", "upload-intake", "reports"].map((m) =>
+  ...["record-tags", "record-files", "barcode-lookup", "upload-intake", "organizations", "reports"].map((m) =>
     fileURLToPath(new URL(`../../../../packages/shared/src/${m}`, import.meta.url)),
   ),
   fileURLToPath(new URL("../../../../packages/shared/src/exports", import.meta.url)),
@@ -27,6 +27,14 @@ const EXPORT_ROOTS = [
   fileURLToPath(new URL("./exports", import.meta.url)),
   fileURLToPath(new URL("../../../web/src/modules/exports", import.meta.url)),
   fileURLToPath(new URL("../../../../packages/shared/src/exports", import.meta.url)),
+];
+// The organizations dirs also avoid "practice" and "client" (the app's words
+// for what the module calls accounts and organizations).
+const ORG_WORDS = /\b(practice|practices|client|clients)\b/i;
+const ORG_ROOTS = [
+  fileURLToPath(new URL("./organizations", import.meta.url)),
+  fileURLToPath(new URL("../../../web/src/modules/organizations", import.meta.url)),
+  fileURLToPath(new URL("../../../../packages/shared/src/organizations", import.meta.url)),
 ];
 
 function* walk(dir) {
@@ -46,6 +54,18 @@ test("generic modules contain no lab vocabulary", () => {
       if (file === SELF) continue;
       readFileSync(file, "utf8").split("\n").forEach((line, i) => {
         if (BANNED.test(line)) hits.push(`${path.relative(root, file)}:${i + 1}: ${line.trim()}`);
+      });
+    }
+  }
+  assert.deepEqual(hits, []);
+});
+
+test("the organizations module does not mention practices or clients", () => {
+  const hits = [];
+  for (const root of ORG_ROOTS) {
+    for (const file of walk(root)) {
+      readFileSync(file, "utf8").split("\n").forEach((line, i) => {
+        if (ORG_WORDS.test(line)) hits.push(`${path.relative(root, file)}:${i + 1}: ${line.trim()}`);
       });
     }
   }

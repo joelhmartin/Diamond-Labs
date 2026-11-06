@@ -30,6 +30,19 @@ const ACTIVITY_COLUMNS = [
   { label: "Balance", width: 0.15, align: "right" },
 ];
 
+function activityTable(doc, lines) {
+  if (lines.length === 0) paragraph(doc, "No activity this month.");
+  else table(doc, { columns: ACTIVITY_COLUMNS, rows: lines.map((l) => l.cells) });
+}
+
+function agingTable(doc, aging) {
+  const width = 1 / aging.cells.length;
+  table(doc, {
+    columns: aging.cells.map(([label]) => ({ label, width, align: "right" })),
+    rows: [aging.cells.map(([, value]) => value)],
+  });
+}
+
 export function renderStatementPdf(model) {
   return renderPdf(model.title, (doc) => {
     const y = titleBlock(doc, { title: model.title, caption: "DIAMOND ORTHOTIC LABORATORY · ACCOUNT STATEMENT" });
@@ -37,14 +50,30 @@ export function renderStatementPdf(model) {
     section(doc, "Bill to");
     paragraph(doc, model.billTo.join("\n"));
     section(doc, "Activity");
-    if (model.lines.length === 0) paragraph(doc, "No activity this month.");
-    else table(doc, { columns: ACTIVITY_COLUMNS, rows: model.lines.map((l) => l.cells) });
+    activityTable(doc, model.lines);
     section(doc, "Aging of the closing balance");
-    const width = 1 / model.aging.cells.length;
-    table(doc, {
-      columns: model.aging.cells.map(([label]) => ({ label, width, align: "right" })),
-      rows: [model.aging.cells.map(([, value]) => value)],
-    });
+    agingTable(doc, model.aging);
+    footer(doc, model.footer);
+  });
+}
+
+/** The combined group statement (statement-model buildCombinedStatementModel): a section per practice, then the group total. */
+export function renderCombinedStatementPdf(model) {
+  return renderPdf(model.title, (doc) => {
+    const y = titleBlock(doc, { title: model.title, caption: "DIAMOND ORTHOTIC LABORATORY · COMBINED GROUP STATEMENT" });
+    keyValueGrid(doc, model.summary, { top: y, labelWidth: 130 });
+    section(doc, "Group");
+    paragraph(doc, model.billTo.join("\n"));
+    for (const s of model.sections) {
+      section(doc, s.heading);
+      paragraph(doc, s.summary.map(([label, value]) => `${label}: ${value}`).join("    "));
+      activityTable(doc, s.lines);
+    }
+    if (model.sections.length === 0) paragraph(doc, "No practices in this group.");
+    section(doc, "Group total");
+    totalsBlock(doc, model.summary.map(([label, value], i) => ({ label, value, bold: i === model.summary.length - 1 })));
+    section(doc, "Aging of the group closing balance");
+    agingTable(doc, model.aging);
     footer(doc, model.footer);
   });
 }

@@ -19,6 +19,7 @@ const notFound = (what = "Thread") => new MessagingError("NOT_FOUND", `${what} n
  * wires its own; see README.md):
  * - db: the root drizzle db (transactions run on it)
  * - isHost(user) → bool, partyKeysFor(user) → string[], defaultPartyKey(user) → string
+ *     (a party user's general thread when they name no `party`; it may throw to refuse, e.g. "choose one")
  * - records: { [recordType]: { resolve(db, id, user) → { label, partyKey, hostPath, partyPath } | null,
  *     labels?(db, ids, user) → Map<id, label> } }
  * - describeParty(db, partyKeys) → Map<key, label>; describeUsers(db, userIds) → Map<id, name>
@@ -217,7 +218,7 @@ function cleanSubject(subject, lim) {
 }
 
 // Where a new thread belongs: the record's party, the host's chosen party, or
-// the party user's own default. Never a party the caller cannot see.
+// the party user's named or default party. Never a party the caller cannot see.
 async function placeThread({ db, records, defaultPartyKey }, user, c, input) {
   const recordType = input.recordType || null;
   const recordId = input.recordId || null;
@@ -234,7 +235,9 @@ async function placeThread({ db, records, defaultPartyKey }, user, c, input) {
     partyKey = typeof input.party === "string" ? input.party.trim() : "";
     if (!partyKey) throw invalid("Choose who the message is for.");
   } else {
-    partyKey = defaultPartyKey(user);
+    // A party user may name one of their own keys (canRead below refuses any other); else their default.
+    const named = typeof input.party === "string" ? input.party.trim() : "";
+    partyKey = named || defaultPartyKey(user);
   }
   if (!canRead(user, { partyKey }, { isHost: c.host, partyKeys: c.partyKeys })) throw notFound();
   return { recordType, recordId, partyKey, resolved };

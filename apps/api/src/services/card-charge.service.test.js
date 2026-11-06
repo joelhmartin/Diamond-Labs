@@ -15,8 +15,8 @@ vi.mock("./authorizenet.service.js", () => ({
   },
 }));
 vi.mock("./payment-recording.service.js", () => ({
-  verifyAllocations: async (allocs, user, opts) => {
-    calls.push(["verify", user.id, opts]);
+  verifyAllocations: async (allocs, scope, opts) => {
+    calls.push(["verify", scope, opts]);
     if (!capResult) allocs.forEach((a) => { a.invoiceNumber = "500001"; });
     return capResult;
   },
@@ -28,8 +28,9 @@ const source = readFileSync(fileURLToPath(new URL("./card-charge.service.js", im
 
 beforeEach(() => { calls.length = 0; capResult = null; ledgerWriteFailed = false; chargeError = null; });
 
+const payerScope = { accountIds: ["a1"], payable: new Set(["a1"]) };
 const input = (over = {}) => ({
-  payer: { id: "doc1", email: "d@x.com" }, customerProfileId: "cp1", paymentProfileId: "pp1", amountCents: 12550,
+  payer: { id: "doc1", email: "d@x.com" }, scope: payerScope, customerProfileId: "cp1", paymentProfileId: "pp1", amountCents: 12550,
   allocations: [{ invoiceId: "inv1", amountCents: 12550 }], source: "doctor_card", ...over,
 });
 
@@ -44,9 +45,18 @@ test("verifies the cap, charges dollars on the wire, then records cents against 
   assert.deepEqual(out, { transactionId: "tx9", responseCode: "1", authCode: "A1", amountCents: 12550 });
 });
 
+test("verifies against the scope it is given (the payer's), never one it derives", async () => {
+  await chargeSavedCardAndRecord(input());
+  assert.equal(calls[0][1], payerScope);
+  calls.length = 0;
+  await chargeSavedCardAndRecord(input({ scope: undefined }));
+  assert.equal(calls[0][1], undefined, "no scope passes nothing to verify: verifyAllocations then pays nothing");
+});
+
 test("the admin route passes its own source and the target doctor as payer", async () => {
-  await chargeSavedCardAndRecord(input({ payer: { id: "doc2" }, source: "admin_card" }));
-  assert.equal(calls[0][1], "doc2");
+  const targetScope = { accountIds: ["a2"], payable: new Set(["a2"]) };
+  await chargeSavedCardAndRecord(input({ payer: { id: "doc2" }, scope: targetScope, source: "admin_card" }));
+  assert.equal(calls[0][1], targetScope);
   assert.equal(calls[2][1].user.id, "doc2");
   assert.equal(calls[2][1].source, "admin_card");
 });

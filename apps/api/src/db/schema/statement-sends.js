@@ -10,6 +10,9 @@ export const STATEMENT_SEND_STATUSES = ["sending", "sent", "failed", "no_email"]
 
 export const statementSends = pgTable("statement_sends", {
   id: varchar("id", { length: 128 }).primaryKey(),
+  // "account:<id>" or "organization:<id>"; '' only until the practice backfill maps legacy rows.
+  subjectKey: varchar("subject_key", { length: 160 }).notNull().default(""),
+  // The recipient.
   clientUserId: varchar("client_user_id", { length: 128 }).notNull(),
   month: char("month", { length: 7 }).notNull(), // YYYY-MM
   closingCents: integer("closing_cents"),
@@ -20,5 +23,5 @@ export const statementSends = pgTable("statement_sends", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
-  uniqueIndex("statement_sends_client_month_idx").on(t.clientUserId, t.month),
+  uniqueIndex("statement_sends_subject_client_month_idx").on(t.subjectKey, t.clientUserId, t.month),
 ]);

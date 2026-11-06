@@ -9,12 +9,18 @@ import { ToastProvider } from "../../components/ui/Toast.jsx";
 const posts = [];
 const previews = []; // params of each GET /lab/schedule/preview
 let postReply = async () => ({});
+let accountRows = []; // the client's practices (GET /lab/clients/:id/practices)
+const accountLookups = [];
 const FAMILIES = [{ id: "fam1", name: "Night guard", active: true, variants: [{ id: "var1", code: "NG1", name: "Hard night guard", active: true }] }];
 const PRACTICES = [{ id: "doc1", name: "Dr Smith", email: "smith@x.test" }];
 vi.mock("../../config/api.js", () => ({
   default: {
     get: async (url, config) => {
       if (url === "/lab/practices") return { data: { data: { practices: PRACTICES } } };
+      if (url.startsWith("/lab/clients/") && url.endsWith("/practices")) {
+        accountLookups.push(url);
+        return { data: { data: { practices: accountRows } } };
+      }
       if (url === "/lab/catalog/families") return { data: { data: { families: FAMILIES } } };
       if (url === "/lab/schedule/preview") {
         previews.push(config?.params ?? {});
@@ -34,6 +40,8 @@ afterEach(cleanup);
 beforeEach(() => {
   posts.length = 0;
   previews.length = 0;
+  accountRows = [];
+  accountLookups.length = 0;
   postReply = async (url) => {
     if (url === "/lab/orders") return { data: { data: { labOrder: { id: "lo9", orderNumber: 1009 }, invoice: { id: "inv" }, panWarning: null } } };
     if (url === "/lab/orders/price-preview") return { data: { data: { lines: [{ variantId: "var1", unitCents: 4500, priceSource: "client" }] } } };
@@ -173,4 +181,29 @@ test("?intake= shows that intake's files and sends intakeId on create", async ()
   fireEvent.click(screen.getByRole("button", { name: "Create order" }));
   await screen.findByText("ORDER PAGE");
   assert.deepEqual(posts[0][1], { clientUserId: "doc1", patientName: "Pat Jones", intakeId: "i7", pan: null, notes: null });
+});
+
+const TWO_PRACTICES = [{ id: "acctA", name: "North office", accountNumber: "100" }, { id: "acctB", name: "South office", accountNumber: "200" }];
+
+test("a client in one practice (or none) shows no practice select and sends no accountId", async () => {
+  accountRows = [{ id: "acctA", name: "North office", accountNumber: "100" }];
+  mount();
+  await fillRequired();
+  await waitFor(() => assert.deepEqual(accountLookups.at(-1), "/lab/clients/doc1/practices"));
+  assert.equal(screen.queryByLabelText("Bill to"), null);
+  fireEvent.click(screen.getByRole("button", { name: "Create order" }));
+  await screen.findByText("ORDER PAGE");
+  assert.equal("accountId" in posts.find(([u]) => u === "/lab/orders")[1], false);
+});
+
+test("a client in several practices must be given one, and the choice is sent with the order", async () => {
+  accountRows = TWO_PRACTICES;
+  mount();
+  await fillRequired();
+  const select = await screen.findByLabelText("Bill to");
+  assert.equal(screen.getByRole("button", { name: "Create order" }).disabled, true, "blocked until a practice is chosen");
+  fireEvent.change(select, { target: { value: "acctB" } });
+  fireEvent.click(screen.getByRole("button", { name: "Create order" }));
+  await screen.findByText("ORDER PAGE");
+  assert.equal(posts.find(([u]) => u === "/lab/orders")[1].accountId, "acctB");
 });

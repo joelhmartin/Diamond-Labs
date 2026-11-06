@@ -1,13 +1,13 @@
 import { and, asc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { isStaffRole } from "@my-app/shared";
-import { doctorProfiles, labOrders, pickups, rxCases, users } from "../../db/schema/index.js";
+import { accounts, doctorProfiles, labOrders, memberships, pickups, rxCases, users } from "../../db/schema/index.js";
 import { containsPattern, prefixPattern } from "../../lib/list-query.js";
-import { requireApprovedDoctor } from "../../middleware/require-role.js";
+import { requireClientPortal } from "../client-scope.js";
 import { createMessaging } from "../../modules/messaging/index.js";
 import * as recordFiles from "../../modules/record-files/index.js";
 import * as auditService from "../audit.service.js";
 import { markReadFor as markReadSeam, notify as notifySeam } from "../notify-seam.js";
-import { parsePartyKey, partyKeysFor, practiceKeyFor } from "../practice.js";
+import { assertNamedPartyKey, newPartyKey, parsePartyKey, partyKeysFor, practiceKeyFor, practiceLabel } from "../practice.js";
 
 /**
  * Lab glue for the generic messaging module: lab staff are the host, a
@@ -16,9 +16,13 @@ import { parsePartyKey, partyKeysFor, practiceKeyFor } from "../practice.js";
  * labels, search, the staff "New message" picker, the route guard, the
  * message.received alert (and clearing it on open) and attachment storage (record-files). Boot (services/app-modules.js) wires it once.
  *
- * Visibility is canActOnInvoice restated as keys (practice.js): a doctor may
- * open a record exactly when partyKeysFor(doctor) includes
- * practiceKeyFor(record owner). Staff see every record that has an owner.
+ * Visibility is the client scope restated as keys (practice.js): a login may
+ * open a record exactly when partyKeysFor(login) includes
+ * practiceKeyFor(record's practice). A record with no practice (account_id
+ * null: a backfill gap) has no party key, so it fails closed: staff see its
+ * label, no client opens it, and no thread can be filed on it. The one
+ * exception is a shop order with no practice: it stays its buyer's
+ * (`user:<ownerId>`).
  * Message text is sealed and never leaves the module: search matches labels
  * and party names only, and the alert carries ids and labels only.
  */
@@ -30,30 +34,34 @@ const SEARCH_ROWS = 200;
 const PARTY_PICKER_MAX = 20;
 const LABEL_MAX = 200; // the notifier's data guard allows 200 chars a string
 
-const ownerKey = (ownerId, ownerClientId) => practiceKeyFor({ id: ownerId, seazonaClientId: ownerClientId ?? null });
-const mayOpen = (user, partyKey) => isLabHost(user) || partyKeysFor(user).includes(partyKey);
+// The record's practice key; null (staff only) when it has no practice.
+const recordKey = (accountId) => (accountId ? practiceKeyFor({ accountId }) : null);
+const mayOpen = (user, partyKey) => isLabHost(user) || (partyKey != null && partyKeysFor(user).includes(partyKey));
 const clean = (v) => (v == null ? "" : String(v).trim());
 
 // ── Record resolvers ────────────────────────────────────────────────────────
 
-// Owner columns joined in: the practice key is computed from the owner's
-// current account, as canActOnInvoice does, never from a copy on the record.
-const rxSelect = { id: rxCases.id, caseNumber: rxCases.caseNumber, ownerId: rxCases.userId, ownerClientId: users.seazonaClientId };
-const orderSelect = { id: labOrders.id, orderNumber: labOrders.orderNumber, ownerId: labOrders.clientUserId, ownerClientId: users.seazonaClientId };
+// The practice key is the record's own practice (account_id, stamped at create),
+// as the client scope reads it.
+const rxSelect = { id: rxCases.id, caseNumber: rxCases.caseNumber, ownerId: rxCases.userId, accountId: rxCases.accountId };
+const orderSelect = { id: labOrders.id, orderNumber: labOrders.orderNumber, ownerId: labOrders.clientUserId, accountId: labOrders.accountId, source: labOrders.source };
 
-const rxQuery = (db, where) => db.select(rxSelect).from(rxCases).leftJoin(users, eq(users.id, rxCases.userId)).where(where);
-const orderQuery = (db, where) => db.select(orderSelect).from(labOrders).leftJoin(users, eq(users.id, labOrders.clientUserId)).where(where);
+const rxQuery = (db, where) => db.select(rxSelect).from(rxCases).where(where);
+const orderQuery = (db, where) => db.select(orderSelect).from(labOrders).where(where);
 // A pickup carries its practice key (party_key, set at request time), so no owner join.
 const pickupQuery = (db, where) => db.select({ id: pickups.id, pickupNumber: pickups.pickupNumber, partyKey: pickups.partyKey }).from(pickups).where(where);
 
 const rxView = (r) => ({
-  label: `Case ${r.caseNumber}`, partyKey: ownerKey(r.ownerId, r.ownerClientId),
+  label: `Case ${r.caseNumber}`, partyKey: recordKey(r.accountId),
   hostPath: `/admin/rx-cases/${enc(r.id)}`, partyPath: `/doctor/cases?case=${enc(r.id)}`,
 });
 // Doctors don't see lab orders directly, so there is no party path. A guest
-// shop order has no owner, so no party: nobody can open a thread on it.
+// shop order has no owner, so no party: nobody can open a thread on it. A
+// buyer's shop order with no practice stays the buyer's (practiceKeyFor's
+// user:<ownerId>); any other order with no practice fails closed.
+const orderKey = (r) => (r.accountId || r.source !== "shop_order" ? recordKey(r.accountId) : practiceKeyFor({ ownerId: r.ownerId }));
 const orderView = (r) => (r.ownerId
-  ? { label: `Case #${r.orderNumber}`, partyKey: ownerKey(r.ownerId, r.ownerClientId), hostPath: `/lab/orders/${enc(r.id)}`, partyPath: null }
+  ? { label: `Case #${r.orderNumber}`, partyKey: orderKey(r), hostPath: `/lab/orders/${enc(r.id)}`, partyPath: null }
   : null);
 
 const pickupView = (r) => ({
@@ -97,38 +105,22 @@ export const labRecordResolvers = {
 
 // ── Labels: parties and authors ─────────────────────────────────────────────
 
-const doctorSelect = { id: users.id, name: users.name, seazonaClientId: users.seazonaClientId, companyName: doctorProfiles.companyName };
+const doctorSelect = { id: users.id, name: users.name, companyName: doctorProfiles.companyName };
 const doctorQuery = (db, where) => db.select(doctorSelect).from(users).leftJoin(doctorProfiles, eq(doctorProfiles.userId, users.id)).where(where);
+const doctorLabel = (r) => clean(r.companyName) || clean(r.name);
 
-/**
- * key → label from user rows (oldest first): a practice is named by the first
- * companyName any of its doctors has, else the first doctor's name.
- */
-function labelsByKey(rows, keysOf) {
-  const best = new Map();
-  for (const r of rows) {
-    const company = clean(r.companyName);
-    const label = company || clean(r.name);
-    if (!label) continue;
-    for (const key of keysOf(r)) {
-      const cur = best.get(key);
-      if (!cur || (company && !cur.company)) best.set(key, { label, company: Boolean(company) });
-    }
-  }
-  return new Map([...best].map(([k, v]) => [k, v.label]));
-}
-
-/** Party key → the practice's companyName, or the doctor's name. Unknown keys are left out. */
+/** Party key → the practice's "name (account number)", or the doctor's companyName / name. Unknown keys are left out. */
 export async function describeLabParties(db, keys) {
   const parsed = (keys ?? []).map(parsePartyKey).filter(Boolean);
   const practices = [...new Set(parsed.filter((p) => p.practice != null).map((p) => p.practice))];
   const ids = [...new Set(parsed.filter((p) => p.userId != null).map((p) => p.userId))];
-  if (!practices.length && !ids.length) return new Map();
-  const conds = [];
-  if (practices.length) conds.push(inArray(users.seazonaClientId, practices));
-  if (ids.length) conds.push(inArray(users.id, ids));
-  const rows = await doctorQuery(db, or(...conds)).orderBy(asc(users.createdAt));
-  const labels = labelsByKey(rows, partyKeysFor);
+  const [accountRows, doctorRows] = await Promise.all([
+    practices.length ? db.select({ id: accounts.id, name: accounts.name, accountNumber: accounts.accountNumber }).from(accounts).where(inArray(accounts.id, practices)) : [],
+    ids.length ? doctorQuery(db, inArray(users.id, ids)) : [],
+  ]);
+  const labels = new Map();
+  for (const r of doctorRows) if (doctorLabel(r)) labels.set(practiceKeyFor({ ownerId: r.id }), doctorLabel(r));
+  for (const a of accountRows) if (practiceLabel(a)) labels.set(practiceKeyFor({ accountId: a.id }), practiceLabel(a));
   const wanted = new Set(keys);
   return new Map([...labels].filter(([k]) => wanted.has(k)));
 }
@@ -142,8 +134,7 @@ export async function describeLabUsers(db, ids) {
 
 /**
  * Approved, active doctors matching `q` on name or practice name (oldest
- * first). The one doctor search behind both staff pickers (message parties and
- * the pickup client), so they agree on who is eligible.
+ * first): the staff pickup client picker (pickups.service.js).
  */
 export function searchApprovedDoctors(db, q = "", limit = SEARCH_ROWS) {
   const conds = [eq(users.role, "doctor"), eq(users.approvalStatus, "approved"), eq(users.status, "active")];
@@ -152,21 +143,42 @@ export function searchApprovedDoctors(db, q = "", limit = SEARCH_ROWS) {
   return doctorQuery(db, and(...conds)).orderBy(asc(users.createdAt)).limit(limit);
 }
 
-/** Staff "New message" picker: approved, active doctors grouped by practice key, at most 20. */
+/**
+ * Practices (client accounts) matching `q` on their name, account number or an
+ * active member's name. `activeOnly` keeps active accounts (the picker: a new
+ * thread only goes to a live practice); search reads every practice, since old
+ * threads stay findable.
+ */
+function practiceQuery(db, q, { columns, activeOnly, limit }) {
+  const conds = [eq(accounts.isClient, true)];
+  if (activeOnly) conds.push(eq(accounts.status, "active"));
+  const text = clean(q);
+  if (text) {
+    const pattern = containsPattern(text);
+    const memberIds = db.select({ id: memberships.accountId }).from(memberships)
+      .innerJoin(users, eq(users.id, memberships.userId))
+      .where(and(eq(memberships.status, "active"), ilike(users.name, pattern)));
+    conds.push(or(ilike(accounts.name, pattern), ilike(accounts.accountNumber, pattern), inArray(accounts.id, memberIds)));
+  }
+  return db.select(columns).from(accounts).where(and(...conds)).orderBy(asc(accounts.name)).limit(limit);
+}
+
+/** Staff "New message" picker: active practices by name, number or member, at most 20, as `{ key: "practice:<id>", label }`. */
 export async function listLabParties(db, q = "") {
-  const rows = await searchApprovedDoctors(db, q);
-  const labels = labelsByKey(rows, (r) => [practiceKeyFor(r)]);
-  return [...labels]
-    .map(([key, label]) => ({ key, label }))
-    .sort((a, b) => a.label.localeCompare(b.label))
-    .slice(0, PARTY_PICKER_MAX);
+  const rows = await practiceQuery(db, q, {
+    columns: { id: accounts.id, name: accounts.name, accountNumber: accounts.accountNumber }, activeOnly: true, limit: PARTY_PICKER_MAX,
+  });
+  return rows
+    .map((a) => ({ key: practiceKeyFor({ accountId: a.id }), label: practiceLabel(a) }))
+    .filter((p) => p.label)
+    .sort((a, b) => a.label.localeCompare(b.label));
 }
 
 // ── Search ──────────────────────────────────────────────────────────────────
 
 /**
  * The messaging `search` collaborator: what a typed query can match. Party
- * names (doctor name or practice companyName) and record labels (Rx case
+ * names (practice name, account number or member; doctor name or companyName) and record labels (Rx case
  * number, lab order number). Never message text: it is sealed. The service
  * intersects this with the caller's visibility, so it may over-match.
  */
@@ -175,8 +187,9 @@ export async function searchLabRecords(db, q) {
   if (!text) return { partyKeys: [], records: [] };
   const number = text.replace(/^(case|order)\b\s*/i, "").replace(/^#\s*/, "").trim();
   const pattern = containsPattern(text);
-  const [doctors, cases, orders] = await Promise.all([
-    db.select({ id: users.id, seazonaClientId: users.seazonaClientId }).from(users)
+  const [practices, doctors, cases, orders] = await Promise.all([
+    practiceQuery(db, text, { columns: { id: accounts.id }, activeOnly: false, limit: SEARCH_ROWS }),
+    db.select({ id: users.id }).from(users)
       .leftJoin(doctorProfiles, eq(doctorProfiles.userId, users.id))
       .where(and(eq(users.role, "doctor"), or(ilike(users.name, pattern), ilike(doctorProfiles.companyName, pattern))))
       .limit(SEARCH_ROWS),
@@ -186,7 +199,8 @@ export async function searchLabRecords(db, q) {
       : [],
   ]);
   return {
-    partyKeys: [...new Set(doctors.flatMap(partyKeysFor))],
+    // Matching practices, plus each matching doctor's own key (threads filed before they had a practice).
+    partyKeys: [...new Set([...practices.map((a) => practiceKeyFor({ accountId: a.id })), ...doctors.map((d) => practiceKeyFor({ ownerId: d.id }))])],
     records: [
       ...cases.map((r) => ({ recordType: "rx_case", recordId: r.id })),
       ...orders.map((r) => ({ recordType: "lab_order", recordId: r.id })),
@@ -318,10 +332,10 @@ export function auditAttachmentRead(request, { fileId, threadId }, log = auditSe
 
 // ── Routes guard and the service ────────────────────────────────────────────
 
-/** Every messaging route: staff pass; anyone else must be an approved doctor. */
+/** Every messaging route: staff pass; anyone else needs the client portal (a practice in scope, or an approved doctor). */
 export async function labMessagingGuard(request, reply) {
   if (isLabHost(request.user)) return undefined;
-  return requireApprovedDoctor(request, reply);
+  return requireClientPortal(request, reply);
 }
 
 /**
@@ -331,12 +345,13 @@ export async function labMessagingGuard(request, reply) {
 export function createLabMessaging({
   db, labName, notify = notifySeam, markRead = markReadSeam, log = console, fileService = recordFiles, overrides = {},
 }) {
-  return createMessaging({
+  const messaging = createMessaging({
     db,
     records: labRecordResolvers,
     isHost: isLabHost,
     partyKeysFor,
-    defaultPartyKey: practiceKeyFor,
+    // A client's general thread: their one practice, else they must name one (422 "Choose a practice.").
+    defaultPartyKey: (user) => newPartyKey(user),
     describeParty: describeLabParties,
     describeUsers: describeLabUsers,
     search: (d, q) => searchLabRecords(d, q),
@@ -346,4 +361,12 @@ export function createLabMessaging({
     log,
     ...overrides,
   });
+  return {
+    ...messaging,
+    // A client's general thread for a named party: never their own `user:` key while they have a practice.
+    async createThread(user, input = {}) {
+      if (!isLabHost(user) && !input.recordType && typeof input.party === "string") assertNamedPartyKey(user, input.party.trim());
+      return messaging.createThread(user, input);
+    },
+  };
 }

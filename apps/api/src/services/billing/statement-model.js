@@ -61,16 +61,25 @@ export function statementEvents({ invoices, payments }) {
   return events.sort((a, b) => a.date.localeCompare(b.date) || KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || a.description.localeCompare(b.description));
 }
 
+/** A statement month's bounds, plus the day its balances are aged as of: the month's end, or today for the current month. */
+function statementPeriod(month, generatedAt) {
+  const { startIso, endIso, label } = monthBounds(month);
+  const todayIso = isoDateIn(LAB_TIMEZONE, generatedAt);
+  return { startIso, endIso, label, todayIso, asOfIso: todayIso < endIso ? todayIso : endIso };
+}
+
+const footerText = (todayIso, asOfIso, labName) => `Generated ${formatUsDate(todayIso)} · Aging as of ${formatUsDate(asOfIso)} · ${labName} · Pay online in the doctor portal.`;
+const agingCells = (aging) => ({ ...aging, cells: AGING_BUCKETS.map((b) => [b.label, formatCents(aging.buckets[b.key])]) });
+
 /**
- * A client's statement for one month: opening balance, every dated event in
- * the month with a running balance, closing balance, and the closing balance
- * aged per invoice as of the month's end (or today, for the current month).
- * Pure; dates use the lab timezone.
+ * A statement for one month: opening balance, every dated event in the month
+ * with a running balance, closing balance, and the closing balance aged per
+ * invoice as of the month's end (or today, for the current month). `client`
+ * is the bill-to header: a practice (`{ practice, accountNumber }`) or a
+ * doctor (loadClient). Pure; dates use the lab timezone.
  */
 export function buildStatementModel(client, activity, period, { generatedAt, labName = labIdentity().name }) {
-  const { startIso, endIso, label } = monthBounds(period.month);
-  const todayIso = isoDateIn(LAB_TIMEZONE, generatedAt);
-  const asOfIso = todayIso < endIso ? todayIso : endIso;
+  const { startIso, endIso, label, todayIso, asOfIso } = statementPeriod(period.month, generatedAt);
 
   const events = statementEvents(activity);
   const openingCents = events.filter((e) => e.date < startIso).reduce((s, e) => s + e.amountCents, 0);
@@ -99,11 +108,52 @@ export function buildStatementModel(client, activity, period, { generatedAt, lab
     filename: `statement-${period.month}.pdf`,
     period: { month: period.month, label, startIso, endIso, asOfIso },
     billTo: billToLines(client),
+    // What a combined statement titles this practice's section with.
+    heading: { name: client?.practice || client?.name || "—", accountNumber: client?.accountNumber ?? null },
     openingCents,
     closingCents,
     summary: [["Opening balance", formatCents(openingCents)], ["Closing balance", formatCents(closingCents)]],
     lines: lines.map((l) => ({ ...l, cells: [formatUsDate(l.date), l.description, formatCents(l.amountCents), formatCents(l.balanceCents)] })),
-    aging: { ...aging, cells: AGING_BUCKETS.map((b) => [b.label, formatCents(aging.buckets[b.key])]) },
-    footer: `Generated ${formatUsDate(todayIso)} · Aging as of ${formatUsDate(asOfIso)} · ${labName} · Pay online in the doctor portal.`,
+    aging: agingCells(aging),
+    footer: footerText(todayIso, asOfIso, labName),
+  });
+}
+
+/**
+ * The combined group statement (piece 11): one section per practice, each
+ * under its own name and account number with its own opening, activity and
+ * closing (the practice's statement model, unchanged), then the group total.
+ * Every group figure is the sum of the sections in integer cents, so the
+ * total can never disagree with the practices. Pure.
+ * @param {{ id: string, name: string }} org
+ * @param {object[]} perAccountModels buildStatementModel results for the group's practices, same month
+ */
+export function buildCombinedStatementModel(org, perAccountModels, { month, generatedAt, labName = labIdentity().name }) {
+  const { startIso, endIso, label, todayIso, asOfIso } = statementPeriod(month, generatedAt);
+  const sorted = [...perAccountModels].sort((a, b) => a.heading.name.localeCompare(b.heading.name) || String(a.heading.accountNumber ?? "").localeCompare(String(b.heading.accountNumber ?? "")));
+  const sum = (pick) => sorted.reduce((s, m) => s + pick(m), 0);
+  const openingCents = sum((m) => m.openingCents);
+  const closingCents = sum((m) => m.closingCents);
+  const buckets = Object.fromEntries(AGING_BUCKETS.map((b) => [b.key, sum((m) => m.aging.buckets[b.key])]));
+  const oldest = sorted.map((m) => m.aging.oldestDueDate).filter(Boolean).sort()[0] ?? null;
+  return deepPrintable({
+    title: `Combined statement — ${label}`,
+    filename: `combined-statement-${month}.pdf`,
+    period: { month, label, startIso, endIso, asOfIso },
+    billTo: [org.name],
+    openingCents,
+    closingCents,
+    activityCount: sum((m) => m.lines.length),
+    summary: [["Group opening balance", formatCents(openingCents)], ["Group closing balance", formatCents(closingCents)]],
+    sections: sorted.map((m) => ({
+      heading: m.heading.accountNumber ? `${m.heading.name} · Account ${m.heading.accountNumber}` : m.heading.name,
+      accountNumber: m.heading.accountNumber,
+      openingCents: m.openingCents,
+      closingCents: m.closingCents,
+      summary: m.summary,
+      lines: m.lines,
+    })),
+    aging: agingCells({ buckets, totalCents: sum((m) => m.aging.totalCents), oldestDueDate: oldest }),
+    footer: footerText(todayIso, asOfIso, labName),
   });
 }

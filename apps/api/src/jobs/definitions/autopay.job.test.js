@@ -95,9 +95,19 @@ vi.mock("../../config/database.js", () => ({
 
 // The sweep reads each due doctor's open invoices from OUR ledger
 // (own-the-lab piece 3) — controllable per test, incl. a read failure.
-const ledgerOpenInvoicesForClient = vi.fn(async () => []);
+const ledgerOpenInvoicesForAccounts = vi.fn(async () => []);
 vi.mock("../../services/billing/ledger.service.js", () => ({
-  openInvoicesForClient: (...args) => ledgerOpenInvoicesForClient(...args),
+  openInvoicesForAccounts: (...args) => ledgerOpenInvoicesForAccounts(...args),
+}));
+
+// The enrollee's practice scope, loaded by the sweep AT RUN TIME (never cached
+// from enrolment): controllable per test; by default u1/u2 pay practice a1.
+const { toClientScope } = await import("../../services/client-scope-rules.js");
+const scopeOf = (roles) => toClientScope({ accountIds: Object.keys(roles), roles: new Map(Object.entries(roles)), via: new Map(), organizations: [] });
+const loadClientScope = vi.fn(async () => scopeOf({ a1: "member" }));
+vi.mock("../../services/client-scope.js", async () => ({
+  ...(await import("../../services/client-scope-rules.js")),
+  loadClientScope: (...args) => loadClientScope(...args),
 }));
 
 // Real (unmocked) schema import — pure pgTable definitions, no DB/env side
@@ -162,8 +172,10 @@ beforeEach(() => {
   dueRows = [];
   cycleAttemptRows = [];
   attemptRowsByCycle = null;
-  ledgerOpenInvoicesForClient.mockClear();
-  ledgerOpenInvoicesForClient.mockImplementation(async () => invoices);
+  ledgerOpenInvoicesForAccounts.mockClear();
+  ledgerOpenInvoicesForAccounts.mockImplementation(async () => invoices);
+  loadClientScope.mockClear();
+  loadClientScope.mockImplementation(async () => scopeOf({ a1: "member" }));
   paymentRecordingVerifyAllocations.mockClear();
   paymentRecordingVerifyAllocations.mockImplementation(async () => null);
   sendAutopayFailure.mockClear();
@@ -331,13 +343,12 @@ describe("processEnrollment", () => {
       expect(enrollmentUpdates.some((u) => u.consecutiveFailures !== undefined)).toBe(false);
     });
 
-    // A "forbidden" kind also fires when getInvoice returns null, which is
-    // what a Seazona outage looks like (the wrapper swallows failures to
-    // null) — not just a genuinely missing/foreign invoice. The recorded
-    // reason must not read as a definitive "not found" data problem.
-    it("records a 'forbidden' cap-check result as could-not-verify, never as a decline", async () => {
+    // A "not_found" kind (not in the payable scope, or no such invoice) fires
+    // when the enrollee lost access since the sweep read the invoices, too:
+    // the recorded reason must not read as a definitive data problem.
+    it("records a 'not_found' cap-check result as could-not-verify, never as a decline", async () => {
       paymentRecordingVerifyAllocations.mockResolvedValueOnce({
-        kind: "forbidden",
+        kind: "not_found",
         message: "Invoice 1001 not found.",
       });
       const attempt = await processEnrollment({ enrollment, doctor, invoices, dryRun: false, now, runId: "r1" });
@@ -439,7 +450,7 @@ describe("runAutopaySweep", () => {
   // (which would reopen the full invoice total and overcharge).
   it("records a failed attempt and charges nothing when the local ledger read fails", async () => {
     dueRows = [{ enrollment, doctor }];
-    ledgerOpenInvoicesForClient.mockRejectedValueOnce(new Error("connection reset"));
+    ledgerOpenInvoicesForAccounts.mockRejectedValueOnce(new Error("connection reset"));
 
     const summary = await runAutopaySweep({ dryRun: false, now, runId: "r1" });
 
@@ -455,7 +466,7 @@ describe("runAutopaySweep", () => {
     dueRows = [];
     const summary = await runAutopaySweep({ dryRun: false, now, runId: "r1" });
     expect(summary.considered).toBe(0);
-    expect(ledgerOpenInvoicesForClient).not.toHaveBeenCalled();
+    expect(ledgerOpenInvoicesForAccounts).not.toHaveBeenCalled();
     expect(attempts).toHaveLength(0);
   });
 
@@ -475,7 +486,30 @@ describe("runAutopaySweep", () => {
     const enrollment2 = { ...enrollment, id: "e2", userId: "u2" };
     dueRows = [{ enrollment, doctor }, { enrollment: enrollment2, doctor: doctor2 }];
     await runAutopaySweep({ dryRun: false, now, runId: "r1" });
-    expect(ledgerOpenInvoicesForClient.mock.calls.map((c) => [c[0].id, c[0].seazonaClientId])).toEqual([["u1", "c1"], ["u2", "c1"]]);
+    expect(loadClientScope.mock.calls.map((c) => c[0])).toEqual(["u1", "u2"]);
+    expect(ledgerOpenInvoicesForAccounts.mock.calls.map((c) => c[0])).toEqual([["a1"], ["a1"]]);
+  });
+
+  it("autopay uses the scope at run time", async () => {
+    // Enrolled while a group admin of a1 + a2; removed as admin before the run.
+    dueRows = [{ enrollment, doctor }];
+    ledgerOpenInvoicesForAccounts.mockImplementation(async (accountIds) => (accountIds.length ? invoices : []));
+    loadClientScope.mockImplementation(async () => scopeOf({}));
+    const summary = await runAutopaySweep({ dryRun: false, now, runId: "r1" });
+    expect(loadClientScope).toHaveBeenCalledWith("u1");
+    expect(ledgerOpenInvoicesForAccounts).toHaveBeenCalledWith([]);
+    expect(charged).toHaveLength(0);
+    expect(summary.charged).toBe(0);
+    expect(attempts[0].status).toBe("skipped");
+  });
+
+  it("autopay pays only the payable part of the scope, and re-verifies against that same scope", async () => {
+    dueRows = [{ enrollment, doctor }];
+    const scope = scopeOf({ a1: "org-admin", a2: "viewer" });
+    loadClientScope.mockImplementation(async () => scope);
+    await runAutopaySweep({ dryRun: false, now, runId: "r1" });
+    expect(ledgerOpenInvoicesForAccounts.mock.calls[0][0]).toEqual(["a1"]);
+    expect(paymentRecordingVerifyAllocations.mock.calls[0][1]).toBe(scope);
   });
 
   // I4 — decline retries fire on day+2/day+5, but ONLY when this cycle

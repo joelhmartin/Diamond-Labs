@@ -39,7 +39,7 @@ const accountBalance = {
   async run(tx, _params, _actor, ctx) {
     const ar = await listReceivables({}, tx, { today: labToday(ctx) });
     const rows = ar.rows.map((r) => ({
-      clientUserId: r.clientUserId, client: clientLabel(r), accountNumber: r.accountNumber, openInvoices: r.openInvoices,
+      clientUserId: r.ownerUserId, client: clientLabel(r), accountNumber: r.accountNumber, openInvoices: r.openInvoices,
       pastDue: r.pastDueCents, balance: r.balanceCents, oldestDue: r.oldestDueDate,
     }));
     return { rows, summary: { openInvoices: sumOf(rows, "openInvoices"), pastDue: ar.totals.pastDueCents, balance: ar.totals.balanceCents }, notice: `As of ${ar.asOf}.` };
@@ -53,7 +53,7 @@ const agingSummary = {
   columns: [clientCol, { id: "accountNumber", label: "Account", type: "text" }, ...AGING_COLUMNS, money("balance", "Total")],
   async run(tx, params, _actor, ctx) {
     const ar = await listReceivables({ pastDueOnly: Boolean(params?.pastDueOnly) }, tx, { today: labToday(ctx) });
-    const rows = ar.rows.map((r) => ({ clientUserId: r.clientUserId, client: clientLabel(r), accountNumber: r.accountNumber, ...r.buckets, balance: r.balanceCents }));
+    const rows = ar.rows.map((r) => ({ clientUserId: r.ownerUserId, client: clientLabel(r), accountNumber: r.accountNumber, ...r.buckets, balance: r.balanceCents }));
     return { rows, summary: { ...ar.totals.buckets, balance: ar.totals.balanceCents }, notice: `As of ${ar.asOf}.` };
   },
 };

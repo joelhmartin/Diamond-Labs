@@ -1,9 +1,10 @@
 import { db } from "../config/database.js";
-import { invitations, memberships, users } from "../db/schema/index.js";
+import { accounts, invitations, memberships, users } from "../db/schema/index.js";
 import { eq, and } from "drizzle-orm";
 import { createId } from "../lib/id.js";
 import { generateSecureToken } from "../lib/tokens.js";
 import { ERROR_CODES } from "@my-app/shared";
+import { assertNotClientAccount } from "./client-scope-rules.js";
 
 function createAppError(errorDef) {
   const err = new Error(errorDef.message);
@@ -75,6 +76,9 @@ export async function acceptInvitation(token, userId) {
     .limit(1);
 
   if (!invitation) throw createAppError(ERROR_CODES.INVITATION_NOT_FOUND);
+  // An invitation into a practice (client account) never grants a membership: the lab manages its staff.
+  const [account] = await db.select({ isClient: accounts.isClient }).from(accounts).where(eq(accounts.id, invitation.accountId)).limit(1);
+  assertNotClientAccount(account);
   if (invitation.status !== "pending") throw createAppError(ERROR_CODES.INVITATION_ALREADY_ACCEPTED);
   if (new Date(invitation.expiresAt) < new Date()) {
     await db.update(invitations).set({ status: "expired" }).where(eq(invitations.id, invitation.id));

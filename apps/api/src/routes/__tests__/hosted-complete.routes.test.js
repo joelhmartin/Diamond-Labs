@@ -5,7 +5,7 @@ process.env.DATABASE_URL ||= "postgres://u:p@localhost:5432/test";
 process.env.JWT_SECRET ||= "test-jwt-secret-that-is-at-least-32-chars";
 
 vi.mock("../../middleware/authenticate.js", () => ({ authenticate: async (request) => { request.user = { id: "doc1", role: "doctor" }; } }));
-vi.mock("../../middleware/require-role.js", () => ({ requireApprovedDoctor: async () => {} }));
+vi.mock("../../middleware/require-role.js", () => ({ requireApprovedDoctor: async () => {}, requireClientPortal: async () => {} }));
 
 const store = new Map();
 vi.mock("../../config/redis.js", () => ({

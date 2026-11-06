@@ -87,3 +87,29 @@ test("Message the lab with no thread yet opens the new-thread modal and creates 
   assert.deepEqual(api.post.mock.calls[0][1], { recordType: "rx_case", recordId: "c3", body: "Shade question" });
   await waitFor(() => assert.equal(screen.getByTestId("where").textContent, "/doctor/messages/t-new"));
 });
+
+test("a non-doctor practice login does not see New Rx; a doctor does", async () => {
+  const { useAuthStore } = await import("../../../stores/auth.store.js");
+  useAuthStore.setState({ user: { id: "u1", role: "user" } });
+  mount();
+  await screen.findByText("RX-001");
+  assert.equal(screen.queryByText("New Rx"), null);
+  cleanup();
+  useAuthStore.setState({ user: { id: "u1", role: "doctor", approvalStatus: "approved" } });
+  mount();
+  await screen.findByText("RX-001");
+  assert.ok(screen.getByText("New Rx"));
+  useAuthStore.setState({ user: null });
+});
+
+test("with several practices the list shows each case's practice and asks per practice", async () => {
+  const { useAccountStore } = await import("../../../stores/account.store.js");
+  const acct = (id, name, n) => ({ id, name, accountNumber: n, organizationId: null, via: "member", role: "admin", payable: true });
+  useAccountStore.setState({ clientScope: { accounts: [acct("a1", "North Dental", "1001"), acct("a2", "South Dental", "1002")], organizations: [] }, practiceScope: "a2", clientScopeLoaded: true });
+  mount();
+  await screen.findByText("RX-001");
+  assert.deepEqual(api.get.mock.calls[0], ["/rx/cases", { params: { account: "a2" } }]);
+  assert.ok(screen.getByRole("columnheader", { name: /Practice/ }));
+  useAccountStore.getState().clearClientScope();
+  sessionStorage.clear();
+});

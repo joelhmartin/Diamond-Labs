@@ -158,7 +158,7 @@ export function planInvoices({ summaries, details, owners, existingSeazonaIds, e
     numbers.add(mapped.invoice.invoiceNumber);
     if (unowned) counts.unowned += 1;
     counts.droppedDetailItems += mapped.droppedItems;
-    rows.push({ invoice: mapped.invoice, lines: mapped.lines });
+    rows.push({ invoice: mapped.invoice, lines: mapped.lines, clientKey: clientId });
     counts.toInsert += 1;
     counts[mapped.detailed ? "detailed" : "summaryOnly"] += 1;
     if (mapped.approximatedDate) counts.approximatedDates += 1;

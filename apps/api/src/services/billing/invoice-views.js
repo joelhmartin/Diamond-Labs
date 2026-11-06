@@ -20,6 +20,7 @@ const visible = (payments) => payments.filter((p) => p.appliedCents !== 0);
 export function doctorInvoiceRow(r) {
   return {
     id: r.id, invoiceNumber: r.invoiceNumber, kind: r.kind, status: r.status,
+    accountId: r.accountId ?? null, accountName: r.accountName ?? null, accountNumber: r.accountNumber ?? null,
     labOrderNumber: r.labOrderNumber ?? null, patientInitials: r.patientInitials ?? null,
     issuedAt: r.issuedAt ?? null, dueDate: r.dueDate ?? null,
     totalCents: r.totalCents, paidCents: r.paidCents, balanceCents: r.balanceCents,

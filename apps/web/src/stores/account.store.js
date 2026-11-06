@@ -2,7 +2,61 @@ import { create } from "zustand";
 import api from "../config/api.js";
 import { getPermissionsForRole } from "@my-app/shared";
 
+const SCOPE_KEY = "practiceScope";
+const ALL = "all";
+
+// sessionStorage can throw (private windows, blocked storage); the choice then just isn't remembered.
+const readStoredScope = () => {
+  try { return sessionStorage.getItem(SCOPE_KEY); } catch { return null; }
+};
+const writeStoredScope = (value) => {
+  try { sessionStorage.setItem(SCOPE_KEY, value); } catch { /* not remembered */ }
+};
+const EMPTY_SCOPE = { accounts: [], organizations: [] };
+
+/** A stored choice only counts while it is still one of the login's practices. */
+const validScope = (scope, clientScope) =>
+  scope && scope !== ALL && clientScope.accounts.some((a) => a.id === scope) ? scope : ALL;
+
+/**
+ * Selector: is the active account a practice (client account)? Its staff are managed by the lab
+ * (Admin > Practices), so the template's self-service Members page is hidden for it (the API refuses it too).
+ */
+export const selectActiveIsPractice = (s) => s.activeAccount?.isClient === true;
+
 export const useAccountStore = create((set, get) => ({
+  /** The login's practices and groups (GET /client/scope). Fetched per session, never kept beyond it. */
+  clientScope: EMPTY_SCOPE,
+  clientScopeLoaded: false,
+  /** "all" or one practice's account id. Remembered for the browser session only. */
+  practiceScope: ALL,
+
+  fetchClientScope: async () => {
+    let clientScope = EMPTY_SCOPE;
+    try {
+      const { data } = await api.get("/client/scope");
+      clientScope = { accounts: data.data?.accounts ?? [], organizations: data.data?.organizations ?? [] };
+    } catch {
+      // No scope reads as no practices: the lists then show only what the server returns for the login.
+    }
+    const practiceScope = validScope(readStoredScope(), clientScope);
+    writeStoredScope(practiceScope);
+    set({ clientScope, clientScopeLoaded: true, practiceScope });
+    return clientScope;
+  },
+
+  setPracticeScope: (scope) => {
+    const practiceScope = validScope(scope, get().clientScope);
+    writeStoredScope(practiceScope);
+    set({ practiceScope });
+  },
+
+  /** On sign-out: nothing about the previous login's practices stays in memory or storage. */
+  clearClientScope: () => {
+    writeStoredScope(ALL);
+    set({ clientScope: EMPTY_SCOPE, clientScopeLoaded: false, practiceScope: ALL });
+  },
+
   accounts: [],
   activeAccount: null,
   isLoading: false,

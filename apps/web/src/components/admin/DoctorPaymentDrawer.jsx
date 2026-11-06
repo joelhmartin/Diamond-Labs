@@ -1,6 +1,7 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { X, Loader2, AlertCircle, AlertTriangle, RefreshCw } from "lucide-react";
 import api from "../../config/api.js";
+import { Drawer } from "../ui/Drawer.jsx";
 import { AdminCardsSection } from "./AdminCardsSection.jsx";
 import { AdminChargeSection } from "./AdminChargeSection.jsx";
 import { AdminRecordPaymentSection } from "./AdminRecordPaymentSection.jsx";
@@ -22,21 +23,6 @@ export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount: min
   // AutoPay list page), else the one the per-doctor read returns (Users page).
   const [serverMinAmount, setServerMinAmount] = useState(null);
   const minAmount = minAmountProp ?? serverMinAmount;
-  const panelRef = useRef(null);
-
-  // Keyboard access: Escape closes, and focus moves into the dialog on open.
-  // Runs once per mount (onClose read through a ref) — callers pass an inline
-  // onClose, and re-running on every render would yank focus out of inputs.
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-  useEffect(() => {
-    const onKeyDown = (e) => {
-      if (e.key === "Escape") onCloseRef.current?.();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    panelRef.current?.focus();
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, []);
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -103,16 +89,7 @@ export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount: min
   const invoiceProps = { invoices: payableInvoices, invoicesLoading, invoicesUnavailable };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm" onClick={onClose}>
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Payments for ${doctor.name || doctor.email || "doctor"}`}
-        tabIndex={-1}
-        className="flex h-full w-full max-w-lg flex-col overflow-y-auto bg-surface-50 shadow-2xl focus:outline-none"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Drawer onClose={onClose} label={`Payments for ${doctor.name || doctor.email || "doctor"}`} className="max-w-lg bg-surface-50">
         <div className="sticky top-0 z-10 flex items-start justify-between border-b border-surface-300/50 bg-white px-6 py-5">
           <div>
             <h3 className="font-heading text-lg font-bold text-navy">{doctor.name || doctor.email || "Doctor"}</h3>
@@ -175,7 +152,6 @@ export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount: min
             </>
           )}
         </div>
-      </div>
-    </div>
+    </Drawer>
   );
 }

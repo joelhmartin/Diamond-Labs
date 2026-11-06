@@ -5,7 +5,7 @@ process.env.DATABASE_URL ||= "postgres://u:p@localhost:5432/test";
 process.env.JWT_SECRET ||= "test-jwt-secret-that-is-at-least-32-chars";
 
 // authenticate is a JWT + DB lookup: stub it to an approved doctor. The real
-// requireApprovedDoctor and validate() run, so the schema's .default({}) path
+// requireClientPortal (an approved doctor passes) and validate() run, so the schema's .default({}) path
 // is what's under test.
 const doctor = { id: "d1", role: "doctor", approvalStatus: "approved", seazonaClientId: "P1" };
 vi.mock("../../middleware/authenticate.js", () => ({ authenticate: async (request) => { request.user = doctor; } }));

@@ -17,6 +17,9 @@ const ALIGN = { left: "text-left", right: "text-right", center: "text-center" };
  * there is none), Esc clears. `highlightRowId` marks one row (a deep link's
  * target: aria-current and a ring) and scrolls it into view once.
  *
+ * `renderExpanded(row)` shows a detail row under an expanded row; `canExpand(row)`
+ * (optional) limits the expander to the rows that have one (default: every row).
+ *
  * `exportAll` (optional): a function that exports the whole result (every
  * matching row, not just this page; e.g. a server CSV). When set, the toolbar
  * shows "Export CSV" for it; the selected-rows export in the bulk bar is separate.
@@ -29,6 +32,7 @@ export function DataTable({
   rowClassName,
   highlightRowId = null,
   renderExpanded,
+  canExpand,
   footer,
   toolbarRight,
   searchable = true,
@@ -111,15 +115,17 @@ export function DataTable({
           )}
           {renderExpanded && (
             <td className={`${cellPad} w-8`}>
-              <button
-                type="button"
-                aria-label={open ? "Collapse row" : "Expand row"}
-                aria-expanded={open}
-                onClick={() => setOpenId(open ? null : id)}
-                className="rounded-md p-0.5 text-navy/40 hover:bg-surface-200 hover:text-navy"
-              >
-                <ChevronRight size={14} className={`transition-transform ${open ? "rotate-90" : ""}`} />
-              </button>
+              {(!canExpand || canExpand(row)) && (
+                <button
+                  type="button"
+                  aria-label={open ? "Collapse row" : "Expand row"}
+                  aria-expanded={open}
+                  onClick={() => setOpenId(open ? null : id)}
+                  className="rounded-md p-0.5 text-navy/40 hover:bg-surface-200 hover:text-navy"
+                >
+                  <ChevronRight size={14} className={`transition-transform ${open ? "rotate-90" : ""}`} />
+                </button>
+              )}
             </td>
           )}
           {columns.map((col) => (

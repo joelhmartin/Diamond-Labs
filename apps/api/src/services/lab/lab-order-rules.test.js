@@ -448,3 +448,14 @@ test("a board card carries the pan and delivery method", () => {
   assert.equal(card.panNumber, "A1");
   assert.equal(card.deliveryMethod, "fedex");
 });
+
+test("practice stamping: a released case's job, a remake and a shop order carry their account", () => {
+  const released = planRxRelease({ caseRow: { ...caseRow, accountId: "acct-1" }, lines, orderNumber: 1, labOrderId: "lo-a", now });
+  assert.equal(released.labOrder.accountId, "acct-1");
+  assert.equal(planRxRelease({ caseRow, lines, orderNumber: 1, labOrderId: "lo-b", now }).labOrder.accountId, null, "a case without one stays unstamped");
+  const original = { id: "lo-1", source: "staff", sourceId: "lo-1", status: "shipped", clientUserId: "doc-1", accountId: "acct-1", patientName: "x" };
+  const remake = planRemake({ original, originalLines: [], reason: "Cracked", orderNumber: 2, labOrderId: "lo-c", now });
+  assert.equal(remake.labOrder.accountId, "acct-1");
+  const shop = planShopLabOrder({ orderId: "o1", clientUserId: "doc-1", accountId: "acct-2", quoteLines: [], orderNumber: 3, labOrderId: "lo-d", now });
+  assert.equal(shop.labOrder.accountId, "acct-2");
+});

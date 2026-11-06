@@ -18,6 +18,8 @@ import {
   LayoutGrid,
   Building2,
   Landmark,
+  Network,
+  Stethoscope,
   Truck,
   BarChart3,
   BellRing,
@@ -38,12 +40,13 @@ import { isStaffRole } from "@my-app/shared";
 import { ROUTES } from "../../config/routes.js";
 import { usePermission } from "../../hooks/usePermission.js";
 import { useAuth } from "../../hooks/useAuth.js";
+import { useAccountStore, selectActiveIsPractice } from "../../stores/account.store.js";
 import { MessagesBadge } from "../../modules/messaging/index.js";
 
 const mainItems = [
   { label: "Dashboard", to: ROUTES.DASHBOARD,   icon: LayoutDashboard, permission: null },
   { label: "Rx Forms",  to: ROUTES.RX_CHOOSER,  icon: ClipboardPlus,   permission: null },
-  { label: "Members",   to: ROUTES.MEMBERS,     icon: Users,           permission: "users:read" },
+  { label: "Members",   to: ROUTES.MEMBERS,     icon: Users,           permission: "users:read", selfServiceOnly: true },
   { label: "Settings",  to: ROUTES.SETTINGS,    icon: Settings,        permission: "settings:read" },
 ];
 
@@ -74,6 +77,8 @@ const adminItems = [
   { label: "Departments", to: ROUTES.ADMIN_DEPARTMENTS, icon: Building2 },
   { label: "Reasons",    to: ROUTES.ADMIN_REASONS,     icon: ListChecks },
   { label: "Users",      to: ROUTES.ADMIN_USERS,       icon: UserCog },
+  { label: "Practices",  to: ROUTES.ADMIN_PRACTICES,   icon: Stethoscope },
+  { label: "Groups",     to: ROUTES.ADMIN_GROUPS,      icon: Network },
   { label: "Products",   to: ROUTES.ADMIN_PRODUCTS,    icon: Package },
   { label: "Price lists", to: ROUTES.ADMIN_PRICE_LISTS, icon: Tags },
   { label: "Scheduling", to: ROUTES.ADMIN_SCHEDULING, icon: CalendarClock },
@@ -107,6 +112,7 @@ export function Sidebar() {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
   const isStaff = isStaffRole(user?.role);
+  const isPractice = useAccountStore(selectActiveIsPractice);
 
   return (
     <aside className="flex h-screen w-64 flex-col border-r border-gray-200 bg-white">
@@ -122,6 +128,7 @@ export function Sidebar() {
       <nav className="flex-1 space-y-1 px-3 py-4">
         {mainItems.map((item) => {
           if (item.permission && !can(item.permission)) return null;
+          if (item.selfServiceOnly && isPractice) return null;
           return <NavItem key={item.to} {...item} />;
         })}
 

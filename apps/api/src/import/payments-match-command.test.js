@@ -4,6 +4,7 @@ import { main } from "./fetch-cli.js";
 import { readExport } from "./export-table.js";
 import { derivedProvenance } from "./payments-export.js";
 import { invoicesFromRecords, clientResolver } from "./payments-match-command.js";
+import { readGroupsCsv } from "./groups-csv.js";
 import { fakeRawStore } from "../test/fake-raw-store.js";
 
 // Fake practices, accounts and invoice numbers only.
@@ -215,4 +216,46 @@ test("client resolver: account number or exact practice name; a shared account o
   assert.equal(resolve("ACC-2"), null, "two clients carry that account number");
   assert.equal(resolve(""), null);
   assert.equal(resolve(null), null);
+});
+
+// ── --groups (piece 11): the lab's own account_number,group list ─────────────
+const GROUPS = Buffer.from("account_number,group\nACC-100,North\nACC-200,North\n");
+const GROUP_PAY = table([HEAD, ["01/05/2026", "ACC-100", "20.00", "Invoices 50004", "secret note"]]);
+
+test("--groups attributes a payment that names a sibling's invoice and counts it as sameGroup, printing no labels", async () => {
+  const r = rig({ "p.xls": GROUP_PAY, "g.csv": GROUPS });
+  await seedArchive(r.store);
+  await r.run(["payments-match", "--file", "p.xls", "--review-out", "/a.csv"]);
+  assert.match(r.text(), /cross-client \(not applied\) 1 /);
+  const g = rig({ "p.xls": GROUP_PAY, "g.csv": GROUPS });
+  await seedArchive(g.store);
+  assert.equal(await g.run(["payments-match", "--file", "p.xls", "--groups", "g.csv", "--review-out", "/b.csv"]), 0);
+  const t = g.text();
+  assert.match(t, /attributed 1, client unknown \(invoices unclear\) 0, cross-client \(not applied\) 0 \(0 cents\)/);
+  assert.match(t, /same-group \(attributed to the sibling's invoice\): 1 payment\(s\), 2000 cents\./);
+  assert.match(t, /groups file: 2 practice\(s\) in 1 group\(s\), 0 problem row\(s\)\./);
+  for (const secret of ["North", "Example Dental", "Sample Smiles", "secret note"]) assert.ok(!t.includes(secret), secret);
+  assert.doesNotMatch(g.out.written.get("/b.csv").data, /50004/, "paid in full by the sibling's payment: not a review row");
+});
+
+test("groups csv with an unknown account is a problem; a duplicate account is dropped and reported; row numbers only", () => {
+  const resolve = clientResolver([{ seazonaId: "c1", payload: { accountNumber: "ACC-1" } }, { seazonaId: "c2", payload: { accountNumber: "ACC-2" } }, { seazonaId: "c3", payload: { accountNumber: "ACC-3" } }]);
+  const csv = Buffer.from('Account_Number , Group\nACC-1,"Big, Group"\nACC-2,Big Group\nNOPE-9,Big Group\nACC-3,\nACC-1,Other\n');
+  const { groupOf, problems } = readGroupsCsv(csv, resolve);
+  assert.deepEqual(groupOf, new Map([["c2", "Big Group"]]), "c1 is listed twice and so in neither group; c3 has no group");
+  assert.deepEqual(problems.map((p) => [p.kind, p.line]), [["unknown-account", 4], ["missing-group", 5], ["duplicate-account", 6]]);
+  assert.ok(JSON.stringify(problems).indexOf("NOPE") < 0 && JSON.stringify(problems).indexOf("Big") < 0, "no account numbers or labels in the problems");
+  assert.deepEqual(readGroupsCsv(Buffer.from("acct,team\nACC-1,x\n"), resolve).problems.map((p) => p.kind), ["bad-header"]);
+});
+
+test("--live with group-csv problems refuses unless --accept-group-problems; the waiver applies only with --live", async () => {
+  const bad = Buffer.from("account_number,group\nACC-100,North\nNOPE,North\n");
+  const r = rig({ "p.xls": GROUP_PAY, "bad.csv": bad });
+  await seedArchive(r.store);
+  await assert.rejects(r.run(["payments-match", "--file", "p.xls", "--groups", "bad.csv", "--live"]), /groups file has problem rows.*--accept-group-problems/);
+  assert.match(r.text(), /groups file: 1 practice\(s\) in 1 group\(s\), 1 problem row\(s\)\./);
+  assert.match(r.text(), /unknown-account x1: rows 3/);
+  assert.equal(r.store.files.size, 0);
+  assert.equal(await r.run(["payments-match", "--file", "p.xls", "--groups", "bad.csv", "--live", "--accept-group-problems"]), 0);
+  await assert.rejects(r.run(["payments-match", "--file", "p.xls", "--accept-group-problems"]), /applies only with --live/);
 });

@@ -210,8 +210,8 @@ test("pan numbers, pickups and deliveries read pieces 6 and 8 without notes or p
 
   // Deliveries: listStops in the report's transaction. Orders, pickups, then the practices.
   const dl = fakeTx({ selects: [
-    [{ id: "o1", orderNumber: 50001, status: "in_production", version: 3, dueDate: "2026-11-05", shippedAt: null, clientUserId: "c1", deliveryMethod: "local_delivery" }],
-    [{ id: "p1", pickupNumber: 7, boxCount: 2, clientUserId: "c1", partyKey: "practice:SZ1", scheduledDate: "2026-11-05", version: 1 }],
+    [{ id: "o1", orderNumber: 50001, status: "in_production", version: 3, dueDate: "2026-11-05", shippedAt: null, clientUserId: "c1", accountId: "acct1", deliveryMethod: "local_delivery" }],
+    [{ id: "p1", pickupNumber: 7, boxCount: 2, clientUserId: "c1", partyKey: "practice:acct1", scheduledDate: "2026-11-05", version: 1 }],
     [{ id: "c1", seazonaClientId: "SZ1", name: "Dr One", companyName: "One Dental", address1: "1 Main St", city: "Austin", state: "TX", zip: "78701", deliveryNotes: "gate code 1234" }],
   ] });
   const route = await report("operations.deliveries").run(dl, { range: { from: "2026-11-05", to: "2026-11-05" } }, boss, ctx());

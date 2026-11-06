@@ -16,8 +16,10 @@ const { decryptField, encryptField } = await import("../../lib/crypto.js");
 beforeEach(() => { notified.length = 0; });
 
 const NOW = new Date("2026-11-05T15:00:00Z"); // 9:00 CT on 2026-11-05
-const d1 = { id: "d1", role: "doctor", approvalStatus: "approved", seazonaClientId: "P1" };
-const d4 = { id: "d4", role: "doctor", approvalStatus: "approved", seazonaClientId: "P2" };
+// Logins carry their client scope (services/client-scope.js), as authenticate attaches it.
+const inPractices = (...accountIds) => ({ accountIds, payable: new Set(accountIds), via: new Map(), roles: new Map(), organizations: [] });
+const d1 = { id: "d1", role: "doctor", approvalStatus: "approved", scope: inPractices("P1") };
+const d4 = { id: "d4", role: "doctor", approvalStatus: "approved", scope: inPractices("P2") };
 const staff = { id: "s1", role: "lab" };
 const input = { earliestDate: "2026-11-06", latestDate: "2026-11-07", timePreference: "am", boxCount: 3, notes: "Ring the back bell" };
 const clientRow = (over = {}) => ({
@@ -89,8 +91,9 @@ test("request notifies staff with pickupNumber only", async () => {
   assert.deepEqual(args.data, { pickupNumber: 17, pickupId: out.id });
 });
 
-test("staff on-behalf request records source \"staff\"", async () => {
-  const tx = fakeTx({ selects: [[clientRow({ id: "d4", seazonaClientId: "P2" })], [{ max: 16 }]] });
+test("staff on-behalf request records source \"staff\", keyed to the client's practice", async () => {
+  // loadClient, then the client's direct practices (practice-of.js), then the number.
+  const tx = fakeTx({ selects: [[clientRow({ id: "d4" })], [{ accountId: "P2" }], [{ max: 16 }]] });
   await svc.requestPickup(staff, input, { onBehalfOfClientUserId: "d4", database: tx, now: NOW });
   const v = inserted(tx);
   assert.equal(v.source, "staff");
@@ -98,6 +101,39 @@ test("staff on-behalf request records source \"staff\"", async () => {
   assert.equal(v.requestedByUserId, "s1");
   assert.equal(v.partyKey, "practice:P2");
   assert.deepEqual(notified[0].args.audience, { kinds: ["staff"], excludeUserIds: ["s1"] });
+});
+
+test("staff entry for a client with several practices must choose one", async () => {
+  const two = () => fakeTx({ selects: [[clientRow({ id: "d4" })], [{ accountId: "P2" }, { accountId: "P3" }], [{ max: 16 }]] });
+  const refused = two();
+  await assert.rejects(svc.requestPickup(staff, input, { onBehalfOfClientUserId: "d4", database: refused, now: NOW }), (e) => e.code === "PRACTICE_REQUIRED");
+  assert.equal(inserted(refused), undefined);
+  const chosen = two();
+  await svc.requestPickup(staff, { ...input, accountId: "P3" }, { onBehalfOfClientUserId: "d4", database: chosen, now: NOW });
+  assert.equal(inserted(chosen).partyKey, "practice:P3");
+  // A practice the client is not a direct member of is not found.
+  await assert.rejects(svc.requestPickup(staff, { ...input, accountId: "P9" }, { onBehalfOfClientUserId: "d4", database: two(), now: NOW }), (e) => e.code === "NOT_FOUND");
+  // A client with no practice yet stays keyed to themself.
+  const none = fakeTx({ selects: [[clientRow({ id: "d4" })], [], [{ max: 16 }]] });
+  await svc.requestPickup(staff, input, { onBehalfOfClientUserId: "d4", database: none, now: NOW });
+  assert.equal(inserted(none).partyKey, "user:d4");
+});
+
+test("pickup create with account=all → 422 choose a practice", async () => {
+  const both = { id: "d8", role: "doctor", approvalStatus: "approved", scope: inPractices("P1", "P2") };
+  for (const accountId of [undefined, "all"]) {
+    const tx = fakeTx({ selects: [[clientRow({ id: "d8" })], [{ max: 16 }]] });
+    await assert.rejects(
+      svc.requestPickup(both, { ...input, ...(accountId ? { accountId } : {}) }, { database: tx, now: NOW }),
+      (e) => e.statusCode === 422 && e.code === "PRACTICE_REQUIRED" && e.message === "Choose a practice.",
+    );
+    assert.equal(inserted(tx), undefined, "refused before anything is written");
+  }
+  const tx = fakeTx({ selects: [[clientRow({ id: "d8" })], [{ max: 16 }]] });
+  await svc.requestPickup(both, { ...input, accountId: "P2" }, { database: tx, now: NOW });
+  assert.equal(inserted(tx).partyKey, "practice:P2");
+  // A practice outside the login's scope reads as not found.
+  await assert.rejects(svc.requestPickup(d1, { ...input, accountId: "P2" }, { database: fakeTx({ selects: [[clientRow()], [{ max: 1 }]] }), now: NOW }), (e) => e.statusCode === 404);
 });
 
 test("staff must name a client, and it must be a doctor", async () => {
@@ -119,7 +155,7 @@ function queueDb(...rowSets) {
   return { db, calls };
 }
 
-test("doctor lists practice-wide pickups (same seazonaClientId) and not another practice's", async () => {
+test("doctor lists practice-wide pickups (their scope's practices) and not another practice's", async () => {
   const { db, calls } = queueDb([], [[0]]);
   await svc.listPickups(d1, { limit: 25 }, { database: db });
   const rowsQuery = calls[0];
@@ -131,8 +167,24 @@ test("doctor lists practice-wide pickups (same seazonaClientId) and not another 
   assert.deepEqual(other.calls[0].params.slice(0, 2), ["user:d4", "practice:P2"]);
 });
 
-test("a doctor with no seazonaClientId lists only their own user:<id> pickups and can't cancel a practice pickup", async () => {
-  const solo = { id: "d6", role: "doctor", approvalStatus: "approved", seazonaClientId: null };
+test("a client lists one practice with ?account=, the whole scope without, and 404 outside it", async () => {
+  const both = { id: "g1", role: "user", scope: inPractices("P1", "P2") };
+  const one = queueDb([], [[0]]);
+  await svc.listPickups(both, { account: "P2", limit: 25 }, { database: one.db });
+  assert.match(one.calls[0].sql, /"party_key" in \(\$1\)/);
+  assert.equal(one.calls[0].params[0], "practice:P2");
+  const all = queueDb([], [[0]]);
+  await svc.listPickups(both, { account: "all", limit: 25 }, { database: all.db });
+  assert.deepEqual(all.calls[0].params.slice(0, 3), ["user:g1", "practice:P1", "practice:P2"]);
+  await assert.rejects(svc.listPickups(d1, { account: "P2" }, { database: queueDb().db }), (e) => e.statusCode === 404 && e.code === "NOT_FOUND");
+  // Staff ignore the client filter.
+  const st = queueDb([], [[0]]);
+  await svc.listPickups(staff, { account: "P2", limit: 25 }, { database: st.db });
+  assert.doesNotMatch(st.calls[0].sql, /party_key" in/);
+});
+
+test("a doctor with no practice lists only their own user:<id> pickups and can't cancel a practice pickup", async () => {
+  const solo = { id: "d6", role: "doctor", approvalStatus: "approved", scope: inPractices() };
   const { db, calls } = queueDb([], [[0]]);
   await svc.listPickups(solo, { limit: 25 }, { database: db });
   assert.match(calls[0].sql, /"party_key" in \(\$1\)/);

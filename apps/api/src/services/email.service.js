@@ -455,8 +455,9 @@ export async function sendRxSubmissionReceived({ caseNumber, practiceName, devic
 /**
  * Doctor invoice-payment receipt. Sent (soft-fail) after a successful invoice
  * payment is recorded — covers the saved-card, hosted-card, AutoPay, and admin
- * offline-record flows. `invoices` are { number, amountCents } per invoice the
- * payment was applied to.
+ * offline-record flows. `to` is the payer alone. `invoices` are
+ * { number, accountNumber?, amountCents } per invoice the payment was applied
+ * to: numbers only, never a name or a patient.
  *
  * `wasCharged` (default true) distinguishes an actual card charge from an
  * admin recording a payment that was already taken by other means (check,
@@ -470,15 +471,20 @@ export async function sendPaymentReceipt({ to, amountCents, invoices = [], trans
     month: "long",
     day: "numeric",
   });
+  // One payment can span several accounts (a group admin's): each row then names its account number.
+  const withAccounts = invoices.some((i) => i.accountNumber);
+  const cell = "padding:10px 12px;border-bottom:1px solid #eef1f4;color:#1a2733;";
   const rows = invoices
     .map(
       (i) => `
         <tr>
-          <td style="padding:10px 12px;border-bottom:1px solid #eef1f4;color:#1a2733;">Invoice ${esc(i.number)}</td>
-          <td style="padding:10px 12px;border-bottom:1px solid #eef1f4;color:#1a2733;text-align:right;">${formatCents(i.amountCents)}</td>
+          <td style="${cell}">Invoice ${esc(i.number)}</td>${withAccounts ? `
+          <td style="${cell}">${esc(i.accountNumber || "—")}</td>` : ""}
+          <td style="${cell}text-align:right;">${formatCents(i.amountCents)}</td>
         </tr>`
     )
     .join("");
+  const th = "padding:8px 12px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#8a98a6;border-bottom:2px solid #eef1f4;";
 
   const heading = wasCharged ? "Payment received" : "Payment recorded";
   const intro = wasCharged
@@ -493,14 +499,15 @@ export async function sendPaymentReceipt({ to, amountCents, invoices = [], trans
       <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
         <thead>
           <tr>
-            <th style="padding:8px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#8a98a6;border-bottom:2px solid #eef1f4;">Invoice</th>
-            <th style="padding:8px 12px;text-align:right;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:#8a98a6;border-bottom:2px solid #eef1f4;">Applied</th>
+            <th style="${th}text-align:left;">Invoice</th>${withAccounts ? `
+            <th style="${th}text-align:left;">Account</th>` : ""}
+            <th style="${th}text-align:right;">Applied</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
         <tfoot>
           <tr>
-            <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${totalLabel}</td>
+            <td colspan="${withAccounts ? 2 : 1}" style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${totalLabel}</td>
             <td style="padding:12px;text-align:right;font-weight:700;font-size:15px;">${formatCents(amountCents)}</td>
           </tr>
         </tfoot>
@@ -594,17 +601,19 @@ export async function sendInvoiceNotice({ to, invoiceId, invoiceNumber, totalCen
 }
 
 /** "Your statement is ready" — staff-triggered; the closing balance and a portal link only. */
-export async function sendStatementNotice({ to, monthLabel, closingCents }) {
+export async function sendStatementNotice({ to, monthLabel, closingCents, combined = false }) {
   if (!to) return false;
   const url = `${env.APP_URL}/doctor/invoices`;
+  // `combined`: the group's combined statement (sent to group admins only); still no names, just the total.
+  const what = combined ? "combined group statement" : "statement";
   const html = `
     <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1a2733;">
-      <h1 style="font-size:20px;margin:0 0 12px;">Your ${esc(monthLabel)} statement</h1>
+      <h1 style="font-size:20px;margin:0 0 12px;">Your ${esc(monthLabel)} ${what}</h1>
       <p style="margin:0 0 20px;">Balance at the end of the month: <strong>${formatCents(closingCents)}</strong></p>
       <p style="margin:0 0 24px;"><a href="${url}" style="display:inline-block;padding:12px 24px;background:#13AEEF;color:#fff;text-decoration:none;border-radius:999px;font-weight:600;">View invoices and statements</a></p>
       <p style="margin:0;font-size:12px;color:#8a98a6;">Sign in to the Diamond Orthotic Laboratory portal to download the statement.</p>
     </div>`;
-  return deliver({ to, subject: `${monthLabel} statement — Diamond Orthotic Laboratory`, html });
+  return deliver({ to, subject: `${monthLabel} ${what} — Diamond Orthotic Laboratory`, html });
 }
 
 /**

@@ -1,7 +1,7 @@
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, eq, ne, or, inArray, isNotNull, isNull, count, exists, sql } from "drizzle-orm";
 import { isPossiblyIncomplete } from "./seazona-fetch.js";
 import { isOpeningBalanceInvoice, isoDateIn, LAB_TIMEZONE, LEGACY_SETTLEMENT_SOURCE, OPENING_BALANCE_PREFIX, TERMINAL_LAB_STATUSES } from "@my-app/shared";
-import { users, invoices, invoicePayments, labOrders } from "../db/schema/index.js";
+import { users, accounts, invoices, invoicePayments, labOrders, rxCases } from "../db/schema/index.js";
 import { paidCentsFor } from "../services/billing/paid-cents.js";
 import { deriveBalance } from "../services/billing/invoice-rules.js";
 import { orderStatusFor } from "./seazona-records.js";
@@ -94,6 +94,33 @@ async function legacyMoney({ db, raw, legacy, accountOfUser }) {
   return { history, accountKey, balanceByAccount, unowned, historyWithoutSettlement };
 }
 
+/**
+ * Owned records (a doctor's rx case, lab order or invoice) with no practice:
+ * a backfill gap, which every scope check fails closed on. Counted only when
+ * the backfill could have stamped it (backfill-practices.js): the owner is an
+ * eligible doctor (approved, not deleted; owners.js isInvoiceOwner), OR the
+ * owner's trimmed, non-empty client id is the legacy_client_key of an active
+ * client account (a former doctor's records stay with the practice). A former
+ * doctor whose key has no practice stays null (fail closed) and is not counted;
+ * blocked or conflicting keys are surfaced by the backfill's own counts.
+ */
+export const ownerCouldBeMapped = or(
+  and(eq(users.role, "doctor"), eq(users.approvalStatus, "approved"), ne(users.status, "deleted")),
+  exists(
+    sql`(select 1 from ${accounts} where ${accounts.status} = 'active' and ${accounts.isClient} and ${accounts.legacyClientKey} = nullif(btrim(${users.seazonaClientId}), ''))`.mapWith(Boolean),
+  ),
+);
+
+async function recordsWithoutAccount(db) {
+  const one = async (table, owner) => {
+    const [row] = await db.select({ n: count() }).from(table).innerJoin(users, eq(users.id, owner))
+      .where(and(isNull(table.accountId), ownerCouldBeMapped));
+    return Number(row?.n ?? 0);
+  };
+  const out = { rxCases: await one(rxCases, rxCases.userId), labOrders: await one(labOrders, labOrders.clientUserId), invoices: await one(invoices, invoices.clientUserId) };
+  return { ...out, total: out.rxCases + out.labOrders + out.invoices };
+}
+
 /** The target's side of parity, strictly reads. Balances use the app's own ledger rule (deriveBalance over paidCentsFor). */
 export async function readAppSide(db, raw) {
   const userRows = await db
@@ -120,6 +147,7 @@ export async function readAppSide(db, raw) {
     openOrders: orders.filter((o) => isOpenStatus(o.status)),
     unownedOrders: orders.filter((o) => !o.clientUserId).map((o) => ({ sourceId: o.sourceId, open: isOpenStatus(o.status) })),
     openingInvoices: legacy.length - m.history.length,
+    recordsWithoutAccount: await recordsWithoutAccount(db),
   };
 }
 

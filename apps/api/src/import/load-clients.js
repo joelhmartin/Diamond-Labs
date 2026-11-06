@@ -22,7 +22,7 @@ async function run({ raw, db, live, noEmail, emailTaken, now, guard }) {
   const userRows = await db
     .select({ id: users.id, email: users.email, seazonaClientId: users.seazonaClientId, seazonaAccountNumber: users.seazonaAccountNumber, role: users.role, approvalStatus: users.approvalStatus, emailVerifiedAt: users.emailVerifiedAt, status: users.status, createdAt: users.createdAt })
     .from(users);
-  const slugRows = await db.select({ slug: accounts.slug }).from(accounts);
+  const slugRows = await db.select({ slug: accounts.slug, accountNumber: accounts.accountNumber, legacyClientKey: accounts.legacyClientKey }).from(accounts);
   const profileRows = await db.select({ userId: doctorProfiles.userId }).from(doctorProfiles);
   const plan = planClients(clients, existingFromRows(userRows, slugRows, profileRows), { noEmail, emailTaken, now });
 

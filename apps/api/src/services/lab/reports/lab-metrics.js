@@ -114,7 +114,7 @@ export const paymentDay = ledgerRowDay;
 /** Ledger rows dated in a lab-day range (ledgerRowDayBetween: index-friendly, same rows as `paymentDay between`). */
 export const paymentDayBetween = (range) => ledgerRowDayBetween(range);
 
-/** The JS side of `clientName` for rows from loadClientNames / listReceivables. */
+/** The JS side of `clientName` for rows from loadClientNames, and for listReceivables rows (a practice's name). */
 export const clientLabel = (c) => c?.practice ?? c?.name ?? null;
 
 /** Rows from `execute` (postgres-js returns an array; other drivers `{ rows }`). */

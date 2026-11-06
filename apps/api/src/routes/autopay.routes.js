@@ -1,5 +1,5 @@
 import { authenticate } from "../middleware/authenticate.js";
-import { requireApprovedDoctor } from "../middleware/require-role.js";
+import { requireClientPortal } from "../middleware/require-role.js";
 import { validate } from "../middleware/validate.js";
 import { autopayEnrollSchema, ERROR_CODES } from "@my-app/shared";
 import * as autopayService from "../services/autopay.service.js";
@@ -102,7 +102,7 @@ function gatewayErrorResponse(reply) {
 }
 
 export default async function autopayRoutes(fastify) {
-  fastify.get("/autopay", { preHandler: [authenticate, requireApprovedDoctor] }, async (request, reply) => {
+  fastify.get("/autopay", { preHandler: [authenticate, requireClientPortal] }, async (request, reply) => {
     const enrollment = await autopayService.getEnrollment(request.user.id);
 
     // listCardsForUser hits Authorize.net and can throw on a gateway failure
@@ -137,7 +137,7 @@ export default async function autopayRoutes(fastify) {
   });
 
   fastify.put("/autopay", {
-    preHandler: [authenticate, requireApprovedDoctor, validate(autopayEnrollSchema)],
+    preHandler: [authenticate, requireClientPortal, validate(autopayEnrollSchema)],
   }, async (request, reply) => {
     try {
       const enrollment = await autopayService.upsertEnrollment({
@@ -176,7 +176,7 @@ export default async function autopayRoutes(fastify) {
     }
   });
 
-  fastify.delete("/autopay", { preHandler: [authenticate, requireApprovedDoctor] }, async (request) => {
+  fastify.delete("/autopay", { preHandler: [authenticate, requireClientPortal] }, async (request) => {
     await autopayService.deleteEnrollment(request.user.id);
     await auditService.logSafe({
       userId: request.user.id,
@@ -188,7 +188,7 @@ export default async function autopayRoutes(fastify) {
     return { data: { message: "AutoPay cancelled." } };
   });
 
-  fastify.get("/autopay/attempts", { preHandler: [authenticate, requireApprovedDoctor] }, async (request) => {
+  fastify.get("/autopay/attempts", { preHandler: [authenticate, requireClientPortal] }, async (request) => {
     const rows = await db
       .select()
       .from(autopayAttempts)

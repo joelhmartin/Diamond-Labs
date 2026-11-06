@@ -1,5 +1,8 @@
 import { ERROR_CODES } from "@my-app/shared";
 
+// The client-portal guard lives with the client scope it reads; re-exported here beside the other guards.
+export { requireClientPortal } from "../services/client-scope.js";
+
 /**
  * Generic role guard — accepts one or more allowed user roles.
  */

@@ -8,6 +8,7 @@ import {
 } from "../../db/schema/index.js";
 import { createId } from "../../lib/id.js";
 import { pageOf, containsPattern, prefixPattern } from "../../lib/list-query.js";
+import { practiceForNewRecord } from "../practice-of.js";
 import { sealOrder, openOrder, sealEvent, openEvent } from "./lab-order-crypto.js";
 import { variantIdsForCodes } from "./lab-variants.js";
 import { decryptRxPhi } from "../rx/phi-crypto.js";
@@ -117,16 +118,32 @@ export async function latestDeliveryMethod(tx, clientUserId) {
 }
 
 /**
+ * The shop buyer's practice (null for a guest or a shopper with none). This runs after the
+ * card is charged, so it must never refuse: a buyer in several practices (checkout cannot ask
+ * yet) gets an unstamped order, which fails closed (staff only) and shows in the parity count.
+ */
+async function buyerPractice(tx, clientUserId) {
+  try {
+    return await practiceForNewRecord(tx, { ownerUserId: clientUserId });
+  } catch (err) {
+    if (err?.code !== "PRACTICE_REQUIRED") throw err;
+    console.error("[LAB][SHOP_ORDER_PRACTICE_UNKNOWN] buyer belongs to several practices; order left without an account");
+    return null;
+  }
+}
+
+/**
  * The lab order and the paid shop invoice for a just-paid shop order. Runs in
  * its own transaction right after the paid order commits (never inside it), so
  * a failure can't roll back a charged order; checkout logs
  * [LAB][SHOP_ORDER_FAILED] and services/lab/shop-order-repair.service.js picks the order up.
  */
 export async function createShopLabOrder(tx, { orderId, clientUserId = null, quote, transactionId }) {
+  const accountId = await buyerPractice(tx, clientUserId);
   const orderNumber = await allocateOrderNumber(tx);
-  const plan = planShopLabOrder({ orderId, clientUserId, quoteLines: quote.lines, orderNumber, labOrderId: createId(), now: new Date() });
+  const plan = planShopLabOrder({ orderId, clientUserId, accountId, quoteLines: quote.lines, orderNumber, labOrderId: createId(), now: new Date() });
   await insertPlan(tx, { labOrder: plan.labOrder, lines: plan.lines, events: [plan.event] });
-  await createShopInvoice(tx, { labOrderId: plan.labOrder.id, clientUserId, quote, transactionId });
+  await createShopInvoice(tx, { labOrderId: plan.labOrder.id, clientUserId, accountId, quote, transactionId });
   return { id: plan.labOrder.id, orderNumber };
 }
 

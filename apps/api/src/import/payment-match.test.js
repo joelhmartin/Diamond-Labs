@@ -154,3 +154,50 @@ test("derived balances: credit-definite by default; open keeps unclear whole; ov
   assert.deepEqual(open.rows.find((r) => r.key === "1"), { key: "1", cents: 10000 });
   assert.throws(() => derivedBalances(result, { unclear: "review" }), /credit-definite or open/);
 });
+
+// A group is the lab's own label for practices that share a bill (piece 11): a payment from one of them may name a sibling's invoice.
+const groups = (pairs) => new Map(pairs);
+
+test("payment naming a sibling invoice in the same group is applied", () => {
+  const r = matchPayments({
+    invoices: [inv(1, 5000, "c1"), inv(2, 3000, "c2")],
+    payments: [pay("a", 3000, "Inv 2", "c1"), pay("b", 8000, "Inv 1, 2", "c1")],
+    groupOf: groups([["c1", "north"], ["c2", "north"]]),
+  });
+  const m = byNumber(r);
+  assert.deepEqual(r.sameGroup, ["a", "b"]);
+  assert.deepEqual(r.crossClient, []);
+  assert.equal(r.attributedPayments, 2);
+  assert.equal(m.get(2).definiteCents, 6000, "applied like any attributed payment (here the shared payment adds up too)");
+  assert.equal(m.get(1).definiteCents, 5000);
+});
+
+test("same payment without groups stays crossClient", () => {
+  const input = { invoices: [inv(1, 5000, "c1"), inv(2, 3000, "c2")], payments: [pay("a", 3000, "Inv 2", "c1")] };
+  for (const groupOf of [undefined, new Map()]) {
+    const r = matchPayments({ ...input, groupOf });
+    assert.deepEqual(r.crossClient, [{ paymentId: "a", invoiceNumbers: [2] }]);
+    assert.deepEqual(r.sameGroup, []);
+    assert.equal(byNumber(r).get(2).definiteCents, 0);
+  }
+});
+
+test("different groups stay crossClient, and so does a client with no group", () => {
+  const r = matchPayments({
+    invoices: [inv(1, 5000, "c1"), inv(2, 3000, "c2"), inv(3, 100, "c3")],
+    payments: [pay("a", 3000, "Inv 2", "c1"), pay("b", 100, "Inv 3", "c1")],
+    groupOf: groups([["c1", "north"], ["c2", "south"]]),
+  });
+  assert.deepEqual(r.crossClient.map((c) => c.paymentId), ["a", "b"]);
+  assert.deepEqual(r.sameGroup, []);
+});
+
+test("a payment naming one invoice in the group and one outside it is still crossClient", () => {
+  const r = matchPayments({
+    invoices: [inv(1, 5000, "c1"), inv(2, 3000, "c2"), inv(3, 100, "c3")],
+    payments: [pay("a", 3100, "Inv 2, 3", "c1")],
+    groupOf: groups([["c1", "north"], ["c2", "north"], ["c3", "south"]]),
+  });
+  assert.deepEqual(r.crossClient.map((c) => c.paymentId), ["a"]);
+  assert.deepEqual(r.sameGroup, []);
+});

@@ -30,7 +30,7 @@ test("a practice that is not an active doctor is refused before anything is writ
 });
 
 test("quick entry: one transaction writes the order (patient sealed), its event and a draft invoice; missing due uses the scheduling default", async () => {
-  const tx = fakeTx({ selects: [doctor, [{ max: 100049 }], [{ max: 500010 }]] });
+  const tx = fakeTx({ selects: [doctor, [], [{ max: 100049 }], [{ max: 500010 }]] });
   const out = await createStaffOrder({ input: quick, byUserId: "staff1" }, fakeDb(tx));
   assert.equal(out.labOrder.orderNumber, 100050);
   assert.equal(out.invoice.invoiceNumber, 500011);
@@ -49,19 +49,19 @@ test("quick entry: one transaction writes the order (patient sealed), its event 
 
 test("scheduling with nothing to compute enters the order without a due date", async () => {
   sched.defaultDueAt.mockResolvedValueOnce({ dueDate: null, plan: null });
-  const tx = fakeTx({ selects: [doctor, [{ max: 100049 }], [{ max: 500010 }]] });
+  const tx = fakeTx({ selects: [doctor, [], [{ max: 100049 }], [{ max: 500010 }]] });
   await createStaffOrder({ input: quick, byUserId: "staff1" }, fakeDb(tx));
   assert.equal(inserts(tx)[0].dueDate, null);
 });
 
 test("a requested due date is kept", async () => {
-  const tx = fakeTx({ selects: [doctor, [{ max: 100049 }], [{ max: 500010 }]] });
+  const tx = fakeTx({ selects: [doctor, [], [{ max: 100049 }], [{ max: 500010 }]] });
   await createStaffOrder({ input: { ...quick, dueDate: "2026-12-24" }, byUserId: "staff1" }, fakeDb(tx));
   assert.equal(inserts(tx)[0].dueDate, "2026-12-24");
 });
 
 test("a pan held by another open order comes back as a warning, never a refusal", async () => {
-  const tx = fakeTx({ selects: [doctor, [{ max: 100049 }], [{ max: 500010 }], [{ orderNumber: 100012 }]] });
+  const tx = fakeTx({ selects: [doctor, [], [{ max: 100049 }], [{ max: 500010 }], [{ orderNumber: 100012 }]] });
   const out = await createStaffOrder({ input: { ...quick, pan: "A12" }, byUserId: "staff1" }, fakeDb(tx));
   assert.deepEqual(out.panWarning, { orderNumber: 100012 });
   assert.equal(inserts(tx)[0].panNumber, "A12");
@@ -69,14 +69,14 @@ test("a pan held by another open order comes back as a warning, never a refusal"
 
 test("tags are applied to the new order in the same transaction", async () => {
   const tag = { id: "t1", recordType: "lab_order", label: "Rush", color: "red", position: 0, active: true };
-  const tx = fakeTx({ selects: [doctor, [{ max: 100049 }], [{ max: 500010 }], [tag], []] });
+  const tx = fakeTx({ selects: [doctor, [], [{ max: 100049 }], [{ max: 500010 }], [tag], []] });
   const out = await createStaffOrder({ input: { ...quick, tagIds: ["t1"] }, byUserId: "staff1" }, fakeDb(tx));
   const applied = inserts(tx).find((v) => Array.isArray(v) && v[0]?.tagId === "t1");
   assert.deepEqual([applied[0].recordType, applied[0].recordId, applied[0].createdBy], ["lab_order", out.labOrder.id, "staff1"]);
 });
 
 test("an intake id is promoted onto the new order in the same transaction", async () => {
-  const tx = fakeTx({ selects: [doctor, [{ max: 100049 }], [{ max: 500010 }]], updates: [[{ id: "in1" }], []] });
+  const tx = fakeTx({ selects: [doctor, [], [{ max: 100049 }], [{ max: 500010 }]], updates: [[{ id: "in1" }], []] });
   const out = await createStaffOrder({ input: { ...quick, intakeId: "in1" }, byUserId: "staff1" }, fakeDb(tx));
   const sets = tx.log.filter((e) => e.op === "set").map((e) => e.values);
   const claim = sets.find((v) => v.status === "promoted");
@@ -84,7 +84,7 @@ test("an intake id is promoted onto the new order in the same transaction", asyn
 });
 
 test("an intake that is already used refuses the whole create", async () => {
-  const tx = fakeTx({ selects: [doctor, [{ max: 100049 }], [{ max: 500010 }], [{ status: "promoted" }]], updates: [[]] });
+  const tx = fakeTx({ selects: [doctor, [], [{ max: 100049 }], [{ max: 500010 }], [{ status: "promoted" }]], updates: [[]] });
   await assert.rejects(
     createStaffOrder({ input: { ...quick, intakeId: "in1" }, byUserId: "staff1" }, fakeDb(tx)),
     (e) => e instanceof LabOrderError && /Already used/.test(e.message),
@@ -93,7 +93,7 @@ test("an intake that is already used refuses the whole create", async () => {
 
 test("lines come from the catalog and are priced for the client", async () => {
   const v1 = { id: "v1", code: "2608", name: "DDSO Nylon", basePriceCents: 45000, taxable: false };
-  const tx = fakeTx({ selects: [doctor, [v1], [{ max: 100049 }], [v1], [{ variantId: "v1", priceCents: 40500 }], [], [{ max: 500010 }]] });
+  const tx = fakeTx({ selects: [doctor, [], [v1], [{ max: 100049 }], [v1], [{ variantId: "v1", priceCents: 40500 }], [], [{ max: 500010 }]] });
   await createStaffOrder({ input: { ...quick, lines: [{ variantId: "v1", qty: 2, name: "nope" }] }, byUserId: "staff1" }, fakeDb(tx));
   assert.deepEqual(sched.defaultDueAt.mock.calls[0][1].variantIds, ["v1"], "the workflow is picked from the ordered variants");
   const [, benchLines, , invoice, invoiceLines] = inserts(tx);
@@ -108,4 +108,37 @@ test("price preview prices catalog lines for the client without writing", async 
   const out = await previewPrices({ clientUserId: "doc1", lines: [{ variantId: "v1", qty: 1 }] }, tx);
   assert.deepEqual(out.map((l) => [l.description, l.unitCents, l.priceSource]), [["DDSO Nylon", 40500, "client"]]);
   assert.equal(tx.log.filter((l) => l.op === "insert" || l.op === "update").length, 0);
+});
+
+const memberOf = (...ids) => ids.map((accountId) => ({ accountId }));
+
+test("practice stamping: a client in one practice defaults to it, on the order and its draft invoice", async () => {
+  const tx = fakeTx({ selects: [doctor, memberOf("acct1"), [{ max: 100049 }], [{ max: 500010 }]] });
+  await createStaffOrder({ input: quick, byUserId: "staff1" }, fakeDb(tx));
+  const [order, , invoice] = inserts(tx);
+  assert.equal(order.accountId, "acct1");
+  assert.equal(invoice.accountId, "acct1");
+});
+
+test("practice stamping: two practices and none chosen is PRACTICE_REQUIRED, before anything is written", async () => {
+  const tx = fakeTx({ selects: [doctor, memberOf("acct1", "acct2")] });
+  await assert.rejects(
+    createStaffOrder({ input: quick, byUserId: "staff1" }, fakeDb(tx)),
+    (e) => e.code === "PRACTICE_REQUIRED" && e.message === "Choose which practice this is for.",
+  );
+  assert.equal(tx.log.filter((l) => l.op === "insert" || l.op === "execute").length, 0);
+});
+
+test("practice stamping: a chosen practice is used; one the client is not in reads as NOT_FOUND", async () => {
+  const ok = fakeTx({ selects: [doctor, memberOf("acct1", "acct2"), [{ max: 100049 }], [{ max: 500010 }]] });
+  await createStaffOrder({ input: { ...quick, accountId: "acct2" }, byUserId: "staff1" }, fakeDb(ok));
+  assert.equal(inserts(ok)[0].accountId, "acct2");
+  const bad = fakeTx({ selects: [doctor, memberOf("acct1")] });
+  await assert.rejects(createStaffOrder({ input: { ...quick, accountId: "other" }, byUserId: "staff1" }, fakeDb(bad)), (e) => e.code === "NOT_FOUND");
+});
+
+test("practice stamping: a client with no practice yet enters with a null account (fails closed, parity reports it)", async () => {
+  const tx = fakeTx({ selects: [doctor, [], [{ max: 100049 }], [{ max: 500010 }]] });
+  await createStaffOrder({ input: quick, byUserId: "staff1" }, fakeDb(tx));
+  assert.equal(inserts(tx)[0].accountId, null);
 });

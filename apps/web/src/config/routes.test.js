@@ -26,3 +26,10 @@ test("the New order route is declared before the order detail route", () => {
   assert.ok(keys.indexOf("LAB_ORDER_NEW") >= 0 && keys.indexOf("LAB_ORDER_NEW") < keys.indexOf("LAB_ORDER_DETAIL"));
   assert.equal(ROUTES.LAB_ORDER_NEW, "/lab/orders/new");
 });
+
+test("a practice login that is not a doctor lands in the portal; staff never do", () => {
+  assert.equal(roleHome({ role: "user" }, { hasPractices: true }), ROUTES.DOCTOR_INVOICES);
+  assert.equal(roleHome({ role: "user" }, { hasPractices: false }), ROUTES.DASHBOARD);
+  assert.equal(roleHome({ role: "admin" }, { hasPractices: true }), ROUTES.LAB_DASHBOARD_HOME);
+  assert.equal(roleHome({ role: "lab" }, { hasPractices: true }), ROUTES.LAB_BOARD);
+});

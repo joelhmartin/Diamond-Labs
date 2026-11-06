@@ -37,3 +37,4 @@ export { tagDefinitions, recordTags, recordStars } from "../../modules/record-ta
 export { recordFiles } from "../../modules/record-files/schema.js";
 export { adjustmentReasons, labOrderLineMaterials } from "./production-desk.js";
 export { intakes } from "../../modules/upload-intake/schema.js";
+export { organizations, organizationAccounts, organizationAdmins } from "../../modules/organizations/schema.js";

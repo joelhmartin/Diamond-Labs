@@ -59,3 +59,22 @@ test("staff mode needs a client and posts to /lab/pickups with clientUserId", as
   assert.equal(api.post.mock.calls[0][0], "/lab/pickups");
   assert.equal(api.post.mock.calls[0][1].clientUserId, "u1");
 });
+
+test("staff entry for a client in several practices must choose the practice, and posts its accountId", async () => {
+  api.get.mockImplementation(async (url) => (url.startsWith("/lab/clients/")
+    ? { data: { data: { practices: [{ id: "acc1", name: "North Office", accountNumber: "1042" }, { id: "acc2", name: "South Office", accountNumber: null }] } } }
+    : { data: { data: { clients: [{ id: "u1", label: "Acme Dental (Dr. A)" }] } } }));
+  const { onClose } = mount({ staff: true });
+  await screen.findByRole("option", { name: "Acme Dental (Dr. A)" });
+  fireEvent.change(screen.getByLabelText("Client"), { target: { value: "u1" } });
+  await screen.findByRole("option", { name: "North Office (1042)" });
+  assert.ok(api.get.mock.calls.some(([url]) => url === "/lab/clients/u1/practices"));
+  fireEvent.click(screen.getByRole("button", { name: "Create pickup" }));
+  assert.match(screen.getByRole("alert").textContent, /Choose which practice/);
+  assert.equal(api.post.mock.calls.length, 0);
+  fireEvent.change(screen.getByLabelText("Practice"), { target: { value: "acc2" } });
+  fireEvent.click(screen.getByRole("button", { name: "Create pickup" }));
+  await waitFor(() => assert.equal(onClose.mock.calls.length, 1));
+  assert.equal(api.post.mock.calls[0][0], "/lab/pickups");
+  assert.equal(api.post.mock.calls[0][1].accountId, "acc2");
+});

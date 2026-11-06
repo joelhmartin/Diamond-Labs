@@ -187,6 +187,8 @@ export function doctorCaseView(caseRow, labOrders = []) {
   const { patientName, deviceSummary } = caseSummary(caseRow);
   return {
     id: caseRow.id,
+    // The practice it belongs to (an id): the portal's Practice column and filter read it.
+    accountId: caseRow.accountId ?? null,
     caseNumber: caseRow.caseNumber,
     patientName,
     deviceSummary,

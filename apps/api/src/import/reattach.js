@@ -11,7 +11,10 @@ const BATCH = 500;
  *
  * cfg: { table, ownerField (the owner column's property name), ownerCol,
  * keyCol, versionCol, scope (a where condition: e.g. kind = legacy), action,
- * targetType, metadataKey, guard? }. `version` and `updatedAt` are set by
+ * targetType, metadataKey, guard?, accountCol?, accountOf? }. With `accountOf`
+ * (owner user id -> practice account id, practice-accounts.js) the account is set
+ * together with the owner, only where the row has none (coalesce: a stamped
+ * account is never overwritten). `version` and `updatedAt` are set by
  * property name (every target table has both). Returns how many rows were attached.
  */
 export async function reattachOwners(db, plan, cfg) {
@@ -21,8 +24,12 @@ export async function reattachOwners(db, plan, cfg) {
       const batch = ids.slice(i, i + BATCH);
       cfg.guard?.();
       await db.transaction(async (tx) => {
+        const account = cfg.accountOf?.(owner) ?? null;
         const rows = await tx.update(cfg.table)
-          .set({ [cfg.ownerField]: owner, version: sql`${cfg.versionCol} + 1`, updatedAt: new Date() })
+          .set({
+            [cfg.ownerField]: owner, version: sql`${cfg.versionCol} + 1`, updatedAt: new Date(),
+            ...(account ? { accountId: sql`coalesce(${cfg.accountCol}, ${account})` } : {}),
+          })
           .where(and(cfg.scope, isNull(cfg.ownerCol), inArray(cfg.keyCol, batch)))
           .returning({ id: cfg.table.id });
         attached += rows.length;

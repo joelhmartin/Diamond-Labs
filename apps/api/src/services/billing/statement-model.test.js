@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { buildStatementModel, monthBounds, statementEvents } from "./statement-model.js";
+import { buildStatementModel, buildCombinedStatementModel, monthBounds, statementEvents } from "./statement-model.js";
 
 const invoices = [
   { id: "a", invoiceNumber: 500001, status: "issued", totalCents: 30000, issuedAt: new Date("2026-09-10T15:00:00Z"), dueDate: "2026-10-10", voidedAt: null, labOrderNumber: 100200 },
@@ -86,4 +86,39 @@ test("statements: an opening balance and a Seazona settlement read plainly", () 
     ["settlement", "Settled in Seazona — invoice #11115", -17950],
     ["invoice", "Opening balance carried from Seazona — invoice #16211", 9000],
   ]);
+});
+
+test("combined PDF shows one section per practice and a group total equal to the sum", () => {
+  const generatedAt = new Date("2026-11-15T15:00:00Z");
+  const lee = buildStatementModel({ practice: "Lee Dental", accountNumber: "1324" }, activity, { month: "2026-10" }, { generatedAt });
+  const oak = buildStatementModel({ practice: "Oak Dental", accountNumber: "2001" }, {
+    invoices: [{ id: "z", invoiceNumber: 600001, status: "issued", totalCents: 4500, issuedAt: new Date("2026-10-20T15:00:00Z"), dueDate: "2026-11-19", voidedAt: null }],
+    payments: [],
+  }, { month: "2026-10" }, { generatedAt });
+  const m = buildCombinedStatementModel({ id: "g1", name: "Smile Group" }, [oak, lee], { month: "2026-10", generatedAt });
+  // One section per practice, each under its own name and account number, in name order.
+  assert.deepEqual(m.sections.map((s) => [s.heading, s.accountNumber, s.openingCents, s.closingCents, s.lines.length]), [
+    ["Lee Dental · Account 1324", "1324", 25000, 26000, 6],
+    ["Oak Dental · Account 2001", "2001", 0, 4500, 1],
+  ]);
+  // The group total is the sum of the sections, in integer cents.
+  assert.equal(m.openingCents, 25000);
+  assert.equal(m.closingCents, 30500);
+  assert.equal(m.closingCents, m.sections.reduce((s, x) => s + x.closingCents, 0));
+  assert.equal(m.activityCount, 7);
+  assert.equal(m.aging.totalCents, m.closingCents);
+  assert.equal(m.aging.buckets.current, 10000 + 4500);
+  assert.deepEqual(m.summary, [["Group opening balance", "$250.00"], ["Group closing balance", "$305.00"]]);
+  assert.deepEqual(m.billTo, ["Smile Group"]);
+  assert.equal(m.title, "Combined statement — October 2026");
+  assert.equal(m.filename, "combined-statement-2026-10.pdf");
+  // A group with no practices still has a period and a zero total.
+  const empty = buildCombinedStatementModel({ id: "g2", name: "Empty" }, [], { month: "2026-10", generatedAt });
+  assert.deepEqual([empty.sections.length, empty.closingCents, empty.period.label], [0, 0, "October 2026"]);
+});
+
+test("each practice statement carries its own heading and account number", () => {
+  const m = buildStatementModel({ practice: "Lee Dental", accountNumber: "1324" }, activity, { month: "2026-10" }, { generatedAt: new Date("2026-11-15T15:00:00Z") });
+  assert.deepEqual(m.heading, { name: "Lee Dental", accountNumber: "1324" });
+  assert.ok(m.billTo.includes("Account 1324"));
 });

@@ -30,6 +30,9 @@ import { MembersPage } from "./pages/app/MembersPage.jsx";
 import { AdminCatalogPage } from "./pages/app/AdminCatalogPage.jsx";
 import { AdminInvoicesPage } from "./pages/app/AdminInvoicesPage.jsx";
 import { AdminInvoiceDetailPage } from "./pages/app/AdminInvoiceDetailPage.jsx";
+import { AdminGroupsPage } from "./pages/app/AdminGroupsPage.jsx";
+import { AdminGroupDetailPage } from "./pages/app/AdminGroupDetailPage.jsx";
+import { AdminPracticesPage } from "./pages/app/AdminPracticesPage.jsx";
 import { AdminReceivablesPage } from "./pages/app/AdminReceivablesPage.jsx";
 import { AdminPaymentsPage } from "./pages/app/AdminPaymentsPage.jsx";
 import { AdminExportsPage } from "./pages/app/AdminExportsPage.jsx";
@@ -185,6 +188,8 @@ function AppRoutes() {
   const refresh = useAuthStore((s) => s.refresh);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const fetchAccounts = useAccountStore((s) => s.fetchAccounts);
+  const fetchClientScope = useAccountStore((s) => s.fetchClientScope);
+  const clearClientScope = useAccountStore((s) => s.clearClientScope);
 
   // Silent refresh on mount
   useEffect(() => {
@@ -195,6 +200,9 @@ function AppRoutes() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchAccounts();
+      fetchClientScope(); // the portal's practices: read fresh each session, never cached beyond it
+    } else {
+      clearClientScope();
     }
   }, [isAuthenticated]);
 
@@ -260,6 +268,9 @@ function AppRoutes() {
           <Route path="/admin/lab/departments" element={<AdminDepartmentsPage />} />
           <Route path="/admin/lab/adjustment-reasons" element={<AdminAdjustmentReasonsPage />} />
           <Route path="/admin/users" element={<AdminUsersPage />} />
+          <Route path="/admin/groups" element={<AdminGroupsPage />} />
+          <Route path="/admin/groups/:id" element={<AdminGroupDetailPage />} />
+          <Route path="/admin/practices" element={<AdminPracticesPage />} />
           <Route path="/admin/users/:userId/pricing" element={<AdminClientPricingPage />} />
           <Route path="/admin/autopay" element={<AdminAutoPayPage />} />
           <Route path="/admin/jobs" element={<AdminJobsPage />} />

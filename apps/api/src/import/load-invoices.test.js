@@ -201,3 +201,28 @@ test("a re-run that inserts nothing never checks or refuses on balances", async 
   assert.equal(report.next, undefined);
   assert.equal(report.problems.some((p) => p.kind === "invoices_inserted_after_balances"), false);
 });
+
+const practices = [{ id: "acct-1324", key: "c-1324" }];
+
+test("import stamps account from legacy client key; a client with no practice account loads with a null account", async () => {
+  // Select order: seeds, owners, existing, balances-ran check, then the accounts by legacy client key.
+  const tx = fakeTx({ selects: [[{ n: 0 }], [{ n: 0 }], users, [], [], practices] });
+  await loadInvoices({ raw, db: tx, live: true, lock: fakeLock(), target: "rehearsal", starts: {} });
+  const rows = tx.log.filter((e) => e.op === "insert").map((e) => e.values).find((v) => v[0]?.kind === "legacy");
+  const byClient = new Map(rows.map((r) => [r.clientUserId, r.accountId]));
+  assert.equal(byClient.get("u-1324"), "acct-1324");
+  assert.equal(byClient.get("u-2001"), null, "c-2001 has no practice account yet: parity reports it");
+});
+
+test("reattach sets the practice account together with the owner, never overwriting a stamped one", async () => {
+  const existing = ["inv-a", "inv-b", "inv-c", "inv-d"].map((id, i) => ({ seazonaId: id, number: 11114 + i, clientUserId: id === "inv-d" ? "someone" : null }));
+  const tx = fakeTx({ selects: [[{ n: 0 }], [{ n: 0 }], users, existing, practices], updates: [[{ id: "i1" }, { id: "i2" }], [{ id: "i3" }]] });
+  await loadInvoices({ raw, db: tx, live: true, lock: fakeLock(), target: "rehearsal", starts: {} });
+  const sets = tx.log.filter((e) => e.op === "set").map((e) => e.values);
+  const forOwner = (id) => sets.find((s) => s.clientUserId === id);
+  assert.ok(forOwner("u-1324").accountId, "owner with a practice: account set with the owner");
+  assert.equal("accountId" in forOwner("u-2001"), false, "owner whose client has no practice: account untouched");
+  const chunk = forOwner("u-1324").accountId.queryChunks.map((c) => (typeof c === "string" ? c : [].concat(c?.value ?? "").join(""))).join("|");
+  assert.match(chunk, /coalesce/);
+  assert.match(chunk, /acct-1324/);
+});

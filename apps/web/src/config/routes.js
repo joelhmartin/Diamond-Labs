@@ -26,6 +26,9 @@ export const ROUTES = {
   ADMIN_EXPORTS: "/admin/exports",
   ADMIN_ORDERS: "/admin/orders",
   ADMIN_USERS: "/admin/users",
+  ADMIN_GROUPS: "/admin/groups",
+  ADMIN_GROUP_DETAIL: "/admin/groups/:id",
+  ADMIN_PRACTICES: "/admin/practices",
   ADMIN_CLIENT_PRICING: "/admin/users/:userId/pricing",
   ADMIN_RX_MAPPING: "/admin/rx-mapping",
   ADMIN_RX_CASES: "/admin/rx-cases",
@@ -91,12 +94,17 @@ export const shipmentPrintPath = (id) => `/lab/shipments/${id}/print`;
 export const reportPath = (key) => `/reports/${encodeURIComponent(key)}`;
 export const dashboardPath = (key) => `/lab/dashboard/${encodeURIComponent(key)}`;
 
+/** A login that reaches the client portal through its practices rather than as an approved doctor (never staff). */
+export const isPortalLogin = (user) => Boolean(user) && !["doctor", "admin", "lab"].includes(user.role);
+
 /**
  * Given the current user, return the URL that should serve as their "home"
  * after login / when they click a profile link from the navbar.
  */
-export function roleHome(user) {
+export function roleHome(user, { hasPractices = false } = {}) {
   if (!user) return ROUTES.LOGIN;
+  // A login that is neither a doctor nor staff but belongs to practices (practice staff, a group's owner) lands in the portal.
+  if (isPortalLogin(user) && hasPractices) return ROUTES.DOCTOR_INVOICES;
   // Doctors with an active portal go straight to invoices.
   if (user.role === "doctor") {
     if (user.approvalStatus === "pending") return ROUTES.REGISTER_PENDING;

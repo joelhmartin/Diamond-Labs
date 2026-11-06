@@ -53,10 +53,10 @@ export const invoiceLockKey = (invoiceId) => `chargeguard:inv:${invoiceId}`;
  * is thrown (caller → 409, retry).
  *
  * The lock is invoice-global: it is keyed on the invoice id ALONE (no user id),
- * so it serializes ALL charges to an invoice across every user of the shared
- * Seazona client. Because multiple portal logins can map to the same
- * seazonaClientId (one practice), scoping the lock per user would let two
- * different users charge the SAME invoice concurrently and reopen the
+ * so it serializes ALL charges to an invoice, whoever pays. Several logins
+ * share an invoice across practices and groups (every member of its practice,
+ * and the admins of the practice's group), so scoping the lock per user would
+ * let two of them charge the SAME invoice concurrently and reopen the
  * over-allocation race — so the key deliberately excludes the user.
  *
  * @param {object} redis  ioredis-compatible client (set…NX / del).

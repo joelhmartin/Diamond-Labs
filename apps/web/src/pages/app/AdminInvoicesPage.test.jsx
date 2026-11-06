@@ -20,7 +20,7 @@ function Probe() {
 test("AdminInvoicesPage keeps status, needsPrice, clientUserId and q in the URL and sends them with limit/offset", async () => {
   get.mockResolvedValue({ data: { data: { invoices: [], total: 0 } } });
   const url = "/admin/invoices?" + new URLSearchParams({
-    "inv.status": "issued", "inv.needsPrice": "1", "inv.clientUserId": "u-1", "inv.q": "smile", "inv.page": "2",
+    "inv.status": "issued", "inv.needsPrice": "1", "inv.clientUserId": "u-1", "inv.accountId": "acc-1", "inv.q": "smile", "inv.page": "2",
   });
   render(
     <MemoryRouter initialEntries={[url]}>
@@ -30,13 +30,14 @@ test("AdminInvoicesPage keeps status, needsPrice, clientUserId and q in the URL 
   await waitFor(() => assert.ok(get.mock.calls.length > 0));
   const [path, opts] = get.mock.calls.at(-1);
   assert.equal(path, "/admin/invoices");
-  assert.deepEqual(opts.params, { status: "issued", needsPrice: "true", clientUserId: "u-1", q: "smile", limit: 20, offset: 20 });
+  assert.deepEqual(opts.params, { status: "issued", needsPrice: "true", clientUserId: "u-1", accountId: "acc-1", q: "smile", limit: 20, offset: 20 });
   const sp = new URLSearchParams(search);
   assert.equal(sp.get("inv.status"), "issued");
   assert.equal(sp.get("inv.needsPrice"), "1");
   assert.equal(sp.get("inv.clientUserId"), "u-1");
   assert.equal(sp.get("inv.q"), "smile");
   assert.ok(screen.getByText(/One client/i), "the client filter shows as a removable chip");
+  assert.ok(screen.getByText(/One practice/i), "so does the practice filter the Receivables link sets");
 });
 
 test("AdminInvoicesPage labels a held draft by why: no lines vs. needs a price", async () => {

@@ -8,7 +8,7 @@ vi.mock("../email.service.js", () => ({
 }));
 
 const { clearEvents, listEvents, getEvent, createNotifier, createFakeStore, assertSafeData } = await import("../../modules/notifications/index.js");
-const { registerLabNotificationEvents, resolveLabAudience, labKindOf, LAB_EVENT_KEYS, shippedNoticeData } = await import("./lab-notifications.js");
+const { registerLabNotificationEvents, resolveLabAudience, audienceMembers, labKindOf, LAB_EVENT_KEYS, shippedNoticeData } = await import("./lab-notifications.js");
 
 beforeEach(() => {
   clearEvents();
@@ -25,18 +25,18 @@ function recordingDb(rows = []) {
   return { db, calls };
 }
 
-// Columns in the order resolveLabAudience selects them: id, email, role, status, approvalStatus, seazonaClientId.
-const row = (u) => [u.id, u.email, u.role, u.status ?? "active", u.approvalStatus ?? "not_required", u.seazonaClientId ?? null];
+// Columns in the order resolveLabAudience selects them: id, email, role, status, approvalStatus.
+const row = (u) => [u.id, u.email, u.role, u.status ?? "active", u.approvalStatus ?? "not_required"];
 const PEOPLE = [
   { id: "a1", email: "a1@x.test", role: "admin" },
   { id: "l1", email: "l1@x.test", role: "lab" },
   { id: "l2", email: "l2@x.test", role: "lab", status: "suspended" },
   { id: "u1", email: "u1@x.test", role: "user" },
-  { id: "d1", email: "d1@x.test", role: "doctor", approvalStatus: "approved", seazonaClientId: "P1" },
-  { id: "d2", email: "d2@x.test", role: "doctor", approvalStatus: "approved", seazonaClientId: "P1" },
-  { id: "d3", email: "d3@x.test", role: "doctor", approvalStatus: "pending", seazonaClientId: "P1" },
-  { id: "d4", email: "d4@x.test", role: "doctor", approvalStatus: "approved", seazonaClientId: "P2" },
-  { id: "d5", email: "d5@x.test", role: "doctor", approvalStatus: "approved", seazonaClientId: "P1", status: "suspended" },
+  { id: "d1", email: "d1@x.test", role: "doctor", approvalStatus: "approved" },
+  { id: "d2", email: "d2@x.test", role: "doctor", approvalStatus: "approved" },
+  { id: "d3", email: "d3@x.test", role: "doctor", approvalStatus: "pending" },
+  { id: "d4", email: "d4@x.test", role: "doctor", approvalStatus: "approved" },
+  { id: "d5", email: "d5@x.test", role: "doctor", approvalStatus: "approved", status: "suspended" },
 ];
 
 test("registers exactly the seven lab events", () => {
@@ -95,20 +95,14 @@ test("titles contain only numbers/dates from data", () => {
   assert.equal(getEvent("message.received").link({ threadId: "t1" }, "staff"), "/lab/messages/t1");
 });
 
-test("resolveLabAudience: staff kind returns admin+lab active users only; practice party returns approved doctors of that practice only", async () => {
+test("resolveLabAudience: staff kind returns admin+lab active users only; user party returns that approved doctor", async () => {
   const everyone = PEOPLE.map(row);
   const staff = recordingDb(everyone);
   const s = await resolveLabAudience(staff.db, { kinds: ["staff"] });
   assert.deepEqual(s, [{ id: "a1", email: "a1@x.test", kind: "staff" }, { id: "l1", email: "l1@x.test", kind: "staff" }]);
   assert.match(staff.calls[0].sql, /"status" = \$\d/);
   assert.match(staff.calls[0].sql, /"role" in \(/);
-
-  const party = recordingDb(everyone);
-  const p = await resolveLabAudience(party.db, { party: "practice:P1" });
-  assert.deepEqual(p.map((u) => u.id), ["d1", "d2"]);
-  assert.ok(p.every((u) => u.kind === "client"));
-  assert.ok(party.calls[0].params.includes("P1"));
-  assert.match(party.calls[0].sql, /"approval_status" = \$\d/);
+  assert.doesNotMatch(staff.calls[0].sql, /seazona/, "no audience reads the Seazona link");
 
   const one = recordingDb(everyone);
   assert.deepEqual((await resolveLabAudience(one.db, { party: "user:d4" })).map((u) => u.id), ["d4"]);
@@ -127,6 +121,74 @@ test("resolveLabAudience: staff kind returns admin+lab active users only; practi
   assert.equal(labKindOf({ role: "lab" }), "staff");
   assert.equal(labKindOf({ role: "admin" }), "staff");
   assert.equal(labKindOf({ role: "doctor" }), "client");
+});
+
+// Each query answers the next queued row set (arrays in the select's column order).
+function queueDb(...rowSets) {
+  const calls = [];
+  const db = drizzle(async (sql, params, method) => {
+    calls.push({ sql, params, method });
+    return { rows: rowSets.shift() ?? [] };
+  });
+  return { db, calls };
+}
+
+// practice:A, in group o1 with sibling B. mA (member of A, a non-doctor), mA2 (a viewer of A), ga (group admin),
+// mB (member of sibling B), rA (removed from A).
+const GROUP = {
+  eligible: [["A"]], // accounts: id (A is an active client account)
+  members: [["mA"], ["mA2"]], // memberships of A: userId (the SQL keeps active ones only)
+  org: [["A", "o1", "Group One", {}]], // organizationOf: accountId, id, name, settings
+  admins: [["ga"]], // organization_admins of o1: userId
+};
+const userRow = (id, over = {}) => [id, `${id}@x.test`, over.role ?? "user", over.status ?? "active", over.approvalStatus ?? "not_required"];
+
+test("practice audience excludes siblings", async () => {
+  const { db, calls } = queueDb(GROUP.eligible, GROUP.members, GROUP.org, GROUP.admins,
+    // Even if the user query over-returned a sibling's member, the rule drops them.
+    [userRow("mA"), userRow("mA2"), userRow("ga"), userRow("mB")]);
+  const out = await resolveLabAudience(db, { party: "practice:A", excludeUserIds: [] });
+  assert.deepEqual(out.map((u) => u.id).sort(), ["ga", "mA", "mA2"]);
+  assert.ok(out.every((u) => u.kind === "client"));
+  // Every lookup is about A (and A's group), never B.
+  for (const c of calls) assert.ok(!c.params.includes("B"), c.sql);
+  assert.ok(calls[1].params.includes("A"));
+  assert.match(calls[1].sql, /"memberships"\."status" = \$\d/);
+  assert.ok(calls[1].params.includes("active"));
+  assert.match(calls[2].sql, /"organizations"\."status" = \$\d/, "only an active group's admins");
+  assert.match(calls[3].sql, /"organization_admins"\."status" = \$\d/);
+  assert.ok(calls[3].params.includes("o1"));
+  assert.match(calls[4].sql, /"users"\."id" in \(/);
+  assert.doesNotMatch(calls.map((c) => c.sql).join(" "), /seazona/);
+});
+
+test("removed member gets no alert", async () => {
+  // The rule itself: a removed or suspended membership or group grant gives nothing.
+  const rows = [{ id: "mA", email: "a", role: "user", status: "active" }, { id: "rA", email: "r", role: "user", status: "active" },
+    { id: "sA", email: "s", role: "user", status: "active" }, { id: "gx", email: "g", role: "user", status: "active" }];
+  const out = audienceMembers(rows, { party: "practice:A" }, {
+    accountMembers: [{ userId: "mA", accountId: "A", status: "active" }, { userId: "rA", accountId: "A", status: "removed" }, { userId: "sA", accountId: "A", status: "suspended" }],
+    orgAdmins: [{ userId: "gx", accountId: "A", status: "removed" }],
+  });
+  assert.deepEqual(out.map((u) => u.id), ["mA"]);
+  // A suspended login gets nothing even while its membership is active.
+  assert.deepEqual(audienceMembers([{ ...rows[0], status: "suspended" }], { party: "practice:A" }, { accountMembers: [{ userId: "mA", accountId: "A", status: "active" }] }), []);
+  // Through the resolver: the membership query only keeps active rows, so a removed member is never a candidate.
+  const { db, calls } = queueDb(GROUP.eligible, [], [], [userRow("rA")]);
+  assert.deepEqual(await resolveLabAudience(db, { party: "practice:A" }), []);
+  assert.ok(calls[1].params.includes("active"));
+});
+
+test("a practice that is not an active client account alerts no one (it is in nobody's scope)", async () => {
+  const { db, calls } = queueDb([], [[...userRow("mA")]]);
+  assert.deepEqual(await resolveLabAudience(db, { party: "practice:Z" }), []);
+  assert.equal(calls.length, 1, "no member, group or user lookup");
+});
+
+test("group admins are deduped with members, and staff kinds still combine with a party", async () => {
+  const { db } = queueDb(GROUP.eligible, [["ga"]], GROUP.org, GROUP.admins, [userRow("ga"), userRow("l1", { role: "lab" })]);
+  const out = await resolveLabAudience(db, { party: "practice:A", kinds: ["staff"] });
+  assert.deepEqual(out, [{ id: "l1", email: "l1@x.test", kind: "staff" }, { id: "ga", email: "ga@x.test", kind: "client" }]);
 });
 
 test("order_shipped email.send calls sendShippedNotice with orderNumbers and tracking", async () => {

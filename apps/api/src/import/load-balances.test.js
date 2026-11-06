@@ -275,3 +275,13 @@ test("per-invoice balances runs the seed check too: a production run without bot
   const dry = await loadBalances({ ...base, raw: rawWithMax, db: fakeTx({ selects: [legacyRows, []] }), live: false, mode: "per-invoice", parsed });
   assert.equal(dry.seeds.seazonaMax.invoice, 11130);
 });
+
+test("an opening-balance invoice is stamped with its owner's practice account (null when unowned)", async () => {
+  const cutoverAt = new Date("2026-11-07T02:00:00Z");
+  const owned = fakeTx({ selects: [[{ max: null }]] });
+  const a = await writeOpening(owned, { opening: { accountNumber: "1324", clientUserId: "u", cents: 900 }, start: 16211, cutoverAt, accountId: "acct-1" });
+  assert.equal(a.accountId, "acct-1");
+  const unowned = fakeTx({ selects: [[{ max: null }]] });
+  const b = await writeOpening(unowned, { opening: { accountNumber: "9999", clientUserId: null, cents: 900 }, start: 16211, cutoverAt });
+  assert.equal(b.accountId, null);
+});

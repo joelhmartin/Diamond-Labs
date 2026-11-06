@@ -3,7 +3,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { caseSummary } from "@my-app/shared";
 import { db } from "../../config/database.js";
 import { decryptField } from "../../lib/crypto.js";
-import { invoices, invoiceLines, labOrders, rxCases, orders, users, doctorProfiles, auditLog } from "../../db/schema/index.js";
+import { accounts, invoices, invoiceLines, labOrders, rxCases, orders, users, doctorProfiles, auditLog } from "../../db/schema/index.js";
 import { decryptRxPhi } from "../rx/phi-crypto.js";
 import { initialsFor } from "../lab/lab-order-rules.js";
 import { withBalances, ledgerRowsForInvoice } from "./ledger.service.js";
@@ -54,6 +54,7 @@ export function invoiceListWhere(filters = {}) {
   const conds = [];
   if (filters.status) conds.push(eq(invoices.status, filters.status));
   if (filters.clientUserId) conds.push(eq(invoices.clientUserId, filters.clientUserId));
+  if (filters.accountId) conds.push(eq(invoices.accountId, filters.accountId));
   if (filters.number) conds.push(eq(invoices.invoiceNumber, filters.number));
   // "Needs a price or lines": a draft that shipping would hold (invoices.service issueForShippedLabOrder).
   if (filters.needsPrice) {
@@ -125,33 +126,48 @@ async function countInvoices(where, database) {
 }
 
 /**
- * The invoices of a set of clients, newest first: one doctor (admin), or a
- * doctor's whole practice (practiceUserIds; Spec correction 6). Doctors get
- * issued and void ones (includeDrafts false). What a payment can be applied to
- * is ledger.openInvoicesForClient, not this.
+ * A client's invoices for a set of practices (client accounts), newest first:
+ * the portal list, read through the login's scope (requestedAccounts in
+ * client-scope-rules.js). Each row names its practice (accountId,
+ * accountName, accountNumber). Doctors get issued and void ones
+ * (includeDrafts false). No accounts, no query. What a payment can be applied
+ * to is ledger.openInvoicesForAccounts, not this.
+ * @param {string[]} accountIds
  */
-export async function listClientInvoices(clientUserIds, { includeDrafts = false } = {}, database = db) {
-  const conds = [inArray(invoices.clientUserId, clientUserIds)];
+export async function listClientInvoices(accountIds, { includeDrafts = false } = {}, database = db) {
+  if (!accountIds?.length) return [];
+  return listInvoiceRows(inArray(invoices.accountId, accountIds), { includeDrafts }, database);
+}
+
+/** One client user's invoices, drafts included on request (Admin: the client drawer and Record payment). Staff only. */
+export function listInvoicesForClientUser(clientUserId, { includeDrafts = false } = {}, database = db) {
+  return listInvoiceRows(eq(invoices.clientUserId, clientUserId), { includeDrafts }, database);
+}
+
+async function listInvoiceRows(scopeWhere, { includeDrafts }, database) {
+  const conds = [scopeWhere];
   if (!includeDrafts) conds.push(ne(invoices.status, "draft"));
   const rows = await database
     .select({
       invoice: invoices, labOrderNumber: labOrders.orderNumber, caseNumber: rxCases.caseNumber,
       patientFirst: rxCases.patientFirst, patientLast: rxCases.patientLast, staffPatient: labOrders.patientName,
+      accountName: accounts.name, accountNumber: accounts.accountNumber,
     })
     .from(invoices)
     .leftJoin(labOrders, eq(labOrders.id, invoices.labOrderId))
     .leftJoin(rxCases, and(eq(labOrders.source, "rx_case"), eq(rxCases.id, labOrders.sourceId)))
+    .leftJoin(accounts, eq(accounts.id, invoices.accountId))
     .where(and(...conds))
     .orderBy(desc(invoices.invoiceNumber));
   const balanced = await withBalances(rows.map((r) => r.invoice), database);
-  const out = balanced.map((inv, i) => ({
+  return balanced.map((inv, i) => ({
     id: inv.id, invoiceNumber: inv.invoiceNumber, kind: inv.kind, status: inv.status,
+    accountId: inv.accountId ?? null, accountName: rows[i].accountName ?? null, accountNumber: rows[i].accountNumber ?? null,
     labOrderNumber: rows[i].labOrderNumber ?? null, caseNumber: rows[i].caseNumber ?? null,
     patientInitials: patientInitials(rows[i]) ?? sealedInitials(rows[i].staffPatient) ?? sealedInitials(rows[i].invoice.legacyPatient),
     issuedAt: inv.issuedAt, dueDate: inv.dueDate,
     totalCents: inv.totalCents, paidCents: inv.paidCents, balanceCents: inv.balanceCents,
   }));
-  return out;
 }
 
 async function labOrderBlock(labOrderId, database) {
@@ -192,12 +208,13 @@ async function invoiceActivity(invoiceId, database) {
 /**
  * Everything the detail page and the invoice PDF need, decrypted. Throws on
  * a decrypt failure; routes turn that into a generic 500 and never echo it.
+ * `invoice.accountId` is the practice the client scope checks (canActOnInvoice).
  */
 export async function getInvoiceDetail(id, { withActivity = false } = {}, database = db) {
   const [row] = await database
     .select({
       invoice: invoices, clientName: client.name, clientEmail: client.email,
-      accountNumber: client.seazonaAccountNumber, clientSeazonaClientId: client.seazonaClientId, profile: doctorProfiles,
+      accountNumber: client.seazonaAccountNumber, profile: doctorProfiles,
     })
     .from(invoices)
     .leftJoin(client, eq(client.id, invoices.clientUserId))
@@ -212,8 +229,6 @@ export async function getInvoiceDetail(id, { withActivity = false } = {}, databa
   const clientBlock = invoice.clientUserId
     ? {
         id: invoice.clientUserId, name: row.clientName ?? null, email: row.clientEmail ?? null, accountNumber: row.accountNumber ?? null,
-        // The practice key, for canActOnInvoice. Never part of a doctor-facing view.
-        seazonaClientId: row.clientSeazonaClientId ?? null,
         practice: p?.companyName ?? null, address1: p?.address1 ?? null, address2: p?.address2 ?? null,
         city: p?.city ?? null, state: p?.state ?? null, zip: p?.zip ?? null,
       }

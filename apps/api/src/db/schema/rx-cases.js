@@ -7,6 +7,8 @@ export const rxCases = pgTable("rx_cases", {
   id: varchar("id", { length: 128 }).primaryKey(),
   caseNumber: varchar("case_number", { length: 32 }).notNull(),
   userId: varchar("user_id", { length: 128 }).notNull(),
+  // The practice (accounts.id) the case belongs to, stamped at create. Null on an owned case = a backfill gap; scope checks fail closed.
+  accountId: varchar("account_id", { length: 128 }),
   seazonaClientId: varchar("seazona_client_id", { length: 100 }),
   seazonaAccountNumber: varchar("seazona_account_number", { length: 50 }),
   practiceName: varchar("practice_name", { length: 200 }),
@@ -53,6 +55,7 @@ export const rxCases = pgTable("rx_cases", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("rx_cases_user_id_idx").on(t.userId),
+  index("rx_cases_account_id_idx").on(t.accountId),
   index("rx_cases_status_idx").on(t.status),
   index("rx_cases_case_number_idx").on(t.caseNumber),
 ]);

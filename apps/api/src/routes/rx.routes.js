@@ -1,10 +1,10 @@
 import { authenticate } from "../middleware/authenticate.js";
-import { requireApprovedDoctor } from "../middleware/require-role.js";
+import { requireApprovedDoctor, requireClientPortal } from "../middleware/require-role.js";
 import { db } from "../config/database.js";
 import { rxCases, rxCaseFiles, rxCaseLines } from "../db/schema/index.js";
 import { createId } from "../lib/id.js";
 import { env } from "../config/env.js";
-import { eq, desc, and, asc } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { ERROR_CODES, MAX_FILE_SIZE_BYTES, rxCaseSubmitSchema, rxFormSubmitSchema, buildFormDevices, doctorCaseView } from "@my-app/shared";
 import { seedLines } from "../services/rx/case-lines.service.js";
 import { loadOverrides } from "../services/rx/code-overrides.service.js";
@@ -15,6 +15,9 @@ import { encryptRxPhi, decryptRxPhi } from "../services/rx/phi-crypto.js";
 import * as auditService from "../services/audit.service.js";
 import { sendRxSubmissionReceived } from "../services/email.service.js";
 import { notify } from "../services/notify-seam.js";
+import { practiceForNewRecord } from "../services/practice-of.js";
+import { invoiceErrorReply } from "../services/billing/invoice-errors.js";
+import { listClientCases, loadClientCase } from "../services/rx/client-cases.js";
 
 // ─── Upload guards ────────────────────────────────────────────────────────────
 // Per-file size limit (75 MB — intraoral STL / 3D-scan files are large) is shared: MAX_FILE_SIZE_BYTES from @my-app/shared.
@@ -34,6 +37,21 @@ const FILE_FIELD_KINDS = new Set(["scan", "photo", "prescription", "sleep_study"
 // 'pending_approval' at the schema level while nothing ever queried for that
 // value, so the queue could never return a row).
 export const SUBMISSION_STATUS = "new";
+
+/**
+ * Which practice a new case belongs to: the form's `accountId` (a direct membership of the
+ * submitter, else NOT_FOUND), or the only one they have. Resolved BEFORE any upload so a
+ * refusal (PRACTICE_REQUIRED 422) leaves no orphaned files. Returns { accountId } or { refusal }.
+ */
+async function practiceForSubmission(userId, requested) {
+  try {
+    return { accountId: await practiceForNewRecord(db, { ownerUserId: userId, requestedAccountId: requested || null }) };
+  } catch (err) {
+    const refusal = invoiceErrorReply(err);
+    if (!refusal) throw err;
+    return { refusal };
+  }
+}
 
 export default async function rxRoutes(fastify) {
   // ─────────────────────────────────────────────────────────────────────────
@@ -177,6 +195,9 @@ export default async function rxRoutes(fastify) {
     // ── Identity — from the authenticated doctor, never the form body ─────────
     const { id: userId, seazonaClientId, seazonaAccountNumber } = request.user;
 
+    const practice = await practiceForSubmission(userId, fields.accountId);
+    if (practice.refusal) return reply.code(practice.refusal.status).send(practice.refusal.body);
+
     // Generate caseId BEFORE uploads so the GCS path is keyed by it.
     const caseId = createId();
     const caseNumber = `RX-${createId().slice(0, 12).toUpperCase()}`;
@@ -213,6 +234,7 @@ export default async function rxRoutes(fastify) {
           id: caseId,
           caseNumber,
           userId,
+          accountId: practice.accountId,
           seazonaClientId: seazonaClientId || null,
           seazonaAccountNumber: seazonaAccountNumber || null,
           patientFirst: data.patientFirst,
@@ -411,6 +433,9 @@ export default async function rxRoutes(fastify) {
     // ── Identity — from the authenticated doctor, never the form body ─────────
     const { id: userId, seazonaClientId, seazonaAccountNumber } = request.user;
 
+    const practice = await practiceForSubmission(userId, fields.accountId);
+    if (practice.refusal) return reply.code(practice.refusal.status).send(practice.refusal.body);
+
     const caseId = createId();
     const caseNumber = `RX-${createId().slice(0, 12).toUpperCase()}`;
 
@@ -470,6 +495,7 @@ export default async function rxRoutes(fastify) {
           id: caseId,
           caseNumber,
           userId,
+          accountId: practice.accountId,
           seazonaClientId: seazonaClientId || null,
           seazonaAccountNumber: seazonaAccountNumber || null,
           // Same source the arrival email uses, so the queue row and the
@@ -556,16 +582,14 @@ export default async function rxRoutes(fastify) {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
-  // GET /rx/cases — list all cases belonging to the current doctor, newest first.
+  // GET /rx/cases?account= — My Cases: every case of the practices in the
+  // login's scope (absent / "all"), or of one practice in it; else 404.
+  // Newest first. By the case's practice, not its owner (client-cases.js).
   // ─────────────────────────────────────────────────────────────────────────
   fastify.get("/rx/cases", {
-    preHandler: [authenticate, requireApprovedDoctor],
+    preHandler: [authenticate, requireClientPortal],
   }, async (request) => {
-    const rows = await db
-      .select()
-      .from(rxCases)
-      .where(eq(rxCases.userId, request.user.id))
-      .orderBy(desc(rxCases.createdAt));
+    const rows = await listClientCases(request.user, request.query?.account);
     // Decrypt PHI columns before returning to the owning doctor. Decrypt each
     // row in isolation: a single corrupt / wrong-key row must NOT 500 the whole
     // list and lock the doctor out of every case. A failed row is replaced with
@@ -607,21 +631,14 @@ export default async function rxRoutes(fastify) {
 
   // ─────────────────────────────────────────────────────────────────────────
   // GET /rx/cases/:id — single case + its files.
-  // Returns 404 for both missing cases and cases owned by another doctor
-  // (conservative: don't reveal that a case id exists for a different doctor).
+  // Returns 404 for both missing cases and cases of a practice outside the
+  // login's scope (conservative: don't reveal that a case id exists).
   // ─────────────────────────────────────────────────────────────────────────
   fastify.get("/rx/cases/:id", {
-    preHandler: [authenticate, requireApprovedDoctor],
+    preHandler: [authenticate, requireClientPortal],
   }, async (request, reply) => {
-    const [caseRow] = await db
-      .select()
-      .from(rxCases)
-      .where(eq(rxCases.id, request.params.id));
-
+    const caseRow = await loadClientCase(request.user, request.params.id);
     if (!caseRow) {
-      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
-    }
-    if (caseRow.userId !== request.user.id) {
       return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
     }
 
@@ -655,22 +672,15 @@ export default async function rxRoutes(fastify) {
 
   // ─────────────────────────────────────────────────────────────────────────
   // GET /rx/cases/:id/files/:fileId — issue a short-lived signed URL for a
-  // stored case file. Same ownership gate as GET /rx/cases/:id (404 for missing
-  // OR another doctor's case). The file must belong to the case. HIPAA: files
+  // stored case file. Same scope gate as GET /rx/cases/:id (404 for missing
+  // OR another practice's case). The file must belong to the case. HIPAA: files
   // are served via time-limited signed URLs, never a public/long-lived link.
   // ─────────────────────────────────────────────────────────────────────────
   fastify.get("/rx/cases/:id/files/:fileId", {
-    preHandler: [authenticate, requireApprovedDoctor],
+    preHandler: [authenticate, requireClientPortal],
   }, async (request, reply) => {
-    const [caseRow] = await db
-      .select()
-      .from(rxCases)
-      .where(eq(rxCases.id, request.params.id));
-
+    const caseRow = await loadClientCase(request.user, request.params.id);
     if (!caseRow) {
-      return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
-    }
-    if (caseRow.userId !== request.user.id) {
       return reply.code(404).send({ error: ERROR_CODES.NOT_FOUND });
     }
 

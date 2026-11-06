@@ -19,6 +19,7 @@ const READMES = {
   "record-files": "./record-files/README.md",
   "barcode-lookup": "./barcode-lookup/README.md",
   "upload-intake": "./upload-intake/README.md",
+  organizations: "./organizations/README.md",
   reports: "./reports/README.md",
   "reports (web)": "../../../web/src/modules/reports/README.md",
 };

@@ -9,8 +9,10 @@ import { formatCents } from "../../lib/money.js";
 import { errorText } from "../../lib/requests.js";
 import { instantText, labToday, recentMonths } from "../../lib/invoices.js";
 
-const getRowId = (r) => r.clientUserId;
-const clientName = (r) => r.practice || r.name || "—";
+// One row per (statement subject, recipient): a practice's statement to one of its doctors, or a
+// group's combined statement to one of its admins.
+const getRowId = (r) => r.key;
+const subjectName = (r) => r.name || "—";
 const PLANNED = {
   send: { label: "Will send", tone: "bg-brand-500/10 text-brand-700" },
   already_sent: { label: "Already sent", tone: "bg-surface-100 text-navy/50" },
@@ -23,15 +25,18 @@ const PLANNED = {
 const FILTERS = [
   { id: "planned", label: "Status", type: "select", options: Object.entries(PLANNED).map(([value, p]) => ({ value, label: p.label })), match: (r, v) => r.planned === v },
 ];
-const searchFn = (r, q) => [r.practice, r.name, r.accountNumber, r.email].filter(Boolean).join(" ").toLowerCase().includes(q.toLowerCase());
+const searchFn = (r, q) => [r.name, r.recipientName, r.accountNumber, r.email].filter(Boolean).join(" ").toLowerCase().includes(q.toLowerCase());
 
 const COLUMNS = [
   {
-    id: "client", header: "Client", sortValue: (r) => clientName(r).toLowerCase(), exportValue: clientName,
+    id: "client", header: "Practice or group", sortValue: (r) => subjectName(r).toLowerCase(), exportValue: subjectName,
     cell: (r) => (
       <>
-        <div className="font-medium text-navy">{clientName(r)}</div>
-        <div className="text-xs text-navy/40">{r.practice && r.name ? r.name : ""}{r.accountNumber ? ` · Acct ${r.accountNumber}` : ""}</div>
+        <div className="font-medium text-navy">
+          {subjectName(r)}
+          {r.subject === "organization" && <span className="ml-2 rounded-full bg-brand-500/10 px-2 py-0.5 text-[10px] font-semibold text-brand-700">Combined</span>}
+        </div>
+        <div className="text-xs text-navy/40">{[r.recipientName, r.accountNumber ? `Acct ${r.accountNumber}` : null].filter(Boolean).join(" · ")}</div>
       </>
     ),
   },
@@ -51,8 +56,9 @@ const resultText = ({ sent = 0, failed = 0, skipped = 0 }) => `${sent} sent${fai
 
 /**
  * Receivables › Monthly statements: preview who gets a month's statement notice
- * and send them all at once. The server run is idempotent per client and month,
- * so a double-click or a retry never sends anyone the same month twice.
+ * and send them all at once. The server run is idempotent per statement,
+ * person and month, so a double-click or a retry never sends anyone the same
+ * month twice.
  */
 export function MonthlyStatementsPanel({ onClose }) {
   const { addToast } = useToast();
@@ -80,9 +86,9 @@ export function MonthlyStatementsPanel({ onClose }) {
   const due = (rows ?? []).filter((r) => r.planned === "send").length;
   const label = months.find((m) => m.value === month)?.label ?? month;
 
-  const send = async (clientUserIds) => {
+  const send = async (keys) => {
     try {
-      const res = await api.post("/admin/statements/run", clientUserIds ? { month, clientUserIds } : { month });
+      const res = await api.post("/admin/statements/run", keys ? { month, keys } : { month });
       const out = res.data.data;
       addToast({ message: `${label}: ${resultText(out)}`, type: out.failed ? "warning" : "success" });
     } catch (err) {
@@ -101,7 +107,7 @@ export function MonthlyStatementsPanel({ onClose }) {
       <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="font-heading text-xl font-bold text-navy">Monthly statements</h2>
-          <p className="mt-1 text-xs text-navy/50">Every client with activity in the month or a balance at its end. Each client gets one notice per month.</p>
+          <p className="mt-1 text-xs text-navy/50">Every practice with activity in the month or a balance at its end, to its doctors; groups with a combined statement, to their admins. One notice per statement and person per month.</p>
         </div>
         <div className="flex items-center gap-2">
           <label className="text-xs text-navy/60">Month{" "}
@@ -116,8 +122,8 @@ export function MonthlyStatementsPanel({ onClose }) {
           <button type="button" onClick={onClose} className="rounded-full p-2 text-navy/40 hover:bg-surface-100 hover:text-navy" aria-label="Close monthly statements"><X size={16} /></button>
         </div>
       </div>
-      <DataTable table={table} columns={COLUMNS} bulkActions={bulkActions} dense searchPlaceholder="Practice, doctor, account # or email"
-        itemLabel="clients" exportFileName={`statements-${month}.csv`} emptyText="No client is due a statement for this month." />
+      <DataTable table={table} columns={COLUMNS} bulkActions={bulkActions} dense searchPlaceholder="Practice, group, person, account # or email"
+        itemLabel="statements" exportFileName={`statements-${month}.csv`} emptyText="No client is due a statement for this month." />
     </section>
   );
 }

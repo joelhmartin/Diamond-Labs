@@ -2,10 +2,11 @@ import { db } from "../config/database.js";
 import { memberships, accounts } from "../db/schema/index.js";
 import { eq, and } from "drizzle-orm";
 import { ERROR_CODES } from "@my-app/shared";
+import { assertNotClientAccount } from "../services/client-scope-rules.js";
 
 /**
  * Resolves accountId from route params or x-account-id header,
- * then loads the user's membership for that account.
+ * then loads the user's ACTIVE membership for that account.
  */
 export async function requireAccount(request, reply) {
   const accountId = request.params.accountId || request.headers["x-account-id"];
@@ -38,10 +39,20 @@ export async function requireAccount(request, reply) {
     )
     .limit(1);
 
-  if (!membership) {
+  // A removed or suspended membership is no membership: it grants nothing.
+  if (!membership || membership.status !== "active") {
     return reply.code(403).send({ error: ERROR_CODES.NOT_ACCOUNT_MEMBER });
   }
 
   request.account = account;
   request.membership = membership;
+}
+
+/**
+ * After requireAccount on the template's self-service member, invitation and
+ * account-mutation routes: a practice (client account) answers 404 NOT_FOUND,
+ * because its staff are managed by the lab only (assertNotClientAccount).
+ */
+export async function refuseClientAccount(request) {
+  assertNotClientAccount(request.account);
 }

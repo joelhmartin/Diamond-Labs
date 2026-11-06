@@ -38,6 +38,7 @@ Order is binding: T1 ≤ T2 < T3 ≤ T4 < T5.
 - [ ] **The `PAYMENTS_PAUSED` PR is merged to `main`, deployed, and production still takes payments with the flag unset.** Merge SHA: ___ (instructions below).
 - [ ] New env and secrets are staged in Secret Manager (not attached yet): carriers and `LAB_*` (`docs/shipping-operations.md`), mail settings, and the seeds (computed in step 3).
 - [ ] Cloud Run env to drop at the merge: `RX_LIVE_PUSH`, `SEAZONA_ORDER_USER_ID` (piece 2 carry-over); their current values are recorded in step 2 so a rollback can put them back. `LAB_SHOP_REPAIR_SINCE` is **not** a deploy date: it is the exact timestamp T1 at which the lab stopped keying shop orders into Seazona (step 1.1), set at the merge (step 4.1).
+- [ ] The lab supplies the groups CSV (`account_number,group`) for `payments-match --groups`.
 - [ ] A fresh fetch dry run from off-hours is understood: the final delta (step 3) is small and was timed at 30 requests/minute.
 
 ### The `PAYMENTS_PAUSED` PR to `main` (T-1 week; needs the user's sign-off)
@@ -164,6 +165,7 @@ export PRODUCTION_DATABASE_URL="postgresql://<admin user>:$(gcloud secrets versi
 T="--target production --confirm-production diamond_labs"
 S="--invoice-start <INVOICE_NUMBER_START> --order-start <LAB_ORDER_NUMBER_START>"
 pnpm --filter @my-app/api import:load clients  $T [--no-email placeholder|skip]            # dry run, read it, then add --live
+pnpm --filter @my-app/api db:backfill-practices                                            # dry run (counts only), read it, then re-run with --live
 pnpm --filter @my-app/api import:load invoices $T $S                                       # dry run, then --live
 pnpm --filter @my-app/api import:load balances $T $S --balances <path> --file-id <final export id> --cutover-at <ISO of step 1> # dry run, then --live
 pnpm --filter @my-app/api import:load orders   $T $S                                       # dry run, then --live
@@ -171,6 +173,8 @@ pnpm --filter @my-app/api import:parity $T $S --balances <path> --file-id <final
 ```
 
 - Before the live `balances` run, read the dry run's `exportProblems`, `exportTotalCents`, `warnings` and `reconciliation`. The footer "Total" row is not a problem (it is `exportTotalCents`, cross-checked against the rows). A live run refuses on export problems; `--accept-export-problems` leaves unreadable/duplicate rows open but **settles keyless rows as paid**, and a corrected export afterwards needs a restore. Prefer a fixed export.
+- **Run `db:backfill-practices` between `clients` and `invoices`** (the same production `DATABASE_URL` as above). It is idempotent and prints counts only. It gives each imported client its practice account so that invoices and orders can attach to it.
+- **Parity `records_without_account` must be 0, and it cannot be accepted** (`--accept` refuses it). A non-zero count means an invoice or order has no practice account: fix the cause (re-run the backfill, or correct the client), re-run the step, then re-run parity. Do not roll forward with it.
 - Every live step holds the target's load lock; parity takes it too. Do not run two loads at once.
 - Unowned invoices or orders in the reports (`client_owner_not_approved_doctor`, `client_has_multiple_owners`, `loaded_invoices_still_unowned_client`, ...): both steps load them **unowned** (nothing is skipped for an owner problem). Link the owner (an admin approves/links the doctor), then **re-run the step** (`invoices`, `orders`), which reattaches them and inserts nothing. Parity lists what is still unowned and its open balance.
 - **An `invoices` run after `balances` that would insert invoices refuses** (they would load unsettled, their full totals owed). That happens only when new invoices reached the raw store or a `client_not_loaded` client was fixed. If inserting them is right, re-run with `--allow-after-balances`, then **re-run `balances` with the same `--balances` and `--file-id`** (idempotent; it settles only the new ones) **before parity**. The run prints this as `NEXT:`.
@@ -186,6 +190,18 @@ The production desk adds labels, enclosed items, remake reasons and slip data. L
 - [ ] Admin > Reasons: add the remaining Labzona remake codes with their percents.
 - [ ] Enclosed items are entered as each open case is next touched. There is nothing to bulk-load.
 - [ ] Stars and materials: nothing to re-enter.
+
+## 5c. Practice groups re-entry (before unfreeze)
+
+Groups are not in Seazona. The lab's list (the groups CSV) is the source; enter it by hand.
+
+- [ ] Admin > Groups: create each group.
+- [ ] Add its practices to the group.
+- [ ] Turn on the combined statement (the group's Settings tab) where the lab wants it.
+- [ ] Add the group admins, inviting any login that does not exist yet.
+- [ ] Admin > Practices: add practice staff to each practice.
+- [ ] Admin > Practices: filter "No account number" and fill in each missing account number.
+- [ ] Confirm one known group's combined balance equals Labzona's per-client balances for its practices, summed.
 
 ## 6. Smoke (operator + one lab admin)
 

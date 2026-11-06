@@ -170,6 +170,27 @@ test("createShopLabOrder: the job and its paid shop invoice are written in one t
   assert.equal(ins[5].appliedCents, 1700);
 });
 
+test("createShopLabOrder stamps the buyer's practice on the job and its invoice; a guest's are unstamped", async () => {
+  const quote = { lines: [], subtotalCents: 0, taxCents: 0, shippingCents: 0, totalCents: 0 };
+  const buyer = fakeTx({ selects: [[{ accountId: "acct1" }], [{ max: null }], [{ max: null }]] });
+  await mod.createShopLabOrder(buyer, { orderId: "o2", clientUserId: "doc1", quote, transactionId: "t3" });
+  const ins = buyer.log.filter((l) => l.op === "insert").map((l) => l.values);
+  assert.equal(ins[0].accountId, "acct1");
+  assert.equal(ins.find((v) => v.kind === "shop").accountId, "acct1");
+  const guest = fakeTx({ selects: [[{ max: null }], [{ max: null }]] });
+  await mod.createShopLabOrder(guest, { orderId: "o3", clientUserId: null, quote, transactionId: "t4" });
+  assert.equal(guest.log.find((l) => l.op === "insert").values.accountId, null);
+});
+
+test("createShopLabOrder never refuses a charged order over an ambiguous practice: it is left unstamped", async () => {
+  const quote = { lines: [], subtotalCents: 0, taxCents: 0, shippingCents: 0, totalCents: 0 };
+  const tx = fakeTx({ selects: [[{ accountId: "a1" }, { accountId: "a2" }], [{ max: null }], [{ max: null }]] });
+  const original = console.error;
+  console.error = () => {};
+  try { await mod.createShopLabOrder(tx, { orderId: "o4", clientUserId: "doc1", quote, transactionId: "t5" }); } finally { console.error = original; }
+  assert.equal(tx.log.find((l) => l.op === "insert").values.accountId, null);
+});
+
 test("mutate runs the plan's follow-up inside the transaction, with the updated order", async () => {
   const seen = [];
   const tx = fakeTx({ selects: [[baseRow]], updates: [[{ ...baseRow, version: 4, status: "shipped" }]] });
@@ -204,7 +225,7 @@ test("release and remake draft an invoice inside their transaction, after the jo
   const remake = source.slice(source.indexOf("export function remakeOrder"), source.indexOf("export function listAssignableStaff"));
   assert.ok(remake.indexOf("insertPlan(") < remake.indexOf("createDraftForLabOrder(tx,"), "remake");
   const shop = source.slice(source.indexOf("export async function createShopLabOrder"), source.indexOf("function boardWhere"));
-  assert.match(shop, /createShopInvoice\(tx, \{ labOrderId: plan\.labOrder\.id, clientUserId, quote, transactionId \}\)/);
+  assert.match(shop, /createShopInvoice\(tx, \{ labOrderId: plan\.labOrder\.id, clientUserId, accountId, quote, transactionId \}\)/);
   assert.match(source, /tx\.transaction\(\(sp\) => step\(sp, order\)\)/, "billing runs in a savepoint");
 });
 

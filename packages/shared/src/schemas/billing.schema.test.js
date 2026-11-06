@@ -37,8 +37,8 @@ test("statements are asked for by month; list filters coerce", () => {
   assert.ok(!ok(statementQuerySchema, { month: "2026-13" }));
   assert.ok(!ok(statementQuerySchema, {}));
   assert.ok(ok(statementRunSchema, { month: "2026-10" }));
-  assert.ok(ok(statementRunSchema, { month: "2026-10", clientUserIds: ["a"] }));
-  assert.ok(!ok(statementRunSchema, { month: "2026-10", clientUserIds: [] }));
+  assert.ok(ok(statementRunSchema, { month: "2026-10", keys: ["account:a|u1"] }));
+  assert.ok(!ok(statementRunSchema, { month: "2026-10", keys: [] }));
   const q = invoiceListQuerySchema.parse({ needsPrice: "true", number: "500123" });
   assert.equal(q.needsPrice, true);
   assert.equal(q.number, 500123);

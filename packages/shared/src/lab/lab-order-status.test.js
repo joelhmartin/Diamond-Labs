@@ -118,7 +118,7 @@ test("a case on hold shows On hold to the doctor and never the reason, notes, or
     assert.ok(!json.includes(secret), `leaked ${secret}`);
   }
   assert.deepEqual(Object.keys(view).sort(), [
-    "caseNumber", "deviceSummary", "dueDate", "id", "isRemake", "orderNumber", "patientName", "status", "submittedAt", "tracking",
+    "accountId", "caseNumber", "deviceSummary", "dueDate", "id", "isRemake", "orderNumber", "patientName", "status", "submittedAt", "tracking",
   ]);
 });
 

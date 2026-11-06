@@ -1,15 +1,13 @@
 import { eq, inArray } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
 import { db } from "../config/database.js";
-import { invoices, invoicePayments, users } from "../db/schema/index.js";
+import { accounts, invoices, invoicePayments } from "../db/schema/index.js";
 import { createId } from "../lib/id.js";
 import { formatCents } from "../lib/money.js";
 import { sendPaymentReceipt } from "./email.service.js";
 import * as auditService from "./audit.service.js";
 import { paidCentsByInvoice } from "./billing/ledger.service.js";
-import { deriveBalance, canActOnInvoice } from "./billing/invoice-rules.js";
-
-const owner = alias(users, "owner");
+import { deriveBalance } from "./billing/invoice-rules.js";
+import { canActForAccount } from "./client-scope-rules.js";
 
 /**
  * After money moved (a captured card charge) or was received (a manual
@@ -17,8 +15,12 @@ const owner = alias(users, "owner");
  * invoice, send the receipt, and audit. Our ledger is the system of record;
  * nothing is written to the legacy lab system (own-the-lab piece 3).
  *
- * Allocations: [{ invoiceId, invoiceNumber, amountCents }] against local
- * invoices. `source`: doctor_card | doctor_hosted | admin_card | autopay |
+ * `user` is the PAYER: whose card was charged (or, for a manual payment, the
+ * client staff recorded it for). Every ledger row carries their id, and the
+ * receipt goes to them alone, never to the practices' other members.
+ *
+ * Allocations: [{ invoiceId, invoiceNumber, accountNumber?, amountCents }]
+ * against local invoices (verifyAllocations fills in the numbers). `source`: doctor_card | doctor_hosted | admin_card | autopay |
  * admin_check | admin_cash | admin_ach | admin_other. `paidOn` / `reference`
  * are set by manual payments only. `wasCharged` false = no card was charged
  * (receipt copy says "recorded").
@@ -84,7 +86,8 @@ export async function recordPaymentAndAllocations({
       await sendPaymentReceipt({
         to: user.email,
         amountCents,
-        invoices: allocations.map((a) => ({ number: a.invoiceNumber || a.invoiceId, amountCents: a.amountCents })),
+        // Invoice and account numbers only: no names, no patient (a group admin's receipt spans practices).
+        invoices: allocations.map((a) => ({ number: a.invoiceNumber || a.invoiceId, accountNumber: a.accountNumber ?? null, amountCents: a.amountCents })),
         transactionId,
         date: new Date(),
         wasCharged,
@@ -111,19 +114,27 @@ export async function recordPaymentAndAllocations({
 }
 
 /**
- * Check a payment's allocations against our invoices: each one exists, may be
- * paid by this user (canActOnInvoice: the owner, or a login of the same
- * practice), is issued, appears once, and (with
- * `enforceCap`) is not paid past its balance after payments, credits and
- * refunds. Backfills `invoiceNumber`. Returns null when all good, else
- * { kind: "forbidden" | "validation", message } (→ 403 / 422).
+ * Check a payment's allocations against our invoices and the payer's practice
+ * scope (services/client-scope.js): each invoice exists, belongs to a practice
+ * the scope may PAY (canActForAccount with pay: a "viewer" practice is
+ * readable, not payable; a null-account invoice is nobody's), is issued,
+ * appears once, and (with `enforceCap`) is not paid past its balance after
+ * payments, credits and refunds. One bad allocation refuses the whole payment,
+ * before any card call. Backfills `invoiceNumber` and `accountNumber` (for the
+ * receipt). Returns null when all good, else
+ * { kind: "not_found" | "validation", message } (→ 404 / 422; not payable and
+ * not found read the same, so invoice ids can't be probed).
+ *
+ * `scope` is the payer's: request.user.scope for a client, the TARGET user's
+ * (loadClientScope) for staff charging as the client, the enrollee's loaded at
+ * run time for AutoPay.
  *
  * Concurrency: every caller holds withInvoiceLocks (lib/payment-helpers.js)
  * across verify-with-cap → charge → record. A DB row lock can't do that job:
  * the card charge happens between the check and the write, outside any
  * transaction.
  */
-export async function verifyAllocations(allocations, user, { enforceCap = false, database = db } = {}) {
+export async function verifyAllocations(allocations, scope, { enforceCap = false, database = db } = {}) {
   const ids = allocations.map((a) => String(a.invoiceId));
   if (new Set(ids).size !== ids.length) {
     return { kind: "validation", message: "Each invoice can appear only once in a payment." };
@@ -131,23 +142,27 @@ export async function verifyAllocations(allocations, user, { enforceCap = false,
   const rows = ids.length
     ? await database
         .select({
-          id: invoices.id, invoiceNumber: invoices.invoiceNumber, clientUserId: invoices.clientUserId,
-          ownerSeazonaClientId: owner.seazonaClientId, status: invoices.status, totalCents: invoices.totalCents,
+          id: invoices.id, invoiceNumber: invoices.invoiceNumber, accountId: invoices.accountId, accountNumber: accounts.accountNumber,
+          status: invoices.status, totalCents: invoices.totalCents,
         })
         .from(invoices)
-        .leftJoin(owner, eq(owner.id, invoices.clientUserId))
+        .leftJoin(accounts, eq(accounts.id, invoices.accountId))
         .where(inArray(invoices.id, ids))
     : [];
   const byId = new Map(rows.map((r) => [r.id, r]));
+  // Ownership first, for every allocation: a mixed payment is refused as a whole.
+  for (const a of allocations) {
+    const inv = byId.get(String(a.invoiceId));
+    // Not found and not payable read the same, so invoice ids can't be probed.
+    if (!inv || !canActForAccount(scope, inv.accountId, { pay: true })) {
+      return { kind: "not_found", message: `Invoice ${a.invoiceNumber || a.invoiceId} is not on this account.` };
+    }
+  }
   const paid = enforceCap ? await paidCentsByInvoice(ids, database) : null;
   for (const a of allocations) {
     const inv = byId.get(String(a.invoiceId));
-    // Not found and not yours read the same, so invoice ids can't be probed.
-    // The cap below stays per invoice id, so a second login can't re-pay.
-    if (!inv || !canActOnInvoice(user, inv, inv.ownerSeazonaClientId)) {
-      return { kind: "forbidden", message: `Invoice ${a.invoiceNumber || a.invoiceId} is not on this account.` };
-    }
     a.invoiceNumber = String(inv.invoiceNumber);
+    a.accountNumber = inv.accountNumber ?? null;
     if (inv.status !== "issued") {
       return {
         kind: "validation",
@@ -155,6 +170,7 @@ export async function verifyAllocations(allocations, user, { enforceCap = false,
       };
     }
     if (enforceCap) {
+      // The cap stays per invoice id, so a second login of the practice can't re-pay.
       const { balanceCents } = deriveBalance(inv, paid.get(inv.id) ?? 0);
       if (a.amountCents > balanceCents) {
         return {

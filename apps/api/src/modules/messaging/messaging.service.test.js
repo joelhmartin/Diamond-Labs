@@ -58,14 +58,17 @@ test("createThread with a record uses the resolver's partyKey; resolver null →
   await rejectsWith(messaging.createThread(host, { recordType: "gadget", recordId: "g1", body: "x" }), "INVALID");
 });
 
-test("host general thread requires party; party general thread uses defaultPartyKey", async () => {
+test("host general thread requires party; party general thread uses its own named key or defaultPartyKey", async () => {
   const { messaging } = setup();
   await rejectsWith(messaging.createThread(host, { body: "Hi" }), "INVALID");
   const h = await messaging.createThread(host, { party: "org:2", body: "Hi" });
   assert.equal(h.partyKey, "org:2");
   assert.equal(h.recordType, null);
-  const p = await messaging.createThread(partyA, { party: "org:9", body: "Hi" });
-  assert.equal(p.partyKey, "org:1", "a party user's party comes from defaultPartyKey, never the body");
+  const p = await messaging.createThread(partyA, { body: "Hi" });
+  assert.equal(p.partyKey, "org:1", "a party user names no party: defaultPartyKey");
+  // A party user may name one of their own keys, never anyone else's.
+  await rejectsWith(messaging.createThread(partyA, { party: "org:9", body: "Hi" }), "NOT_FOUND");
+  assert.equal((await messaging.createThread(partyA, { party: "user:p1", body: "Hi" })).partyKey, "user:p1");
 });
 
 test("body and subject are stored sealed (enc:v1) and returned opened", async () => {

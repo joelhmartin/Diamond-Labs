@@ -5,7 +5,8 @@ import { eq, and, or } from "drizzle-orm";
 import { createId } from "../lib/id.js";
 import { env } from "../config/env.js";
 import { toCents, toDecimalString } from "../lib/money.js";
-import { openInvoicesForClient } from "./billing/ledger.service.js";
+import { openInvoicesForAccounts } from "./billing/ledger.service.js";
+import { loadClientScope, payableAccountIds } from "./client-scope.js";
 import { chargeSavedCardAndRecord } from "./card-charge.service.js";
 import { allocateOldestFirst, resolveChargeCents } from "@my-app/shared";
 import { isDueOn, isRetryDay, cycleKeyFor, labDateFor } from "../lib/autopay-schedule.js";
@@ -102,14 +103,17 @@ async function updateEnrollment(id, patch, log) {
 }
 
 /**
- * A doctor's open invoices from our ledger. A read failure must NOT become
- * "nothing owed" (which would complete the enrollment) or "nothing paid"
- * (which would overcharge): it is its own outcome. kind: "ok" | "ledger_error".
+ * The enrollee's practice scope, loaded NOW (at run time, never cached from
+ * enrolment), and the open invoices of the practices it may pay. A login
+ * removed from a practice or group since enrolling pays nothing there. A read
+ * failure (scope or ledger) must NOT become "nothing owed" (which would
+ * complete the enrollment) or "nothing paid" (which would overcharge): it is
+ * its own outcome. kind: "ok" | "ledger_error".
  */
-async function resolveOpenInvoices(doctor) {
+async function resolveOpenInvoices(enrollee) {
   try {
-    // The enrolled doctor's practice-wide open invoices (canActOnInvoice).
-    return { kind: "ok", invoices: await openInvoicesForClient(doctor) };
+    const scope = await loadClientScope(enrollee.id);
+    return { kind: "ok", scope, invoices: await openInvoicesForAccounts(payableAccountIds(scope)) };
   } catch (err) {
     return { kind: "ledger_error", error: err };
   }
@@ -119,8 +123,10 @@ async function resolveOpenInvoices(doctor) {
  * Run one enrollment for one cycle. Returns the attempt row it wrote. Never
  * throws: one doctor's failure must not abort the sweep.
  * @param {Array<{ id, invoiceNumber, balanceCents, dueDate }>} invoices
+ * @param scope  the enrollee's ClientScope as loaded for this run (resolveOpenInvoices);
+ *   the in-lock re-check verifies against it, so an absent scope pays nothing.
  */
-export async function processEnrollment({ enrollment, doctor, invoices, dryRun: requestedDryRun, now, runId, log, cycleKey }) {
+export async function processEnrollment({ enrollment, doctor, scope, invoices, dryRun: requestedDryRun, now, runId, log, cycleKey }) {
   // Cutover freeze (middleware/payments-paused.js flag): no card is charged while payments are paused.
   const dryRun = requestedDryRun || env.PAYMENTS_PAUSED === true;
   const base = attemptBase({ enrollment, doctor, runId, now, dryRun, cycleKey });
@@ -179,6 +185,7 @@ export async function processEnrollment({ enrollment, doctor, invoices, dryRun: 
               try {
                 return await chargeSavedCardAndRecord({
                   payer: doctor,
+                  scope,
                   customerProfileId: doctor.authorizeNetCustomerProfileId,
                   paymentProfileId: enrollment.paymentProfileId,
                   amountCents: totalAllocatedCents,
@@ -229,7 +236,7 @@ export async function processEnrollment({ enrollment, doctor, invoices, dryRun: 
       // count, no decline email.
       if (err instanceof AllocationCapExceededError) {
         await updateEnrollment(enrollment.id, { lastRunAt: now, updatedAt: now }, log);
-        const failureReason = err.kind === "forbidden"
+        const failureReason = err.kind === "not_found"
           ? `could not verify allocation before charging: ${String(err.message).slice(0, 400)}`
           : String(err.message).slice(0, 500);
         return writeAttempt({ ...base, status: "failed", amountAttempted, allocations, failureReason }, log);
@@ -300,8 +307,6 @@ export async function runAutopaySweep({ dryRun = true, now = new Date(), log, ru
         id: users.id,
         email: users.email,
         name: users.name,
-        // The practice key: AutoPay pays what the doctor may pay (canActOnInvoice).
-        seazonaClientId: users.seazonaClientId,
         authorizeNetCustomerProfileId: users.authorizeNetCustomerProfileId,
       },
     })
@@ -349,7 +354,7 @@ export async function runAutopaySweep({ dryRun = true, now = new Date(), log, ru
         continue;
       }
       const attempt = await processEnrollment({
-        enrollment, doctor, invoices: resolved.invoices, dryRun, now, runId, log, cycleKey: baseCycleKey,
+        enrollment, doctor, scope: resolved.scope, invoices: resolved.invoices, dryRun, now, runId, log, cycleKey: baseCycleKey,
       });
       if (attempt.status === "succeeded") {
         summary.charged++;

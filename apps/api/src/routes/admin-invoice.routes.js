@@ -8,23 +8,25 @@ import {
 } from "@my-app/shared";
 import * as actions from "../services/billing/invoice-actions.service.js";
 import { invoiceErrorReply } from "../services/billing/invoice-errors.js";
-import { listInvoices, listClientInvoices } from "../services/billing/invoice-queries.js";
+import { listInvoices, listInvoicesForClientUser } from "../services/billing/invoice-queries.js";
 import { adminInvoiceView } from "../services/billing/invoice-views.js";
 import { invoiceDetailHandler, invoicePdfHandler, invoiceEmailHandler } from "./invoice-detail.handler.js";
 
 /** Billing is admin-only: the lab role sees no money. */
 export const ADMIN = [authenticate, requireAdmin];
 
-export default async function adminInvoiceRoutes(fastify) {
-  async function run(reply, fn, status = 200) {
-    try {
-      return reply.code(status).send({ data: await fn() });
-    } catch (err) {
-      const r = invoiceErrorReply(err);
-      if (r) return reply.code(r.status).send(r.body);
-      throw err;
-    }
+/** Send `{ data: await fn() }` with `status`; an InvoiceError becomes its mapped reply, anything else the app error handler's. */
+export async function run(reply, fn, status = 200) {
+  try {
+    return reply.code(status).send({ data: await fn() });
+  } catch (err) {
+    const r = invoiceErrorReply(err);
+    if (r) return reply.code(r.status).send(r.body);
+    throw err;
   }
+}
+
+export default async function adminInvoiceRoutes(fastify) {
 
   // Admin > Invoices (filters: status, needs-price, client, number).
   fastify.get("/admin/invoices", { preHandler: [...ADMIN, validateQuery(invoiceListQuerySchema)] }, async (request) => ({
@@ -42,7 +44,7 @@ export default async function adminInvoiceRoutes(fastify) {
     run(reply, async () =>
       request.query.open
         ? actions.openInvoicesForClientUser(request.params.userId)
-        : listClientInvoices([request.params.userId], { includeDrafts: true })));
+        : listInvoicesForClientUser(request.params.userId, { includeDrafts: true })));
 
   // Draft editing: one edit per request, always with the version the editor saw.
   fastify.patch("/admin/invoices/:id/lines", { preHandler: [...ADMIN, validate(invoiceEditSchema)] }, (request, reply) =>

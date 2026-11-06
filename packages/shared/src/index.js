@@ -12,6 +12,7 @@ export * from "./schemas/price-lists.schema.js";
 export * from "./schemas/autopay.schema.js";
 export * from "./record-tags/schemas.js";
 export * from "./record-files/schemas.js";
+export * from "./organizations/schemas.js";
 
 // Constants
 export * from "./constants/roles.js";
@@ -40,6 +41,7 @@ export * from "./schemas/lab.schema.js";
 export * from "./lab/logistics.js";
 export * from "./schemas/logistics.schema.js";
 export * from "./schemas/lab-desk.schema.js";
+export * from "./schemas/practices.schema.js";
 
 // Exports
 export * from "./exports/csv.js";

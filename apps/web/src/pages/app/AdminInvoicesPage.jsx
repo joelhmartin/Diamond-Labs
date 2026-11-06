@@ -15,8 +15,9 @@ const FILTERS = [
   { id: "status", label: "Status", type: "select", placeholder: "All statuses", options: INVOICE_STATUSES.map((s) => ({ value: s, label: STATUS_WORDS[s] })) },
   // Drafts that shipping holds: an unpriced line, or no item line at all.
   { id: "needsPrice", label: "Needs a price or lines", type: "toggle" },
-  // Set by the Receivables "Invoices" link; shown as a removable chip.
+  // Set by the Receivables "Invoices" link (a practice) or a client's page; shown as a removable chip.
   { id: "clientUserId", label: "One client", type: "chip" },
+  { id: "accountId", label: "One practice", type: "chip" },
 ];
 
 const clientText = (r) => r.practice || r.clientName || (r.kind === "shop" ? "Guest (shop)" : r.kind === "legacy" ? "Unowned (Seazona history)" : "—");
@@ -26,6 +27,7 @@ async function fetchPage({ page, pageSize, q, filters }) {
   if (filters.status) params.status = filters.status;
   if (filters.needsPrice) params.needsPrice = "true";
   if (filters.clientUserId) params.clientUserId = filters.clientUserId;
+  if (filters.accountId) params.accountId = filters.accountId;
   const res = await api.get("/admin/invoices", { params });
   return { rows: res.data.data.invoices, total: res.data.data.total };
 }

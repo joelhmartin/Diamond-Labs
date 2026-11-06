@@ -18,6 +18,7 @@ import {
 import { INTAKE_RECORD_TYPE, intakeIdsThatExistForFiles, notifyIntakesCreated, withDroppedBy } from "../services/lab/lab-intake.js";
 import { listFamilies } from "../services/catalog.service.js";
 import * as staffOrders from "../services/lab/staff-orders.service.js";
+import { listPractices } from "../services/practices.service.js";
 import { changeLines } from "../services/lab/lab-order-lines.service.js";
 import { mergeOrders } from "../services/lab/merge.service.js";
 import { replaceLineMaterials, materialSuggestions } from "../services/lab/materials.service.js";
@@ -94,6 +95,13 @@ export default async function labDeskRoutes(fastify) {
   fastify.get("/lab/practices", { preHandler: STAFF }, async (request) => ({
     data: { practices: await staffOrders.searchPractices({ q: request.query?.q }) },
   }));
+
+  // The practices (client accounts) a client login belongs to, for choosing which one a new order bills to.
+  // Staff-readable on purpose: GET /admin/practices is admin-only and lab staff must not call /admin paths.
+  fastify.get("/lab/clients/:userId/practices", { preHandler: STAFF }, async (request) => {
+    const { rows } = await listPractices({ memberUserId: request.params.userId, limit: 50 });
+    return { data: { practices: rows.map(({ id, name, accountNumber }) => ({ id, name, accountNumber })) } };
+  });
 
   // Every active family with its active variants (rx-channel and unpriced ones included: the lab keys what is on the bench).
   fastify.get("/lab/catalog/families", { preHandler: STAFF }, async () => {

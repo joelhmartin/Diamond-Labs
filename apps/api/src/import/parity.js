@@ -182,6 +182,10 @@ export function buildParity({ seazona, app, seeds }) {
 
   const orders = orderSection(seazona, app, differences);
   if (seeds.errors.length) differences.push("seeds");
+  // Owned records with no practice fail closed in every scope check: nobody but staff sees them.
+  // Deliberately NOT in DIFFERENCE_KINDS, so `--accept` cannot wave it through: run db:backfill-practices.
+  const recordsWithoutAccount = app.recordsWithoutAccount ?? { rxCases: 0, labOrders: 0, invoices: 0, total: 0 };
+  if (recordsWithoutAccount.total > 0) differences.push(RECORDS_WITHOUT_ACCOUNT);
 
   return {
     clients: { seazona: seazona.clientIds.length, linked: app.linkedCount, placeholders: app.placeholders, unlinked: unlinked.length, unlinkedIds: unlinked.slice(0, LIST_CAP) },
@@ -191,12 +195,16 @@ export function buildParity({ seazona, app, seeds }) {
     ...(seazona.exportDerived ? { balanceExportDerived: seazona.exportDerived } : {}),
     orders,
     seeds,
+    recordsWithoutAccount,
     differences,
     clean: differences.length === 0,
   };
 }
 
-/** Every difference kind buildParity can raise: the names `--accept` takes. */
+/** The one difference kind that can never be accepted (see buildParity). */
+export const RECORDS_WITHOUT_ACCOUNT = "records_without_account";
+
+/** Every difference kind buildParity can raise that the user may accept: the names `--accept` takes. */
 export const DIFFERENCE_KINDS = [
   "clients", "invoice counts", "invoice totals", "invoices not loaded", "unowned invoices with a balance",
   "balances", "no balance export compared", "balance export problems", "balance export is derived",
@@ -210,6 +218,7 @@ export const DIFFERENCE_KINDS = [
  * unknown kind throws (a typo must not silently accept nothing or everything).
  */
 export function applyAccepted(report, kinds = []) {
+  if (kinds.includes(RECORDS_WITHOUT_ACCOUNT)) throw new RangeError(`${RECORDS_WITHOUT_ACCOUNT} cannot be accepted: run db:backfill-practices until it is 0.`);
   const unknown = kinds.filter((k) => !DIFFERENCE_KINDS.includes(k));
   if (unknown.length) throw new RangeError(`Unknown difference kind(s): ${unknown.join(", ")}. Known: ${DIFFERENCE_KINDS.join(", ")}.`);
   if (!kinds.length) return report;

@@ -29,13 +29,16 @@ const rowLabel = (t) => t.recordLabel || t.subject || t.id;
  *   folders     [{ value, label }]; the first is the default
  *   bulk        ids from BULK above
  *   recordTypes [{ value, label }] adds a Record type select
+ *   party       a party key: only that party's threads (a party user with several parties, narrowed by their own switcher)
+ *   partyOptions [{ key, label }]: shows the Party column and a Party select (a party user with several parties)
  *   onChanged   called after a bulk action (refresh nav badges)
  */
-export function InboxTable({ side = "party", threadPath, folders, bulk = [], recordTypes = [], timeZone, onChanged, onNewMessage }) {
+export function InboxTable({ side = "party", threadPath, folders, bulk = [], recordTypes = [], party, partyOptions = [], timeZone, onChanged, onNewMessage }) {
   const navigate = useNavigate();
   const defaultFolder = folders[0]?.value;
   const filters = [
     { id: "unread", label: "Unread only", type: "toggle", match: (t) => t.unread },
+    ...(partyOptions.length > 1 ? [{ id: "party", label: "Party", type: "select", placeholder: "All", options: partyOptions.map((p) => ({ value: p.key, label: p.label })) }] : []),
     ...(recordTypes.length ? [{ id: "recordType", label: "Record type", type: "select", placeholder: "All records", options: recordTypes, match: (t, v) => t.recordType === v }] : []),
   ];
 
@@ -43,11 +46,12 @@ export function InboxTable({ side = "party", threadPath, folders, bulk = [], rec
     const params = { ...pageParams({ page, pageSize, q }), folder: f.folder || defaultFolder };
     if (f.unread === true) params.unread = "true";
     if (f.recordType) params.recordType = f.recordType;
+    if (f.party || party) params.party = f.party || party;
     return fetchThreads(params);
   }
 
   // The folder lives in the table's filter state (not a declared filter) so switching it resets page and selection.
-  const table = useDataTable({ mode: "server", fetchPage, filters, urlKey: "th", getRowId: (t) => t.id });
+  const table = useDataTable({ mode: "server", fetchPage, filters, urlKey: "th", getRowId: (t) => t.id, deps: [party ?? ""] });
   const folder = table.filters.folder || defaultFolder;
 
   const columns = [
@@ -62,7 +66,7 @@ export function InboxTable({ side = "party", threadPath, folders, bulk = [], rec
         </span>
       ),
     },
-    ...(side === "host" ? [{ id: "party", header: "Party", exportValue: (t) => t.partyLabel ?? "", cell: (t) => <span className="text-navy/70">{t.partyLabel || "—"}</span> }] : []),
+    ...(side === "host" || partyOptions.length > 1 ? [{ id: "party", header: "Party", exportValue: (t) => t.partyLabel ?? "", cell: (t) => <span className="text-navy/70">{t.partyLabel || "—"}</span> }] : []),
     {
       id: "subject", header: "Subject", exportValue: (t) => t.subject ?? "",
       cell: (t) => <span className={t.unread ? "font-semibold text-navy" : "text-navy/70"}>{t.subject || "(no subject)"}</span>,

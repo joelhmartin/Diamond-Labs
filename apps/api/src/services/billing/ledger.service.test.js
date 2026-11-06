@@ -43,38 +43,49 @@ test("withBalances attaches the one balance rule", async () => {
   assert.deepEqual([b.paidCents, b.balanceCents], [0, 0]);
 });
 
-test("a client's open invoices: issued, still owing, oldest due first, with the lab-local issue date", async () => {
+test("a practice's open invoices: issued, still owing, oldest due first, with the lab-local issue date and the account", async () => {
   const db = fakeTx({ selects: [
     [
-      { id: "late", clientUserId: "doc1", invoiceNumber: 500002, status: "issued", totalCents: 5000, dueDate: "2026-11-30", issuedAt: new Date("2026-10-31T04:30:00Z") },
-      { id: "early", clientUserId: "doc1", invoiceNumber: 500001, status: "issued", totalCents: 8000, dueDate: "2026-10-30", issuedAt: new Date("2026-09-30T15:00:00Z") },
-      { id: "paid", clientUserId: "doc1", invoiceNumber: 500003, status: "issued", totalCents: 1000, dueDate: "2026-10-01", issuedAt: new Date("2026-09-01T15:00:00Z") },
+      { id: "late", clientUserId: "doc1", accountId: "a1", invoiceNumber: 500002, status: "issued", totalCents: 5000, dueDate: "2026-11-30", issuedAt: new Date("2026-10-31T04:30:00Z") },
+      { id: "early", clientUserId: "doc2", accountId: "a2", invoiceNumber: 500001, status: "issued", totalCents: 8000, dueDate: "2026-10-30", issuedAt: new Date("2026-09-30T15:00:00Z") },
+      { id: "paid", clientUserId: "doc1", accountId: "a1", invoiceNumber: 500003, status: "issued", totalCents: 1000, dueDate: "2026-10-01", issuedAt: new Date("2026-09-01T15:00:00Z") },
     ],
     [{ invoiceId: "paid", paid: "1000" }, { invoiceId: "early", paid: "3000" }],
   ] });
-  const open = await ledger.openInvoicesForClient({ id: "doc1", seazonaClientId: null }, db);
-  assert.deepEqual(open.map((i) => [i.id, i.balanceCents]), [["early", 5000], ["late", 5000]]);
+  const open = await ledger.openInvoicesForAccounts(["a1", "a2"], db);
+  assert.deepEqual(open.map((i) => [i.id, i.balanceCents, i.accountId]), [["early", 5000, "a2"], ["late", 5000, "a1"]]);
   assert.equal(open[1].issuedOn, "2026-10-30", "04:30 UTC on Oct 31 is still Oct 30 in Chicago");
-  await assert.rejects(ledger.openInvoicesForClient(null, db), /a client is required/);
+  assert.deepEqual(Object.keys(open[0]).sort(), ["accountId", "balanceCents", "clientUserId", "dueDate", "id", "invoiceNumber", "issuedOn", "ownerName"]);
 });
 
-test("practice: a second login's open invoices include the practice's; another practice's are filtered out", async () => {
+test("openInvoicesForAccounts: no accounts, no query and nothing open; a row outside the accounts never comes back", async () => {
+  const none = fakeTx();
+  assert.deepEqual(await ledger.openInvoicesForAccounts([], none), []);
+  assert.equal(none.log.length, 0);
   const issuedAt = new Date("2026-10-01T15:00:00Z");
-  const db = fakeTx({ selects: [
-    [{ id: "doc1" }, { id: "frontdesk" }], // users sharing seazonaClientId c1
-    [
-      { id: "mine", clientUserId: "doc1", ownerSeazonaClientId: "c1", invoiceNumber: 500001, status: "issued", totalCents: 1000, dueDate: "2026-10-31", issuedAt },
-      { id: "stray", clientUserId: "x", ownerSeazonaClientId: "c2", invoiceNumber: 500002, status: "issued", totalCents: 1000, dueDate: "2026-10-31", issuedAt },
-    ],
-    [],
-  ] });
-  const open = await ledger.openInvoicesForClient({ id: "frontdesk", seazonaClientId: "c1" }, db);
-  assert.deepEqual(open.map((i) => i.id), ["mine"]);
+  const db = fakeTx({ selects: [[
+    { id: "mine", clientUserId: "doc1", accountId: "a1", invoiceNumber: 500001, status: "issued", totalCents: 1000, dueDate: "2026-10-31", issuedAt },
+    { id: "stray", clientUserId: "x", accountId: "a9", invoiceNumber: 500002, status: "issued", totalCents: 1000, dueDate: "2026-10-31", issuedAt },
+    { id: "unstamped", clientUserId: "doc1", accountId: null, invoiceNumber: 500003, status: "issued", totalCents: 1000, dueDate: "2026-10-31", issuedAt },
+  ], []] });
+  assert.deepEqual((await ledger.openInvoicesForAccounts(["a1"], db)).map((i) => i.id), ["mine"]);
 });
 
-test("practiceUserIds: the requester alone when they have no practice key; never without the requester", async () => {
-  assert.deepEqual(await ledger.practiceUserIds({ id: "solo", seazonaClientId: null }, fakeTx()), ["solo"]);
-  assert.deepEqual(await ledger.practiceUserIds({ id: "fd", seazonaClientId: "c1" }, fakeTx({ selects: [[{ id: "doc1" }]] })), ["doc1", "fd"]);
+test("the practice-by-Seazona-id rules are gone from the ledger", () => {
+  assert.equal(ledger.practiceUserIds, undefined);
+  assert.equal(ledger.openInvoicesForClient, undefined);
+  assert.doesNotMatch(source, /seazonaClientId/);
+});
+
+test("payment history for a scope: the requested practices' invoices, plus the login's own payments when unnarrowed", async () => {
+  const { renderSql } = await import("../../test/sql-text.js");
+  const all = renderSql(ledger.paymentHistoryWhere({ accountIds: ["a1", "a2"], userId: "u1", includeOwn: true }));
+  assert.match(all.text, /invoices\.account_id in \(\$1, \$2\)/);
+  assert.match(all.text, / or invoice_payments\.user_id = \$3/);
+  const one = renderSql(ledger.paymentHistoryWhere({ accountIds: ["a1"], userId: "u1", includeOwn: false }));
+  assert.doesNotMatch(one.text, /user_id/);
+  const nothing = renderSql(ledger.paymentHistoryWhere({ accountIds: [], userId: "u1", includeOwn: false }));
+  assert.match(nothing.text, /false/, "no accounts and not the own payments: matches nothing");
 });
 
 test("shop checkouts and Seazona settlements stay out of payment history (and so out of the refund screen)", () => {
