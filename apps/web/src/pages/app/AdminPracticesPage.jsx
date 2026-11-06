@@ -5,7 +5,7 @@ import { useToast } from "../../components/ui/Toast.jsx";
 import { errorText } from "../../lib/requests.js";
 import { DataTable } from "../../components/ui/data-table/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
-import { pageParams } from "../../lib/data-table/server.js";
+import { fetchAllRows, pageParams } from "../../lib/data-table/server.js";
 import { eachRow } from "../../lib/data-table/bulk.js";
 import { formatCents } from "../../lib/money.js";
 import { PracticeDrawer } from "./PracticeDrawer.jsx";
@@ -36,8 +36,8 @@ export function AdminPracticesPage() {
   const [open, setOpen] = useState(null);
 
   useEffect(() => {
-    api.get("/admin/organizations", { params: { status: "active", limit: 200 } })
-      .then((res) => setGroups(res.data.data.rows))
+    fetchAllRows(async (page) => (await api.get("/admin/organizations", { params: { status: "active", ...page } })).data.data)
+      .then(setGroups)
       .catch((err) => addToast({ message: `Groups could not be loaded: ${errorText(err)}`, type: "error" }));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

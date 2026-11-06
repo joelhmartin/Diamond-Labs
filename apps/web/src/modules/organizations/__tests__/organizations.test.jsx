@@ -35,12 +35,11 @@ test("groups table bulk archive asks inline confirm", async () => {
   assert.equal(get.mock.calls[0][1].params.status, "active");
 });
 
-test("add accounts picker excludes accounts already in another group", async () => {
+test("add accounts picker asks the source for ungrouped accounts and shows exactly what it returns", async () => {
   const list = vi.fn().mockResolvedValue({
-    total: 3,
+    total: 2,
     rows: [
       { id: "a1", label: "Free One", detail: "Acct 1", organizationId: null },
-      { id: "a2", label: "Taken Elsewhere", detail: "Acct 2", organizationId: "g9" },
       { id: "a3", label: "Free Two", detail: "Acct 3", organizationId: null },
     ],
   });
@@ -48,7 +47,7 @@ test("add accounts picker excludes accounts already in another group", async () 
   wrap(<AccountsTab organizationId="g1" accounts={[{ id: "a0", label: "Already Here" }]} accountsSource={{ list }} onChanged={() => {}} />);
   fireEvent.click(screen.getByRole("button", { name: /Add accounts/ }));
   await screen.findByText("Free One");
-  assert.equal(screen.queryByText("Taken Elsewhere"), null);
+  assert.ok(screen.getByText("Free Two"), "no filtering after paging: the page is the source's");
   assert.equal(list.mock.calls[0][0].ungrouped, true, "the source is asked for ungrouped accounts only");
   const dialog = screen.getByText("Free One").closest(".relative");
   fireEvent.click(within(dialog).getAllByLabelText("Select row")[0]);
@@ -69,4 +68,13 @@ test("admins tab remove uses ConfirmButton", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Click again to remove" }));
   await waitFor(() => assert.equal(del.mock.calls.length, 1));
   assert.equal(del.mock.calls[0][0], "/admin/organizations/g1/admins/u1");
+});
+
+test("add admins picker sends the people already chosen to the source (server-side exclusion, no short pages)", async () => {
+  const list = vi.fn().mockResolvedValue({ total: 1, rows: [{ id: "u9", label: "New Person", detail: null }] });
+  wrap(<AdminsTab organizationId="g1" admins={[{ userId: "u1", status: "active" }, { userId: "u2", status: "removed" }]} usersSource={{ list, labels: vi.fn().mockResolvedValue({}) }} onChanged={() => {}} />);
+  fireEvent.click(await screen.findByRole("button", { name: /Add admin/ }));
+  await screen.findByText("New Person");
+  assert.deepEqual(list.mock.calls[0][0].excludeIds, ["u1"]);
+  assert.equal(list.mock.calls[0][0].limit, 10);
 });

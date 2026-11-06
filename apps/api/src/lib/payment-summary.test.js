@@ -79,4 +79,13 @@ describe("summarizePayments", () => {
     const all = ids([b, a, c]);
     expect([...all.slice(0, 1), ...all.slice(1, 2), ...all.slice(2, 3)]).toEqual(["TXN-C", "TXN-A", "TXN-B"]);
   });
+
+  it("carries the practice of the invoices it paid: one practice -> accountId, split across practices -> null", () => {
+    const [one] = summarizePayments([row({ accountId: "ac1" }), row({ invoiceId: "inv-2", accountId: "ac1" })]);
+    expect([one.accountId, one.accountIds]).toEqual(["ac1", ["ac1"]]);
+    const [split] = summarizePayments([row({ accountId: "ac1" }), row({ invoiceId: "inv-2", accountId: "ac2" })]);
+    expect([split.accountId, split.accountIds]).toEqual([null, ["ac1", "ac2"]]);
+    const [none] = summarizePayments([row()]);
+    expect([none.accountId, none.accountIds]).toEqual([null, []]);
+  });
 });

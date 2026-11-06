@@ -12,8 +12,7 @@ import { addAccounts, removeAccount } from "./api.js";
 const getRowId = (a) => a.id;
 const searchFn = (a, q) => `${a.label}`.toLowerCase().includes(q.toLowerCase());
 const NO_GROUP_PARAMS = { ungrouped: true };
-// An account that already belongs to an organization (this one or another) is never offered: an account lives in one.
-const unassigned = (row) => !row.organizationId;
+// `ungrouped` asks the source for accounts in no organization (this one or another): an account lives in one.
 
 /**
  * The accounts in one organization, with a picker to add more.
@@ -80,7 +79,6 @@ export function AccountsTab({ organizationId, accounts, accountsSource, describe
           title={`Add ${noun}s`}
           source={accountsSource}
           sourceParams={NO_GROUP_PARAMS}
-          keep={unassigned}
           onPick={add}
           onClose={() => setPicking(false)}
           itemLabel={`${noun}s`}

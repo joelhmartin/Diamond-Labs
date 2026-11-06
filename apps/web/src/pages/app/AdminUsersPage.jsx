@@ -137,6 +137,13 @@ function UserActions({ u, me, busy, send, changeRole, setPaymentsUser }) {
           Pricing
         </Link>
       )}
+      {u.role === "user" && u.runsPractice && (
+        <button type="button" title="Record a check, cash or ACH payment for this practice admin"
+          onClick={() => setPaymentsUser({ userId: u.id, name: u.name, email: u.email, accountNumber: u.seazonaAccountNumber, recordOnly: true })}
+          className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20">
+          <CreditCard size={11} /> Record payment
+        </button>
+      )}
       {u.role === "doctor" && (
         <button type="button" title="Manage cards, charges, and AutoPay"
           onClick={() => setPaymentsUser({ userId: u.id, name: u.name, email: u.email, accountNumber: u.seazonaAccountNumber })}
@@ -275,7 +282,7 @@ export function AdminUsersPage() {
       {assignIds && <AssignPriceListModal clientUserIds={assignIds} onDone={assignDone} onClose={() => setAssignIds(null)} />}
       {copyIds && <CopyPricesModal targetIds={copyIds} onDone={copyDone} onClose={() => setCopyIds(null)} />}
       {repUser && <ClientRepPicker client={repUser} onClose={() => setRepUser(null)} onChanged={load} />}
-      {paymentsUser && <DoctorPaymentDrawer doctor={paymentsUser} onClose={() => setPaymentsUser(null)} />}
+      {paymentsUser && <DoctorPaymentDrawer doctor={paymentsUser} recordOnly={paymentsUser.recordOnly} onClose={() => setPaymentsUser(null)} />}
 
       <p className="mt-6 text-[11px] font-mono text-navy/30 text-center">
         Emails are console-logged until Resend is configured — the "sent" state just means a reset token was generated.

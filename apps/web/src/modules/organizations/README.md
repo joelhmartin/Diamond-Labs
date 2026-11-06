@@ -18,9 +18,9 @@ Everything is exported from `index.js`.
 
 Props the host provides:
 
-- `accountsSource.list({ q, limit, offset, ungrouped }) -> { rows: [{ id, label, detail?, organizationId? }], total }`. The picker sends `ungrouped: true` and also drops any row that carries an `organizationId`, so an account already in an organization is never offered.
+- `accountsSource.list({ q, limit, offset, ungrouped }) -> { rows: [{ id, label, detail?, organizationId? }], total }`. The picker sends `ungrouped: true`, so the SOURCE must leave out any account already in an organization (an account lives in one); the picker does not filter loaded rows, which would give short pages and an overstated total.
 - `describeAccount(account) -> { title, subtitle?, to? }`: how a member row reads.
-- `usersSource.list(...)` (same shape) and `usersSource.labels(ids) -> { [id]: label }`.
+- `usersSource.list({ q, limit, offset, excludeIds })` (same shape; `excludeIds` are people already chosen, to be left out server-side) and `usersSource.labels(ids) -> { [id]: label }`.
 
 ## Configuration
 

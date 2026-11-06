@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "../../config/api.js";
 import { DataTable } from "../../components/ui/data-table/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
 import { formatCents } from "../../lib/money.js";
 import { usePracticeScope } from "../../hooks/usePracticeScope.js";
+import { practiceColumn } from "../../components/practice/practiceColumn.jsx";
 
 function formatDate(d) {
   if (!d) return "—";
@@ -87,7 +88,7 @@ export function PaymentsPage() {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const { param } = usePracticeScope();
+  const { param, multi, accounts } = usePracticeScope();
 
   const load = async () => {
     try {
@@ -102,6 +103,8 @@ export function PaymentsPage() {
   };
   useEffect(() => { load(); }, [param]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // A login with several practices sees which practice each payment went to (blank when one payment was split across practices).
+  const columns = useMemo(() => (multi ? [COLUMNS[0], COLUMNS[1], practiceColumn(accounts), ...COLUMNS.slice(2)] : COLUMNS), [multi, accounts]);
   const table = useDataTable({ mode: "client", rows: payments, searchFn, filters: FILTERS, getRowId, loading, error, reload: load });
 
   return (
@@ -112,7 +115,7 @@ export function PaymentsPage() {
       </p>
       <DataTable
         table={table}
-        columns={COLUMNS}
+        columns={columns}
         searchPlaceholder="Invoice # or reference"
         itemLabel="payments"
         exportFileName="payments.csv"

@@ -17,25 +17,26 @@ export const practicesSource = {
   },
 };
 
-let usersCache = null;
-async function loadUsers() {
-  if (!usersCache || Date.now() - usersCache.at > 15000) {
-    usersCache = { at: Date.now(), promise: api.get("/admin/users").then((res) => res.data.data.users).catch((err) => { usersCache = null; throw err; }) };
-  }
-  return usersCache.promise;
-}
 const userLabel = (u) => u.name || u.email;
+const LABEL_CHUNK = 60; // ids per request, so the URL stays short
 
-/** Logins for the admin and member pickers. The admin list is one unpaged request, filtered and sliced here. */
+/** Logins for the admin and member pickers: paged, searched and filtered by the server (active logins only). */
 export const usersSource = {
-  async list({ q, limit = 10, offset = 0 }) {
-    const needle = (q ?? "").toLowerCase();
-    const all = (await loadUsers()).filter((u) => !needle || `${u.name ?? ""} ${u.email}`.toLowerCase().includes(needle));
-    return { total: all.length, rows: all.slice(offset, offset + limit).map((u) => ({ id: u.id, label: userLabel(u), detail: u.name ? u.email : null })) };
+  async list({ q, limit = 10, offset = 0, excludeIds }) {
+    const params = { limit, offset, status: "active" };
+    if (q) params.q = q;
+    if (excludeIds?.length) params.excludeIds = excludeIds.join(",");
+    const { users, total } = (await api.get("/admin/users", { params })).data.data;
+    return { total, rows: users.map((u) => ({ id: u.id, label: userLabel(u), detail: u.name ? u.email : null })) };
   },
+  /** Names for logins already chosen, whatever their status. */
   async labels(ids) {
-    const wanted = new Set(ids);
-    return Object.fromEntries((await loadUsers()).filter((u) => wanted.has(u.id)).map((u) => [u.id, userLabel(u)]));
+    const out = {};
+    for (let i = 0; i < ids.length; i += LABEL_CHUNK) {
+      const res = await api.get("/admin/users", { params: { ids: ids.slice(i, i + LABEL_CHUNK).join(",") } });
+      for (const u of res.data.data.users) out[u.id] = userLabel(u);
+    }
+    return out;
   },
 };
 

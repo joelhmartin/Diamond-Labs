@@ -17,8 +17,10 @@ import { apiErrorMessage } from "../../lib/requests.js";
  * component (Admin*Section).
  *
  * `doctor` — { userId, name, email, accountNumber }; invoices load from GET /admin/clients/:userId/invoices.
+ * `recordOnly` — a login that runs a practice but is not a doctor (a DSO billing admin): staff may only record a
+ * payment for them, so cards, charge and AutoPay (doctor-only on the server) are neither loaded nor shown.
  */
-export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount: minAmountProp }) {
+export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount: minAmountProp, recordOnly = false }) {
   // Floor shown in the AutoPay form: the caller's value when it has one (the
   // AutoPay list page), else the one the per-doctor read returns (Users page).
   const [serverMinAmount, setServerMinAmount] = useState(null);
@@ -40,6 +42,7 @@ export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount: min
 
   // Combined enrollment + cards load: one snapshot for the cards, charge and AutoPay panels.
   const load = useCallback(async () => {
+    if (recordOnly) { setLoading(false); return; }
     setLoading(true);
     try {
       const { data } = await api.get(`/admin/users/${doctor.userId}/autopay`);
@@ -53,7 +56,7 @@ export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount: min
     } finally {
       setLoading(false);
     }
-  }, [doctor.userId]);
+  }, [doctor.userId, recordOnly]);
 
   // This doctor's open invoices, from our ledger.
   const loadInvoices = useCallback(async () => {
@@ -131,24 +134,28 @@ export function DoctorPaymentDrawer({ doctor, onClose, onChanged, minAmount: min
                 </div>
               )}
 
-              <AdminCardsSection doctorUserId={doctor.userId} cards={cards} cardsUnavailable={cardsUnavailable} onChanged={load} />
-              <AdminChargeSection
-                doctorUserId={doctor.userId}
-                {...invoiceProps}
-                invoiceGen={invoiceGen}
-                cards={cards}
-                cardsUnavailable={cardsUnavailable}
-                onCharged={afterMoneyMoved}
-              />
+              {!recordOnly && <AdminCardsSection doctorUserId={doctor.userId} cards={cards} cardsUnavailable={cardsUnavailable} onChanged={load} />}
+              {!recordOnly && (
+                <AdminChargeSection
+                  doctorUserId={doctor.userId}
+                  {...invoiceProps}
+                  invoiceGen={invoiceGen}
+                  cards={cards}
+                  cardsUnavailable={cardsUnavailable}
+                  onCharged={afterMoneyMoved}
+                />
+              )}
               <AdminRecordPaymentSection doctor={doctor} {...invoiceProps} onRecorded={afterMoneyMoved} />
-              <AdminAutopaySection
-                doctorUserId={doctor.userId}
-                enrollment={enrollment}
-                cards={cards}
-                cardsUnavailable={cardsUnavailable}
-                minAmount={minAmount}
-                onChanged={notifyChanged}
-              />
+              {!recordOnly && (
+                <AdminAutopaySection
+                  doctorUserId={doctor.userId}
+                  enrollment={enrollment}
+                  cards={cards}
+                  cardsUnavailable={cardsUnavailable}
+                  minAmount={minAmount}
+                  onChanged={notifyChanged}
+                />
+              )}
             </>
           )}
         </div>

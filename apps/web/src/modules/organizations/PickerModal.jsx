@@ -22,15 +22,15 @@ const COLUMNS = [
  *
  *   source        { list({ q, limit, offset, ...sourceParams }) → { rows: [{ id, label, detail? }], total } }
  *   sourceParams  extra query passed to source.list (e.g. { ungrouped: true })
- *   keep(row)     optional extra filter on the loaded rows
+ *   excludeIds    ids already chosen; sent to source.list as `excludeIds` so the SERVER leaves them out
+ *                 (a filter applied after paging gives short pages and an overstated total)
  *   onPick(rows)  async; the modal closes when it resolves
  */
-export function PickerModal({ onClose, title, source, sourceParams, keep, onPick, actionLabel = "Add", itemLabel = "rows", single = false }) {
+export function PickerModal({ onClose, title, source, sourceParams, excludeIds, onPick, actionLabel = "Add", itemLabel = "rows", single = false }) {
   const fetchPage = async ({ page, pageSize, q }) => {
-    const res = await source.list({ ...pageParams({ page, pageSize, q }), ...sourceParams });
-    return { ...res, rows: keep ? res.rows.filter(keep) : res.rows };
+    return source.list({ ...pageParams({ page, pageSize, q }), ...sourceParams, ...(excludeIds?.length ? { excludeIds } : {}) });
   };
-  const table = useDataTable({ mode: "server", fetchPage, getRowId, deps: [JSON.stringify(sourceParams ?? {})], initialPageSize: 10 });
+  const table = useDataTable({ mode: "server", fetchPage, getRowId, deps: [JSON.stringify(sourceParams ?? {}), excludeIds?.join(",") ?? ""], initialPageSize: 10 });
   const bulkActions = [{
     id: "pick", label: actionLabel, icon: <Plus size={12} />,
     disabled: (rows) => single && rows.length !== 1,

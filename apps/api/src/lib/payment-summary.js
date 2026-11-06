@@ -57,8 +57,14 @@ export function summarizePayments(rows) {
     const sourceRows = charge.length ? charge : reversals;
     const createdAt = sourceRows.reduce((min, r) => (r.createdAt && (!min || r.createdAt < min) ? r.createdAt : min), null);
 
+    // The practice(s) the money went to (rows from listPaymentHistory carry accountId). `accountId` is the
+    // practice when there is exactly one, else null (a payment split across practices has no single one).
+    const accountIds = [...new Set(sourceRows.map((r) => r.accountId).filter(Boolean))];
+
     summaries.push({
       transactionId: chargeTxn,
+      accountId: accountIds.length === 1 ? accountIds[0] : null,
+      accountIds,
       userId: sourceRows[0]?.userId || null,
       // doctor_card | doctor_hosted | admin_card | autopay | admin_check |
       // admin_cash | admin_ach | admin_other | credit (admin_offline on
