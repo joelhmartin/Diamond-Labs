@@ -462,7 +462,7 @@ function TurnaroundTimeline() {
   );
 }
 
-function Features() {
+export function Features() {
   const sectionRef = useRef(null);
 
   useEffect(() => {

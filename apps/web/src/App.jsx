@@ -42,6 +42,7 @@ import { RequireAdmin } from "./guards/RequireAdmin.jsx";
 
 // Marketing pages
 import { HomePage } from "./pages/marketing/Home.jsx";
+import { HomeCinematicPage } from "./pages/marketing/HomeCinematic.jsx";
 import { AboutPage } from "./pages/marketing/About.jsx";
 import { ProductPage } from "./pages/marketing/Product.jsx";
 import { ContactPage } from "./pages/marketing/Contact.jsx";
@@ -184,6 +185,7 @@ function AppRoutes() {
       {/* Marketing routes */}
       <Route element={<MarketingLayout />}>
         <Route path="/" element={<HomePage />} />
+        <Route path="/home-cinematic" element={<HomeCinematicPage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/products" element={<ProductPage />} />
         <Route path="/contact" element={<ContactPage />} />
