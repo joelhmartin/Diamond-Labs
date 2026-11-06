@@ -78,6 +78,17 @@ export function scopeNotFound() {
 }
 
 /**
+ * A practice (a client account, `is_client`) is managed by staff only
+ * (/admin/practices/:id/members, practices.service.js, audited). The SaaS
+ * template's self-service member, invitation and account-mutation paths
+ * refuse it with this: 404 NOT_FOUND, as for any out-of-scope id. A
+ * non-client account passes untouched.
+ */
+export function assertNotClientAccount(account) {
+  if (account?.isClient === true) throw scopeNotFound();
+}
+
+/**
  * THE 422 PRACTICE_REQUIRED refusal: a login (or a client staff act for) with
  * several practices, and none named. One error for every path: an
  * InvoiceError (invoice-errors.js maps it) that also carries statusCode, so

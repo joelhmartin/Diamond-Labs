@@ -1,7 +1,7 @@
 import { createAccountSchema, updateAccountSchema } from "@my-app/shared";
 import { validate } from "../middleware/validate.js";
 import { authenticate } from "../middleware/authenticate.js";
-import { requireAccount } from "../middleware/require-account.js";
+import { requireAccount, refuseClientAccount } from "../middleware/require-account.js";
 import { authorize } from "../middleware/authorize.js";
 import * as accountService from "../services/account.service.js";
 
@@ -26,7 +26,7 @@ export default async function accountRoutes(fastify) {
 
   // Update account
   fastify.patch("/:accountId", {
-    preHandler: [authenticate, requireAccount, authorize("settings:update"), validate(updateAccountSchema)],
+    preHandler: [authenticate, requireAccount, refuseClientAccount, authorize("settings:update"), validate(updateAccountSchema)],
   }, async (request) => {
     const account = await accountService.updateAccount(request.params.accountId, request.body);
     return { data: account };
@@ -34,7 +34,7 @@ export default async function accountRoutes(fastify) {
 
   // Delete account (owner only)
   fastify.delete("/:accountId", {
-    preHandler: [authenticate, requireAccount],
+    preHandler: [authenticate, requireAccount, refuseClientAccount],
   }, async (request, reply) => {
     await accountService.deleteAccount(request.params.accountId, request.user.id);
     return { data: { message: "Account deleted." } };

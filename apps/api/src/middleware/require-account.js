@@ -2,6 +2,7 @@ import { db } from "../config/database.js";
 import { memberships, accounts } from "../db/schema/index.js";
 import { eq, and } from "drizzle-orm";
 import { ERROR_CODES } from "@my-app/shared";
+import { assertNotClientAccount } from "../services/client-scope-rules.js";
 
 /**
  * Resolves accountId from route params or x-account-id header,
@@ -45,4 +46,13 @@ export async function requireAccount(request, reply) {
 
   request.account = account;
   request.membership = membership;
+}
+
+/**
+ * After requireAccount on the template's self-service member, invitation and
+ * account-mutation routes: a practice (client account) answers 404 NOT_FOUND,
+ * because its staff are managed by the lab only (assertNotClientAccount).
+ */
+export async function refuseClientAccount(request) {
+  assertNotClientAccount(request.account);
 }

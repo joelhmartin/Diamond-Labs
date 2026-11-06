@@ -6,10 +6,12 @@ import { MemoryRouter } from "react-router-dom";
 
 let role = "lab";
 vi.mock("../../hooks/useAuth.js", () => ({ useAuth: () => ({ user: { id: "me", role } }) }));
-vi.mock("../../hooks/usePermission.js", () => ({ usePermission: () => ({ can: () => false }) }));
+let canAll = false;
+vi.mock("../../hooks/usePermission.js", () => ({ usePermission: () => ({ can: () => canAll }) }));
 const { Sidebar } = await import("./Sidebar.jsx");
+const { useAccountStore } = await import("../../stores/account.store.js");
 
-afterEach(() => { cleanup(); role = "lab"; });
+afterEach(() => { cleanup(); role = "lab"; canAll = false; useAccountStore.setState({ activeAccount: null }); });
 
 /** The links listed under a section heading ("Lab" or "Admin"), in order. */
 function sectionLinks(title) {
@@ -42,4 +44,16 @@ test("a doctor sees no Lab section", () => {
   role = "doctor";
   render(<MemoryRouter><Sidebar /></MemoryRouter>);
   assert.equal(screen.queryByText("Lab"), null);
+});
+
+test("Members is hidden for a practice (the lab manages its staff) and shown for a plain account", () => {
+  role = "doctor";
+  canAll = true;
+  useAccountStore.setState({ activeAccount: { accountId: "a1", role: "owner", isClient: true } });
+  render(<MemoryRouter><Sidebar /></MemoryRouter>);
+  assert.equal(screen.queryByRole("link", { name: "Members" }), null);
+  cleanup();
+  useAccountStore.setState({ activeAccount: { accountId: "a2", role: "owner", isClient: false } });
+  render(<MemoryRouter><Sidebar /></MemoryRouter>);
+  assert.ok(screen.getByRole("link", { name: "Members" }));
 });

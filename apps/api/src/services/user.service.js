@@ -69,6 +69,8 @@ export async function getUserAccounts(userId) {
       accountSlug: accounts.slug,
       accountLogo: accounts.logoUrl,
       accountPlan: accounts.plan,
+      // A practice (client account): its staff are managed by the lab, so the web hides Members for it.
+      isClient: accounts.isClient,
       role: memberships.role,
       membershipStatus: memberships.status,
     })

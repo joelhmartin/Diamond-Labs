@@ -18,6 +18,12 @@ const EMPTY_SCOPE = { accounts: [], organizations: [] };
 const validScope = (scope, clientScope) =>
   scope && scope !== ALL && clientScope.accounts.some((a) => a.id === scope) ? scope : ALL;
 
+/**
+ * Selector: is the active account a practice (client account)? Its staff are managed by the lab
+ * (Admin > Practices), so the template's self-service Members page is hidden for it (the API refuses it too).
+ */
+export const selectActiveIsPractice = (s) => s.activeAccount?.isClient === true;
+
 export const useAccountStore = create((set, get) => ({
   /** The login's practices and groups (GET /client/scope). Fetched per session, never kept beyond it. */
   clientScope: EMPTY_SCOPE,
