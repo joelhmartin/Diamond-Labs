@@ -54,6 +54,15 @@ export function canActForAccount(scope, accountId, { pay = false } = {}) {
   return pay ? Boolean(scope.payable?.has(accountId)) : true;
 }
 
+/**
+ * The accounts this login may PAY, in scope order: what AutoPay sweeps and
+ * what a payment for this login can be applied to (a "viewer" practice is
+ * readable, never payable).
+ */
+export function payableAccountIds(scope) {
+  return (scope?.accountIds ?? []).filter((id) => scope.payable?.has(id));
+}
+
 /** 404 NOT_FOUND as an app error (the error handler sends statusCode + code). */
 export function scopeNotFound() {
   const err = new Error(ERROR_CODES.NOT_FOUND.message);

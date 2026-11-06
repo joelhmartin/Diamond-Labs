@@ -42,3 +42,23 @@ test("neither notice can carry patient data or a file", () => {
     assert.doesNotMatch(body, /patient|attachment/i, fn);
   }
 });
+
+test("the payment receipt lists invoice and account numbers only — no names, no patient", async () => {
+  const f = capture();
+  await email.sendPaymentReceipt({
+    to: "payer@x.com", amountCents: 30000, transactionId: "tx1", date: new Date("2026-11-05T15:00:00Z"),
+    invoices: [{ number: "500001", accountNumber: "1324", amountCents: 10000 }, { number: "500002", accountNumber: "2001", amountCents: 20000 }],
+  });
+  assert.equal(f.mock.calls.length, 1, "one email: the payer's");
+  const p = sent(f);
+  assert.equal(p.get("to"), "payer@x.com");
+  const html = p.get("html");
+  assert.match(html, /Invoice 500001/);
+  assert.match(html, /1324/);
+  assert.match(html, /2001/);
+  assert.match(html, /\$300\.00/);
+  const start = src.indexOf("export async function sendPaymentReceipt");
+  const body = src.slice(start, src.indexOf("\nexport ", start + 10));
+  assert.doesNotMatch(body, /\bname\b|patient|practice/i, "the receipt takes no names");
+  vi.unstubAllGlobals();
+});

@@ -34,17 +34,10 @@ const EXCLUDED_FILES = new Set(["services/auth.service.js"]);
  * entry must be deleted in the same commit. Task 7 leaves it empty.
  */
 const ALLOWED = new Map([
-  // Task 5 (billing): canActOnInvoiceLegacy, practiceUserIds, openInvoicesForClient and their callers.
-  ["routes/invoice.routes.js", "Task 5"],
-  ["services/billing/invoice-rules.js", "Task 5"],
-  ["services/billing/ledger.service.js", "Task 5"],
-  ["services/payment-recording.service.js", "Task 5"],
-  ["services/autopay-runner.service.js", "Task 5"],
-  ["services/billing/account-credit.service.js", "Task 5"],
-  ["services/billing/invoice-actions.service.js", "Task 5"],
   // Task 6 (cases, messages, pickups, deliveries): the practice:X audience.
   ["services/lab/lab-notifications.js", "Task 6"],
-  // Task 7 (statements): the per-practice statement run (practiceKey, practiceUserIds).
+  // Task 7 (statements): the per-practice statement run (practiceKey, practiceUserIds), and
+  // the doctor's own statement download, which borrows practiceUserIds from it until then.
   ["services/billing/statement-run.service.js", "Task 7"],
 ]);
 

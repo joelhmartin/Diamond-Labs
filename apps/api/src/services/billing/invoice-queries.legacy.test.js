@@ -19,7 +19,7 @@ test("a sealed legacy patient and line text come back opened in the doctor's lis
   assert.match(sealedInvoice.legacyPatient, /^enc:v1:/, "fixture really is sealed");
   assert.match(sealedLine.legacyDescription, /^enc:v1:/);
 
-  const list = await listClientInvoices(["doc1"], {}, fakeTx({ selects: [
+  const list = await listClientInvoices(["a1"], {}, fakeTx({ selects: [
     [{ invoice: sealedInvoice, labOrderNumber: null, caseNumber: null, patientFirst: null, patientLast: null }],
     [],
   ] }));
@@ -42,7 +42,7 @@ test("a sealed legacy patient and line text come back opened in the doctor's lis
 
 test("an unreadable sealed patient shows no initials instead of failing the list", async () => {
   const bad = { ...sealedInvoice, legacyPatient: "enc:v1:not-a-real-ciphertext" };
-  const list = await listClientInvoices(["doc1"], {}, fakeTx({ selects: [[{ invoice: bad, labOrderNumber: null, caseNumber: null, patientFirst: null, patientLast: null }], []] }));
+  const list = await listClientInvoices(["a1"], {}, fakeTx({ selects: [[{ invoice: bad, labOrderNumber: null, caseNumber: null, patientFirst: null, patientLast: null }], []] }));
   assert.equal(list.length, 1);
   assert.equal(list[0].patientInitials, null);
 });
@@ -53,7 +53,7 @@ test("a staff-entered order's invoice shows its sealed patient opened (detail) a
   assert.match(sealedPatient, /^enc:v1:/, "fixture really is sealed");
   const inv = sealInvoice({ id: "inv2", invoiceNumber: 2, kind: "order", status: "issued", clientUserId: "doc1", labOrderId: "lo2", totalCents: 5000, notes: null, voidReason: null, legacyPatient: null });
 
-  const list = await listClientInvoices(["doc1"], {}, fakeTx({ selects: [
+  const list = await listClientInvoices(["a1"], {}, fakeTx({ selects: [
     [{ invoice: inv, labOrderNumber: 100050, caseNumber: null, patientFirst: null, patientLast: null, staffPatient: sealedPatient }],
     [],
   ] }));

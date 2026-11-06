@@ -41,7 +41,7 @@ test("one ledger row per allocated invoice, in cents, against the local invoice"
     ["doc1", "inv2", "500002", 12550, "tx1", "doctor_card"],
   ]);
   assert.equal(receipts[0].amountCents, 42550);
-  assert.deepEqual(receipts[0].invoices, [{ number: "500001", amountCents: 30000 }, { number: "500002", amountCents: 12550 }]);
+  assert.deepEqual(receipts[0].invoices, [{ number: "500001", accountNumber: null, amountCents: 30000 }, { number: "500002", accountNumber: null, amountCents: 12550 }]);
 });
 
 test("manual payments carry their received date and reference", async () => {
@@ -79,61 +79,103 @@ test("audit carries amounts, the source and invoice numbers only", async () => {
   });
 });
 
-const inv = (over = {}) => ({ id: "inv1", invoiceNumber: 500001, clientUserId: "doc1", ownerSeazonaClientId: "c1", status: "issued", totalCents: 30000, ...over });
+const inv = (over = {}) => ({ id: "inv1", invoiceNumber: 500001, accountId: "a1", accountNumber: "1324", clientUserId: "doc1", status: "issued", totalCents: 30000, ...over });
+const { toClientScope } = await import("./client-scope-rules.js");
+// A ClientScope as loadClientScope builds it: roles per account ("org-admin" for a group admin's).
+const scopeOf = (roles) => toClientScope({ accountIds: Object.keys(roles), roles: new Map(Object.entries(roles)), via: new Map(), organizations: [] });
+const member = scopeOf({ a1: "member" });
 
-test("verifyAllocations: a second login of the same practice may pay; another practice may not", async () => {
-  invoiceRows = [inv()];
-  assert.equal(await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], { id: "frontdesk", seazonaClientId: "c1" }), null);
-  assert.equal((await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], { id: "other", seazonaClientId: "c2" })).kind, "forbidden");
+test("group admin pays invoices of two practices in one charge", async () => {
+  const admin = { id: "gadmin", email: "ga@x.com" };
+  const groupScope = scopeOf({ a1: "org-admin", a2: "org-admin" });
+  invoiceRows = [inv(), inv({ id: "inv2", invoiceNumber: 500002, accountId: "a2", accountNumber: "2001", clientUserId: "doc2", totalCents: 12550 })];
+  const allocs = [{ invoiceId: "inv1", amountCents: 30000 }, { invoiceId: "inv2", amountCents: 12550 }];
+  assert.equal(await verifyAllocations(allocs, groupScope, { enforceCap: true }), null);
+  await recordPaymentAndAllocations({ user: admin, amountCents: 42550, transactionId: "tx9", allocations: allocs, source: "doctor_card" });
+  assert.deepEqual(inserted.map((r) => [r.invoiceId, r.transactionId, r.userId]), [["inv1", "tx9", "gadmin"], ["inv2", "tx9", "gadmin"]]);
 });
 
-test("verifyAllocations: a null practice key on either side matches the owner only", async () => {
-  invoiceRows = [inv()];
-  assert.equal((await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], { id: "frontdesk", seazonaClientId: null })).kind, "forbidden");
-  invoiceRows = [inv({ ownerSeazonaClientId: null })];
-  assert.equal((await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], { id: "frontdesk", seazonaClientId: "c1" })).kind, "forbidden");
-  assert.equal(await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], doctor), null, "the owner, with no practice key");
+test("practice staff cannot pay a sibling practice's invoice: it reads as not found", async () => {
+  invoiceRows = [inv({ accountId: "a2" })];
+  const sibling = await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], member);
+  invoiceRows = [];
+  const missing = await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], member);
+  assert.equal(sibling.kind, "not_found");
+  assert.deepEqual(sibling, missing, "not found and not yours read the same, so ids can't be probed");
 });
 
-test("verifyAllocations: the practice shares one cap per invoice — a second login can't re-pay", async () => {
+test("viewer allocation refused", async () => {
+  invoiceRows = [inv()];
+  const viewer = scopeOf({ a1: "viewer" });
+  assert.equal((await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], viewer)).kind, "not_found");
+  assert.equal(await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], member), null, "a member of the same practice may pay");
+});
+
+test("verifyAllocations: an invoice with no practice (null account) is nobody's to pay; no scope pays nothing", async () => {
+  invoiceRows = [inv({ accountId: null })];
+  assert.equal((await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], member)).kind, "not_found");
+  invoiceRows = [inv()];
+  assert.equal((await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], undefined)).kind, "not_found");
+});
+
+test("verifyAllocations: one cap per invoice — a second login of the practice can't re-pay", async () => {
   invoiceRows = [inv()];
   paid = new Map([["inv1", 30000]]); // the first login paid in full
-  const again = await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], { id: "frontdesk", seazonaClientId: "c1" }, { enforceCap: true });
+  const again = await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], member, { enforceCap: true });
   assert.equal(again.kind, "validation");
 });
 
-test("verifyAllocations: someone else's invoice and a missing one read the same (403)", async () => {
-  invoiceRows = [inv({ clientUserId: "doc2" })];
-  const other = await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], doctor);
-  invoiceRows = [];
-  const missing = await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], doctor);
-  assert.equal(other.kind, "forbidden");
-  assert.deepEqual(other, missing);
+test("mixed allocation with one foreign invoice is refused as a whole", async () => {
+  invoiceRows = [inv(), inv({ id: "inv2", invoiceNumber: 500002, accountId: "a9" })];
+  const out = await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }, { invoiceId: "inv2", amountCents: 100 }], member);
+  assert.equal(out.kind, "not_found");
+});
+
+test("receipt goes to the payer only and lists invoice numbers only", async () => {
+  invoiceRows = [inv(), inv({ id: "inv2", invoiceNumber: 500002, accountId: "a2", accountNumber: "2001" })];
+  const allocs = [{ invoiceId: "inv1", amountCents: 100 }, { invoiceId: "inv2", amountCents: 200 }];
+  assert.equal(await verifyAllocations(allocs, scopeOf({ a1: "org-admin", a2: "org-admin" })), null);
+  await recordPaymentAndAllocations({ user: { id: "gadmin", email: "ga@x.com", name: "Pat Payer" }, amountCents: 300, transactionId: "tx1", allocations: allocs, source: "doctor_card" });
+  assert.equal(receipts.length, 1, "one receipt");
+  assert.equal(receipts[0].to, "ga@x.com", "to the payer, never the practices' members");
+  assert.deepEqual(receipts[0].invoices, [
+    { number: "500001", accountNumber: "1324", amountCents: 100 },
+    { number: "500002", accountNumber: "2001", amountCents: 200 },
+  ]);
+  assert.doesNotMatch(JSON.stringify(receipts[0]), /Pat Payer|doc1/, "no names, no owners");
+});
+
+test("verifyAllocations: the not-found refusal is sent as 404 NOT_FOUND, never 403", async () => {
+  const { sendAllocationError } = await import("../routes/payment-replies.js");
+  const reply = { code(c) { this.status = c; return this; }, send(b) { this.body = b; return this; } };
+  sendAllocationError(reply, { kind: "not_found", message: "Invoice 1 is not on this account." });
+  assert.equal(reply.status, 404);
+  assert.equal(reply.body.error.code, "NOT_FOUND");
 });
 
 test("verifyAllocations: drafts and voids can't be paid; an invoice may appear once", async () => {
   invoiceRows = [inv({ status: "draft" })];
-  assert.match((await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], doctor)).message, /hasn't been issued/);
+  assert.match((await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], member)).message, /hasn't been issued/);
   invoiceRows = [inv({ status: "void" })];
-  assert.match((await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], doctor)).message, /is void/);
-  const dup = await verifyAllocations([{ invoiceId: "inv1", amountCents: 1 }, { invoiceId: "inv1", amountCents: 1 }], doctor);
+  assert.match((await verifyAllocations([{ invoiceId: "inv1", amountCents: 100 }], member)).message, /is void/);
+  const dup = await verifyAllocations([{ invoiceId: "inv1", amountCents: 1 }, { invoiceId: "inv1", amountCents: 1 }], member);
   assert.equal(dup.kind, "validation");
 });
 
 test("verifyAllocations: the cap is what's left after payments, credits and refunds", async () => {
   invoiceRows = [inv()];
   paid = new Map([["inv1", 20000]]);
-  assert.equal(await verifyAllocations([{ invoiceId: "inv1", amountCents: 10000 }], doctor, { enforceCap: true }), null);
-  const over = await verifyAllocations([{ invoiceId: "inv1", amountCents: 10001 }], doctor, { enforceCap: true });
+  assert.equal(await verifyAllocations([{ invoiceId: "inv1", amountCents: 10000 }], member, { enforceCap: true }), null);
+  const over = await verifyAllocations([{ invoiceId: "inv1", amountCents: 10001 }], member, { enforceCap: true });
   assert.equal(over.kind, "validation");
   assert.match(over.message, /exceeds its balance of \$100\.00/);
-  assert.equal(await verifyAllocations([{ invoiceId: "inv1", amountCents: 30000 }], doctor), null, "no cap without enforceCap (ownership pass)");
+  assert.equal(await verifyAllocations([{ invoiceId: "inv1", amountCents: 30000 }], member), null, "no cap without enforceCap (ownership pass)");
 });
 
 test("verifyAllocations fills in the invoice number from our invoice", async () => {
   invoiceRows = [inv()];
   const a = [{ invoiceId: "inv1", amountCents: 100 }];
-  await verifyAllocations(a, doctor);
+  await verifyAllocations(a, member);
   assert.equal(a[0].invoiceNumber, "500001");
 });
 

@@ -11,13 +11,14 @@ const handler = read("../invoice-detail.handler.js");
 const index = read("../../index.js");
 const markersOf = (src) => [...src.matchAll(/\n  fastify\.(get|post|patch|put|delete)\("([^"]+)",/g)].map((m) => `fastify.${m[1]}("${m[2]}",`);
 
-test("doctor invoice routes are approved-doctor only, scoped to the caller's practice, and never show a draft", () => {
-  assert.match(doctor, /const DOCTOR = \[authenticate, requireApprovedDoctor\]/);
-  for (const m of markersOf(doctor)) assert.match(handlerSource(doctor, m), /preHandler: (DOCTOR|\[\.\.\.DOCTOR)/, m);
-  assert.match(handlerSource(doctor, 'fastify.get("/invoices",'), /listClientInvoices\(await practiceUserIds\(request\.user\)\)/);
+test("client invoice routes are client-portal only, read through the practice scope, and never show a draft", () => {
+  assert.match(doctor, /const CLIENT_PORTAL = \[authenticate, requireClientPortal\]/);
+  for (const m of markersOf(doctor)) assert.match(handlerSource(doctor, m), /preHandler: (CLIENT_PORTAL|\[\.\.\.CLIENT_PORTAL)/, m);
+  assert.match(handlerSource(doctor, 'fastify.get("/invoices",'), /listClientInvoices\(requestedAccounts\(clientScopeOf\(request\.user\), request\.query\.account\)\)/);
   const detail = handlerSource(doctor, 'fastify.get("/invoices/:id",');
-  assert.match(detail, /invoiceDetailHandler\(\{ mayRead, view: doctorInvoiceView \}\)/, "the shared handler, doctor access check and view");
-  assert.match(doctor, /canActOnInvoiceLegacy\(user, detail\.invoice, detail\.client\?\.seazonaClientId \?\? null\)/, "one shared predicate");
+  assert.match(detail, /invoiceDetailHandler\(\{ mayRead: clientMayRead, view: doctorInvoiceView \}\)/, "the shared handler, doctor access check and view");
+  assert.match(doctor, /canActOnInvoice\(clientScopeOf\(user\), detail\.invoice\)/, "one shared predicate");
+  assert.doesNotMatch(doctor, /seazonaClientId|practiceUserIds|canActOnInvoiceLegacy/);
   assert.match(doctor, /detail\.invoice\.status !== "draft"/);
   assert.match(handler, /"invoice\.read"/, "every detail read is audited, in the one shared handler");
   assert.doesNotMatch(doctor, /seazonaService|seazona\.service/);
@@ -56,7 +57,7 @@ test("staff actions validate their bodies and map invoice errors to replies", ()
 });
 
 test("invoice PDFs: one shared handler; the doctor's practice's and never a draft; admins any; never cached; audited", () => {
-  assert.match(handlerSource(doctor, 'fastify.get("/invoices/:id/pdf",'), /invoicePdfHandler\(\{ mayRead \}\)/, "the doctor's own access check");
+  assert.match(handlerSource(doctor, 'fastify.get("/invoices/:id/pdf",'), /invoicePdfHandler\(\{ mayRead: clientMayRead \}\)/, "the client's own access check");
   assert.match(handlerSource(admin, 'fastify.get("/admin/invoices/:id/pdf",'), /preHandler: ADMIN[\s\S]*invoicePdfHandler\(\{ mayRead: \(\) => true \}\)/);
   const pdf = handler.slice(handler.indexOf("export function invoicePdfHandler"));
   assert.match(pdf, /loadReadableInvoice\(request, reply, mayRead/, "the shared access pattern: 404 on no access, generic 500");
@@ -91,16 +92,17 @@ test("one statement handler serves both audiences; a doctor's covers their pract
   assert.match(handler, /sendPdf\(reply, out\.pdf, out\.model\.filename\)/);
   assert.match(handler, /"statement\.downloaded"/);
   const body = handlerSource(doctor, 'fastify.get("/invoices/statement.pdf",');
-  assert.match(body, /\.\.\.DOCTOR, validateQuery\(statementQuerySchema\)/);
+  assert.match(body, /\.\.\.CLIENT_PORTAL, validateQuery\(statementQuerySchema\)/);
   assert.match(body, /statementPdfHandler\(/);
-  assert.match(body, /clientUserIds: await practiceUserIds\(request\.user\)/);
+  // Task 7 moves the statement onto the account scope; until then it borrows the statement run's rule.
+  assert.match(body, /clientUserIds: await doctorStatementUserIds\(request\.user\)/);
   assert.doesNotMatch(doctor + receivables, /statementPdfFor|sendPdf/, "no near-duplicate handler");
 });
 
 test("the emailed statement notice covers the practice, like the doctor's own download", () => {
   // The single send lives in the statement-run service (it also writes statement_sends).
   assert.match(statementRun, /statementFor\(clientUserId, month, \{ clientUserIds: await practiceUserIds\(target, database\) \}, database\)/);
-  assert.match(statementRun, /import \{ practiceUserIds \} from "\.\/ledger\.service\.js"/);
+  assert.match(statementRun, /async function practiceUserIds\(/);
 });
 
 const runRoutes = read("../statement-run.routes.js");

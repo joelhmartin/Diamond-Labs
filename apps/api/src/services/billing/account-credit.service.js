@@ -3,15 +3,16 @@ import { db } from "../../config/database.js";
 import { invoicePayments } from "../../db/schema/index.js";
 import { createId } from "../../lib/id.js";
 import { formatCents } from "../../lib/money.js";
-import { paidCentsByInvoice, openInvoicesForClient } from "./ledger.service.js";
+import { paidCentsByInvoice } from "./ledger.service.js";
 import { auditInvoice } from "./invoices.service.js";
 import { sealLedgerRow } from "./invoice-crypto.js";
 import { InvoiceError, planAccountCredit, deriveBalance } from "./invoice-rules.js";
-import { loadPayingClient, lockInvoice, underInvoiceLocks } from "./invoice-actions.service.js";
+import { loadPayingClient, payableOpenInvoices, lockInvoice, underInvoiceLocks } from "./invoice-actions.service.js";
 
 /**
- * An account-level credit: one amount spread over the practice's open invoices
- * (oldest due first, or the invoices staff chose) as `credit` ledger rows that
+ * An account-level credit: one amount spread over the client's open invoices
+ * (the practices in the client's own payable scope, the list Record payment
+ * offers: payableOpenInvoices), oldest due first or the invoices staff chose, as `credit` ledger rows that
  * share one "credit:<groupId>" transaction id. Same row shape as a per-invoice
  * credit (recordCredit): never sent to a card processor, reason sealed on the
  * row, audits carry ids and cents only. Sends no email.
@@ -22,7 +23,7 @@ import { loadPayingClient, lockInvoice, underInvoiceLocks } from "./invoice-acti
  */
 export async function recordAccountCredit({ clientUserId, amountCents, reason, allocations, byUserId }, database = db) {
   const client = await loadPayingClient(clientUserId, database);
-  const openInvoices = await openInvoicesForClient(client, database);
+  const { openInvoices } = await payableOpenInvoices(client, database);
   const todayIso = isoDateIn(LAB_TIMEZONE, new Date());
   const plan = planAccountCredit({ openInvoices, amountCents, allocations, reason, todayIso });
 

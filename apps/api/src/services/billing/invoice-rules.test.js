@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { priceLines } from "../../lib/pricing.js";
 import {
   InvoiceError, computeTotals, hasUnpriced, asRemakeLines, planDraftInvoice, planShopInvoice,
-  assertFreshInvoice, planLineEdit, planIssue, planVoid, deriveBalance, canActOnInvoice, canActOnInvoiceLegacy, planCredit, planManualPayment, planAccountCredit,
+  assertFreshInvoice, planLineEdit, planIssue, planVoid, deriveBalance, canActOnInvoice, planCredit, planManualPayment, planAccountCredit,
   planShipmentLine, planShipmentLineRemoval, planLinkedLineAdd, planLinkedLineRemove, planLinkedLineQty, planDiscountLine,
   hasNoItems,
 } from "./invoice-rules.js";
@@ -250,16 +250,9 @@ test("canActOnInvoice is false for a null accountId", () => {
   assert.equal(canActOnInvoice(scope, { clientUserId: "doc1" }), false);
 });
 
-test("legacy practice visibility (until Task 5): the owner, or a login of the same practice — nobody else", () => {
-  const invoice = { clientUserId: "doc1" };
-  assert.equal(canActOnInvoiceLegacy({ id: "doc1", seazonaClientId: null }, invoice, null), true, "the owner always");
-  assert.equal(canActOnInvoiceLegacy({ id: "frontdesk", seazonaClientId: "c1" }, invoice, "c1"), true, "a same-practice second login");
-  assert.equal(canActOnInvoiceLegacy({ id: "other", seazonaClientId: "c2" }, invoice, "c1"), false, "another practice");
-  assert.equal(canActOnInvoiceLegacy({ id: "frontdesk", seazonaClientId: null }, invoice, "c1"), false, "null on the user's side");
-  assert.equal(canActOnInvoiceLegacy({ id: "frontdesk", seazonaClientId: "c1" }, invoice, null), false, "null on the owner's side");
-  assert.equal(canActOnInvoiceLegacy({ id: "x", seazonaClientId: null }, invoice, null), false, "two nulls are not a match");
-  assert.equal(canActOnInvoiceLegacy({ id: "doc1" }, { clientUserId: null }, null), false, "a guest invoice is nobody's to see");
-  assert.equal(canActOnInvoiceLegacy(null, invoice, "c1"), false);
+test("the Seazona-id practice rule is gone", async () => {
+  const rules = await import("./invoice-rules.js");
+  assert.equal(rules.canActOnInvoiceLegacy, undefined);
 });
 
 test("invoice errors map to the status a screen can act on", () => {

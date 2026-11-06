@@ -416,22 +416,6 @@ export function canActOnInvoice(scope, invoice) {
   return canActForAccount(scope, invoice?.accountId ?? null);
 }
 
-/**
- * The pre-piece-11 rule, kept only until Task 5 repoints its callers (invoice
- * routes, verifyAllocations, the ledger) onto canActOnInvoice(scope, invoice)
- * and deletes it: the owner, or a login sharing the owner's non-null
- * seazonaClientId. A null on either side matches the owner only.
- *
- * @param {{ id: string, seazonaClientId?: string|null }} user  the requester (or the doctor being charged)
- * @param {{ clientUserId: string|null }} invoice
- * @param {string|null} ownerSeazonaClientId  the owning doctor's seazonaClientId
- */
-export function canActOnInvoiceLegacy(user, invoice, ownerSeazonaClientId) {
-  if (!user?.id || !invoice?.clientUserId) return false;
-  if (invoice.clientUserId === user.id) return true;
-  return Boolean(user.seazonaClientId) && Boolean(ownerSeazonaClientId) && String(user.seazonaClientId) === String(ownerSeazonaClientId);
-}
-
 /** A credit (write-off) on an issued invoice: a reason, and no more than is owed. */
 export function planCredit(invoice, { amountCents, reason, balanceCents }) {
   assertLegacyOwned(invoice, "credited");
@@ -457,7 +441,7 @@ export function planCredit(invoice, { amountCents, reason, balanceCents }) {
  * an allocated invoice was issued (the statement would show a payment against
  * an invoice that didn't exist yet).
  *
- * @param {Array<{ id, invoiceNumber, balanceCents, dueDate, issuedOn }>} openInvoices  ledger.openInvoicesForClient
+ * @param {Array<{ id, invoiceNumber, balanceCents, dueDate, issuedOn }>} openInvoices  ledger.openInvoicesForAccounts
  */
 export function planManualPayment({ openInvoices, amountCents, allocations, paidOn, todayIso }) {
   assertCents(amountCents, "amountCents");

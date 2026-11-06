@@ -8,7 +8,7 @@ import {
 } from "@my-app/shared";
 import * as actions from "../services/billing/invoice-actions.service.js";
 import { invoiceErrorReply } from "../services/billing/invoice-errors.js";
-import { listInvoices, listClientInvoices } from "../services/billing/invoice-queries.js";
+import { listInvoices, listInvoicesForClientUser } from "../services/billing/invoice-queries.js";
 import { adminInvoiceView } from "../services/billing/invoice-views.js";
 import { invoiceDetailHandler, invoicePdfHandler, invoiceEmailHandler } from "./invoice-detail.handler.js";
 
@@ -42,7 +42,7 @@ export default async function adminInvoiceRoutes(fastify) {
     run(reply, async () =>
       request.query.open
         ? actions.openInvoicesForClientUser(request.params.userId)
-        : listClientInvoices([request.params.userId], { includeDrafts: true })));
+        : listInvoicesForClientUser(request.params.userId, { includeDrafts: true })));
 
   // Draft editing: one edit per request, always with the version the editor saw.
   fastify.patch("/admin/invoices/:id/lines", { preHandler: [...ADMIN, validate(invoiceEditSchema)] }, (request, reply) =>

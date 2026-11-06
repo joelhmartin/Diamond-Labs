@@ -14,6 +14,12 @@ vi.mock("../../config/redis.js", () => ({
   },
 }));
 
+// The client's practice scope: practice a1, payable.
+vi.mock("../client-scope.js", async () => {
+  const rules = await import("../client-scope-rules.js");
+  return { ...rules, loadClientScope: async () => rules.toClientScope({ accountIds: ["a1"], roles: new Map([["a1", "member"]]), via: new Map(), organizations: [] }) };
+});
+
 const { fakeTx } = await import("../../test/fake-tx.js");
 const { recordAccountCredit } = await import("./account-credit.service.js");
 const { InvoiceError } = await import("./invoice-rules.js");
@@ -26,11 +32,11 @@ const source = readFileSync(fileURLToPath(new URL("./account-credit.service.js",
 beforeEach(() => lockStore.clear());
 
 const issuedAt = new Date("2026-08-31T15:00:00Z");
-const inv = (id, number, totalCents, dueDate) => ({ id, clientUserId: "doc1", invoiceNumber: number, status: "issued", totalCents, dueDate, issuedAt, version: 1 });
+const inv = (id, number, totalCents, dueDate) => ({ id, clientUserId: "doc1", accountId: "a1", invoiceNumber: number, status: "issued", totalCents, dueDate, issuedAt, version: 1 });
 const A = inv("a", 500001, 20000, "2026-09-30");
 const B = inv("b", 500002, 30000, "2026-10-30");
 
-// Select order: client (no practice id, so no practice lookup), open invoices, their paid sums, then under
+// Select order: client, the open invoices of its practice scope (loadClientScope is faked), their paid sums, then under
 // the lock one FOR UPDATE row per allocated invoice and one paid-sum re-read.
 const queue = ({ paid = [], locked = [A, B] } = {}) => [
   [{ id: "doc1", email: "d@x.com", name: "Dr", role: "doctor" }],

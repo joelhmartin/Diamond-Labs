@@ -1,7 +1,8 @@
 import { authenticate } from "../middleware/authenticate.js";
 import { paymentsPaused } from "../middleware/payments-paused.js";
 import { env } from "../config/env.js";
-import { requireApprovedDoctor } from "../middleware/require-role.js";
+import { requireClientPortal } from "../middleware/require-role.js";
+import { clientScopeOf } from "../services/client-scope.js";
 import { validate } from "../middleware/validate.js";
 import * as authorizenetService from "../services/authorizenet.service.js";
 import { ensureCustomerProfile } from "../services/card.service.js";
@@ -50,9 +51,9 @@ async function chargeSaved(request, reply) {
     return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "No saved-card profile on file for this account." } });
   }
   // Ownership (no cap) runs OUTSIDE the idempotency replay path: every request,
-  // a replay included, must first prove the invoices are the caller's, so a
-  // guessed key can't replay another doctor's result.
-  const own = await verifyAllocations(allocations, request.user);
+  // a replay included, must first prove the invoices are payable in the
+  // caller's scope, so a guessed key can't replay another login's result.
+  const own = await verifyAllocations(allocations, clientScopeOf(request.user));
   if (own) return sendAllocationError(reply, own);
 
   let outcome;
@@ -68,6 +69,7 @@ async function chargeSaved(request, reply) {
           () =>
             chargeSavedCardAndRecord({
               payer: request.user,
+              scope: clientScopeOf(request.user),
               customerProfileId,
               paymentProfileId,
               amountCents,
@@ -95,7 +97,7 @@ async function hostedToken(request, reply) {
   if (iframeCommunicatorUrl && !/^https?:\/\//.test(iframeCommunicatorUrl)) {
     return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "iframeCommunicatorUrl must be an http(s) URL." } });
   }
-  const v = await verifyAllocations(allocations, request.user, { enforceCap: true });
+  const v = await verifyAllocations(allocations, clientScopeOf(request.user), { enforceCap: true });
   if (v) return sendAllocationError(reply, v);
   const amountCents = sumCents(allocations.map((a) => a.amountCents));
 
@@ -182,7 +184,8 @@ async function hostedComplete(request, reply) {
         // Under the locks, so two concurrent completes of one transaction can't both record it.
         const dup = await db.select({ id: invoicePayments.id }).from(invoicePayments).where(eq(invoicePayments.transactionId, String(transId)));
         if (dup.length) return { alreadyRecorded: dup.length };
-        const v = await verifyAllocations(boundAllocations, request.user, { enforceCap: true });
+        // The scope as loaded for THIS request: access lost since the token was issued pays nothing.
+        const v = await verifyAllocations(boundAllocations, clientScopeOf(request.user), { enforceCap: true });
         if (v) return { allocationError: v };
         return {
           result: await recordPaymentAndAllocations({
@@ -220,19 +223,21 @@ async function hostedComplete(request, reply) {
 }
 
 /**
- * A doctor pays their invoices: with a saved card (charge-saved), or a new card
+ * A client login pays invoices of the practices it may pay (a group admin: any
+ * in the group, in one charge): with a saved card (charge-saved), or a new card
  * on Authorize.net's hosted page (hosted-token → hosted-complete, SAQ A).
  * Allocations are [{ invoiceId, amountCents }] against OUR invoices. Every
- * request first proves the caller may pay them (verifyAllocations →
- * canActOnInvoice); the balance cap is re-checked inside the per-invoice locks,
+ * request first proves each one is payable in the caller's scope
+ * (verifyAllocations → canActForAccount with pay; one that isn't refuses the
+ * whole payment, 404, before any card call); the balance cap is re-checked inside the per-invoice locks,
  * right before money moves or is recorded. Dollars appear only on the
  * Authorize.net wire (toDecimalString out, toCents back). The three handlers
  * are module functions (the function-length rule); registration is at the end.
  */
 export default async function invoicePaymentRoutes(fastify) {
-  fastify.post("/payments/charge-saved", { ...CHARGE_RATE_LIMIT, preHandler: [authenticate, requireApprovedDoctor, paymentsPaused, validate(chargeSavedSchema)] }, chargeSaved);
-  fastify.post("/payments/hosted-token", { ...CHARGE_RATE_LIMIT, preHandler: [authenticate, requireApprovedDoctor, paymentsPaused, validate(hostedTokenSchema)] }, hostedToken);
-  fastify.post("/payments/hosted-complete", { ...CHARGE_RATE_LIMIT, preHandler: [authenticate, requireApprovedDoctor, validate(hostedCompleteSchema)] }, hostedComplete);
+  fastify.post("/payments/charge-saved", { ...CHARGE_RATE_LIMIT, preHandler: [authenticate, requireClientPortal, paymentsPaused, validate(chargeSavedSchema)] }, chargeSaved);
+  fastify.post("/payments/hosted-token", { ...CHARGE_RATE_LIMIT, preHandler: [authenticate, requireClientPortal, paymentsPaused, validate(hostedTokenSchema)] }, hostedToken);
+  fastify.post("/payments/hosted-complete", { ...CHARGE_RATE_LIMIT, preHandler: [authenticate, requireClientPortal, validate(hostedCompleteSchema)] }, hostedComplete);
   // The doctor pages read this to show the pause banner instead of a Pay button.
   fastify.get("/payments/status", { preHandler: [authenticate] }, async () => ({ data: { paused: env.PAYMENTS_PAUSED === true } }));
 }

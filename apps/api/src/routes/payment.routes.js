@@ -1,7 +1,8 @@
 import { authenticate } from "../middleware/authenticate.js";
-import { requireApprovedDoctor, requireAdmin } from "../middleware/require-role.js";
+import { requireClientPortal, requireAdmin } from "../middleware/require-role.js";
+import { clientScopeOf, requestedAccounts } from "../services/client-scope.js";
 import * as authorizenetService from "../services/authorizenet.service.js";
-import { listPaymentsForUser, listAllPayments } from "../services/billing/ledger.service.js";
+import { listPaymentHistory, listAllPayments } from "../services/billing/ledger.service.js";
 import { db } from "../config/database.js";
 import { users, auditLog } from "../db/schema/index.js";
 import { eq, and, inArray, like, desc } from "drizzle-orm";
@@ -21,12 +22,17 @@ export default async function paymentRoutes(fastify) {
   // PAYMENT HISTORY (read-only)
   // ───────────────────────────────────────────────────────────────
 
-  // Doctor — their OWN transaction-level payment history (charges + reversals
-  // collapsed per charge). Drives the in-portal "Payments" view.
+  // Client — transaction-level payment history (charges + reversals collapsed
+  // per charge) of the practices in scope: `?account=` absent or "all" is every
+  // practice plus the login's own payments; an id in scope narrows to that
+  // practice; anything else is 404 (requestedAccounts). Drives the portal "Payments" view.
   fastify.get("/payments/history", {
-    preHandler: [authenticate, requireApprovedDoctor],
+    preHandler: [authenticate, requireClientPortal],
   }, async (request) => {
-    const payments = await listPaymentsForUser(request.user.id);
+    const param = request.query?.account;
+    const accountIds = requestedAccounts(clientScopeOf(request.user), param);
+    const includeOwn = param == null || param === "" || param === "all";
+    const payments = await listPaymentHistory({ accountIds, userId: request.user.id, includeOwn });
     return { data: { payments } };
   });
 

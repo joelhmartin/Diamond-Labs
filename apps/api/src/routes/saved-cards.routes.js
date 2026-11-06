@@ -1,5 +1,5 @@
 import { authenticate } from "../middleware/authenticate.js";
-import { requireApprovedDoctor } from "../middleware/require-role.js";
+import { requireClientPortal } from "../middleware/require-role.js";
 import * as authorizenetService from "../services/authorizenet.service.js";
 import { ensureCustomerProfile } from "../services/card.service.js";
 import { isCardUsedByAutopay, CARD_IN_USE_BY_AUTOPAY_MESSAGE } from "../services/autopay.service.js";
@@ -12,7 +12,7 @@ import { ERROR_CODES } from "@my-app/shared";
 export default async function savedCardRoutes(fastify) {
   // List saved cards, flagging the doctor's default (if still present).
   fastify.get("/payments/saved-cards", {
-    preHandler: [authenticate, requireApprovedDoctor],
+    preHandler: [authenticate, requireClientPortal],
   }, async (request) => {
     const cards = await authorizenetService.listPaymentProfiles(
       request.user.authorizeNetCustomerProfileId
@@ -34,7 +34,7 @@ export default async function savedCardRoutes(fastify) {
   // list, and the pay modal falls back to the first card when nothing is flagged.
   // So a dangling default never resolves to (or mischarges) a real card.
   fastify.put("/payments/saved-cards/:profileId/default", {
-    preHandler: [authenticate, requireApprovedDoctor],
+    preHandler: [authenticate, requireClientPortal],
   }, async (request, reply) => {
     const { profileId } = request.params;
     const customerProfileId = request.user.authorizeNetCustomerProfileId;
@@ -76,7 +76,7 @@ export default async function savedCardRoutes(fastify) {
   // if needed). The new customerPaymentProfileId lives at the gateway and is retrieved
   // live via GET /payments/saved-cards — no local table needed.
   fastify.post("/payments/saved-cards/hosted-token", {
-    preHandler: [authenticate, requireApprovedDoctor],
+    preHandler: [authenticate, requireClientPortal],
   }, async (request, reply) => {
     const { iframeCommunicatorUrl } = request.body || {};
 
@@ -99,7 +99,7 @@ export default async function savedCardRoutes(fastify) {
   // profile to confirm ownership (gateway-scoped to this doctor's customerProfileId)
   // and to retrieve the masked cardNumber required for the update request.
   fastify.put("/payments/saved-cards/:profileId", {
-    preHandler: [authenticate, requireApprovedDoctor],
+    preHandler: [authenticate, requireClientPortal],
   }, async (request, reply) => {
     const { expirationDate, billTo } = request.body || {};
     const { profileId } = request.params;
@@ -139,7 +139,7 @@ export default async function savedCardRoutes(fastify) {
 
   // Delete a saved card
   fastify.delete("/payments/saved-cards/:profileId", {
-    preHandler: [authenticate, requireApprovedDoctor],
+    preHandler: [authenticate, requireClientPortal],
   }, async (request, reply) => {
     const customerProfileId = request.user.authorizeNetCustomerProfileId;
     if (!customerProfileId) {

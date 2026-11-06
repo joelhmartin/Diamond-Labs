@@ -39,7 +39,7 @@ test("a doctor sees the bill, its lines and dated payments — never staff notes
 test("a doctor's list row is an allow-list too", () => {
   const row = doctorInvoiceRow({ ...detail.invoice, labOrderNumber: 100245, patientInitials: "JD", caseNumber: "RX-ABC" });
   assert.deepEqual(Object.keys(row).sort(), [
-    "balanceCents", "dueDate", "id", "invoiceNumber", "issuedAt", "kind", "labOrderNumber", "paidCents", "patientInitials", "status", "totalCents",
+    "accountId", "accountName", "accountNumber", "balanceCents", "dueDate", "id", "invoiceNumber", "issuedAt", "kind", "labOrderNumber", "paidCents", "patientInitials", "status", "totalCents",
   ]);
 });
 

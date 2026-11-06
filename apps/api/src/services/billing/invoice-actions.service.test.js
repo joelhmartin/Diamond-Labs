@@ -16,9 +16,20 @@ vi.mock("../../config/redis.js", () => ({
 }));
 const recorded = [];
 let verifyResult = null;
+const verifyArgs = [];
 vi.mock("../payment-recording.service.js", () => ({
-  verifyAllocations: async () => verifyResult,
+  verifyAllocations: async (...args) => { verifyArgs.push(args); return verifyResult; },
   recordPaymentAndAllocations: async (args) => { recorded.push(args); return { ledgerWriteFailed: false }; },
+}));
+
+// The paying client's practice scope (the TARGET user's, never the acting staff member's).
+const { toClientScope } = await import("../client-scope-rules.js");
+const scopeOf = (roles) => toClientScope({ accountIds: Object.keys(roles), roles: new Map(Object.entries(roles)), via: new Map(), organizations: [] });
+const scopeCalls = [];
+let targetScope = scopeOf({ a1: "member" });
+vi.mock("../client-scope.js", async () => ({
+  ...(await import("../client-scope-rules.js")),
+  loadClientScope: async (userId) => { scopeCalls.push(userId); return targetScope; },
 }));
 
 const { fakeTx, fakeDb } = await import("../../test/fake-tx.js");
@@ -28,7 +39,7 @@ const { decryptField } = await import("../../lib/crypto.js");
 const source = readFileSync(fileURLToPath(new URL("./invoice-actions.service.js", import.meta.url)), "utf8");
 const isCode = (code) => (e) => e instanceof InvoiceError && e.code === code;
 
-beforeEach(() => { lockStore.clear(); recorded.length = 0; verifyResult = null; });
+beforeEach(() => { lockStore.clear(); recorded.length = 0; verifyResult = null; scopeCalls.length = 0; verifyArgs.length = 0; targetScope = scopeOf({ a1: "member" }); });
 
 const draftRow = { id: "inv1", invoiceNumber: 500001, status: "draft", version: 2, totalCents: 10000, notes: null, voidReason: null, clientUserId: "doc1" };
 const lineRow = { id: "l1", position: 0, kind: "item", description: "DDSO", qty: 1, unitCents: 10000, lineCents: 10000, taxable: false, priceSource: "client", priceNote: null };
@@ -86,7 +97,7 @@ test("recordCredit: a ledger row with a sealed reason, a credit: id and no card"
 test("recordManualPayment: oldest-first, re-verified under the lock, recorded as received (not charged)", async () => {
   const db = fakeTx({ selects: [
     [{ id: "doc1", email: "d@x.com", name: "Dr", role: "doctor" }],
-    [{ id: "a", clientUserId: "doc1", invoiceNumber: 500001, status: "issued", totalCents: 20000, dueDate: "2026-09-30", issuedAt: new Date("2026-08-31T15:00:00Z") }],
+    [{ id: "a", clientUserId: "doc1", accountId: "a1", invoiceNumber: 500001, status: "issued", totalCents: 20000, dueDate: "2026-09-30", issuedAt: new Date("2026-08-31T15:00:00Z") }],
     [],
   ] });
   const out = await actions.recordManualPayment({
@@ -100,39 +111,63 @@ test("recordManualPayment: oldest-first, re-verified under the lock, recorded as
   );
 });
 
-test("Record payment's picker and the default allocation read the same practice-wide list", async () => {
+test("Record payment's picker and the default allocation read the same list: the target user's payable practices", async () => {
   const issuedAt = new Date("2026-08-31T15:00:00Z");
+  targetScope = scopeOf({ a1: "member", a2: "org-admin", a3: "viewer" });
   const queue = () => [
-    [{ id: "doc1", email: "d@x.com", name: "Dr", role: "doctor", seazonaClientId: "c1" }],
-    [{ id: "doc1" }, { id: "colleague" }],
+    [{ id: "doc1", email: "d@x.com", name: "Dr", role: "doctor" }],
     [
-      { id: "mine", clientUserId: "doc1", ownerSeazonaClientId: "c1", ownerName: "Dr One", invoiceNumber: 500002, status: "issued", totalCents: 5000, dueDate: "2026-10-31", issuedAt },
-      { id: "theirs", clientUserId: "colleague", ownerSeazonaClientId: "c1", ownerName: "Dr Two", invoiceNumber: 500001, status: "issued", totalCents: 5000, dueDate: "2026-09-30", issuedAt },
+      { id: "mine", clientUserId: "doc1", accountId: "a1", ownerName: "Dr One", invoiceNumber: 500002, status: "issued", totalCents: 5000, dueDate: "2026-10-31", issuedAt },
+      { id: "theirs", clientUserId: "colleague", accountId: "a2", ownerName: "Dr Two", invoiceNumber: 500001, status: "issued", totalCents: 5000, dueDate: "2026-09-30", issuedAt },
     ],
     [],
   ];
-  recorded.length = 0;
   const picker = await actions.openInvoicesForClientUser("doc1", fakeTx({ selects: queue() }));
-  assert.deepEqual(picker.map((i) => [i.id, i.clientUserId, i.ownerName]), [["theirs", "colleague", "Dr Two"], ["mine", "doc1", "Dr One"]]);
+  assert.deepEqual(scopeCalls, ["doc1"], "the target's scope, loaded for the request");
+  assert.deepEqual(picker.map((i) => [i.id, i.clientUserId, i.accountId]), [["theirs", "colleague", "a2"], ["mine", "doc1", "a1"]]);
   await actions.recordManualPayment({ clientUserId: "doc1", method: "check", amountCents: 7000, paidOn: "2026-09-15", byUserId: "a1" }, fakeTx({ selects: queue() }));
   // The default plan spreads over exactly the rows the picker showed, in the same order.
   assert.deepEqual(recorded[0].allocations.map((a) => a.invoiceId), picker.map((i) => i.id));
   assert.deepEqual(recorded[0].allocations.map((a) => a.amountCents), [5000, 2000]);
+  assert.equal(recorded[0].user.id, "doc1", "recorded for (and receipted to) the client, not the staff member");
+});
+
+test("admin pay-as-client: the payable part of the TARGET user's scope; a viewer-only practice offers nothing", async () => {
+  targetScope = scopeOf({ a3: "viewer" });
+  const db = fakeTx({ selects: [[{ id: "doc1", role: "doctor" }]] });
+  assert.deepEqual(await actions.openInvoicesForClientUser("doc1", db), []);
+  assert.equal(db.log.length, 1, "only the client read: no invoice query for an empty payable scope");
+});
+
+test("recordManualPayment re-verifies against the target user's scope under the lock", async () => {
+  const issuedAt = new Date("2026-08-31T15:00:00Z");
+  const db = fakeTx({ selects: [
+    [{ id: "doc1", role: "doctor" }],
+    [{ id: "a", clientUserId: "doc1", accountId: "a1", invoiceNumber: 500001, status: "issued", totalCents: 20000, dueDate: null, issuedAt }],
+    [],
+  ] });
+  await actions.recordManualPayment({ clientUserId: "doc1", method: "cash", amountCents: 100, paidOn: "2026-09-15", byUserId: "staff1" }, db);
+  assert.equal(verifyArgs.length, 1);
+  assert.equal(verifyArgs[0][1], targetScope, "the client's scope, not the staff member's");
+  assert.equal(verifyArgs[0][2].enforceCap, true);
 });
 
 test("one source for the practice's open invoices: the endpoint and recordManualPayment share the loader", () => {
   const route = readFileSync(fileURLToPath(new URL("../../routes/admin-invoice.routes.js", import.meta.url)), "utf8");
   assert.match(route, /request\.query\.open\s*\?\s*actions\.openInvoicesForClientUser\(request\.params\.userId\)/);
-  assert.match(source, /export async function openInvoicesForClientUser[\s\S]*?openInvoicesForClient\(await loadPayingClient/);
+  assert.match(source, /export async function openInvoicesForClientUser[\s\S]*?payableOpenInvoices\(await loadPayingClient\(/);
+  const loader = source.slice(source.indexOf("export async function payableOpenInvoices"));
+  assert.match(loader, /const scope = await loadClientScope\(client\.id, database\);[\s\S]*?openInvoicesForAccounts\(payableAccountIds\(scope\), database\)/);
   const manual = source.slice(source.indexOf("export async function recordManualPayment"));
-  assert.match(manual, /await loadPayingClient\(clientUserId, database\);[\s\S]*?await openInvoicesForClient\(client, database\)/);
+  assert.match(manual, /const \{ scope, openInvoices \} = await payableOpenInvoices\(client, database\)/);
+  assert.doesNotMatch(source, /seazonaClientId|openInvoicesForClient\b/);
 });
 
 test("recordManualPayment: a race lost under the lock is refused, nothing recorded; non-doctors are not clients", async () => {
   verifyResult = { kind: "validation", message: "exceeds its balance" };
   const db = fakeTx({ selects: [
     [{ id: "doc1", email: "d@x.com", role: "doctor" }],
-    [{ id: "a", clientUserId: "doc1", invoiceNumber: 500001, status: "issued", totalCents: 20000, dueDate: null, issuedAt: new Date("2026-08-31T15:00:00Z") }],
+    [{ id: "a", clientUserId: "doc1", accountId: "a1", invoiceNumber: 500001, status: "issued", totalCents: 20000, dueDate: null, issuedAt: new Date("2026-08-31T15:00:00Z") }],
     [],
   ] });
   await assert.rejects(actions.recordManualPayment({ clientUserId: "doc1", method: "cash", amountCents: 100, paidOn: "2026-09-15", byUserId: "a1" }, db), isCode("OVERPAY"));

@@ -69,7 +69,7 @@ export function invoicePdfHandler({ mayRead }) {
 /**
  * A monthly statement PDF, for either audience; only the scope differs.
  *   scope(request) → { clientUserId, clientUserIds? }  (may be async)
- *     doctor: the requester, covering their whole practice (practiceUserIds)
+ *     doctor: the requester, covering their whole practice (statement-run's doctorStatementUserIds until Task 7)
  *     admin:  any doctor, named in the URL, covering just them
  * No such doctor answers 404. Built on request, never stored; audited with
  * ids and the month only.

@@ -10,8 +10,10 @@ import { toDecimalString } from "../lib/money.js";
  * its withInvoiceLocks, so the balance cap check, the gateway charge and the
  * ledger write all happen under the same locks.
  *
- * `payer` is the doctor being charged (request.user, or the admin's target);
- * `source` is doctor_card | admin_card | autopay. Allocations are
+ * `payer` is the login being charged (request.user, or the admin's target);
+ * `scope` is the payer's practice scope the in-lock re-check verifies against
+ * (request.user.scope, the target's loadClientScope, or AutoPay's run-time
+ * load); `source` is doctor_card | admin_card | autopay. Allocations are
  * [{ invoiceId, amountCents }]; verifyAllocations backfills invoiceNumber.
  * Dollars appear only on the gateway wire (toDecimalString).
  *
@@ -20,8 +22,8 @@ import { toDecimalString } from "../lib/money.js";
  * charge it never throws (recordPaymentAndAllocations reports a ledger failure
  * instead), so a captured charge is always returned to the caller.
  */
-export async function chargeSavedCardAndRecord({ payer, customerProfileId, paymentProfileId, amountCents, allocations, source }) {
-  const capErr = await verifyAllocations(allocations, payer, { enforceCap: true });
+export async function chargeSavedCardAndRecord({ payer, scope, customerProfileId, paymentProfileId, amountCents, allocations, source }) {
+  const capErr = await verifyAllocations(allocations, scope, { enforceCap: true });
   if (capErr) throw Object.assign(new Error("allocation_error"), { allocationError: capErr });
 
   const result = await authorizenetService.chargeCustomerProfile({

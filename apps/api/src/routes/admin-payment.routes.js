@@ -15,6 +15,7 @@ import { env } from "../config/env.js";
 import { listJobs } from "../jobs/registry.js";
 import { runJob, JobLockedError } from "../jobs/runner.js";
 import { verifyAllocations } from "../services/payment-recording.service.js";
+import { loadClientScope } from "../services/client-scope.js";
 import { chargeSavedCardAndRecord } from "../services/card-charge.service.js";
 import {
   sendAllocationError,
@@ -408,10 +409,13 @@ export default async function adminPaymentRoutes(fastify) {
         return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: "No saved-card profile on file for this doctor." } });
       }
 
+      // The TARGET doctor's practice scope, loaded for this request (never the
+      // acting admin's): the charge pays only what the doctor could pay themselves.
+      const scope = await loadClientScope(doctor.id);
       // Ownership (no cap) runs outside the idempotency replay path — every
       // request, including one that replays a cached success, must first prove
-      // the submitted invoices belong to this doctor.
-      const own = await verifyAllocations(allocations, doctor);
+      // the submitted invoices are payable in the doctor's scope.
+      const own = await verifyAllocations(allocations, scope);
       if (own) return sendAllocationError(reply, own);
 
       const outcome = await withIdempotency(
@@ -427,6 +431,7 @@ export default async function adminPaymentRoutes(fastify) {
             () =>
               chargeSavedCardAndRecord({
                 payer: doctor,
+                scope,
                 customerProfileId,
                 paymentProfileId,
                 amountCents,

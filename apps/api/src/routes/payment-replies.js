@@ -50,10 +50,14 @@ export function sendInvoiceLockedError(reply) {
   });
 }
 
-/** Send the appropriate reply for a verifyAllocations result. */
+/**
+ * Send the appropriate reply for a verifyAllocations result: 422 for a
+ * validation problem; anything else (an invoice outside the payable scope, or
+ * none) is 404 NOT_FOUND, never 403, so invoice ids can't be probed.
+ */
 export function sendAllocationError(reply, v) {
   if (v.kind === "validation") {
     return reply.code(422).send({ error: { ...ERROR_CODES.VALIDATION_ERROR, message: v.message } });
   }
-  return reply.code(403).send({ error: { ...ERROR_CODES.FORBIDDEN, message: v.message } });
+  return reply.code(404).send({ error: { ...ERROR_CODES.NOT_FOUND, message: v.message } });
 }

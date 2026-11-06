@@ -5,7 +5,6 @@ import { users, doctorProfiles, statementSends } from "../../db/schema/index.js"
 import { createId } from "../../lib/id.js";
 import * as auditService from "../audit.service.js";
 import { sendStatementNotice } from "../email.service.js";
-import { practiceUserIds } from "./ledger.service.js";
 import { loadStatementActivity, statementFor } from "./statements.service.js";
 import { buildStatementModel, monthBounds } from "./statement-model.js";
 
@@ -117,6 +116,28 @@ function groupBy(items, keyOf, valueOf = (x) => x) {
     out.get(k).push(valueOf(item));
   }
   return out;
+}
+
+/**
+ * The doctors whose invoices a statement covers: everyone sharing the user's
+ * non-null seazonaClientId (one practice, the pre-piece-11 rule), else just
+ * the user. Always includes the user. Moved here from the ledger in Task 5,
+ * where every payment and invoice read went onto the client scope; Task 7
+ * replaces it with per-account statements and deletes it (the allow-list in
+ * routes/__tests__/no-seazona-authz.test.js keeps this file until then).
+ */
+async function practiceUserIds(user, database = db) {
+  if (!user?.seazonaClientId) return [user.id];
+  const rows = await database
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.seazonaClientId, String(user.seazonaClientId)), eq(users.role, "doctor")));
+  return [...new Set([...rows.map((r) => r.id), user.id])];
+}
+
+/** The doctor's own statement download (GET /invoices/statement.pdf) covers the same doctors as the emailed one. Task 7 moves it onto the account scope. */
+export function doctorStatementUserIds(user, database = db) {
+  return practiceUserIds(user, database);
 }
 
 /** A practice is every doctor sharing a non-null seazonaClientId (the rule practiceUserIds applies), else the user alone. */
