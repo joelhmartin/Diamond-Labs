@@ -13,7 +13,8 @@ import api from "../../config/api.js";
 /**
  * Pay one or more of the doctor's invoices: a new card on Authorize.net's
  * hosted form (card data never touches this site) or a saved card.
- * `invoices`: [{ id, invoiceNumber, balanceCents, dueDate }]. Money is cents.
+ * `invoices`: [{ id, invoiceNumber, balanceCents, dueDate, ownerName? }]; ownerName (the practice) shows
+ * when the invoices span several. One charge covers them all. Money is cents.
  */
 export function PaymentModal({ invoices, onClose, onSuccess }) {
   const [method, setMethod] = useState("new"); // "new" | "saved"
@@ -102,6 +103,7 @@ export function PaymentModal({ invoices, onClose, onSuccess }) {
             valueOf={(inv) => (alloc[inv.id] ?? 0) / 100}
             appliedCentsOf={(inv) => alloc[inv.id] ?? 0}
             onChange={setRow}
+            showOwner={invoices.some((i) => i.ownerName)}
             disabled={launched}
           />
         </div>

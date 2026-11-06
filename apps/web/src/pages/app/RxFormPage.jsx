@@ -6,6 +6,8 @@ import { useAuthStore } from "../../stores/auth.store.js";
 import { FormRenderer } from "../../components/rx/FormRenderer.jsx";
 import { getForm } from "../../data/forms/index.js";
 import { ROUTES } from "../../config/routes.js";
+import { usePracticeScope } from "../../hooks/usePracticeScope.js";
+import { PracticeAccountSelect, needsPracticeChoice } from "../../components/lab/order-entry/PracticeAccountSelect.jsx";
 
 /* ────────────────────────────────────────────────
    Success screen
@@ -70,6 +72,12 @@ export function RxFormPage({ slug: slugProp }) {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  // A doctor in several practices says which one the case is for (the server only accepts a direct membership).
+  const portal = usePracticeScope();
+  const directPractices = portal.accounts.filter((a) => a.via === "member");
+  const [chosenPractice, setChosenPractice] = useState("");
+  const practiceId = chosenPractice || (directPractices.some((a) => a.id === portal.scope) ? portal.scope : "");
+  const mustChoose = needsPracticeChoice(directPractices);
 
   const prefill = {
     doctorName: user?.name || user?.doctorName || "",
@@ -98,8 +106,13 @@ export function RxFormPage({ slug: slugProp }) {
   }
 
   const handleSubmit = async (formData) => {
+    if (mustChoose && !practiceId) {
+      setError("Choose which practice this is for.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
+    if (mustChoose) formData.set("accountId", practiceId);
     try {
       // FormData already carries formType, patient name, formData JSON, files,
       // and signature. Let the browser/axios set the multipart boundary.
@@ -167,6 +180,12 @@ export function RxFormPage({ slug: slugProp }) {
             account.
           </p>
         </div>
+
+        {mustChoose && (
+          <div className="mb-6 rounded-2xl border border-surface-300/50 bg-white p-4">
+            <PracticeAccountSelect label="Practice" practices={directPractices} value={practiceId} onChange={setChosenPractice} />
+          </div>
+        )}
 
         <FormRenderer
           form={form}

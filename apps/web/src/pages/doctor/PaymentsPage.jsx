@@ -3,6 +3,7 @@ import api from "../../config/api.js";
 import { DataTable } from "../../components/ui/data-table/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
 import { formatCents } from "../../lib/money.js";
+import { usePracticeScope } from "../../hooks/usePracticeScope.js";
 
 function formatDate(d) {
   if (!d) return "—";
@@ -86,10 +87,11 @@ export function PaymentsPage() {
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const { param } = usePracticeScope();
 
   const load = async () => {
     try {
-      const { data } = await api.get("/payments/history");
+      const { data } = await api.get("/payments/history", param ? { params: { account: param } } : undefined);
       setPayments(data.data?.payments || []);
       setError(null);
     } catch (err) {
@@ -98,7 +100,7 @@ export function PaymentsPage() {
       setLoading(false);
     }
   };
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [param]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const table = useDataTable({ mode: "client", rows: payments, searchFn, filters: FILTERS, getRowId, loading, error, reload: load });
 

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { test, afterEach, beforeEach, vi } from "vitest";
 import assert from "node:assert/strict";
-import { render, screen, fireEvent, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { ToastProvider } from "../../../components/ui/Toast.jsx";
 
@@ -74,4 +74,41 @@ test("?pickup=<id> that is not the practice's is toasted as not found", async ()
   mount("/doctor/pickups?pickup=zz");
   await screen.findByText("That pickup was not found.");
   assert.equal(screen.queryByRole("status", { name: "Linked pickup" }), null);
+});
+
+const acct = (id, name, n) => ({ id, name, accountNumber: n, organizationId: null, via: "member", role: "admin", payable: true });
+const withScope = async (accounts, scope = "all") => {
+  const { useAccountStore } = await import("../../../stores/account.store.js");
+  useAccountStore.setState({ clientScope: { accounts, organizations: [] }, practiceScope: scope, clientScopeLoaded: true });
+  return useAccountStore;
+};
+
+test("new pickup in All practices asks for a practice", async () => {
+  const store = await withScope([acct("a1", "North Dental", "1001"), acct("a2", "South Dental", "1002")]);
+  mount();
+  await screen.findByText("#1");
+  fireEvent.click(screen.getByRole("button", { name: "Request a pickup" }));
+  const select = within((await screen.findByRole("heading", { name: "Request a pickup" })).parentElement).getByLabelText("Practice");
+  fireEvent.click(screen.getByRole("button", { name: "Request pickup" }));
+  await screen.findByText("Choose which practice this is for.");
+  assert.equal(api.post.mock.calls.length, 0);
+  fireEvent.change(select, { target: { value: "a2" } });
+  api.post.mockResolvedValue({ data: { data: { id: "z", pickupNumber: 9 } } });
+  fireEvent.click(screen.getByRole("button", { name: "Request pickup" }));
+  await waitFor(() => assert.equal(api.post.mock.calls.length, 1));
+  assert.equal(api.post.mock.calls[0][0], "/pickups");
+  assert.equal(api.post.mock.calls[0][1].accountId, "a2");
+  store.getState().clearClientScope();
+});
+
+test("with one practice in view the list asks for it and a new pickup starts on it", async () => {
+  const store = await withScope([acct("a1", "North Dental", "1001"), acct("a2", "South Dental", "1002")], "a1");
+  mount();
+  await screen.findByText("#1");
+  assert.deepEqual(api.get.mock.calls[0][1].params.account, "a1");
+  fireEvent.click(screen.getByRole("button", { name: "Request a pickup" }));
+  const select = within((await screen.findByRole("heading", { name: "Request a pickup" })).parentElement).getByLabelText("Practice");
+  assert.equal(select.value, "a1");
+  store.getState().clearClientScope();
+  sessionStorage.clear();
 });

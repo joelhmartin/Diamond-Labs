@@ -188,6 +188,8 @@ function AppRoutes() {
   const refresh = useAuthStore((s) => s.refresh);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const fetchAccounts = useAccountStore((s) => s.fetchAccounts);
+  const fetchClientScope = useAccountStore((s) => s.fetchClientScope);
+  const clearClientScope = useAccountStore((s) => s.clearClientScope);
 
   // Silent refresh on mount
   useEffect(() => {
@@ -198,6 +200,9 @@ function AppRoutes() {
   useEffect(() => {
     if (isAuthenticated) {
       fetchAccounts();
+      fetchClientScope(); // the portal's practices: read fresh each session, never cached beyond it
+    } else {
+      clearClientScope();
     }
   }, [isAuthenticated]);
 

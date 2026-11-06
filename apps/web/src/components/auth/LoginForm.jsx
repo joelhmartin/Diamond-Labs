@@ -8,7 +8,8 @@ import { Button } from "../ui/Button.jsx";
 import { useAuth } from "../../hooks/useAuth.js";
 import { useToast } from "../ui/Toast.jsx";
 import { MfaChallenge } from "./MfaChallenge.jsx";
-import { ROUTES, roleHome } from "../../config/routes.js";
+import { ROUTES, roleHome, isPortalLogin } from "../../config/routes.js";
+import { useAccountStore } from "../../stores/account.store.js";
 
 export function LoginForm() {
   const { login } = useAuth();
@@ -37,7 +38,9 @@ export function LoginForm() {
       // here from a protected page, respect that origin; otherwise send
       // them to the home appropriate for their role.
       const from = location.state?.from?.pathname;
-      navigate(from || roleHome(result?.user), { replace: true });
+      // A practice login that is not a doctor needs its scope to know it belongs in the portal.
+      const hasPractices = isPortalLogin(result?.user) ? (await useAccountStore.getState().fetchClientScope()).accounts.length > 0 : false;
+      navigate(from || roleHome(result?.user, { hasPractices }), { replace: true });
     } catch (err) {
       addToast({
         message: err.response?.data?.error?.message || "Login failed",

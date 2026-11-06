@@ -6,6 +6,7 @@ import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { errorText } from "../../lib/requests.js";
 import { initialPickupForm, pickupBody, pickupFormErrors, requestPickup, searchPickupClients, timePreferenceLabel } from "../../lib/pickups.js";
 import { INPUT } from "./form-styles.js";
+import { usePracticeScope } from "../../hooks/usePracticeScope.js";
 import { PracticeAccountSelect, needsPracticeChoice, usePracticeAccounts } from "./order-entry/PracticeAccountSelect.jsx";
 
 function Field({ label, error, children }) {
@@ -51,14 +52,19 @@ export function PickupRequestModal({ open, onClose, onCreated, staff = false }) 
   const [form, setForm] = useState(() => initialPickupForm());
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
+  const portal = usePracticeScope();
 
+  // A practice's own request starts on the practice in view; in "All practices" it must choose.
   useEffect(() => {
-    if (open) { setForm(initialPickupForm()); setErrors({}); }
+    if (open) { setForm({ ...initialPickupForm(), accountId: !staff && !portal.isAll ? portal.scope : "" }); setErrors({}); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seeded when opened, not on later scope changes
   }, [open]);
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
-  // Staff entry for a client in several practices names which one (the API answers 422 otherwise).
-  const practices = usePracticeAccounts(staff ? form.clientUserId : null);
+  // Staff entry for a client in several practices names which one (the API answers 422 otherwise);
+  // a login with several practices names one of its own.
+  const clientPractices = usePracticeAccounts(staff ? form.clientUserId : null);
+  const practices = staff ? clientPractices : portal.accounts;
   const needsPractice = needsPracticeChoice(practices);
 
   const submit = async (e) => {
@@ -68,7 +74,7 @@ export function PickupRequestModal({ open, onClose, onCreated, staff = false }) 
     if (Object.keys(found).length) return;
     setBusy(true);
     try {
-      const pickup = await requestPickup(pickupBody(form, { staff }), { staff });
+      const pickup = await requestPickup(pickupBody(form, { staff, needsPractice }), { staff });
       addToast({ message: `Pickup #${pickup.pickupNumber} requested`, type: "success" });
       onCreated?.(pickup);
       onClose();
@@ -83,7 +89,7 @@ export function PickupRequestModal({ open, onClose, onCreated, staff = false }) 
     <Modal open={open} onClose={onClose} title={staff ? "New pickup" : "Request a pickup"} className="max-w-lg">
       <form onSubmit={submit} noValidate className="space-y-3">
         {staff && <ClientPicker value={form.clientUserId} error={errors.clientUserId} onChange={(clientUserId) => set({ clientUserId, accountId: "" })} />}
-        {staff && <PracticeAccountSelect label="Practice" practices={practices} value={form.accountId} error={errors.accountId} onChange={(accountId) => set({ accountId })} disabled={busy} />}
+        <PracticeAccountSelect label="Practice" practices={practices} value={form.accountId} error={errors.accountId} onChange={(accountId) => set({ accountId })} disabled={busy} />
         <div className="grid grid-cols-2 gap-3">
           <Field label="Earliest date" error={errors.earliestDate}>
             <input type="date" value={form.earliestDate} onChange={(e) => set({ earliestDate: e.target.value })} className={INPUT} />

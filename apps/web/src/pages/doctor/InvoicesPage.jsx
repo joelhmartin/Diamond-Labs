@@ -12,16 +12,20 @@ import { STATUS_TONES, statusOf, isPayable, labToday, dateText, instantText } fr
 import { doctorInvoicePath } from "../../config/routes.js";
 import { usePaymentsPaused } from "../../hooks/usePaymentsPaused.js";
 import { PaymentsPausedBanner } from "../../components/doctor/PaymentsPausedBanner.jsx";
+import { usePracticeScope } from "../../hooks/usePracticeScope.js";
+import { practiceColumn } from "../../components/practice/practiceColumn.jsx";
+import { practiceFilter, statementSubjects } from "../../lib/practices.js";
 
 const searchFn = (inv, q) => String(inv.invoiceNumber ?? "").includes(q.replace(/^#/, "").trim());
 
-const columns = (today) => [
+const columns = (today, practices) => [
   {
     id: "invoice", header: "Invoice", sortValue: (i) => i.invoiceNumber, exportValue: (i) => i.invoiceNumber,
     cell: (i) => <Link to={doctorInvoicePath(i.id)} className="font-medium text-brand-700 hover:underline">#{i.invoiceNumber}</Link>,
   },
   { id: "order", header: "Lab order", exportValue: (i) => i.labOrderNumber ?? "", cell: (i) => <span className="text-navy/60">{i.labOrderNumber ? `#${i.labOrderNumber}` : "—"}</span> },
   { id: "patient", header: "Patient", exportValue: (i) => i.patientInitials ?? "", cell: (i) => <span className="text-navy/60">{i.patientInitials ?? "—"}</span> },
+  ...(practices ? [practiceColumn(practices)] : []),
   {
     id: "issued", header: "Issued", sortValue: (i) => i.issuedAt, exportValue: (i) => i.issuedAt ?? "",
     cell: (i) => <span className="text-navy/60">{i.issuedAt ? instantText(i.issuedAt) : "—"}</span>,
@@ -48,14 +52,17 @@ export function InvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [paying, setPaying] = useState(null);
+  const [balanceCents, setBalanceCents] = useState(null);
+  const { accounts, organizations, scope, param, multi } = usePracticeScope();
   const { addToast } = useToast();
   const paused = usePaymentsPaused();
   const today = labToday();
 
   const fetchInvoices = useCallback(async () => {
     try {
-      const { data } = await api.get("/invoices");
+      const { data } = await api.get("/invoices", param ? { params: { account: param } } : undefined);
       setInvoices(data.data || []);
+      setBalanceCents(data.meta?.balanceCents ?? null);
       setError(null);
     } catch (err) {
       // Don't leave pre-refresh balances on screen (and payable) after a failed refresh.
@@ -66,26 +73,34 @@ export function InvoicesPage() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [param]);
   useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
 
-  const filters = [{
-    id: "status", label: "Status", type: "select", placeholder: "All statuses",
-    options: ["Open", "Past due", "Paid"].map((s) => ({ value: s, label: s })),
-    match: (inv, v) => statusOf(inv, today) === v,
-  }];
+  const filters = [
+    {
+      id: "status", label: "Status", type: "select", placeholder: "All statuses",
+      options: ["Open", "Past due", "Paid"].map((s) => ({ value: s, label: s })),
+      match: (inv, v) => statusOf(inv, today) === v,
+    },
+    ...(multi ? [practiceFilter(accounts)] : []),
+  ];
+
+  // A viewer member reads but does not pay: only invoices of a payable practice can be selected.
+  // (No scope at all, e.g. an approved doctor not yet given a practice, leaves it to the server.)
+  const payableIds = new Set(accounts.filter((a) => a.payable).map((a) => a.id));
+  const canPay = (inv) => isPayable(inv) && (accounts.length === 0 || payableIds.has(inv.accountId));
 
   const table = useDataTable({
-    mode: "client", rows: invoices, searchFn, filters, isRowSelectable: isPayable, loading, error, reload: fetchInvoices,
+    mode: "client", rows: invoices, searchFn, filters, isRowSelectable: canPay, loading, error, reload: fetchInvoices,
   });
 
   // Same guards as before: only payable invoices can be selected, and no payment while PAYMENTS_PAUSED.
   const bulkActions = [{
     id: "pay",
-    label: (rows) => `Pay selected (${formatCents(rows.filter(isPayable).reduce((sum, i) => sum + Math.max(0, i.balanceCents), 0))})`,
+    label: (rows) => `Pay selected (${formatCents(rows.filter(canPay).reduce((sum, i) => sum + Math.max(0, i.balanceCents), 0))})`,
     icon: <CreditCard size={12} />,
-    disabled: (rows) => paused || rows.length === 0 || !rows.every(isPayable),
-    run: (rows) => { setPaying(rows.filter(isPayable)); },
+    disabled: (rows) => paused || rows.length === 0 || !rows.every(canPay),
+    run: (rows) => { setPaying(rows.filter(canPay)); },
   }];
 
   return (
@@ -95,13 +110,19 @@ export function InvoicesPage() {
           <h1 className="text-2xl font-semibold">Invoices</h1>
           <p className="text-sm text-gray-500">Your Diamond Labs invoices. Open one for its lines and PDF.</p>
         </div>
-        <StatementDownload path="/invoices/statement.pdf" />
+        <StatementDownload path="/invoices/statement.pdf" subjects={multi ? statementSubjects({ accounts, organizations, scope }) : null} />
       </div>
+      {multi && balanceCents != null && (
+        <p className="mb-4 text-sm text-gray-600">
+          Balance due, {scope === "all" ? "all practices" : accounts.find((a) => a.id === scope)?.name ?? "this practice"}:{" "}
+          <span className="font-semibold text-gray-900">{formatCents(Math.max(0, balanceCents))}</span>
+        </p>
+      )}
       {paused && <PaymentsPausedBanner />}
 
       <DataTable
         table={table}
-        columns={columns(today)}
+        columns={columns(today, multi ? accounts : null)}
         bulkActions={bulkActions}
         searchPlaceholder="Invoice #"
         itemLabel="invoices"
@@ -111,7 +132,11 @@ export function InvoicesPage() {
 
       {paying && (
         <PaymentModal
-          invoices={paying.map((i) => ({ id: i.id, invoiceNumber: i.invoiceNumber, balanceCents: i.balanceCents, dueDate: i.dueDate }))}
+          invoices={paying.map((i) => ({
+            id: i.id, invoiceNumber: i.invoiceNumber, balanceCents: i.balanceCents, dueDate: i.dueDate,
+            // With several practices, each row says which one it is for.
+            ...(multi ? { ownerName: i.accountName ?? accounts.find((a) => a.id === i.accountId)?.name ?? "" } : {}),
+          }))}
           onClose={() => setPaying(null)}
           onSuccess={() => {
             setPaying(null);

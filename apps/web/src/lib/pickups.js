@@ -13,13 +13,14 @@ export function initialPickupForm(now = new Date()) {
 }
 
 /** The request body for the API. Empty latest/notes/practice are left out (no latest = a one-day window). */
-export function pickupBody(form, { staff = false } = {}) {
+export function pickupBody(form, { staff = false, needsPractice = false } = {}) {
   const body = { earliestDate: form.earliestDate, timePreference: form.timePreference, boxCount: Number(form.boxCount) };
   if (form.latestDate) body.latestDate = form.latestDate;
   if (form.notes?.trim()) body.notes = form.notes.trim();
   if (staff) body.clientUserId = form.clientUserId;
   // Which of the client's practices (asked only when they have several).
-  if (staff && form.accountId) body.accountId = form.accountId;
+  // A practice login with several names its own; staff name the client's.
+  if ((staff || needsPractice) && form.accountId) body.accountId = form.accountId;
   return body;
 }
 
@@ -31,8 +32,8 @@ export function pickupFormErrors(form, { staff = false, needsPractice = false, n
   const errors = {};
   const today = isoDateIn(LAB_TIMEZONE, now);
   if (staff && !form.clientUserId) errors.clientUserId = "Choose the client.";
-  if (staff && needsPractice && !form.accountId) errors.accountId = "Choose which practice this is for.";
-  const parsed = (staff ? labPickupRequestSchema : pickupRequestSchema).safeParse(pickupBody(form, { staff }));
+  if (needsPractice && !form.accountId) errors.accountId = "Choose which practice this is for.";
+  const parsed = (staff ? labPickupRequestSchema : pickupRequestSchema).safeParse(pickupBody(form, { staff, needsPractice }));
   if (!parsed.success) {
     for (const issue of parsed.error.issues) {
       const field = issue.path[0];

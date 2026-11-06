@@ -31,15 +31,22 @@ function PartyPicker({ value, onChange }) {
 /**
  * Starts a thread. With `record` ({ recordType, recordId }) it is about that
  * record; with `pickParty` (host only) the sender first chooses who to write
- * to. `onCreated(thread)` receives the new thread.
+ * to. With `partyOptions` ([{ key, label }], a party user who belongs to several parties) the
+ * sender chooses which one the general thread is for, starting at `defaultParty`.
+ * `onCreated(thread)` receives the new thread.
  */
-export function NewThreadModal({ open, onClose, title = "New message", record = null, pickParty = false, onCreated }) {
+export function NewThreadModal({ open, onClose, title = "New message", record = null, pickParty = false, partyOptions = [], defaultParty = "", onCreated }) {
   const [party, setParty] = useState("");
+  const [ownParty, setOwnParty] = useState(null); // the choice among partyOptions; null until touched
+  const choosing = partyOptions.length > 1 && !record;
+  const chosenOwn = ownParty ?? (partyOptions.some((p) => p.key === defaultParty) ? defaultParty : "");
   const [subject, setSubject] = useState("");
 
   const send = async ({ body, files }) => {
     if (pickParty && !record && !party) throw new Error("Choose who to message.");
+    if (choosing && !chosenOwn) throw new Error("Choose who the message is for.");
     const payload = {
+      ...(choosing ? { party: chosenOwn } : {}),
       ...(record ? { recordType: record.recordType, recordId: record.recordId } : {}),
       ...(pickParty && !record ? { party } : {}),
       ...(subject.trim() ? { subject: subject.trim() } : {}),
@@ -49,6 +56,7 @@ export function NewThreadModal({ open, onClose, title = "New message", record = 
     const thread = await createThread(payload);
     setParty("");
     setSubject("");
+    setOwnParty(null);
     onCreated?.(thread);
   };
 
@@ -56,6 +64,12 @@ export function NewThreadModal({ open, onClose, title = "New message", record = 
     <Modal open={open} onClose={onClose} title={title} className="max-w-lg">
       <div className="space-y-3">
         {pickParty && !record && <PartyPicker value={party} onChange={setParty} />}
+        {choosing && (
+          <select aria-label="For" value={chosenOwn} onChange={(e) => setOwnParty(e.target.value)} className={FIELD}>
+            <option value="">Choose who this is for…</option>
+            {partyOptions.map((p) => <option key={p.key} value={p.key}>{p.label}</option>)}
+          </select>
+        )}
         <input aria-label="Subject" placeholder="Subject (optional)" maxLength={MESSAGE_SUBJECT_MAX} value={subject} onChange={(e) => setSubject(e.target.value)} className={FIELD} />
         <Composer onSend={send} autoFocus />
         <div className="flex justify-start">

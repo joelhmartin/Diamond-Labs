@@ -9,6 +9,10 @@ import { useToast } from "../../components/ui/Toast.jsx";
 import { errorText } from "../../lib/requests.js";
 import { NewThreadModal, fetchRecordThreads } from "../../modules/messaging/index.js";
 import { useDataTable } from "../../hooks/useDataTable.js";
+import { useAuth } from "../../hooks/useAuth.js";
+import { usePracticeScope } from "../../hooks/usePracticeScope.js";
+import { practiceColumn } from "../../components/practice/practiceColumn.jsx";
+import { practiceFilter } from "../../lib/practices.js";
 
 const TONES = {
   Submitted: "bg-blue-500/10 text-blue-700",
@@ -89,6 +93,9 @@ export function MyCasesPage() {
   const [messaging, setMessaging] = useState(null); // the case a new thread is being started on
   const navigate = useNavigate();
   const { addToast } = useToast();
+  const { user } = useAuth();
+  const { accounts, param, multi } = usePracticeScope();
+  const isDoctor = user?.role === "doctor";
 
   // Opens the case's existing conversation, or starts one.
   const messageTheLab = async (c) => {
@@ -100,7 +107,7 @@ export function MyCasesPage() {
       addToast({ message: errorText(err), type: "error" });
     }
   };
-  const columns = [...COLUMNS, {
+  const columns = [...(multi ? [COLUMNS[0], practiceColumn(accounts), ...COLUMNS.slice(1)] : COLUMNS), {
     id: "message", header: "", export: false, align: "right",
     cell: (c) => (
       <button type="button" onClick={() => messageTheLab(c)} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50">
@@ -111,7 +118,7 @@ export function MyCasesPage() {
 
   const load = async () => {
     try {
-      const res = await api.get("/rx/cases");
+      const res = await api.get("/rx/cases", param ? { params: { account: param } } : undefined);
       setCases(res.data.data);
       setError(null);
     } catch (err) {
@@ -120,14 +127,14 @@ export function MyCasesPage() {
       setLoading(false);
     }
   };
-  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [param]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const statuses = [...new Set(cases.map((c) => c.status).filter(Boolean))];
   const filters = [{
     id: "status", label: "Status", type: "select", placeholder: "All statuses",
     options: statuses.map((s) => ({ value: s, label: s })),
     match: (c, v) => c.status === v,
-  }];
+  }, ...(multi ? [practiceFilter(accounts)] : [])];
   const table = useDataTable({ mode: "client", rows: cases, searchFn, filters, loading, error, reload: load });
   const linkedId = useLinkedCase({ cases, loading, error, table, addToast });
 
@@ -135,7 +142,7 @@ export function MyCasesPage() {
     <div className="mx-auto max-w-6xl px-6 py-8">
       <div className="mb-6 flex items-end justify-between">
         <h1 className="font-heading text-2xl font-bold text-gray-900">My cases</h1>
-        <Link to={ROUTES.RX_CHOOSER} className="rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600">New Rx</Link>
+        {isDoctor && <Link to={ROUTES.RX_CHOOSER} className="rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600">New Rx</Link>}
       </div>
       <DataTable
         table={table}

@@ -7,6 +7,9 @@ import { useToast } from "../../components/ui/Toast.jsx";
 import { PickupRequestModal } from "../../components/lab/PickupRequestModal.jsx";
 import { useDataTable } from "../../hooks/useDataTable.js";
 import { useLinkedRecord } from "../../hooks/useLinkedRecord.js";
+import { usePracticeScope } from "../../hooks/usePracticeScope.js";
+import { practiceColumn } from "../../components/practice/practiceColumn.jsx";
+import { practiceLabelOf } from "../../lib/practices.js";
 import { pageParams } from "../../lib/data-table/server.js";
 import { eachRow } from "../../lib/data-table/bulk.js";
 import { errorText } from "../../lib/requests.js";
@@ -16,9 +19,6 @@ const FILTERS = [
   { id: "status", label: "Status", type: "select", placeholder: "Any status", options: PICKUP_STATUSES.map((s) => ({ value: s, label: statusLabel(s) })) },
 ];
 
-async function fetchPage({ page, pageSize, filters }) {
-  return fetchPickups({ ...pageParams({ page, pageSize }), ...(filters.status ? { status: filters.status } : {}) });
-}
 
 /** A notification's pickup, shown above the list whichever page its row is on. */
 function LinkedPickup({ pickup, onDismiss }) {
@@ -37,7 +37,16 @@ function LinkedPickup({ pickup, onDismiss }) {
 export function PickupsPage() {
   const { addToast } = useToast();
   const [requesting, setRequesting] = useState(false);
-  const table = useDataTable({ mode: "server", fetchPage, filters: FILTERS, urlKey: "pk", getRowId: (p) => p.id, isRowSelectable: isOpenPickup });
+  const { accounts, param, multi } = usePracticeScope();
+  // The table's own Practice filter narrows within the switcher's scope (the server answers 404 for a practice outside it).
+  const filters = multi
+    ? [...FILTERS, { id: "practice", label: "Practice", type: "select", placeholder: "All practices", options: accounts.map((a) => ({ value: a.id, label: practiceLabelOf(a) })) }]
+    : FILTERS;
+  const fetchPage = ({ page, pageSize, filters: f }) => {
+    const account = f.practice || param;
+    return fetchPickups({ ...pageParams({ page, pageSize }), ...(f.status ? { status: f.status } : {}), ...(account ? { account } : {}) });
+  };
+  const table = useDataTable({ mode: "server", fetchPage, filters, urlKey: "pk", getRowId: (p) => p.id, isRowSelectable: isOpenPickup, deps: [param] });
   // ?pickup=<id> (a notification's link): read by id, shown above the list, its row highlighted.
   const linked = useLinkedRecord("pickup", fetchPickup, { notFoundText: "That pickup was not found." });
   const reload = () => { table.reload(); if (linked.id) linked.reload(); };
@@ -54,6 +63,7 @@ export function PickupsPage() {
 
   const columns = [
     { id: "number", header: "Pickup", exportValue: (p) => p.pickupNumber, cell: (p) => <span className="font-mono text-xs font-semibold text-navy">#{p.pickupNumber}</span> },
+    ...(multi ? [practiceColumn(accounts)] : []),
     { id: "window", header: "Window", exportValue: windowLabel, cell: (p) => <span className="whitespace-nowrap text-sm text-navy/80">{windowLabel(p)}</span> },
     { id: "time", header: "Time", exportValue: (p) => timePreferenceLabel(p.timePreference), cell: (p) => <span className="text-xs text-navy/60">{timePreferenceLabel(p.timePreference)}</span> },
     { id: "boxes", header: "Boxes", align: "right", exportValue: (p) => p.boxCount, cell: (p) => <span className="font-mono text-xs">{p.boxCount}</span> },
