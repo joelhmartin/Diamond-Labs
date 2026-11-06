@@ -162,11 +162,9 @@ await fastify.register(helmet, {
       scriptSrc: ["'self'", "https://js.authorize.net", "https://jstest.authorize.net"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      // blob: on img and connect — GLTFLoader unpacks a .glb's embedded textures
-      // into blob URLs, then fetches them (Chrome, Firefox) or sets them on an
-      // <img> (Safari). Without it the 3D models lose their surface texture.
+      // blob: on img — the Rx form previews a chosen image file from a blob URL.
       imgSrc: ["'self'", "data:", "blob:", "https:"],
-      connectSrc: ["'self'", "blob:", "https://api.authorize.net", "https://apitest.authorize.net"],
+      connectSrc: ["'self'", "https://api.authorize.net", "https://apitest.authorize.net"],
       // player.vimeo.com — the instructional-videos page embeds Vimeo players.
       // Without it every one of those iframes is blocked outright by this policy.
       frameSrc: [

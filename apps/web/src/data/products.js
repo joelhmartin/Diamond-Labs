@@ -15,7 +15,7 @@ export const PRODUCTS = {
       { src: "/images/ddso-ant-pair.webp",     label: "DDSO Anterior — Upper & Lower" },
       {
         is3D: true,
-        modelPath: "/models/DDSO-Anterior.glb",
+        model: { device: "ddso-anterior", upper: "nylon", lower: "nylon" },
         label: "DDSO Anterior — 3D View",
       },
     ],
@@ -43,7 +43,7 @@ export const PRODUCTS = {
       { src: "/images/ddso-isometric.webp",     label: "DDSO Posterior — Blue Bands" },
       {
         is3D: true,
-        modelPath: "/models/DDSO-Posterior.glb",
+        model: { device: "ddso-posterior", upper: "nylon", lower: "nylon" },
         label: "DDSO Posterior — 3D View",
       },
     ],
@@ -71,13 +71,13 @@ export const PRODUCTS = {
       { src: "/images/ond-bands.webp",    label: "OND — With Bands" },
       {
         is3D: true,
-        modelPath: "/models/OND_Nylon-Trutaine.glb",
+        model: { device: "ond", upper: "nylon", lower: "trutaine" },
         material: "Mixed",
         label: "OND — Nylon and Trutaine, 3D View",
       },
       {
         is3D: true,
-        modelPath: "/models/OND_Nylon.glb",
+        model: { device: "ond", upper: "nylon", lower: "nylon" },
         material: "Nylon",
         label: "OND — Nylon, 3D View",
       },
@@ -106,19 +106,19 @@ export const PRODUCTS = {
       { src: "/images/onp-model.webp",       label: "ONP — On Model" },
       {
         is3D: true,
-        modelPath: "/models/ONP_Trutaine.glb",
+        model: { device: "onp", upper: "trutaine", lower: "trutaine" },
         material: "Trutaine",
         label: "ONP — Trutaine, 3D View",
       },
       {
         is3D: true,
-        modelPath: "/models/ONP_Nylon.glb",
+        model: { device: "onp", upper: "nylon", lower: "nylon" },
         material: "Nylon",
         label: "ONP — Nylon, 3D View",
       },
       {
         is3D: true,
-        modelPath: "/models/ONP_Bioflex.glb",
+        model: { device: "onp", upper: "bioflex", lower: "bioflex" },
         material: "Bioflex",
         label: "ONP — Bioflex, 3D View",
       },

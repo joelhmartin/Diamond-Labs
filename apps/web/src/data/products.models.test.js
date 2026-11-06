@@ -12,6 +12,8 @@ test("every product has a 3D view", () => {
   }
 });
 
-test.each(models.map((m) => [m.modelPath]))("%s exists in public", (modelPath) => {
-  expect(existsSync(`${publicDir}${modelPath}`)).toBe(true);
+test.each(models.map((m) => [m.label, m.model]))("%s has a model file and known looks", (_label, model) => {
+  expect(existsSync(`${publicDir}/models/appliances/${model.device}.glb`)).toBe(true);
+  expect(["nylon", "trutaine", "bioflex"]).toContain(model.upper);
+  expect(["nylon", "trutaine", "bioflex"]).toContain(model.lower);
 });

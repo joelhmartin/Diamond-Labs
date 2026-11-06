@@ -4,18 +4,19 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { prefersReducedMotion } from "../lib/reducedMotion";
+import { applianceUrl, extractParts } from "./three/applianceGeometry";
+import { createMaterialSet, createScanUniforms, disposeMaterialSet } from "./three/applianceMaterials";
 
 /**
- * ModelViewer — renders a GLB file in a Three.js canvas.
- * The models carry their own PBR materials. The clear ones (Trutaine, Bioflex)
- * get their look from reflections, so the scene needs an environment map.
+ * ModelViewer — renders one appliance in a Three.js canvas.
  * Props:
- *   modelPath — path to the .glb file (relative to /public)
+ *   model — { device, upper, lower }: a file in public/models/appliances and the look
+ *     from applianceMaterials for each tray. Bands always use the band look.
  *   className — extra Tailwind classes for the wrapper div. Set a solid bg-* and the
  *     status text colour here. The scene copies that background, because clear
  *     materials can only refract what is drawn inside the scene.
  */
-export function ModelViewer({ modelPath, className = "", interactive = true }) {
+export function ModelViewer({ model: { device, upper, lower }, className = "", interactive = true }) {
   const mountRef = useRef(null);
   const [status, setStatus] = useState("loading");
 
@@ -72,32 +73,31 @@ export function ModelViewer({ modelPath, className = "", interactive = true }) {
 
     /* ── Load model ── */
     let disposed = false;
-    let model = null;
+    let parts = null;
+    // No clipping in this viewer: renderer.localClippingEnabled stays off, so the plane is ignored.
+    const materials = createMaterialSet({
+      plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), 0),
+      scan: createScanUniforms(),
+    });
 
     new GLTFLoader().load(
-      modelPath,
+      applianceUrl(device),
       (gltf) => {
-        model = gltf.scene;
-        if (disposed) {
-          disposeObject(model);
-          return;
-        }
+        if (disposed) return;
+        parts = extractParts(gltf.scene);
+        const appliance = new THREE.Group();
+        appliance.add(new THREE.Mesh(parts.upper, materials[upper]), new THREE.Mesh(parts.lower, materials[lower]));
+        for (const band of parts.bands) appliance.add(new THREE.Mesh(band, materials.band));
 
-        /* Fit model using bounding sphere — guarantees no overflow at any rotation */
-        const box = new THREE.Box3().setFromObject(model);
-        const sphere = box.getBoundingSphere(new THREE.Sphere());
-        const targetRadius = 1;
-        const scale = targetRadius / sphere.radius;
-        model.scale.multiplyScalar(scale);
-        model.position.sub(sphere.center.clone().multiplyScalar(scale));
-        tuneClearMaterials(model, scale, envMap);
-        scene.add(model);
+        /* Fit using the bounding sphere, which guarantees no overflow at any rotation */
+        const sphere = new THREE.Box3().setFromObject(appliance).getBoundingSphere(new THREE.Sphere());
+        appliance.position.sub(sphere.center);
+        scene.add(appliance);
 
-        /* Camera distance fits the bounding sphere with padding,
-           accounting for the smaller of vertical/horizontal FOV */
+        /* Camera distance fits the sphere with padding, for the smaller of the two FOVs */
         const fovV = THREE.MathUtils.degToRad(camera.fov);
         const fovH = 2 * Math.atan(Math.tan(fovV / 2) * camera.aspect);
-        const dist = (targetRadius * 1.02) / Math.sin(Math.min(fovV, fovH) / 2);
+        const dist = (sphere.radius * 1.02) / Math.sin(Math.min(fovV, fovH) / 2);
         camera.position.copy(new THREE.Vector3(0.55, 0.35, 1).normalize().multiplyScalar(dist));
         camera.near = Math.max(dist * 0.01, 0.001);
         camera.far = dist * 100;
@@ -137,7 +137,8 @@ export function ModelViewer({ modelPath, className = "", interactive = true }) {
       cancelAnimationFrame(animId);
       ro.disconnect();
       controls.dispose();
-      if (model) disposeObject(model);
+      if (parts) [parts.upper, parts.lower, ...parts.bands].forEach((geometry) => geometry.dispose());
+      disposeMaterialSet(materials);
       roomEnv.dispose();
       envMap.dispose();
       pmrem.dispose();
@@ -146,7 +147,7 @@ export function ModelViewer({ modelPath, className = "", interactive = true }) {
         mount.removeChild(renderer.domElement);
       }
     };
-  }, [modelPath, interactive]);
+  }, [device, upper, lower, interactive]);
 
   return (
     <div ref={mountRef} className={`w-full h-full relative ${className}`}>
@@ -163,35 +164,4 @@ export function ModelViewer({ modelPath, className = "", interactive = true }) {
       )}
     </div>
   );
-}
-
-/* The models are real scale (metres) and get scaled up to fit. three.js scales a
-   clear material's thickness with the model but not its attenuation distance, so
-   it has to be scaled here or the plastic turns dark. Clear parts have little of
-   their own to show, so they also get stronger reflections and their back faces. */
-function tuneClearMaterials(root, scale, envMap) {
-  const seen = new Set();
-  root.traverse((child) => {
-    if (!child.isMesh || seen.has(child.material) || !child.material.transmission) return;
-    seen.add(child.material);
-    child.material.attenuationDistance *= scale;
-    child.material.envMap = envMap;
-    child.material.envMapIntensity = 1.6;
-    child.material.side = THREE.DoubleSide;
-    child.material.needsUpdate = true;
-  });
-}
-
-/* Switching between models would otherwise leak each one's GPU buffers. */
-function disposeObject(root) {
-  root.traverse((child) => {
-    if (!child.isMesh) return;
-    child.geometry.dispose();
-    for (const material of [child.material].flat()) {
-      for (const value of Object.values(material)) {
-        if (value?.isTexture) value.dispose();
-      }
-      material.dispose();
-    }
-  });
 }

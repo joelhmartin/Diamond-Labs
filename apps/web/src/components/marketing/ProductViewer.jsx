@@ -51,7 +51,7 @@ export function ProductViewer({
           )}
           {activeItem.is3D ? (
             <ModelViewer
-              modelPath={activeItem.modelPath}
+              model={activeItem.model}
               className="w-full h-full bg-navy text-white/80"
             />
           ) : activeItem.src ? (
