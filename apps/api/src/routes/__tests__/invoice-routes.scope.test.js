@@ -73,6 +73,13 @@ describe("GET /invoices", () => {
     expect(one.json()).toMatchObject({ meta: { balanceCents: 2550 } });
   });
 
+  it("an empty ?account= names no practice: 404 (spec), never all, and nothing is listed", async () => {
+    const res = await get("/invoices?account=");
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.code).toBe("NOT_FOUND");
+    expect(listCalls).toHaveLength(0);
+  });
+
   it("an account outside the scope reads as 404, and nothing is listed", async () => {
     const res = await get("/invoices?account=a9");
     expect(res.statusCode).toBe(404);

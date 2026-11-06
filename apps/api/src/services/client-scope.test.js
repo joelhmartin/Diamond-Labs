@@ -113,9 +113,9 @@ test("requestedAccounts: all, one in scope, and refusals that read as not found"
   const scope = toClientScope({ accountIds: ["a1", "a2"], roles: new Map(), via: new Map(), organizations: [] });
   assert.deepEqual(requestedAccounts(scope, undefined), ["a1", "a2"]);
   assert.deepEqual(requestedAccounts(scope, "all"), ["a1", "a2"]);
-  assert.deepEqual(requestedAccounts(scope, ""), ["a1", "a2"]);
   assert.deepEqual(requestedAccounts(scope, "a2"), ["a2"]);
-  for (const bad of ["a9", "organization:o1", ["a1"], "ALL"]) {
+  // An empty `?account=` names no practice: 404 like any other unknown value, never "all" (spec).
+  for (const bad of ["", "a9", "organization:o1", ["a1"], "ALL"]) {
     assert.throws(() => requestedAccounts(scope, bad), (e) => e.statusCode === 404 && e.code === "NOT_FOUND", String(bad));
   }
   // Never widens: an empty scope asking for "all" gets nothing.
@@ -143,10 +143,10 @@ test("requireClientPortal: a scoped login or an approved doctor; anyone else 403
   assert.equal(await run(undefined), 403);
 });
 
-test("isAllAccounts: absent, empty or \"all\" ask for the whole scope; anything else does not", async () => {
+test("isAllAccounts: only absent or \"all\" ask for the whole scope; empty and anything else do not", async () => {
   const { isAllAccounts, requestedAccounts } = await import("./client-scope-rules.js");
-  for (const v of [undefined, null, "", "all"]) assert.equal(isAllAccounts(v), true, String(v));
-  for (const v of ["ALL", "a1", ["all"], 0]) assert.equal(isAllAccounts(v), false, String(v));
+  for (const v of [undefined, null, "all"]) assert.equal(isAllAccounts(v), true, String(v));
+  for (const v of ["", "ALL", "a1", ["all"], 0]) assert.equal(isAllAccounts(v), false, String(v));
   const scope = { accountIds: ["a1", "a2"], payable: new Set() };
   assert.deepEqual(requestedAccounts(scope, "all"), ["a1", "a2"]);
 });

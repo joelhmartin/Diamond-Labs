@@ -48,13 +48,13 @@ test("parsePartyKey is unchanged", () => {
 test("newPartyKey: a named practice in scope, the one practice, or 422 \"Choose a practice.\" in All practices", () => {
   const two = scoped("u1", "a1", "a2");
   assert.equal(newPartyKey(two, "a2"), "practice:a2");
-  for (const all of [undefined, null, "", "all"]) {
+  for (const all of [undefined, null, "all"]) {
     assert.throws(() => newPartyKey(two, all), (e) => e.statusCode === 422 && e.code === "PRACTICE_REQUIRED" && e.message === "Choose a practice.", String(all));
   }
   assert.equal(newPartyKey(scoped("u1", "a1")), "practice:a1");
   assert.equal(newPartyKey(scoped("u1")), "user:u1", "no practice yet: the login's own key");
-  // Out of scope reads as not found, never widened.
-  for (const bad of ["a9", "organization:o1", ["a1"]]) {
+  // Out of scope (and an empty value, which names no practice) reads as not found, never widened.
+  for (const bad of ["", "a9", "organization:o1", ["a1"]]) {
     assert.throws(() => newPartyKey(two, bad), (e) => e.statusCode === 404 && e.code === "NOT_FOUND", String(bad));
   }
   assert.throws(() => newPartyKey(scoped("u1"), "a1"), (e) => e.statusCode === 404);
