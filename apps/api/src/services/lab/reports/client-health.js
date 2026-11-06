@@ -47,9 +47,11 @@ const dayStart = (iso) => (iso == null ? null : new Date(`${iso}T00:00:00Z`));
  * One row per client who has ever ordered:
  * { clientUserId, client, band, isNew, recent, baseline, trend, sales30Cents,
  *   avgTurnaroundDays, monthly: number[6], lastOrderAt, lastOrderDay }.
- * One grouped query over lab_orders plus one grouped sales query.
+ * One grouped query over lab_orders plus one grouped sales query. `scope`
+ * (report-helpers practiceScope) limits both to a practice or group: a
+ * client's activity at those practices only.
  */
-export async function clientHealthRows(db, { asOf, calendar = null }) {
+export async function clientHealthRows(db, { asOf, calendar = null, scope = null }) {
   const w = healthWindows(asOf);
   const cal = calendar ?? (await labCalendar(db));
   const monthly = w.monthly.map((m, i) => sql`count(*) filter (where ${received(m)}) as ${sql.identifier(`m${i}`)}`);
@@ -63,9 +65,9 @@ export async function clientHealthRows(db, { asOf, calendar = null }) {
     from ${labOrders}
     join ${users} on ${users.id} = ${labOrders.clientUserId} and ${isClient}
     left join ${doctorProfiles} on ${doctorProfiles.userId} = ${users.id}
-    where ${isLiveOrder}
+    where ${isLiveOrder}${scope ? sql` and ${scope(labOrders.accountId)}` : sql``}
     group by ${users.id}, ${doctorProfiles.companyName}, ${users.name}`);
-  const sales = await salesByClient(db, w.recent);
+  const sales = await salesByClient(db, w.recent, scope);
 
   return raw.map((r) => {
     const recent = num(r.recent);

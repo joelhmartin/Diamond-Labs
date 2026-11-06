@@ -145,7 +145,8 @@ test("receivables and the default statement month follow the run clock, not the 
 
 test("statements summary loads activity only through the month's last day", () => {
   const src = readFileSync(fileURLToPath(new URL("./accounting.reports.js", import.meta.url)), "utf8");
-  assert.match(src, /loadStatementActivity\(null, tx, \{ through: bounds\.endIso \}\)/);
+  // The account ids are null (every invoice) unless a practice or group filter is set (practice-filter.test.js).
+  assert.match(src, /loadStatementActivity\(await practiceAccountIds\(tx, params\), tx, \{ through: bounds\.endIso \}\)/);
 });
 
 test("invoices summary by day or month carries no client id, so the client link is not drawn", async () => {

@@ -5,12 +5,16 @@
  * lookup: `client` names every doctor and `priceList` names the pricing
  * templates, so both are admin-only like the money reports that use them; the
  * rest expose no money and keep the staff default. `tag` is a lab-order label
- * (piece 6 record-tags, record type "lab_order").
+ * (piece 6 record-tags, record type "lab_order"). `practice` names the client
+ * accounts (piece 11, `accounts.is_client`) and `organization` the practice
+ * groups: no money, so staff, like the operations reports that filter by them
+ * (report-helpers PRACTICE_PARAMS). A report may name a closed practice or an
+ * archived group, so both list every status and say which is no longer active.
  */
 import { and, asc, eq, ilike, inArray, isNotNull, or } from "drizzle-orm";
 import { STAFF_ROLES } from "@my-app/shared";
 import {
-  users, doctorProfiles, productVariants, productFamilies, labDepartments, tagDefinitions, priceLists,
+  users, doctorProfiles, productVariants, productFamilies, labDepartments, tagDefinitions, priceLists, accounts, organizations,
 } from "../../../db/schema/index.js";
 import { containsPattern } from "../../../lib/list-query.js";
 import { listAssignableStaff } from "../lab-orders.service.js";
@@ -28,6 +32,10 @@ const variantLabel = (v) => (v.code ? `${v.code} · ${v.name}` : v.name);
 
 /** A name with "(inactive)" / "(archived)" when it no longer applies. */
 const withState = (name, off, word) => (off ? `${name} (${word})` : name);
+
+/** A practice as picked: "Name · account number", with its status when not active. */
+const practiceLabel = (a) => withState(a.accountNumber ? `${a.name} · ${a.accountNumber}` : a.name, a.status !== "active", a.status);
+const practiceColumns = { value: accounts.id, name: accounts.name, accountNumber: accounts.accountNumber, status: accounts.status };
 
 export const LAB_LOOKUPS = [
   {
@@ -128,6 +136,35 @@ export const LAB_LOOKUPS = [
     },
     async label(db, value) {
       return firstLabel(await db.select({ label: priceLists.name }).from(priceLists).where(eq(priceLists.id, value)).limit(1));
+    },
+  },
+  {
+    key: "practice",
+    async search(db, q) {
+      const term = lookupTerm(q);
+      const p = containsPattern(term);
+      const rows = await db.select(practiceColumns).from(accounts)
+        .where(and(eq(accounts.isClient, true), term ? or(ilike(accounts.name, p), ilike(accounts.accountNumber, p)) : undefined))
+        .orderBy(asc(accounts.name), asc(accounts.id)).limit(LOOKUP_LIMIT);
+      return rows.map((a) => ({ value: a.value, label: practiceLabel(a) }));
+    },
+    async label(db, value) {
+      const [a] = await db.select(practiceColumns).from(accounts).where(and(eq(accounts.id, value), eq(accounts.isClient, true))).limit(1);
+      return a ? practiceLabel(a) : null;
+    },
+  },
+  {
+    key: "organization",
+    async search(db, q) {
+      const term = lookupTerm(q);
+      const rows = await db.select({ value: organizations.id, name: organizations.name, status: organizations.status }).from(organizations)
+        .where(term ? ilike(organizations.name, containsPattern(term)) : undefined)
+        .orderBy(asc(organizations.name), asc(organizations.id)).limit(LOOKUP_LIMIT);
+      return rows.map((o) => ({ value: o.value, label: withState(o.name, o.status !== "active", o.status) }));
+    },
+    async label(db, value) {
+      const [o] = await db.select({ name: organizations.name, status: organizations.status }).from(organizations).where(eq(organizations.id, value)).limit(1);
+      return o ? withState(o.name, o.status !== "active", o.status) : null;
     },
   },
 ];

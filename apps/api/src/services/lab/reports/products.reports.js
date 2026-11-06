@@ -13,14 +13,14 @@ import {
 import {
   ORDER_LINK, byCode, catalogJoins, clientName, coverageNotice, isLiveOrder, labDayBetween, labDayText, num, orderAndPage, rowsOf, salesWhere,
 } from "./lab-metrics.js";
-import { ADMIN, optionalClientJoin, share, sumOf } from "./report-helpers.js";
+import { ADMIN, PRACTICE_PARAMS, andPractice, optionalClientJoin, practiceScope, share, sumOf } from "./report-helpers.js";
 
 const GROUP = "products";
 const RANGE = { name: "range", label: "Dates", type: "dateRange", default: "last30", maxDays: 1100 };
 
-/** Bench lines that are products (not build instructions) on non-cancelled orders received in the range. */
-const unitLinesWhere = (range) =>
-  sql`${labOrderLines.noteOnly} = false and ${isLiveOrder} and ${labDayBetween(labOrders.receivedAt, range)}`;
+/** Bench lines that are products (not build instructions) on non-cancelled orders received in the range, within the practice/group filter. */
+const unitLinesWhere = (params) =>
+  sql`${labOrderLines.noteOnly} = false and ${isLiveOrder} and ${labDayBetween(labOrders.receivedAt, params.range)}${andPractice(params, labOrders.accountId)}`;
 
 const priceList = {
   key: "products.price-list", group: GROUP, roles: ADMIN, title: "Price List",
@@ -68,12 +68,13 @@ const soldLabel = (r) => r.product ?? (r.code ? `Code ${r.code} (not in catalog)
 const sold = {
   key: "products.sold", group: GROUP, roles: ADMIN, title: "Products Sold",
   description: "Units and sales per catalog item from invoice lines (issued invoices, by issue day). Lines are matched by item, else by code.",
-  params: [RANGE],
+  params: [RANGE, ...PRACTICE_PARAMS],
   columns: [
     { id: "product", label: "Item", type: "text" }, { id: "code", label: "Code", type: "text" }, { id: "family", label: "Product", type: "text" },
     { id: "units", label: "Units", type: "int" }, { id: "amount", label: "Sales", type: "money" }, { id: "share", label: "Share", type: "pct" },
   ],
-  async run(tx, { range }) {
+  async run(tx, params) {
+    const { range } = params;
     const raw = await rowsOf(tx, sql`
       select x.variant_id as "variantId", x.code as "code", x.product as "product", x.family as "family",
         sum(x.qty) as "units", sum(x.line_cents) as "amount"
@@ -85,7 +86,7 @@ const sold = {
         from ${invoiceLines}
         join ${invoices} on ${invoices.id} = ${invoiceLines.invoiceId}
         ${catalogJoins(invoiceLines)}
-        where ${invoiceLines.kind} = 'item' and ${salesWhere(range)}
+        where ${invoiceLines.kind} = 'item' and ${salesWhere(range, practiceScope(params))}
       ) x
       group by 1, 2, 3, 4
       order by 6 desc, 2 nulls last, 1`);
@@ -104,20 +105,20 @@ const sold = {
 const units = {
   key: "products.units", group: GROUP, title: "Units Sold",
   description: "Units on lab orders received in the range, per product (build instructions and cancelled orders are not counted). Lines not in the catalog are listed by their name.",
-  params: [RANGE],
+  params: [RANGE, ...PRACTICE_PARAMS],
   columns: [
     { id: "product", label: "Product", type: "text" }, { id: "category", label: "Category", type: "text" },
     { id: "units", label: "Units", type: "int" }, { id: "orders", label: "Orders", type: "int" },
   ],
   chart: { type: "bar", x: "product", series: [{ field: "units", label: "Units" }] },
-  async run(tx, { range }) {
+  async run(tx, params) {
     const raw = await rowsOf(tx, sql`
       select coalesce(${productFamilies.name}, ${labOrderLines.name}) as "product", ${productFamilies.category} as "category",
         sum(${labOrderLines.qty}) as "units", count(distinct ${labOrders.id}) as "orders"
       from ${labOrderLines}
       join ${labOrders} on ${labOrders.id} = ${labOrderLines.labOrderId}
       ${catalogJoins(labOrderLines)}
-      where ${unitLinesWhere(range)}
+      where ${unitLinesWhere(params)}
       group by 1, 2
       order by 3 desc, 1`);
     const rows = raw.map((r) => ({ product: r.product, category: r.category ?? null, units: num(r.units), orders: num(r.orders) }));
@@ -145,7 +146,7 @@ async function invoicesForLines(tx, lineIds) {
 const unitsDetail = {
   key: "products.units-detail", group: GROUP, title: "Units Sold Detail", paging: "server",
   description: "Every product line on lab orders received in the range, with its order and invoice.",
-  params: [RANGE],
+  params: [RANGE, ...PRACTICE_PARAMS],
   columns: [
     { id: "received", label: "Received", type: "date" },
     { id: "orderNumber", label: "Order #", type: "text", link: ORDER_LINK },
@@ -154,12 +155,12 @@ const unitsDetail = {
     // No link: this report is staff, and the invoice page is admin only.
     { id: "invoiceNumber", label: "Invoice #", type: "text", sortable: false },
   ],
-  async run(tx, { range }, _actor, ctx) {
+  async run(tx, params, _actor, ctx) {
     const from = sql`
       from ${labOrderLines}
       join ${labOrders} on ${labOrders.id} = ${labOrderLines.labOrderId}
       ${optionalClientJoin(labOrders.clientUserId)}`;
-    const where = sql`where ${unitLinesWhere(range)}`;
+    const where = sql`where ${unitLinesWhere(params)}`;
     const sorts = {
       received: labOrders.receivedAt, orderNumber: labOrders.orderNumber, client: clientName,
       code: labOrderLines.code, product: labOrderLines.name, qty: labOrderLines.qty,
@@ -185,13 +186,13 @@ const unitsDetail = {
 const materials = {
   key: "products.materials", group: GROUP, title: "Materials Used", requires: ["materials"],
   description: "Materials and lot numbers recorded on each product line of orders received in the range (cancelled orders are not listed).",
-  params: [RANGE],
+  params: [RANGE, ...PRACTICE_PARAMS],
   columns: [
     { id: "received", label: "Received", type: "date" }, { id: "orderNumber", label: "Order #", type: "text", link: ORDER_LINK },
     { id: "product", label: "Product", type: "text" }, { id: "material", label: "Material", type: "text" },
     { id: "lot", label: "Lot", type: "text" }, { id: "qty", label: "Qty", type: "int" },
   ],
-  async run(tx, { range }) {
+  async run(tx, params) {
     const raw = await rowsOf(tx, sql`
       select ${labOrders.id} as "labOrderId", ${labOrders.orderNumber} as "orderNumber", ${labDayText(labOrders.receivedAt)} as "receivedDay",
         ${labOrderLines.name} as "product", ${labOrderLines.qty} as "qty",
@@ -199,7 +200,7 @@ const materials = {
       from ${labOrderLineMaterials}
       join ${labOrderLines} on ${labOrderLines.id} = ${labOrderLineMaterials.labOrderLineId}
       join ${labOrders} on ${labOrders.id} = ${labOrderLineMaterials.labOrderId}
-      where ${isLiveOrder} and ${labDayBetween(labOrders.receivedAt, range)}
+      where ${isLiveOrder} and ${labDayBetween(labOrders.receivedAt, params.range)}${andPractice(params, labOrders.accountId)}
       order by ${labOrders.receivedAt}, ${labOrders.orderNumber}, ${labOrderLines.position}, ${labOrderLineMaterials.position}, ${labOrderLineMaterials.id}`);
     const rows = raw.map((r) => ({
       labOrderId: r.labOrderId, orderNumber: r.orderNumber, received: r.receivedDay, product: r.product,

@@ -21,7 +21,7 @@ import {
   ORDER_LINK, clientName, labCalendar, labToday, num, orderAndPage, rowsOf,
 } from "./lab-metrics.js";
 import { isOpenOrder, statusBadge } from "./order-metrics.js";
-import { optionalClientJoin, int, sumOf, sums } from "./report-helpers.js";
+import { PRACTICE_PARAMS, andPractice, optionalClientJoin, int, sumOf, sums } from "./report-helpers.js";
 import { plannedOrders, stageTargets, taskRow } from "./stage-targets.js";
 
 const GROUP = "operations";
@@ -72,13 +72,13 @@ const productionTasks = {
 const panNumbers = {
   key: "operations.pan-numbers", group: GROUP, title: "Pan Numbers", paging: "server", requires: ["pan-numbers"],
   description: "Orders with a pan number, with their status and due date. Cancelled orders are not listed.",
-  params: [{ name: "openOnly", label: "Open orders only", type: "toggle", default: true }],
+  params: [{ name: "openOnly", label: "Open orders only", type: "toggle", default: true }, ...PRACTICE_PARAMS],
   columns: [
     { id: "pan", label: "Pan", type: "text" }, { ...ORDER_COL }, { id: "client", label: "Client", type: "text" },
     { id: "status", label: "Status", type: "badge" }, { id: "dueDate", label: "Due", type: "date" },
   ],
   async run(tx, params, _actor, ctx) {
-    const parts = [sql`${labOrders.panNumber} is not null`, sql`${labOrders.status} <> 'cancelled'`];
+    const parts = [sql`${labOrders.panNumber} is not null`, sql`${labOrders.status} <> 'cancelled'${andPractice(params, labOrders.accountId)}`];
     if (params?.openOnly !== false) parts.push(isOpenOrder);
     const where = sql`where ${sql.join(parts, sql` and `)}`;
     const sorts = {

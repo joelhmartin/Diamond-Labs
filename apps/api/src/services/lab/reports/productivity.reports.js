@@ -17,7 +17,7 @@ import {
   orderAndPage, rowsOf, turnaroundDaysSql,
 } from "./lab-metrics.js";
 import { assigneeJoin, assigneeName, orderJoins, shippedInSql, statusBadge, unitsJoin } from "./order-metrics.js";
-import { int, sumOf, sums, uncategorizedSql } from "./report-helpers.js";
+import { PRACTICE_PARAMS, andPractice, int, sumOf, sums, uncategorizedSql } from "./report-helpers.js";
 
 const GROUP = "productivity";
 const RANGE = { name: "range", label: "Dates", type: "dateRange", default: "last30", maxDays: 1100 };
@@ -30,10 +30,11 @@ const inList = (col, values) => sql`${col} in (${sql.join(values.map((v) => sql`
 const optionsOf = (labels) => Object.entries(labels).map(([value, label]) => ({ value, label }));
 
 /**
- * Filters: status, source and a label (piece 6 record-tags on lab orders, via
- * taggedWithAny); each row lists its labels (tagsFor). There is no client
- * filter: the client lookup is admin only (it backs the money reports) and
- * this report is staff; sort or export by the Client column instead.
+ * Filters: status, source, a label (piece 6 record-tags on lab orders, via
+ * taggedWithAny) and a practice or group (PRACTICE_PARAMS: those lookups
+ * carry no money, so staff may use them); each row lists its labels
+ * (tagsFor). There is no client (doctor) filter: the client lookup is admin
+ * only (it backs the money reports) and this report is staff.
  */
 const orders = {
   key: "productivity.orders", group: GROUP, featured: true, title: "Orders", paging: "server",
@@ -43,6 +44,7 @@ const orders = {
     { name: "status", label: "Status", type: "multiselect", options: optionsOf(LAB_STATUS_LABELS) },
     { name: "source", label: "Source", type: "multiselect", options: optionsOf(LAB_ORDER_SOURCE_LABELS) },
     { name: "tag", label: "Label", type: "lookup", source: "tag" },
+    ...PRACTICE_PARAMS,
   ],
   columns: [
     { id: "received", label: "Received", type: "date" }, { id: "orderNumber", label: "Order #", type: "text", link: ORDER_LINK },
@@ -51,8 +53,9 @@ const orders = {
     { id: "shipped", label: "Shipped", type: "date" }, { id: "rush", label: "Rush", type: "text" },
     { id: "remake", label: "Remake", type: "text" }, int("units", "Units"), { id: "tags", label: "Labels", type: "text", sortable: false },
   ],
-  async run(tx, { range, status, source, tag }, _actor, ctx) {
-    const parts = [labDayBetween(labOrders.receivedAt, range)];
+  async run(tx, params, _actor, ctx) {
+    const { range, status, source, tag } = params;
+    const parts = [sql`${labDayBetween(labOrders.receivedAt, range)}${andPractice(params, labOrders.accountId)}`];
     const statuses = (status ?? []).filter((s) => LAB_ORDER_STATUSES.includes(s));
     const sources = (source ?? []).filter((s) => LAB_ORDER_SOURCES.includes(s));
     if (statuses.length) parts.push(inList(labOrders.status, statuses));
@@ -153,15 +156,16 @@ const tasksCompleted = {
 const monthlyCounts = {
   key: "productivity.monthly-counts", group: GROUP, title: "Monthly Counts",
   description: "Orders and units received per month, with rush orders and remakes. Cancelled orders are not counted.",
-  params: [{ ...RANGE, default: "last12m" }],
+  params: [{ ...RANGE, default: "last12m" }, ...PRACTICE_PARAMS],
   columns: [{ id: "month", label: "Month", type: "text" }, int("orders", "Orders"), int("units", "Units"), int("rush", "Rush"), int("remakes", "Remakes")],
   chart: { type: "bar", x: "month", series: [{ field: "orders", label: "Orders" }, { field: "units", label: "Units" }] },
-  async run(tx, { range }) {
+  async run(tx, params) {
+    const { range } = params;
     const raw = await rowsOf(tx, sql`
       select ${labMonthText(labOrders.receivedAt)} as "month", count(*) as "orders", coalesce(sum(u.units), 0) as "units",
         count(*) filter (where ${labOrders.rush}) as "rush", count(*) filter (where ${labOrders.isRemake}) as "remakes"
       from ${labOrders} ${unitsJoin}
-      where ${isLiveOrder} and ${labDayBetween(labOrders.receivedAt, range)}
+      where ${isLiveOrder} and ${labDayBetween(labOrders.receivedAt, range)}${andPractice(params, labOrders.accountId)}
       group by 1 order by 1`);
     const byMonth = new Map(raw.map((r) => [String(r.month), r]));
     const rows = monthsBetween(range.from, range.to).map((month) => {
@@ -178,7 +182,7 @@ const MONTH_IDS = MONTH_LABELS.map((_, i) => `m${String(i + 1).padStart(2, "0")}
 const monthlyOrders = {
   key: "productivity.monthly-orders", group: GROUP, title: "Monthly Orders",
   description: "Orders per client per month for a year (cancelled orders are not counted), busiest clients first.",
-  params: [{ name: "year", label: "Year (default this year)", type: "number", min: 2000, max: 2100 }],
+  params: [{ name: "year", label: "Year (default this year)", type: "number", min: 2000, max: 2100 }, ...PRACTICE_PARAMS],
   columns: [
     { id: "client", label: "Client", type: "text" },
     ...MONTH_IDS.map((id, i) => int(id, MONTH_LABELS[i])),
@@ -191,7 +195,7 @@ const monthlyOrders = {
       from ${labOrders}
       join ${users} on ${users.id} = ${labOrders.clientUserId} and ${isClient}
       left join ${doctorProfiles} on ${doctorProfiles.userId} = ${users.id}
-      where ${isLiveOrder} and ${labDayBetween(labOrders.receivedAt, { from: `${year}-01-01`, to: `${year}-12-31` })}
+      where ${isLiveOrder} and ${labDayBetween(labOrders.receivedAt, { from: `${year}-01-01`, to: `${year}-12-31` })}${andPractice(params, labOrders.accountId)}
       group by ${users.id}, ${doctorProfiles.companyName}, ${users.name}, 3`);
     const byClient = new Map();
     for (const r of raw) {
@@ -230,14 +234,16 @@ const pct = (part, whole) => (whole ? `${((part / whole) * 100).toFixed(1)}%` : 
 const remakes = {
   key: "productivity.remakes", group: GROUP, title: "Remakes",
   description: "Remake orders received in the range, with the original order, the client, the remake reason and the remake rate.",
-  params: [RANGE],
+  params: [RANGE, ...PRACTICE_PARAMS],
   columns: [
     { id: "received", label: "Received", type: "date" }, { id: "orderNumber", label: "Remake #", type: "text", link: ORDER_LINK },
     { id: "originalNumber", label: "Original #", type: "text", link: "/lab/orders/{originalId}" },
     { id: "client", label: "Client", type: "text" }, { id: "reason", label: "Reason", type: "text" },
     { id: "status", label: "Status", type: "badge" }, { id: "assignee", label: "Assigned to", type: "text" },
   ],
-  async run(tx, { range }) {
+  async run(tx, params) {
+    const { range } = params;
+    const inPractice = andPractice(params, labOrders.accountId);
     const raw = await rowsOf(tx, sql`
       select ${labOrders.id} as "labOrderId", ${labOrders.orderNumber} as "orderNumber", ${labDayText(labOrders.receivedAt)} as "receivedDay",
         ${original.id} as "originalId", ${original.orderNumber} as "originalNumber", ${clientName} as "client",
@@ -245,10 +251,10 @@ const remakes = {
       from ${labOrders} ${orderJoins}
       left join ${labOrders} as original on ${original.id} = ${labOrders.remakeOfOrderId}
       left join ${adjustmentReasons} on ${adjustmentReasons.id} = ${labOrders.remakeReasonId}
-      where ${labOrders.isRemake} and ${isLiveOrder} and ${labDayBetween(labOrders.receivedAt, range)}
+      where ${labOrders.isRemake} and ${isLiveOrder} and ${labDayBetween(labOrders.receivedAt, range)}${inPractice}
       order by ${labOrders.receivedAt} desc, ${labOrders.id}`);
     const [all] = await rowsOf(tx, sql`
-      select count(*) as "orders" from ${labOrders} where ${isLiveOrder} and ${labDayBetween(labOrders.receivedAt, range)}`);
+      select count(*) as "orders" from ${labOrders} where ${isLiveOrder} and ${labDayBetween(labOrders.receivedAt, range)}${inPractice}`);
     const rows = raw.map((r) => ({
       labOrderId: r.labOrderId, orderNumber: r.orderNumber, received: r.receivedDay, originalId: r.originalId ?? null,
       originalNumber: r.originalNumber ?? null, client: r.client ?? null, reason: r.reason ?? NO_REASON, status: statusBadge(r.status), assignee: r.assignee,
@@ -272,12 +278,13 @@ const firstCategory = sql`
 const turnaround = {
   key: "productivity.turnaround", group: GROUP, title: "Turnaround Times",
   description: "Average and median business days (the lab calendar's open days) from received to shipped, by month shipped and product category (the order's first product). Unshipped and cancelled orders are not counted.",
-  params: [{ ...RANGE, default: "last12m" }],
+  params: [{ ...RANGE, default: "last12m" }, ...PRACTICE_PARAMS],
   columns: [
     { id: "month", label: "Month shipped", type: "text" }, { id: "category", label: "Category", type: "text" },
     int("orders", "Orders"), days("avgDays", "Average"), days("medianDays", "Median"),
   ],
-  async run(tx, { range }) {
+  async run(tx, params) {
+    const { range } = params;
     const calendar = await labCalendar(tx);
     const raw = await rowsOf(tx, sql`
       select x.month as "month", x.category as "category", count(*) as "orders", avg(x.days) as "avgDays",
@@ -285,7 +292,7 @@ const turnaround = {
       from (
         select ${labMonthText(labOrders.shippedAt)} as month, coalesce(cat.category, ${uncategorizedSql}) as category, ${turnaroundDaysSql(calendar)} as days
         from ${labOrders} ${firstCategory}
-        where ${shippedInSql(range)}
+        where ${shippedInSql(range)}${andPractice(params, labOrders.accountId)}
       ) x
       group by grouping sets ((x.month, x.category), ())
       order by 6, 1, 2`);

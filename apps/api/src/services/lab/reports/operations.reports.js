@@ -15,7 +15,7 @@ import {
   assigneeName, departmentName, isOpenOrder, orderJoins, ordersByDay, shippedByDay, statusBadge,
 } from "./order-metrics.js";
 import { OPERATIONS_DESK_REPORTS } from "./operations-desk.reports.js";
-import { int, share, sumOf, sums } from "./report-helpers.js";
+import { PRACTICE_PARAMS, andPractice, int, practiceScope, share, sumOf, sums } from "./report-helpers.js";
 
 const GROUP = "operations";
 const RANGE = { name: "range", label: "Dates", type: "dateRange", default: "last30", maxDays: 1100 };
@@ -40,7 +40,7 @@ const hasPhysicalItems = sql`(${rxCases.id} is not null or ${labOrders.enclosure
 const caseSubmission = {
   key: "operations.case-submission", group: GROUP, featured: true, title: "Case Submission",
   description: "Cases received per day, digital (a records method, a scan file or a scanner-export drop turned into the order) vs. physical (an Rx case with no digital records, or items recorded as enclosed). Orders with neither (shop and imported orders) count as unknown. Remakes and cancelled orders are not counted.",
-  params: [RANGE],
+  params: [RANGE, ...PRACTICE_PARAMS],
   columns: [
     { id: "day", label: "Day", type: "date" }, int("digital", "Digital"), int("physical", "Physical"), int("unknown", "Unknown"),
     int("total", "Total"), { id: "digitalShare", label: "Digital share", type: "pct" },
@@ -49,7 +49,8 @@ const caseSubmission = {
     type: "stackedBar", x: "day",
     series: [{ field: "digital", label: "Digital" }, { field: "physical", label: "Physical" }, { field: "unknown", label: "Unknown" }],
   },
-  async run(tx, { range }) {
+  async run(tx, params) {
+    const { range } = params;
     const raw = await rowsOf(tx, sql`
       select ${labDayText(labOrders.receivedAt)} as "day",
         count(*) filter (where ${hasDigitalRecords}) as "digital",
@@ -57,7 +58,7 @@ const caseSubmission = {
         count(*) filter (where not ${hasDigitalRecords} and not ${hasPhysicalItems}) as "unknown"
       from ${labOrders}
       left join ${rxCases} on ${labOrders.source} = 'rx_case' and ${rxCases.id} = ${labOrders.sourceId}
-      where ${isLiveOrder} and ${labOrders.isRemake} = false and ${labDayBetween(labOrders.receivedAt, range)}
+      where ${isLiveOrder} and ${labOrders.isRemake} = false and ${labDayBetween(labOrders.receivedAt, range)}${andPractice(params, labOrders.accountId)}
       group by 1 order by 1`);
     const byDay = new Map(raw.map((r) => [String(r.day), r]));
     const shaped = (day, r = {}) => {
@@ -77,11 +78,11 @@ const caseSubmission = {
 const dailyOrders = {
   key: "operations.daily-orders", group: GROUP, title: "Daily Orders",
   description: "Orders received per day, with units, rush orders and remakes. Cancelled orders are not counted.",
-  params: [RANGE],
+  params: [RANGE, ...PRACTICE_PARAMS],
   columns: [{ id: "day", label: "Day", type: "date" }, int("orders", "Orders"), int("units", "Units"), int("rush", "Rush"), int("remakes", "Remakes")],
   chart: { type: "bar", x: "day", series: [{ field: "orders", label: "Orders" }] },
-  async run(tx, { range }) {
-    const rows = await ordersByDay(tx, range);
+  async run(tx, params) {
+    const rows = await ordersByDay(tx, params.range, practiceScope(params));
     return { rows, summary: { day: "Total", ...sums(rows, ["orders", "units", "rush", "remakes"]) } };
   },
 };
@@ -91,14 +92,14 @@ const CARRIER_COLS = CARRIERS.map((c) => int(c, CARRIER_LABELS[c] ?? c));
 const dailyShipments = {
   key: "operations.daily-shipments", group: GROUP, title: "Daily Shipments",
   description: "Orders shipped per day and the shipments that carried them, by carrier. Orders shipped with no shipment record (imported history) are counted separately.",
-  params: [RANGE],
+  params: [RANGE, ...PRACTICE_PARAMS],
   columns: [
     { id: "day", label: "Day", type: "date" }, int("orders", "Orders shipped"), int("shipments", "Shipments"),
     ...CARRIER_COLS, int("noShipment", "No shipment record"),
   ],
   chart: { type: "stackedBar", x: "day", series: CARRIERS.map((c) => ({ field: c, label: CARRIER_LABELS[c] ?? c })) },
-  async run(tx, { range }) {
-    const rows = await shippedByDay(tx, range);
+  async run(tx, params) {
+    const rows = await shippedByDay(tx, params.range, practiceScope(params));
     return { rows, summary: { day: "Total", ...sums(rows, ["orders", "shipments", ...CARRIERS, "noShipment"]) } };
   },
 };
@@ -149,21 +150,21 @@ const shipping = {
 const tbdOrders = {
   key: "operations.tbd-orders", group: GROUP, title: "TBD Orders",
   description: "Open orders with no due date yet, oldest first.",
-  params: [],
+  params: [...PRACTICE_PARAMS],
   columns: [
     ORDER_COL, { id: "client", label: "Client", type: "text" }, { id: "status", label: "Status", type: "badge" },
     { id: "received", label: "Received", type: "date" }, int("daysOpen", "Days open"),
     { id: "department", label: "Department", type: "text" }, { id: "assignee", label: "Assigned to", type: "text" },
     { id: "rush", label: "Rush", type: "text" },
   ],
-  async run(tx, _params, _actor, ctx) {
+  async run(tx, params, _actor, ctx) {
     const today = labToday(ctx);
     const raw = await rowsOf(tx, sql`
       select ${labOrders.id} as "labOrderId", ${labOrders.orderNumber} as "orderNumber", ${labDayText(labOrders.receivedAt)} as "receivedDay",
         ${clientName} as "client", ${labOrders.status} as "status", ${departmentName} as "department", ${assigneeName} as "assignee",
         ${labOrders.rush} as "rush"
       from ${labOrders} ${orderJoins}
-      where ${isOpenOrder} and ${labOrders.dueDate} is null
+      where ${isOpenOrder} and ${labOrders.dueDate} is null${andPractice(params, labOrders.accountId)}
       order by ${labOrders.receivedAt}, ${labOrders.id}`);
     const rows = raw.map((r) => ({
       labOrderId: r.labOrderId, orderNumber: r.orderNumber, client: r.client ?? null, status: statusBadge(r.status),
