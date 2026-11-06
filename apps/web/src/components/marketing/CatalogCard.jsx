@@ -52,7 +52,7 @@ export function CatalogCard({ product, onOpen }) {
       } ${!canBuy ? "opacity-80" : ""}`}
     >
       {/* Image */}
-      <div className="relative aspect-square bg-surface-100 overflow-hidden">
+      <div className="relative aspect-square bg-white overflow-hidden">
         {showImage ? (
           <img
             src={img}
