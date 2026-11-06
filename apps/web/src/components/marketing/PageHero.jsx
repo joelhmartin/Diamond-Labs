@@ -25,12 +25,15 @@ export function playHeroIntro(root) {
                it on smaller screens.
      media   — any other element in that same slot, such as a Lottie.
      image   — full-bleed photo under a left-weighted scrim, for real lab photos.
+     backdrop — { src, alt }: a photo filling the right 60% at lg+, fading into the
+               navy on the left and darkened under the nav; behind the text on
+               smaller screens. Takes the place of product/media.
    Content is only hidden from inside the effect (gsap.from), so with
    prefers-reduced-motion — or before JS runs — it is fully visible. */
-export function PageHero({ variant = "compact", title, titleAccent, intro, image, imageAlt = "", product, productAlt = "", media, children }) {
+export function PageHero({ variant = "compact", title, titleAccent, intro, image, imageAlt = "", product, productAlt = "", media, backdrop, children }) {
   const ref = useRef(null);
   const isImage = variant === "image";
-  const hasSideVisual = Boolean(product || media);
+  const hasSideVisual = !backdrop && Boolean(product || media);
 
   useEffect(() => {
     const ctx = playHeroIntro(ref.current);
@@ -42,9 +45,10 @@ export function PageHero({ variant = "compact", title, titleAccent, intro, image
       ref={ref}
       className={`relative overflow-hidden bg-navy section-pad ${
         isImage ? "min-h-[60dvh] flex items-end pt-36 pb-12 md:pb-16" : "pt-36 pb-16"
-      } ${hasSideVisual ? "lg:min-h-[640px] lg:flex lg:items-center" : ""}`}
+      } ${hasSideVisual || backdrop ? "lg:min-h-[640px] lg:flex lg:items-center" : ""}`}
     >
       {!isImage && <HeroStage />}
+      {backdrop && <HeroBackdrop {...backdrop} />}
       {isImage && image && (
         <>
           <img src={image} alt={imageAlt} className="absolute inset-0 h-full w-full object-cover" />
@@ -53,7 +57,7 @@ export function PageHero({ variant = "compact", title, titleAccent, intro, image
         </>
       )}
       <div className="relative z-10 w-full max-w-6xl mx-auto">
-        <div className={hasSideVisual ? "lg:max-w-[52%]" : "max-w-3xl"}>
+        <div className={hasSideVisual ? "lg:max-w-[52%]" : backdrop ? "max-w-3xl lg:max-w-[46%]" : "max-w-3xl"}>
           <h1 data-hero-anim className="text-on-dark">
             <span className="block font-heading font-bold text-4xl md:text-6xl tracking-tight leading-[1.02]">
               {title}
@@ -91,5 +95,17 @@ export function PageHero({ variant = "compact", title, titleAccent, intro, image
         )}
       </div>
     </section>
+  );
+}
+
+/* The photo sits on the right and dissolves into the navy toward the text. */
+function HeroBackdrop({ src, alt = "" }) {
+  return (
+    <div className="absolute inset-0 lg:left-auto lg:w-[60%] lg:[mask-image:linear-gradient(to_right,transparent,black_55%)]">
+      <img src={src} alt={alt} className="absolute inset-0 h-full w-full object-cover" />
+      <div className="absolute inset-0 bg-navy/80 lg:bg-navy/25" />
+      <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-navy/85 to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-navy/50 to-transparent" />
+    </div>
   );
 }

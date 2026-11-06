@@ -151,8 +151,7 @@ export function AboutPage() {
         title="About Diamond"
         titleAccent="Orthotic Laboratory."
         intro="A dental laboratory in La Mesa, California, making TMJ and sleep breathing appliances for dentists on a fully digital workflow."
-        product="/images/ddso-nylon-bands.webp"
-        productAlt="A DDSO sleep appliance with nylon bands"
+        backdrop={{ src: "/images/hero-lab.webp", alt: "The Diamond Orthotic Laboratory workroom with 3D printers and design stations" }}
       />
       <Mission />
       <Values />
