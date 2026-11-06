@@ -35,6 +35,14 @@ test("a source field needs a known column type (money, not cents)", () => {
   r.defineSource({ ...source("sales"), fields: [{ key: "t", label: "T", type: "money" }] });
 });
 
+test("params are report param specs: a name, a known type, no lookups", () => {
+  const r = createExportRegistry();
+  assert.throws(() => r.defineSource({ ...source("a"), params: [{ id: "from", type: "date" }] }), /needs a name/);
+  assert.throws(() => r.defineSource({ ...source("b"), params: [{ name: "x", type: "calendar" }] }), /unknown type/);
+  assert.throws(() => r.defineSource({ ...source("c"), params: [{ name: "x", type: "lookup", source: "s" }] }), /not supported/);
+  r.defineSource({ ...source("d"), params: [{ name: "from", type: "date" }, { name: "k", type: "multiselect", options: ["a"] }] });
+});
+
 test("source() and format() return undefined for unknown keys", () => {
   const r = createExportRegistry();
   assert.equal(r.source("nope"), undefined);

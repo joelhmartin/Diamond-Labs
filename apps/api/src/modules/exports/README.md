@@ -35,8 +35,8 @@ import { createExportRegistry, csvFormat, createExportsRoutes, runExport, previe
   same controls as a report's, and a cell is written the way a report column's
   is: `money` is integer cents written "1234.50", `int` a number, `date` a
   calendar day (in the field's `timeZone`, default UTC), `text` as is.
-  `defineSource` throws on an unknown field or param type or a param without a
-  `name`. The query keys are the param names; the screen sends a multiselect
+  `defineSource` throws on an unknown field or param type, a param without a
+  `name`, and a `lookup` param (the export screen has no lookup endpoint). The query keys are the param names; the screen sends a multiselect
   comma-joined, so a `paramsSchema` should accept a comma list.
 
   `fetchPage` must use a stable order so pages do not overlap or skip.

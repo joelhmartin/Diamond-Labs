@@ -26,6 +26,8 @@ export function createExportRegistry() {
     for (const p of def.params ?? []) {
       if (!p.name) throw new Error(`${where}: every param needs a name.`);
       if (!PARAM_TYPES.includes(p.type)) throw new Error(`${where}: param "${p.name}" has unknown type "${p.type}".`);
+      // The export screen has no lookup search endpoint to hand the picker.
+      if (p.type === "lookup") throw new Error(`${where}: param "${p.name}": lookup params are not supported by exports.`);
     }
   }
 
