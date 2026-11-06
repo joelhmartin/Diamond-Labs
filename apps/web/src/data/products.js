@@ -11,7 +11,7 @@ export const PRODUCTS = {
     categoryBg: "bg-accent-500/10",
     images: [
       { src: "/images/ddso-ant-overview.webp", label: "DDSO Anterior — Overview" },
-      { src: "/images/ddso-ant-front.webp",    label: "DDSO Anterior — Front View" },
+      { src: "/images/ddso-front.webp",    label: "DDSO Anterior — Front View" },
       { src: "/images/ddso-ant-hooks.webp",    label: "DDSO Anterior — Nylon Band Hooks" },
       { src: "/images/ddso-ant-angle.webp",    label: "DDSO Anterior — Angle View" },
       { src: "/images/ddso-ant-pair.webp",     label: "DDSO Anterior — Upper & Lower" },
@@ -41,7 +41,7 @@ export const PRODUCTS = {
     categoryBg: "bg-accent-500/10",
     images: [
       { src: "/images/ddso-post-overview.webp", label: "DDSO Posterior — Overview" },
-      { src: "/images/ddso-post-iso.webp",      label: "DDSO Posterior — Isometric" },
+      { src: "/images/ddso-post-render.webp",      label: "DDSO Posterior — Isometric" },
       { src: "/images/ddso-post-interior.webp", label: "DDSO Posterior — Interior" },
       { src: "/images/ddso-isometric.webp",     label: "DDSO Posterior — Blue Bands" },
       {

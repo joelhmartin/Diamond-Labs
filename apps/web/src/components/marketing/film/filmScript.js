@@ -39,7 +39,7 @@ export const CHAPTERS = [
     vh: 100,
     look: 0,
     pose: { yaw: 0.72, pitch: 0.2, dist: 7, x: -1.25, y: 0.42, open: 0, labels: 0 },
-    fallback: "/images/ddso-post-iso.webp",
+    fallback: "/images/ddso-post-render.webp",
   },
   {
     id: "anatomy",

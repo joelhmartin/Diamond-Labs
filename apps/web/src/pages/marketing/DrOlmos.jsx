@@ -166,7 +166,7 @@ export function DrOlmosPage() {
         intro="Dr. Olmos directs the courses for dentists. The certified labs fabricate Olmos Series appliances."
         primary={{ label: "Courses", to: "/resources/courses" }}
         secondary={{ label: "Certified labs", to: "/resources/certified-labs" }}
-        product="/images/ddso-post-iso.webp"
+        product="/images/ddso-post-render.webp"
         productAlt="A DDSO appliance with blue bands"
       />
     </>

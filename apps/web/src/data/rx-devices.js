@@ -676,7 +676,7 @@ export const RX_DEVICES = [
     name: "Remake / Repair",
     fullName: "Remake, Repair, or Redesign",
     category: "remake",
-    image: "/images/ddso-post-iso.webp",
+    image: "/images/ddso-post-render.webp",
     tagline: "Warranty remake, repair, or redesign of a previously delivered device.",
     options: REMAKE_OPTIONS,
   },

@@ -58,13 +58,13 @@ const SYMPTOMS = [
 const VARIANTS = [
   {
     name: "DDSO Anterior",
-    image: "/images/ddso-ant-hooks.webp",
-    alt: "DDSO Anterior upper and lower trays with nylon band hooks",
+    image: "/images/ddso-ant-render.webp",
+    alt: "DDSO Anterior upper and lower trays joined by blue bands",
     facts: ["Anterior contact only", "Nylon band system", "Biocompatible nylon PA12"],
   },
   {
     name: "DDSO Posterior",
-    image: "/images/ddso-post-iso.webp",
+    image: "/images/ddso-post-render.webp",
     alt: "DDSO Posterior full-arch trays with a blue band",
     facts: ["Full-arch posterior", "Adjustable band system", "Biocompatible nylon PA12"],
   },

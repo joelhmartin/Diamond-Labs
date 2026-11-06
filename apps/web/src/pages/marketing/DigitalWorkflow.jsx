@@ -58,7 +58,7 @@ const ADVANTAGES = [
 ];
 
 const APPLIANCES = [
-  { name: "Diamond Digital Sleep Orthotic", short: "DDSO", image: "/images/ddso-post-iso.webp", to: "/services/sleep" },
+  { name: "Diamond Digital Sleep Orthotic", short: "DDSO", image: "/images/ddso-post-render.webp", to: "/services/sleep" },
   { name: "Olmos Neuromuscular Device", short: "OND", image: "/images/ond-nylon.webp", to: "/services/tmd" },
   { name: "Olmos Neuromuscular Positioner", short: "ONP", image: "/images/onp-nylon4.webp", to: "/services/tmd" },
 ];
@@ -171,7 +171,7 @@ export function DigitalWorkflowPage() {
         intro="Approved doctors send scans through the Rx form in the account portal, and we'll confirm receipt within one business day."
         primary={{ label: "Submit Digital Rx", to: "/submit-case" }}
         secondary={{ label: "Rx instructions", to: "/resources/rx-instructions" }}
-        product="/images/ddso-post-iso.webp"
+        product="/images/ddso-post-render.webp"
         productAlt="A DDSO sleep appliance"
       />
     </>

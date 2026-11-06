@@ -151,7 +151,7 @@ function DiagnosticShuffler() {
       label: "Diamond Digital Sleep Orthotic",
       status: "Sleep",
       color: "bg-brand-500",
-      image: "/images/ddso-post-iso.webp",
+      image: "/images/ddso-post-render.webp",
     },
     {
       label: "Olmos Neuromuscular Device",
