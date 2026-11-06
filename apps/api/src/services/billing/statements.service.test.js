@@ -107,3 +107,22 @@ test("statement activity can be bounded to a month end: invoices and ledger rows
   assert.doesNotMatch(renderSql(open.invoiceScope).text, /issued_at/);
   assert.equal(open.paymentBound, undefined);
 });
+
+test("a practice statement is billed to the practice at its owner's doctor-profile address (the one header builder)", async () => {
+  const db = fakeTx({ selects: [
+    [{ id: "A1", name: "Alpha Dental", accountNumber: "1001", address1: "1 Main St", address2: "Suite 2", city: "Austin", state: "TX", zip: "78701" }],
+    [],
+  ] });
+  const m = await svc.practiceStatementFor("A1", "2026-10", { generatedAt: new Date("2026-11-02T15:00:00Z") }, db);
+  assert.deepEqual(m.billTo, ["Alpha Dental", "1 Main St", "Suite 2", "Austin, TX 78701", "Account 1001"]);
+  // The address is the account OWNER's profile, joined in the same query.
+  const q = db.log.find((l) => l.op === "select");
+  assert.ok(q.calls.includes("leftJoin"));
+  assert.match(source, /leftJoin\(doctorProfiles, eq\(doctorProfiles\.userId, accounts\.ownerId\)\)/);
+  // An owner with no profile: no address, never someone else's.
+  assert.deepEqual(svc.practiceHeader({ id: "A2", name: "Beta", accountNumber: null }), { practice: "Beta", accountNumber: null, address1: null, address2: null, city: null, state: null, zip: null });
+  // The combined statement is billed to the group by name only (a group has no single owner).
+  const group = fakeTx({ selects: [[{ id: "A1", name: "Alpha Dental", accountNumber: "1001", address1: "1 Main St", city: "Austin", state: "TX", zip: "78701" }], []] });
+  const c = await svc.combinedStatementFor({ id: "G1", name: "Smile Group", accountIds: ["A1"] }, "2026-10", { generatedAt: new Date("2026-11-02T15:00:00Z") }, group);
+  assert.deepEqual(c.billTo, ["Smile Group"]);
+});

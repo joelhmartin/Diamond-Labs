@@ -1,13 +1,12 @@
 import { and, eq, inArray, isNotNull, lt, ne } from "drizzle-orm";
 import { isoDateIn, LAB_TIMEZONE } from "@my-app/shared";
 import { db } from "../../config/database.js";
-import { invoices, invoicePayments, labOrders, users, doctorProfiles } from "../../db/schema/index.js";
+import { accounts, invoices, invoicePayments, labOrders, users, doctorProfiles } from "../../db/schema/index.js";
 import { openReceivableInvoices, ledgerRowDayBetween } from "./ledger.service.js";
 import { afterLabDay } from "../../lib/lab-day-sql.js";
 import { buildReceivables } from "./aging.js";
 import { buildStatementModel, buildCombinedStatementModel } from "./statement-model.js";
 import { renderStatementPdf, renderCombinedStatementPdf } from "./billing-pdf.js";
-import { describePractices } from "../practices.service.js";
 
 /**
  * Statements and accounts receivable. A statement is per practice (a client
@@ -90,8 +89,35 @@ export async function loadStatementActivity(accountIds, database = db, { through
   return { invoices: invs, payments };
 }
 
-/** A practice's bill-to header (statement-model's `client`): its name and lab account number. */
-export const practiceHeader = (practice) => ({ practice: practice.name, accountNumber: practice.accountNumber ?? null });
+/**
+ * Active practices (client accounts) with what their statement is headed
+ * with: name, lab account number and the account OWNER's doctor-profile
+ * address (none when the owner has no profile). `ids = null` → every active
+ * practice (the monthly run). THE one source of a practice statement's
+ * header, so the run, the admin download and the portal download agree.
+ * @returns {Promise<{ id, name, accountNumber, address1, address2, city, state, zip }[]>}
+ */
+export async function loadStatementPractices(database = db, ids = null) {
+  if (Array.isArray(ids) && ids.length === 0) return [];
+  const rows = await database
+    .select({
+      id: accounts.id, name: accounts.name, accountNumber: accounts.accountNumber,
+      address1: doctorProfiles.address1, address2: doctorProfiles.address2, city: doctorProfiles.city, state: doctorProfiles.state, zip: doctorProfiles.zip,
+    })
+    .from(accounts)
+    .leftJoin(doctorProfiles, eq(doctorProfiles.userId, accounts.ownerId))
+    .where(and(eq(accounts.status, "active"), eq(accounts.isClient, true), ids ? inArray(accounts.id, [...new Set(ids)]) : undefined));
+  return rows.map((r) => ({
+    id: r.id, name: r.name, accountNumber: r.accountNumber ?? null,
+    address1: r.address1 ?? null, address2: r.address2 ?? null, city: r.city ?? null, state: r.state ?? null, zip: r.zip ?? null,
+  }));
+}
+
+/** A practice's bill-to header (statement-model's `client`, printed by billToLines): name, account number, owner's address. */
+export const practiceHeader = (p) => ({
+  practice: p.name, accountNumber: p.accountNumber ?? null,
+  address1: p.address1 ?? null, address2: p.address2 ?? null, city: p.city ?? null, state: p.state ?? null, zip: p.zip ?? null,
+});
 
 /** Split one activity load per practice: Map(accountId → { invoices, payments }), one entry per id given. */
 export function activityByAccount(activity, accountIds) {
@@ -117,7 +143,7 @@ export async function statementFor({ accountIds, header }, month, { generatedAt 
 
 /** One practice's statement model, or null when `accountId` is not an active practice. */
 export async function practiceStatementFor(accountId, month, { generatedAt = new Date() } = {}, database = db) {
-  const practice = (await describePractices([accountId], database)).get(accountId);
+  const [practice] = await loadStatementPractices(database, [accountId]);
   if (!practice) return null;
   return statementFor({ accountIds: [accountId], header: practiceHeader(practice) }, month, { generatedAt }, database);
 }
@@ -125,14 +151,15 @@ export async function practiceStatementFor(accountId, month, { generatedAt = new
 /**
  * A group's combined statement model: each of `org.accountIds` that is an
  * active practice gets its own section (its own statement, one activity load
- * for all), then the group total (buildCombinedStatementModel).
+ * for all), then the group total (buildCombinedStatementModel). The group is
+ * billed by name only: it has no single owner, so no address.
  * @param {{ id: string, name: string, accountIds: string[] }} org
  */
 export async function combinedStatementFor(org, month, { generatedAt = new Date() } = {}, database = db) {
-  const practices = await describePractices(org.accountIds, database);
-  const ids = [...practices.keys()];
+  const practices = await loadStatementPractices(database, org.accountIds);
+  const ids = practices.map((p) => p.id);
   const byAccount = activityByAccount(await loadStatementActivity(ids, database), ids);
-  const models = ids.map((id) => buildStatementModel(practiceHeader(practices.get(id)), byAccount.get(id), { month }, { generatedAt }));
+  const models = practices.map((p) => buildStatementModel(practiceHeader(p), byAccount.get(p.id), { month }, { generatedAt }));
   return buildCombinedStatementModel(org, models, { month, generatedAt });
 }
 

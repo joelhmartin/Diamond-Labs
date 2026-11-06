@@ -51,6 +51,7 @@ export default async function receivablesRoutes(fastify) {
   });
 
   // Thin wrapper: the client's one practice's statement, to that client (404 none, 422 more than one).
+  // A client the run would not send to (not an active, approved doctor) reads as 404, as before.
   fastify.post("/admin/clients/:userId/statement/email", { preHandler: [...ADMIN, validate(statementQuerySchema)] }, async (request, reply) => {
     const accountId = await singlePracticeOf(request.params.userId);
     const out = await sendStatementFor({ accountId, recipientUserIds: [request.params.userId] }, request.body.month, { byUserId: request.user.id, ipAddress: request.ip });

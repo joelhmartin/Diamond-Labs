@@ -353,3 +353,13 @@ test("a row that cannot be settled after a send does not stop the batch", async 
   assert.equal(out.sent, 3);
   assert.ok([...store.rows.values()].every((r) => r.status === "sending"), "left sending: never re-taken");
 });
+
+test("the per-client send to a named non-recipient sends nothing", async () => {
+  const send = vi.fn(async () => true);
+  const store = memoryStore();
+  const database = fakeTx({ selects: [[ACCOUNTS[0]], [INVOICES[0]], [], [{ id: "d1", name: "Dr d1", email: "d1@x.test", role: "doctor", approvalStatus: "approved", status: "suspended" }]] });
+  const out = await svc.sendStatementFor({ accountId: "A1", recipientUserIds: ["d1"] }, MONTH, {}, { database, store, send });
+  assert.deepEqual(out.results, []);
+  assert.equal(send.mock.calls.length, 0);
+  assert.equal(store.rows.size, 0);
+});

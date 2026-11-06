@@ -39,8 +39,19 @@ test("the run's subjects load in six queries: practices, members, groups, their 
   ] });
   const out = await svc.loadStatementSubjects(database);
   assert.equal(database.log.filter((l) => l.op === "select").length, 6);
-  assert.deepEqual(out.accounts, [{ id: "A1", name: "Alpha", accountNumber: null }]);
+  assert.deepEqual(out.accounts, [{ id: "A1", name: "Alpha", accountNumber: null, address1: null, address2: null, city: null, state: null, zip: null }]);
   assert.deepEqual(out.members.map((m) => [m.accountId, m.userId, m.email]), [["A1", "d1", "d1@x"]], "a membership with no user row is left out");
   assert.deepEqual(out.organizations, [{ id: "G1", name: "Group", settings: { combinedStatement: true }, accountIds: ["A1"],
     admins: [{ userId: "ga", name: "Admin", email: "ga@x", role: "user", approvalStatus: "not_required", status: "active" }] }]);
+});
+
+test("a person an admin names gets a practice statement only if the run would send them one", async () => {
+  const people = [
+    { id: "d1", name: "Dr", email: "d1@x", role: "doctor", approvalStatus: "approved", status: "active" },
+    { id: "d2", name: "Suspended", email: "d2@x", role: "doctor", approvalStatus: "approved", status: "suspended" },
+    { id: "d3", name: "Pending", email: "d3@x", role: "doctor", approvalStatus: "pending", status: "active" },
+    { id: "s1", name: "Staff", email: "s1@x", role: "user", approvalStatus: "not_required", status: "active" },
+  ];
+  const out = await svc.statementRecipients(["s1", "d2", "d1", "d3", "nobody"], fakeTx({ selects: [people] }));
+  assert.deepEqual(out.map((p) => p.id), ["d1"]);
 });

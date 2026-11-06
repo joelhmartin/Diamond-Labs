@@ -1,9 +1,10 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../../config/database.js";
-import { accounts, users } from "../../db/schema/index.js";
+import { users } from "../../db/schema/index.js";
 import { organizations, organizationAccounts, organizationAdmins } from "../../modules/organizations/index.js";
 import { allPracticeMembersQuery, directPracticeIdsQuery, practiceMembersQuery } from "../practice-of.js";
 import { scopeNotFound } from "../client-scope-rules.js";
+import { loadStatementPractices } from "./statements.service.js";
 
 /**
  * Who and what a statement is for (piece 11). A statement's SUBJECT is a
@@ -41,16 +42,13 @@ async function loadPeople(userIds, database) {
 
 /**
  * Everything the monthly run plans from, in six queries whatever the size:
- *   accounts:      active practices [{ id, name, accountNumber }]
+ *   accounts:      active practices with their statement header [{ id, name, accountNumber, address… }] (loadStatementPractices)
  *   members:       active direct members [{ accountId, userId, name, email, role, approvalStatus, status }]
  *   organizations: active groups [{ id, name, settings, accountIds, admins: [{ userId, name, email, status }] }]
  * buildStatementCandidates applies the recipient rules and the combinedStatement setting.
  */
 export async function loadStatementSubjects(database = db) {
-  const practices = await database
-    .select({ id: accounts.id, name: accounts.name, accountNumber: accounts.accountNumber })
-    .from(accounts)
-    .where(and(eq(accounts.status, "active"), eq(accounts.isClient, true)));
+  const practices = await loadStatementPractices(database);
   const memberRows = await allPracticeMembersQuery(database);
   const groups = await database
     .select({ id: organizations.id, name: organizations.name, settings: organizations.settings })
@@ -68,7 +66,7 @@ export async function loadStatementSubjects(database = db) {
   const people = await loadPeople([...memberRows.map((m) => m.userId), ...grants.map((g) => g.userId)], database);
   const person = (userId) => people.get(userId);
   return {
-    accounts: practices.map((p) => ({ id: p.id, name: p.name, accountNumber: p.accountNumber ?? null })),
+    accounts: practices,
     members: memberRows.filter((m) => person(m.userId)).map((m) => ({ accountId: m.accountId, userId: m.userId, ...without(person(m.userId), "id") })),
     organizations: groups.map((g) => ({
       id: g.id, name: g.name, settings: g.settings ?? {},
@@ -90,10 +88,14 @@ export async function practiceStatementRecipients(accountId, database = db) {
   return [...people.values()].filter(isPracticeStatementRecipient);
 }
 
-/** These logins as statement recipients (an admin naming a person), in the order given; unknown ids are left out. */
+/**
+ * These logins as recipients of a practice statement (an admin naming a
+ * person), in the order given. The same rule as the run: only active,
+ * approved doctors; anyone else (and an unknown id) is left out.
+ */
 export async function statementRecipients(userIds, database = db) {
   const people = await loadPeople(userIds, database);
-  return userIds.map((id) => people.get(id)).filter(Boolean);
+  return userIds.map((id) => people.get(id)).filter(isPracticeStatementRecipient);
 }
 
 /**
