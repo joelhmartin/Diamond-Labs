@@ -26,6 +26,7 @@ Everything is exported from `index.js`.
   - `removeAccount(orgId, accountId, { byUserId })`
   - `addAdmin(orgId, userId, { byUserId, exists? })`, `removeAdmin(orgId, userId, { byUserId })`
   - `organizationOf(accountIds)` -> `Map<accountId, { id, name, settings }>` (active organizations only)
+  - `activeAdminIds(organizationId)` -> the user ids of its active admins
   - `scopeForUser(userId, { loadMemberships, eligibleAccounts })` -> the `resolveScope` result, read live each call.
     `loadMemberships(userId)` returns `[{ accountId, role, status, accountActive }]`; `eligibleAccounts(accountIds)` is
     called once per resolution and returns the `Set` of ids that are active and eligible (one batch, not one query per account)

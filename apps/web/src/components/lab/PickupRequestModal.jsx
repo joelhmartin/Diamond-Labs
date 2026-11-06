@@ -6,6 +6,7 @@ import { useDebouncedValue } from "../../hooks/useDebouncedValue.js";
 import { errorText } from "../../lib/requests.js";
 import { initialPickupForm, pickupBody, pickupFormErrors, requestPickup, searchPickupClients, timePreferenceLabel } from "../../lib/pickups.js";
 import { INPUT } from "./form-styles.js";
+import { PracticeAccountSelect, needsPracticeChoice, usePracticeAccounts } from "./order-entry/PracticeAccountSelect.jsx";
 
 function Field({ label, error, children }) {
   return (
@@ -41,7 +42,8 @@ function ClientPicker({ value, error, onChange }) {
 
 /**
  * Request a pickup. A practice asks for its own; with `staff` the lab enters one for a client
- * (a client picker is added and the request goes to /lab/pickups). The form checks the shared
+ * (a client picker, and a practice select when that client has several, are added and the request
+ * goes to /lab/pickups). The form checks the shared
  * schema's rules before posting; the API stays the authority. `onCreated(pickup)` after success.
  */
 export function PickupRequestModal({ open, onClose, onCreated, staff = false }) {
@@ -55,10 +57,13 @@ export function PickupRequestModal({ open, onClose, onCreated, staff = false }) 
   }, [open]);
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
+  // Staff entry for a client in several practices names which one (the API answers 422 otherwise).
+  const practices = usePracticeAccounts(staff ? form.clientUserId : null);
+  const needsPractice = needsPracticeChoice(practices);
 
   const submit = async (e) => {
     e.preventDefault();
-    const found = pickupFormErrors(form, { staff });
+    const found = pickupFormErrors(form, { staff, needsPractice });
     setErrors(found);
     if (Object.keys(found).length) return;
     setBusy(true);
@@ -77,7 +82,8 @@ export function PickupRequestModal({ open, onClose, onCreated, staff = false }) 
   return (
     <Modal open={open} onClose={onClose} title={staff ? "New pickup" : "Request a pickup"} className="max-w-lg">
       <form onSubmit={submit} noValidate className="space-y-3">
-        {staff && <ClientPicker value={form.clientUserId} error={errors.clientUserId} onChange={(clientUserId) => set({ clientUserId })} />}
+        {staff && <ClientPicker value={form.clientUserId} error={errors.clientUserId} onChange={(clientUserId) => set({ clientUserId, accountId: "" })} />}
+        {staff && <PracticeAccountSelect label="Practice" practices={practices} value={form.accountId} error={errors.accountId} onChange={(accountId) => set({ accountId })} disabled={busy} />}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Earliest date" error={errors.earliestDate}>
             <input type="date" value={form.earliestDate} onChange={(e) => set({ earliestDate: e.target.value })} className={INPUT} />

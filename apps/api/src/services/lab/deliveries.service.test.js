@@ -6,7 +6,7 @@ process.env.PHI_ENCRYPTION_KEY ??= "a".repeat(64);
 const { listStops, deliveryRange } = await import("./deliveries.service.js");
 const { fakeTx } = await import("../../test/fake-tx.js");
 
-// listStops reads, in order: the local orders, the scheduled pickups, then the clients of both.
+// listStops reads, in order: the local orders, the scheduled pickups, the clients of both, then the practices' names.
 // An order's stop is its practice (accountId); "P1" stands for an account id.
 const FROM = "2026-11-05";
 const TO = "2026-11-11";
@@ -19,7 +19,7 @@ const pickup = (over = {}) => ({
   timePreference: "am", assigneeUserId: null, address: null, version: 3, ...over,
 });
 const client = (over = {}) => ({
-  id: "d1", seazonaClientId: "P1", name: "Dr. Ada", companyName: "Smile Dental", address1: "1 Main St", address2: null,
+  id: "d1", name: "Dr. Ada", companyName: "Smile Dental", address1: "1 Main St", address2: null,
   city: "Austin", state: "TX", zip: "78701", phone: "512-555-0100", deliveryNotes: "Back door", ...over,
 });
 const run = (orders, pickups = [], clients = [client()]) =>
@@ -47,8 +47,8 @@ test("stops sort by day, then practice", async () => {
     order({ id: "o3", clientUserId: "d3", accountId: "P3", dueDate: "2026-11-06" }),
   ], [], [
     client(),
-    client({ id: "d2", seazonaClientId: "P2", companyName: "Zeta Ortho" }),
-    client({ id: "d3", seazonaClientId: "P3", companyName: "Alpha Smiles" }),
+    client({ id: "d2", companyName: "Zeta Ortho" }),
+    client({ id: "d3", companyName: "Alpha Smiles" }),
   ]);
   assert.deepEqual(stops.map((s) => `${s.day} ${s.practice}`), [
     "2026-11-06 Alpha Smiles", "2026-11-06 Zeta Ortho", "2026-11-07 Smile Dental",
@@ -89,7 +89,7 @@ test("scheduled pickups join the same stop", async () => {
   const stops = await run(
     [order()],
     [pickup(), pickup({ id: "p2", pickupNumber: 8, clientUserId: "d4", partyKey: "practice:P4", scheduledDate: "2026-11-08" })],
-    [client(), client({ id: "d4", seazonaClientId: "P4", companyName: "North Dental" })],
+    [client(), client({ id: "d4", companyName: "North Dental" })],
   );
   assert.equal(stops.length, 2);
   assert.deepEqual(stops[0].pickups, [{ id: "p1", pickupNumber: 7, boxCount: 2, version: 3 }]);
@@ -110,6 +110,20 @@ test("output contains no patient fields", async () => {
   assert.deepEqual(stop.address, { address1: "1 Main St", address2: null, city: "Austin", state: "TX", zip: "78701" });
   assert.equal(stop.phone, "512-555-0100");
   assert.equal(stop.deliveryNotes, "Back door");
+});
+
+test("a stop is named by its practice's account, and its doctors' orders share it", async () => {
+  const tx = fakeTx({ selects: [
+    [order(), order({ id: "o2", orderNumber: 100102, clientUserId: "d2" }), order({ id: "o3", orderNumber: 100103, accountId: "P2", clientUserId: "d2" })],
+    [pickup({ clientUserId: "d2" })],
+    [client(), client({ id: "d2", companyName: "Dr Bea's Other Name" })],
+    [{ id: "P1", name: "Smile Dental Group" }, { id: "P2", name: "Bea Ortho" }],
+  ] });
+  const stops = await listStops(tx, { from: FROM, to: TO, todayIso: FROM });
+  assert.deepEqual(stops.map((s) => [s.id, s.practice, s.orders.length, s.pickups.length]), [
+    ["2026-11-06:practice:P2", "Bea Ortho", 1, 0],
+    ["2026-11-06:practice:P1", "Smile Dental Group", 2, 1],
+  ]);
 });
 
 test("no rows reads no clients", async () => {

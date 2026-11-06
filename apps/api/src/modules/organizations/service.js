@@ -187,6 +187,16 @@ export function createOrganizationsService({ audit } = {}) {
     return out;
   }
 
+  /** The user ids of an organization's ACTIVE admins (removed grants are left out). */
+  async function activeAdminIds(organizationId, database = appDb) {
+    if (!organizationId) return [];
+    const rows = await database
+      .select({ userId: organizationAdmins.userId })
+      .from(organizationAdmins)
+      .where(and(eq(organizationAdmins.organizationId, organizationId), eq(organizationAdmins.status, "active")));
+    return rows.map((r) => r.userId);
+  }
+
   /**
    * The `resolveScope` result for a user. Always read live, never cached.
    * Glue callbacks: `loadMemberships(userId)` → `[{ accountId, role, status, accountActive }]`;
@@ -218,6 +228,6 @@ export function createOrganizationsService({ audit } = {}) {
 
   return {
     listOrganizations, getOrganization, createOrganization, updateOrganization,
-    addAccounts, removeAccount, addAdmin, removeAdmin, organizationOf, scopeForUser,
+    addAccounts, removeAccount, addAdmin, removeAdmin, organizationOf, activeAdminIds, scopeForUser,
   };
 }

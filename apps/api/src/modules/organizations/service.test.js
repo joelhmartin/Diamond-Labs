@@ -159,6 +159,18 @@ test("organizationOf maps each account to its active organization", async () => 
   assert.deepEqual(map.get("a1"), { id: "o1", name: "North Group", settings: { combinedStatement: true } });
 });
 
+test("activeAdminIds lists the organization's active admins only", async () => {
+  const { drizzle } = await import("drizzle-orm/pg-proxy");
+  const calls = [];
+  const db = drizzle(async (sql, params) => { calls.push({ sql, params }); return { rows: [["u1"], ["u2"]] }; });
+  const { svc } = build();
+  assert.deepEqual(await svc.activeAdminIds("o1", db), ["u1", "u2"]);
+  assert.match(calls[0].sql, /"organization_admins"\."organization_id" = \$1 and "organization_admins"\."status" = \$2/);
+  assert.deepEqual(calls[0].params, ["o1", "active"]);
+  assert.deepEqual(await svc.activeAdminIds(null, db), []);
+  assert.equal(calls.length, 1);
+});
+
 test("scopeForUser combines glue memberships with organization admin grants", async () => {
   const tx = fakeTx({
     selects: [

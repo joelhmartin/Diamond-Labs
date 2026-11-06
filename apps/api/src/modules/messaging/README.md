@@ -43,7 +43,7 @@ const messaging = createMessaging({
   db,                                   // root drizzle db; transactions run on it
   isHost: (user) => bool,               // host staff?
   partyKeysFor: (user) => ["user:<id>", "org:<id>"],   // keys a party user may see
-  defaultPartyKey: (user) => "org:<id>",              // a party user's own general threads
+  defaultPartyKey: (user) => "org:<id>",              // a party user's general threads when they name no party
   records: {                            // optional; one entry per record type
     widget: {
       resolve: async (db, id, user) => ({ label, partyKey, hostPath, partyPath }) | null,  // null = not visible to this user
@@ -92,8 +92,11 @@ Errors are `MessagingError` with `code` `NOT_FOUND`, `FORBIDDEN` or
   never widens it.
 - **Where a new thread goes:** with a record, the resolver's `partyKey` (and
   the resolver must return non-null for this user, else `NOT_FOUND`); without
-  one, a host user must name `party`, and a party user's thread uses
-  `defaultPartyKey(user)` (a `party` in the body is ignored).
+  one, a host user must name `party`, and a party user's thread uses the
+  `party` they name (only one of their own keys, else `NOT_FOUND`) or
+  `defaultPartyKey(user)`. A host app whose users hold several keys may have
+  `defaultPartyKey` throw (its own error, e.g. a 422 "choose one") to make
+  them name it.
 - **Unread:** the other side posted last and after the user's `last_read_at`.
   Your own side's posts never make a thread unread for you.
 - **Folders:** host `inbox` (not completed) and `completed`; party `inbox`

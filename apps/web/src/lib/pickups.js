@@ -9,15 +9,17 @@ import api from "../config/api.js";
 /** A new request form: earliest is today in the lab's zone, latest two days after. */
 export function initialPickupForm(now = new Date()) {
   const today = isoDateIn(LAB_TIMEZONE, now);
-  return { earliestDate: today, latestDate: addIsoDays(today, 2), timePreference: "any", boxCount: 1, notes: "", clientUserId: "" };
+  return { earliestDate: today, latestDate: addIsoDays(today, 2), timePreference: "any", boxCount: 1, notes: "", clientUserId: "", accountId: "" };
 }
 
-/** The request body for the API. Empty latest/notes are left out (no latest = a one-day window). */
+/** The request body for the API. Empty latest/notes/practice are left out (no latest = a one-day window). */
 export function pickupBody(form, { staff = false } = {}) {
   const body = { earliestDate: form.earliestDate, timePreference: form.timePreference, boxCount: Number(form.boxCount) };
   if (form.latestDate) body.latestDate = form.latestDate;
   if (form.notes?.trim()) body.notes = form.notes.trim();
   if (staff) body.clientUserId = form.clientUserId;
+  // Which of the client's practices (asked only when they have several).
+  if (staff && form.accountId) body.accountId = form.accountId;
   return body;
 }
 
@@ -25,15 +27,16 @@ export function pickupBody(form, { staff = false } = {}) {
  * Field → message for a request form (empty when valid). The shared schema checks shapes and limits;
  * the window rules are the API's own (shared pickupWindowError), with "today" in the lab's zone.
  */
-export function pickupFormErrors(form, { staff = false, now = new Date() } = {}) {
+export function pickupFormErrors(form, { staff = false, needsPractice = false, now = new Date() } = {}) {
   const errors = {};
   const today = isoDateIn(LAB_TIMEZONE, now);
   if (staff && !form.clientUserId) errors.clientUserId = "Choose the client.";
+  if (staff && needsPractice && !form.accountId) errors.accountId = "Choose which practice this is for.";
   const parsed = (staff ? labPickupRequestSchema : pickupRequestSchema).safeParse(pickupBody(form, { staff }));
   if (!parsed.success) {
     for (const issue of parsed.error.issues) {
       const field = issue.path[0];
-      if (field === "clientUserId" || errors[field]) continue;
+      if (field === "clientUserId" || field === "accountId" || errors[field]) continue;
       errors[field] = field === "boxCount" ? `Boxes must be ${PICKUP_BOXES_MIN} to ${PICKUP_BOXES_MAX}.` : issue.message;
     }
   }

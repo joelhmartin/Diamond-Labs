@@ -4,29 +4,36 @@ import {
   isoDateIn, LAB_TIMEZONE,
 } from "@my-app/shared";
 import { authenticate } from "../middleware/authenticate.js";
-import { requireApprovedDoctor } from "../middleware/require-role.js";
+import { requireApprovedDoctor, requireClientPortal } from "../middleware/require-role.js";
 import { validate, validateQuery } from "../middleware/validate.js";
 import * as pickupsService from "../services/lab/pickups.service.js";
 import { listStops, deliveryRange } from "../services/lab/deliveries.service.js";
 import { db } from "../config/database.js";
 import { STAFF } from "./lab.routes.js";
-import { run, audit } from "./lab-route-helpers.js";
+import { run, audit, labRouteErrorReply } from "./lab-route-helpers.js";
+import { invoiceErrorReply } from "../services/billing/invoice-errors.js";
 
 /**
- * Pickups (spec "API routes → Pickups and deliveries"). Doctors request, list
- * (practice-wide) and cancel; staff list, enter for a client, schedule,
- * complete and cancel, and read the local-delivery route sheet. Another practice's pickup is 404, a stale version 409.
+ * Pickups (spec "API routes → Pickups and deliveries"). Clients (the client
+ * portal: practice staff, group admins, doctors) list by practice scope
+ * (`?account=`) and cancel; a doctor requests (the ship-to is their profile
+ * address), naming the practice when they have several; staff list, enter for
+ * a client (and the client's practice), schedule, complete and cancel, and
+ * read the local-delivery route sheet. Another practice's pickup is 404, a
+ * stale version 409, "All practices" without a practice 422.
  * Audit metadata is ids, numbers and versions only: never notes or reasons.
  */
 const summary = (p) => ({ id: p.id, status: p.status, version: p.version });
+// Staff entry also refuses through practice-of.js (PRACTICE_REQUIRED 422, NOT_FOUND 404).
+const practiceOrLabErrorReply = (err) => labRouteErrorReply(err) ?? invoiceErrorReply(err);
 
 export default async function pickupsRoutes(fastify) {
-  // ── Doctor (practice-wide) ────────────────────────────────────────────────
-  fastify.get("/pickups", { preHandler: [authenticate, requireApprovedDoctor, validateQuery(pickupListQuerySchema)] }, (request, reply) =>
+  // ── Client portal (by practice scope) ─────────────────────────────────────
+  fastify.get("/pickups", { preHandler: [authenticate, requireClientPortal, validateQuery(pickupListQuerySchema)] }, (request, reply) =>
     run(reply, () => pickupsService.listPickups(request.user, request.query)));
 
   // One of the practice's pickups (a notification's ?pickup= link); another practice's is 404.
-  fastify.get("/pickups/:id", { preHandler: [authenticate, requireApprovedDoctor] }, (request, reply) =>
+  fastify.get("/pickups/:id", { preHandler: [authenticate, requireClientPortal] }, (request, reply) =>
     run(reply, () => pickupsService.getPickup(request.params.id, request.user)));
 
   fastify.post("/pickups", { preHandler: [authenticate, requireApprovedDoctor, validate(pickupRequestSchema)] }, (request, reply) =>
@@ -36,7 +43,7 @@ export default async function pickupsRoutes(fastify) {
       return p;
     }, 201));
 
-  fastify.post("/pickups/:id/cancel", { preHandler: [authenticate, requireApprovedDoctor, validate(pickupDoctorCancelSchema)] }, (request, reply) =>
+  fastify.post("/pickups/:id/cancel", { preHandler: [authenticate, requireClientPortal, validate(pickupDoctorCancelSchema)] }, (request, reply) =>
     run(reply, async () => {
       const p = await pickupsService.cancelPickup(request.params.id, request.body, request.user);
       audit(request, "pickup.cancelled", p.id, { pickupNumber: p.pickupNumber, version: p.version }, "pickup");
@@ -59,7 +66,7 @@ export default async function pickupsRoutes(fastify) {
       const p = await pickupsService.requestPickup(request.user, input, { onBehalfOfClientUserId: clientUserId });
       audit(request, "pickup.requested", p.id, { pickupNumber: p.pickupNumber, source: p.source, clientUserId }, "pickup");
       return p;
-    }, 201));
+    }, 201, practiceOrLabErrorReply));
 
   fastify.post("/lab/pickups/:id/schedule", { preHandler: [...STAFF, validate(pickupScheduleSchema)] }, (request, reply) =>
     run(reply, async () => {

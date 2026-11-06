@@ -9,7 +9,9 @@ import { pageOf, containsPattern, prefixPattern } from "../../lib/list-query.js"
 import { allocateSequenceNumber } from "../sequence.service.js";
 import { loadClient } from "../billing/statements.service.js";
 import { notify } from "../notify-seam.js";
-import { defaultPartyKey, partyKeysFor, practiceKeyFor } from "../practice.js";
+import { clientScopeOf, isAllAccounts, requestedAccounts } from "../client-scope.js";
+import { newPartyKey, partyKeysFor, practiceKeyFor } from "../practice.js";
+import { practiceForNewRecord } from "../practice-of.js";
 import { searchApprovedDoctors } from "./lab-messaging.js";
 import { isAssignableStaff } from "./lab-orders.service.js";
 import { shipToFromClient } from "./lab-shipping-rules.js";
@@ -22,9 +24,11 @@ import { PickupError, planRequest, planSchedule, planComplete, planCancel } from
  * after commit through the notify seam, with ids and numbers only.
  *
  * Visibility is the client scope as party keys (services/practice.js):
- * a doctor sees and cancels the pickups whose party_key is one of
- * partyKeysFor(doctor); anything else is NOT_FOUND, never forbidden. Staff see
- * every pickup. `database` and `now` are injectable for the DB-free tests.
+ * a client (practice staff, a group admin, a doctor) sees and cancels the
+ * pickups whose party_key is one of partyKeysFor(login); anything else is
+ * NOT_FOUND, never forbidden. Staff see every pickup. A new pickup is keyed
+ * to ONE practice: the client's chosen or only one (newPartyKey), or for
+ * staff entry the client's chosen or only direct practice (practiceForNewRecord). `database` and `now` are injectable for the DB-free tests.
  */
 
 // Serialises pickup-number allocation (services/sequence.service.js); spec ruling.
@@ -56,9 +60,15 @@ function present(row, user) {
 
 const ref = (p) => ({ pickupNumber: p.pickupNumber, pickupId: p.id });
 
-// A portal request takes the login's one practice (defaultPartyKey); staff entry is keyed to
-// the client until Task 6 makes every create name its practice.
-const pickupPartyKey = (user, byStaff, owner) => (byStaff ? practiceKeyFor({ ownerId: owner.id }) : defaultPartyKey(user));
+/**
+ * Staff entry: the client's practice (their direct membership; PRACTICE_REQUIRED 422 when they
+ * have several and none was named, NOT_FOUND for one they are not in). A client with no practice
+ * yet stays keyed to themself.
+ */
+async function staffEntryPartyKey(tx, clientUserId, requestedAccountId) {
+  const accountId = await practiceForNewRecord(tx, { ownerUserId: clientUserId, requestedAccountId: isAllAccounts(requestedAccountId) ? null : requestedAccountId });
+  return practiceKeyFor({ accountId, ownerId: clientUserId });
+}
 
 // ── Request ──────────────────────────────────────────────────────────────────
 
@@ -71,12 +81,16 @@ export async function requestPickup(user, input, { onBehalfOfClientUserId = null
   const byStaff = isStaff(user);
   const clientUserId = byStaff ? onBehalfOfClientUserId : user?.id;
   if (!clientUserId) throw new PickupError("INVALID", "Pick the client practice.");
-  const values = planRequest(input, isoDateIn(LAB_TIMEZONE, now));
+  const { accountId: requestedAccountId, ...fields } = input ?? {};
+  const values = planRequest(fields, isoDateIn(LAB_TIMEZONE, now));
+  // A portal request names its practice before anything is written (422 / 404 refuse it).
+  const portalKey = byStaff ? null : newPartyKey(user, requestedAccountId);
   const pickup = await database.transaction(async (tx) => {
     const owner = await loadClient(clientUserId, tx);
     if (!owner) throw new PickupError("NOT_FOUND", "Client not found.");
+    const partyKey = portalKey ?? await staffEntryPartyKey(tx, clientUserId, requestedAccountId);
     const row = {
-      id: createId(), pickupNumber: await allocatePickupNumber(tx), clientUserId, partyKey: pickupPartyKey(user, byStaff, owner),
+      id: createId(), pickupNumber: await allocatePickupNumber(tx), clientUserId, partyKey,
       requestedByUserId: user.id, ...values, address: shipToFromClient(owner),
       status: "requested", scheduledDate: null, assigneeUserId: null, completedAt: null, completedByUserId: null,
       cancelledAt: null, cancelReason: null, source: byStaff ? "staff" : "portal", version: 1, createdAt: now, updatedAt: now,
@@ -177,14 +191,23 @@ function staffConditions({ id, status, from, to, assigneeUserId, q }) {
 }
 
 /**
- * `{ rows, total }`, newest first. A doctor sees the pickups of their party
- * keys (filter: status); staff see every pickup with the client's name,
- * practice and driver (filters: status, from, to, assigneeUserId, q).
+ * A client's keys for `?account=`: every key they hold (absent or "all"), or
+ * the one practice asked for (out of scope: 404, requestedAccounts).
+ */
+function clientKeys(user, account) {
+  if (isAllAccounts(account)) return partyKeysFor(user);
+  return requestedAccounts(clientScopeOf(user), account).map((accountId) => practiceKeyFor({ accountId }));
+}
+
+/**
+ * `{ rows, total }`, newest first. A client sees the pickups of their party
+ * keys (filters: status, account); staff see every pickup with the client's
+ * name, practice and driver (filters: status, from, to, assigneeUserId, q).
  * Without `limit`, the first 500.
  */
 export async function listPickups(user, filters = {}, { database = db } = {}) {
   const staff = isStaff(user);
-  const conds = staff ? staffConditions(filters) : [inArray(pickups.partyKey, partyKeysFor(user))];
+  const conds = staff ? staffConditions(filters) : [inArray(pickups.partyKey, clientKeys(user, filters.account))];
   if (!staff && filters.id) conds.push(eq(pickups.id, filters.id));
   if (!staff && filters.status) conds.push(eq(pickups.status, filters.status));
   const where = conds.length ? and(...conds) : undefined;

@@ -36,6 +36,14 @@ test("staff request on behalf of a client names the client", () => {
   assert.ok(labPickupRequestSchema.safeParse({ ...req, clientUserId: "d1" }).success);
 });
 
+test("a pickup request and the client list may name a practice", () => {
+  assert.equal(pickupRequestSchema.parse({ ...req, accountId: "acc1" }).accountId, "acc1");
+  assert.equal(labPickupRequestSchema.parse({ ...req, clientUserId: "d1", accountId: "acc1" }).accountId, "acc1");
+  assert.equal(pickupRequestSchema.safeParse({ ...req, accountId: "" }).success, false);
+  assert.equal(pickupListQuerySchema.parse({ account: "all" }).account, "all");
+  assert.equal(pickupListQuerySchema.safeParse({ account: "x".repeat(129) }).success, false);
+});
+
 test("staff moves carry the version they saw", () => {
   assert.ok(pickupScheduleSchema.safeParse({ scheduledDate: "2026-11-09", expectedVersion: 1 }).success);
   assert.ok(pickupScheduleSchema.safeParse({ scheduledDate: "2026-11-09", assigneeUserId: null, expectedVersion: 1 }).success);

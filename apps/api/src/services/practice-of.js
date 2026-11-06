@@ -18,13 +18,26 @@ export function directPracticeMembershipsQuery(tx, userId) {
   return directPracticeQuery(tx, userId, { accountId: memberships.accountId, role: memberships.role });
 }
 
+/**
+ * The other direction of the same definition: the ACTIVE direct members (any
+ * role) of `accountId`, when it is an ACTIVE client account. A practice's alert
+ * audience (lab-notifications.js) is these plus the group's admins.
+ */
+export function practiceMembersQuery(tx, accountId) {
+  return activeMemberships(tx, { userId: memberships.userId }, eq(memberships.accountId, accountId));
+}
+
 function directPracticeQuery(tx, userId, columns) {
+  return activeMemberships(tx, columns, eq(memberships.userId, userId));
+}
+
+function activeMemberships(tx, columns, which) {
   return tx
     .select(columns)
     .from(memberships)
     .innerJoin(accounts, eq(accounts.id, memberships.accountId))
     .where(and(
-      eq(memberships.userId, userId),
+      which,
       eq(memberships.status, "active"),
       eq(accounts.status, "active"),
       eq(accounts.isClient, true),

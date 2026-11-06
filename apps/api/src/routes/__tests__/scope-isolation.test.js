@@ -6,6 +6,7 @@ import { handlerSource } from "./_source.js";
 
 process.env.DATABASE_URL ||= "postgres://u:p@localhost:5432/test";
 process.env.JWT_SECRET ||= "test-jwt-secret-that-is-at-least-32-chars";
+process.env.PHI_ENCRYPTION_KEY ||= "a".repeat(64);
 
 /**
  * Review Focus 1 (piece 11): a practice's staff member opening a SIBLING
@@ -35,6 +36,8 @@ const { toClientScope } = await import("../../services/client-scope-rules.js");
 const scopeOf = (roles) => toClientScope({ accountIds: Object.keys(roles), roles: new Map(Object.entries(roles)), via: new Map(), organizations: [] });
 // Practice A's member; the record belongs to sibling practice B (same group, not this login's).
 const memberOfA = { id: "staffA", role: "user", scope: scopeOf({ A: "member" }) };
+// A stand-in db whose one select answers `row` (a case row, as loadClientCase reads it).
+const rowDb = (row) => ({ select: () => ({ from: () => ({ where: async () => (row ? [row] : []) }) }) });
 const siblingInvoice = { invoice: { id: "inv-b", accountId: "B", status: "issued", clientUserId: "docB" } };
 
 const LIVE = {
@@ -65,6 +68,51 @@ const LIVE = {
     const src = read("../invoice-payment.routes.js");
     assert.match(src, /const own = await verifyAllocations\(allocations, clientScopeOf\(request\.user\)\);\s*if \(own\) return sendAllocationError\(reply, own\);/);
   },
+  "GET /rx/cases/:id": async () => {
+    const { loadClientCase } = await import("../../services/rx/client-cases.js");
+    const database = rowDb({ id: "c-b", accountId: "B", userId: "docB" });
+    assert.equal(await loadClientCase(memberOfA, "c-b", { database }), null);
+    assert.ok(await loadClientCase(memberOfA, "c-a", { database: rowDb({ id: "c-a", accountId: "A", userId: "docA" }) }), "the probe is sound");
+    const body = handlerSource(read("../rx.routes.js"), 'fastify.get("/rx/cases/:id",');
+    assert.match(body, /preHandler: \[authenticate, requireClientPortal\]/);
+    assert.match(body, /const caseRow = await loadClientCase\(request\.user, request\.params\.id\);\s*if \(!caseRow\) \{\s*return reply\.code\(404\)\.send\(\{ error: ERROR_CODES\.NOT_FOUND \}\);/);
+  },
+  "GET /rx/cases/:id/files/:fileId": async () => {
+    const { loadClientCase } = await import("../../services/rx/client-cases.js");
+    assert.equal(await loadClientCase(memberOfA, "c-b", { database: rowDb({ id: "c-b", accountId: "B", userId: "docB" }) }), null);
+    const body = handlerSource(read("../rx.routes.js"), 'fastify.get("/rx/cases/:id/files/:fileId",');
+    assert.match(body, /preHandler: \[authenticate, requireClientPortal\]/);
+    assert.match(body, /const caseRow = await loadClientCase\(request\.user, request\.params\.id\);\s*if \(!caseRow\) \{\s*return reply\.code\(404\)\.send\(\{ error: ERROR_CODES\.NOT_FOUND \}\);/);
+    // The file must also belong to that case.
+    assert.match(body, /eq\(rxCaseFiles\.caseId, caseRow\.id\)/);
+  },
+  "GET /pickups/:id": async () => {
+    const { getPickup } = await import("../../services/lab/pickups.service.js");
+    const { drizzle } = await import("drizzle-orm/pg-proxy");
+    const calls = [];
+    const database = drizzle(async (sql, params) => { calls.push({ sql, params }); return { rows: [] }; });
+    await assert.rejects(getPickup("pk-b", memberOfA, { database }), (e) => e.code === "NOT_FOUND");
+    // Only A's keys are asked for, so B's pickup can never match.
+    assert.deepEqual(calls[0].params.slice(0, 3), ["user:staffA", "practice:A", "pk-b"]);
+    const { labRouteErrorReply } = await import("../lab-route-helpers.js");
+    const { PickupError } = await import("../../services/lab/pickup-rules.js");
+    assert.equal(labRouteErrorReply(new PickupError("NOT_FOUND", "Pickup not found.")).status, 404);
+    assert.match(handlerSource(read("../pickups.routes.js"), 'fastify.get("/pickups/:id",'), /preHandler: \[authenticate, requireClientPortal\]/);
+  },
+  "messaging thread open": async () => {
+    const { createLabMessaging } = await import("../../services/lab/lab-messaging.js");
+    const { createFakeStore } = await import("../../modules/messaging/index.js");
+    const db = { transaction: async (fn) => fn(db), select: () => { throw new Error("no db"); } };
+    const messaging = createLabMessaging({
+      db, labName: "L", log: { error() {}, warn() {} }, notify: async () => {},
+      overrides: { store: createFakeStore(), describeParty: async () => new Map(), describeUsers: async () => new Map() },
+    });
+    const t = await messaging.createThread({ id: "s1", role: "lab" }, { party: "practice:B", body: "Hello" });
+    await assert.rejects(messaging.getThread(memberOfA, t.id), (e) => e.code === "NOT_FOUND");
+    assert.equal((await messaging.getThread({ id: "mB", role: "user", scope: scopeOf({ B: "member" }) }, t.id)).messages.length, 1, "the probe is sound");
+    // The module's routes answer NOT_FOUND as 404 (never 403).
+    assert.match(read("../../modules/messaging/routes.js"), /const STATUS = \{ NOT_FOUND: 404,/);
+  },
 };
 
 for (const { route, owner } of SIBLING_ROUTES) {
@@ -81,6 +129,6 @@ test("the table covers every route Review Focus 1 names, each owned by a task", 
   ];
   assert.deepEqual(SIBLING_ROUTES.map((r) => r.route).sort(), [...want].sort());
   for (const r of SIBLING_ROUTES) assert.match(r.owner, /^Task [567]$/, r.route);
-  // Task 5's rows are live tests, not todos.
-  for (const r of SIBLING_ROUTES.filter((x) => x.owner === "Task 5")) assert.ok(LIVE[r.route], r.route);
+  // Task 5's and Task 6's rows are live tests, not todos.
+  for (const r of SIBLING_ROUTES.filter((x) => x.owner !== "Task 7")) assert.ok(LIVE[r.route], r.route);
 });

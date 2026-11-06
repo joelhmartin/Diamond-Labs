@@ -1,7 +1,7 @@
 import { and, eq, gte, inArray, isNotNull, lte, ne, or } from "drizzle-orm";
 import { addIsoDays, daysBetween, isoDateIn, LAB_TIMEZONE } from "@my-app/shared";
-import { labOrders, users, doctorProfiles } from "../../db/schema/index.js";
-import { practiceKeyFor } from "../practice.js";
+import { accounts, labOrders, users, doctorProfiles } from "../../db/schema/index.js";
+import { parsePartyKey, practiceKeyFor } from "../practice.js";
 import { scheduledPickupsBetween } from "./pickups.service.js";
 import { LabOrderError } from "./lab-order-rules.js";
 
@@ -10,7 +10,10 @@ import { LabOrderError } from "./lab-order-rules.js";
  * (day, practice) the lab's own driver visits. Day is the order's due date;
  * an open order due before `from` is carried onto `from` as late. Scheduled
  * pickups for the same practice and day join the stop, so the driver does
- * both. Order numbers, statuses and versions only: no patient field is read.
+ * both. A stop is keyed by the record's own practice (lab_orders.account_id,
+ * a pickup's party_key) and named by that practice's account; the address is
+ * the client doctor's profile (accounts carry none). Order numbers, statuses
+ * and versions only: no patient field is read.
  * Pure reads; piece 9 can wrap listStops as a report.
  */
 
@@ -61,7 +64,7 @@ function loadClients(database, ids) {
   if (ids.length === 0) return [];
   return database
     .select({
-      id: users.id, seazonaClientId: users.seazonaClientId, name: users.name, companyName: doctorProfiles.companyName,
+      id: users.id, name: users.name, companyName: doctorProfiles.companyName,
       address1: doctorProfiles.address1, address2: doctorProfiles.address2, city: doctorProfiles.city,
       state: doctorProfiles.state, zip: doctorProfiles.zip, phone: doctorProfiles.phone, deliveryNotes: doctorProfiles.deliveryNotes,
     })
@@ -70,10 +73,18 @@ function loadClients(database, ids) {
     .where(inArray(users.id, ids));
 }
 
-function newStop(day, partyKey, c) {
+/** accounts.id → name, for the practices the stops are keyed to. */
+async function loadPracticeNames(database, partyKeys) {
+  const ids = [...new Set(partyKeys.map((k) => parsePartyKey(k)?.practice).filter(Boolean))];
+  if (ids.length === 0) return new Map();
+  const rows = await database.select({ id: accounts.id, name: accounts.name }).from(accounts).where(inArray(accounts.id, ids));
+  return new Map(rows.map((a) => [a.id, a.name]));
+}
+
+function newStop(day, partyKey, c, practiceName) {
   return {
     id: `${day}:${partyKey}`, day, late: false,
-    practice: c?.companyName || c?.name || "—",
+    practice: practiceName || c?.companyName || c?.name || "—",
     address: c ? { address1: c.address1 ?? null, address2: c.address2 ?? null, city: c.city ?? null, state: c.state ?? null, zip: c.zip ?? null } : null,
     phone: c?.phone ?? null, deliveryNotes: c?.deliveryNotes ?? null,
     orders: [], pickups: [],
@@ -93,17 +104,18 @@ export async function listStops(database, { from, to, todayIso = isoDateIn(LAB_T
   const pickups = await scheduledPickupsBetween(database, range.from, range.to);
   const ids = [...new Set([...orders, ...pickups].map((r) => r.clientUserId).filter(Boolean))];
   const clients = new Map((await loadClients(database, ids)).map((c) => [c.id, c]));
+  // A guest order (no client) is a stop of its own rather than sharing one "nobody" practice.
+  const orderKey = (o) => (o.clientUserId ? practiceKeyFor({ accountId: o.accountId, ownerId: o.clientUserId }) : `order:${o.id}`);
+  const names = await loadPracticeNames(database, [...orders.map(orderKey), ...pickups.map((p) => p.partyKey)]);
 
   const stops = new Map();
   const stopFor = (day, partyKey, clientUserId) => {
     const key = `${day}:${partyKey}`;
-    if (!stops.has(key)) stops.set(key, newStop(day, partyKey, clients.get(clientUserId)));
+    if (!stops.has(key)) stops.set(key, newStop(day, partyKey, clients.get(clientUserId), names.get(parsePartyKey(partyKey)?.practice)));
     return stops.get(key);
   };
   for (const o of orders) {
-    // A guest order (no client) is a stop of its own rather than sharing one "nobody" practice.
-    const partyKey = o.clientUserId ? practiceKeyFor({ accountId: o.accountId, ownerId: o.clientUserId }) : `order:${o.id}`;
-    const stop = stopFor(o.day, partyKey, o.clientUserId);
+    const stop = stopFor(o.day, orderKey(o), o.clientUserId);
     if (o.status !== "shipped" && o.dueDate < range.from) stop.late = true;
     stop.orders.push({ id: o.id, orderNumber: o.orderNumber, status: o.status, version: o.version });
   }

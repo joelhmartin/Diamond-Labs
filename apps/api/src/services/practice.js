@@ -1,4 +1,4 @@
-import { clientScopeOf } from "./client-scope-rules.js";
+import { clientScopeOf, isAllAccounts, practiceRequired, requestedAccounts } from "./client-scope-rules.js";
 
 /**
  * Party keys: the practice a record belongs to, as strings the generic
@@ -30,6 +30,27 @@ export function partyKeysFor(user) {
 export function defaultPartyKey(user) {
   const { accountIds } = clientScopeOf(user);
   return accountIds.length === 1 ? practiceKeyFor({ accountId: accountIds[0] }) : `user:${user?.id}`;
+}
+
+/**
+ * The key a client's NEW thread or pickup gets. `accountId` names a practice in
+ * the login's scope (anything else: 404, as requestedAccounts). Without one
+ * (absent or "all"): the default key, except that a login with several
+ * practices must choose (422 "Choose a practice.").
+ */
+export function newPartyKey(user, accountId) {
+  const scope = clientScopeOf(user);
+  if (!isAllAccounts(accountId)) return practiceKeyFor({ accountId: requestedAccounts(scope, accountId)[0] });
+  if (scope.accountIds.length > 1) throw practiceRequired();
+  return defaultPartyKey(user);
+}
+
+/** A practice (client account) as staff and clients read it: "Name (account number)". */
+export function practiceLabel({ name, accountNumber } = {}) {
+  const n = String(name ?? "").trim();
+  const num = String(accountNumber ?? "").trim();
+  if (n && num) return `${n} (${num})`;
+  return n || num;
 }
 
 /** "practice:X" → { practice: "X" }, "user:Y" → { userId: "Y" }, anything else → null. */

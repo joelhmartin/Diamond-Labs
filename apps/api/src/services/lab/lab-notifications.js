@@ -4,12 +4,15 @@ import { env } from "../../config/env.js";
 import { users } from "../../db/schema/index.js";
 import { defineNotificationEvent, getEvent } from "../../modules/notifications/index.js";
 import { sendShippedNotice } from "../email.service.js";
+import { activeClientAccounts } from "../client-scope.js";
+import { organizationsService } from "../organizations.service.js";
 import { parsePartyKey } from "../practice.js";
+import { practiceMembersQuery } from "../practice-of.js";
 
 /**
  * Lab glue for the generic notifications module: the lab's events, its two
  * audience kinds ("staff" = admin + lab, "client" = everyone else, in practice
- * doctors) and the audience resolver. App code emits through
+ * doctors, practice staff and group admins) and the audience resolver. App code emits through
  * services/notify-seam.js; boot (services/app-modules.js) registers these.
  *
  * Another piece adds an event here: append one definition to labEventDefs().
@@ -126,25 +129,35 @@ export function registerLabNotificationEvents(deps) {
   }
 }
 
-const isApprovedClientOf = (party) => (u) =>
-  u.role === "doctor" && u.approvalStatus === "approved" &&
-  (party.practice != null ? String(u.seazonaClientId ?? "") === party.practice : u.id === party.userId);
+const isApprovedDoctor = (u) => u.role === "doctor" && u.approvalStatus === "approved";
+const activeIn = (rows, accountId) => new Set((rows ?? []).filter((r) => r.status === "active" && r.accountId === accountId).map((r) => r.userId));
 
 /**
  * Who an audience means, applied to candidate user rows. The authoritative
  * rule (the SQL in resolveLabAudience only narrows the candidates):
  * - `kinds: ["staff"]`: active admin and lab users;
- * - `party: "practice:X"`: active, approved doctors whose seazonaClientId is X;
+ * - `party: "practice:X"`: the ACTIVE members (any role) of practice X
+ *   (`accountMembers`) and the ACTIVE admins of X's active group (`orgAdmins`),
+ *   deduped. A sibling practice's members are never in it, and a removed or
+ *   suspended membership or grant gives nothing;
  *   `party: "user:Y"`: Y, when an active, approved doctor;
  * - `userIds`: those users when active, each with its own kind.
  * Other kinds (e.g. every client) are not a lab audience and match nobody.
+ * Every user row must itself be active.
+ *
+ * @param {{ accountMembers?: { userId, accountId, status }[], orgAdmins?: { userId, accountId, status }[] }} practice
  */
-export function audienceMembers(rows, audience = {}) {
+export function audienceMembers(rows, audience = {}, { accountMembers = [], orgAdmins = [] } = {}) {
   const active = (rows ?? []).filter((u) => u.status === "active");
   const out = [];
   if (audience.kinds?.includes("staff")) out.push(...active.filter((u) => isStaffRole(u.role)));
   const party = parsePartyKey(audience.party);
-  if (party) out.push(...active.filter(isApprovedClientOf(party)));
+  if (party?.practice != null) {
+    const ids = new Set([...activeIn(accountMembers, party.practice), ...activeIn(orgAdmins, party.practice)]);
+    out.push(...active.filter((u) => ids.has(u.id)));
+  } else if (party?.userId != null) {
+    out.push(...active.filter((u) => u.id === party.userId && isApprovedDoctor(u)));
+  }
   const ids = new Set(audience.userIds ?? []);
   if (ids.size) out.push(...active.filter((u) => ids.has(u.id)));
   const seen = new Set();
@@ -153,26 +166,41 @@ export function audienceMembers(rows, audience = {}) {
     .map((u) => ({ id: u.id, email: u.email, kind: labKindOf(u) }));
 }
 
-/** The notifier's resolveAudience for the lab: one query, then audienceMembers. */
+/**
+ * practice:X's people, read live: nobody unless X is an active client account
+ * (it is then in nobody's scope, so nobody could open the alert), else its
+ * active members and the active admins of its active group. Rows in
+ * audienceMembers' `{ userId, accountId, status }` shape.
+ */
+async function practiceAudience(db, accountId) {
+  const none = { accountMembers: [], orgAdmins: [] };
+  if (!(await activeClientAccounts([accountId], db)).includes(accountId)) return none;
+  const members = await practiceMembersQuery(db, accountId);
+  const group = (await organizationsService.organizationOf([accountId], db)).get(accountId);
+  const admins = group ? await organizationsService.activeAdminIds(group.id, db) : [];
+  const row = (userId) => ({ userId, accountId, status: "active" });
+  return { accountMembers: members.map((m) => row(m.userId)), orgAdmins: admins.map(row) };
+}
+
+/** The notifier's resolveAudience for the lab: the practice's people (when a practice party), one user query, then audienceMembers. */
 export async function resolveLabAudience(db, audience = {}) {
   const conds = [];
   if (audience.kinds?.includes("staff")) conds.push(inArray(users.role, [...STAFF_ROLES]));
   const party = parsePartyKey(audience.party);
-  if (party) {
-    conds.push(and(
-      eq(users.role, "doctor"), eq(users.approvalStatus, "approved"),
-      party.practice != null ? eq(users.seazonaClientId, party.practice) : eq(users.id, party.userId),
-    ));
+  let practice = { accountMembers: [], orgAdmins: [] };
+  if (party?.practice != null) {
+    practice = await practiceAudience(db, party.practice);
+    const ids = [...new Set([...practice.accountMembers, ...practice.orgAdmins].map((r) => r.userId))];
+    if (ids.length) conds.push(inArray(users.id, ids));
+  } else if (party?.userId != null) {
+    conds.push(and(eq(users.role, "doctor"), eq(users.approvalStatus, "approved"), eq(users.id, party.userId)));
   }
   const ids = [...new Set(audience.userIds ?? [])].filter(Boolean);
   if (ids.length) conds.push(inArray(users.id, ids));
   if (!conds.length) return [];
   const rows = await db
-    .select({
-      id: users.id, email: users.email, role: users.role, status: users.status,
-      approvalStatus: users.approvalStatus, seazonaClientId: users.seazonaClientId,
-    })
+    .select({ id: users.id, email: users.email, role: users.role, status: users.status, approvalStatus: users.approvalStatus })
     .from(users)
     .where(and(eq(users.status, "active"), or(...conds)));
-  return audienceMembers(rows, audience);
+  return audienceMembers(rows, audience, practice);
 }

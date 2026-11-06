@@ -18,6 +18,8 @@ export const pickupRequestSchema = z.object({
   timePreference: z.enum(TIME_PREFERENCES),
   boxCount: z.number().int().min(PICKUP_BOXES_MIN).max(PICKUP_BOXES_MAX),
   notes: freeText.nullable().optional(),
+  // Which practice it is for. Required (by the API) when the requester has several; "all" counts as none.
+  accountId: id.optional(),
 });
 
 /** Staff entering a pickup for a client (also the cutover re-entry path). */
@@ -42,6 +44,8 @@ export const pickupDoctorCancelSchema = z
 
 export const pickupListQuerySchema = z.object({
   status: z.enum(PICKUP_STATUSES).optional(),
+  // A practice in the login's scope, or "all" / absent for every one (the API's requestedAccounts).
+  account: id.optional(),
   ...pageQueryShape,
 });
 

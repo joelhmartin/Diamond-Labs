@@ -34,8 +34,6 @@ const EXCLUDED_FILES = new Set(["services/auth.service.js"]);
  * entry must be deleted in the same commit. Task 7 leaves it empty.
  */
 const ALLOWED = new Map([
-  // Task 6 (cases, messages, pickups, deliveries): the practice:X audience.
-  ["services/lab/lab-notifications.js", "Task 6"],
   // Task 7 (statements): the per-practice statement run (practiceKey, practiceUserIds), and
   // the doctor's own statement download, which borrows practiceUserIds from it until then.
   ["services/billing/statement-run.service.js", "Task 7"],

@@ -16,10 +16,11 @@ const LAB = [
   'fastify.post("/lab/pickups/:id/complete",', 'fastify.post("/lab/pickups/:id/cancel",',
 ];
 
-test("doctor routes require approved doctor; lab routes require staff", () => {
+test("client reads and cancel take the client portal; a request takes an approved doctor (their ship-to); lab routes require staff", () => {
   for (const marker of DOCTOR) {
     const body = handlerSource(source, marker);
-    assert.match(body, /preHandler: \[authenticate, requireApprovedDoctor/, marker);
+    const guard = marker === 'fastify.post("/pickups",' ? "requireApprovedDoctor" : "requireClientPortal";
+    assert.match(body, new RegExp(`preHandler: \\[authenticate, ${guard}`), marker);
     assert.doesNotMatch(body, /STAFF/, marker);
   }
   for (const marker of LAB) assert.match(handlerSource(source, marker), /preHandler: \[\.\.\.STAFF/, marker);
@@ -74,7 +75,7 @@ test("GET /lab/deliveries answers an impossible calendar date with 422 before an
 
 test("a doctor reads one pickup by id through the party-scoped getPickup (no audit)", () => {
   const body = handlerSource(source, 'fastify.get("/pickups/:id",');
-  assert.match(body, /preHandler: \[authenticate, requireApprovedDoctor\]/);
+  assert.match(body, /preHandler: \[authenticate, requireClientPortal\]/);
   assert.match(body, /pickupsService\.getPickup\(request\.params\.id, request\.user\)/);
   assert.doesNotMatch(body, /audit\(|STAFF/);
 });
@@ -95,4 +96,9 @@ test("the single-pickup read is staff-only and has no audit", () => {
   assert.match(body, /preHandler: STAFF/);
   assert.match(body, /getPickup\(/);
   assert.doesNotMatch(body, /audit\(/);
+});
+
+test("staff entry maps a practice refusal (several practices, none chosen) to its 422", () => {
+  const body = handlerSource(source, 'fastify.post("/lab/pickups",');
+  assert.match(body, /practiceOrLabErrorReply/);
 });

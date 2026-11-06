@@ -77,6 +77,17 @@ export function scopeNotFound() {
 }
 
 /**
+ * 422 PRACTICE_REQUIRED "Choose a practice.": a login with several practices
+ * creating a thread or pickup in "All practices" must name one.
+ */
+export function practiceRequired() {
+  const err = new Error("Choose a practice.");
+  err.statusCode = 422;
+  err.code = "PRACTICE_REQUIRED";
+  return err;
+}
+
+/**
  * The accounts a `?account=` value asks for, never wider than the scope:
  *  - absent, empty or "all" → every account in scope (possibly none);
  *  - an id in scope         → [id];

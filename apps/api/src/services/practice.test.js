@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { practiceKeyFor, partyKeysFor, defaultPartyKey, parsePartyKey } from "./practice.js";
+import { practiceKeyFor, partyKeysFor, defaultPartyKey, parsePartyKey, newPartyKey, practiceLabel } from "./practice.js";
 import { canActForAccount } from "./client-scope-rules.js";
 
 const scoped = (id, ...accountIds) => ({ id, scope: { accountIds, payable: new Set(accountIds), via: new Map(), roles: new Map(), organizations: [] } });
@@ -43,4 +43,26 @@ test("parsePartyKey is unchanged", () => {
   assert.deepEqual(parsePartyKey("practice:a1"), { practice: "a1" });
   assert.deepEqual(parsePartyKey("user:u1"), { userId: "u1" });
   assert.equal(parsePartyKey("org:x"), null);
+});
+
+test("newPartyKey: a named practice in scope, the one practice, or 422 \"Choose a practice.\" in All practices", () => {
+  const two = scoped("u1", "a1", "a2");
+  assert.equal(newPartyKey(two, "a2"), "practice:a2");
+  for (const all of [undefined, null, "", "all"]) {
+    assert.throws(() => newPartyKey(two, all), (e) => e.statusCode === 422 && e.code === "PRACTICE_REQUIRED" && e.message === "Choose a practice.", String(all));
+  }
+  assert.equal(newPartyKey(scoped("u1", "a1")), "practice:a1");
+  assert.equal(newPartyKey(scoped("u1")), "user:u1", "no practice yet: the login's own key");
+  // Out of scope reads as not found, never widened.
+  for (const bad of ["a9", "organization:o1", ["a1"]]) {
+    assert.throws(() => newPartyKey(two, bad), (e) => e.statusCode === 404 && e.code === "NOT_FOUND", String(bad));
+  }
+  assert.throws(() => newPartyKey(scoped("u1"), "a1"), (e) => e.statusCode === 404);
+});
+
+test("practiceLabel: the account name with its number", () => {
+  assert.equal(practiceLabel({ name: "Smile Dental", accountNumber: "1042" }), "Smile Dental (1042)");
+  assert.equal(practiceLabel({ name: " Smile Dental ", accountNumber: null }), "Smile Dental");
+  assert.equal(practiceLabel({ name: "", accountNumber: "1042" }), "1042");
+  assert.equal(practiceLabel({ name: null, accountNumber: null }), "");
 });
