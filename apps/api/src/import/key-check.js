@@ -50,5 +50,5 @@ export async function assertTargetKey(targetDb, { allowUnsealed = false } = {}) 
     if (allowUnsealed) return;
     throw new ImportRefusal("The target has no sealed rx_cases row to check PHI_ENCRYPTION_KEY against. Refusing to write.");
   }
-  if (!keyMatches(sample)) throw new ImportRefusal("PHI_ENCRYPTION_KEY does not open the target's sealed data. Refusing to write.");
+  if (!keyMatches(sample)) throw new ImportRefusal("PHI_ENCRYPTION_KEY does not open the target's sealed data. Refusing to write. A key exported with a plain $(...) loses the secret's trailing newline, which is part of the key: see docs/import-operations.md.");
 }
