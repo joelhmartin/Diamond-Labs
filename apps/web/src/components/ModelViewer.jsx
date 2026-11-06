@@ -1,23 +1,28 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
-import { MTLLoader } from "three/examples/jsm/loaders/MTLLoader.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { prefersReducedMotion } from "../lib/reducedMotion";
 
 /**
- * ModelViewer — renders an OBJ+MTL file in a Three.js canvas.
+ * ModelViewer — renders a GLB file in a Three.js canvas.
+ * The models carry their own PBR materials. The clear ones (Trutaine, Bioflex)
+ * get their look from reflections, so the scene needs an environment map.
  * Props:
- *   objPath  — path to the .obj file (relative to /public)
- *   mtlPath  — path to the .mtl file (relative to /public), optional
- *   className — extra Tailwind classes for the wrapper div
+ *   modelPath — path to the .glb file (relative to /public)
+ *   className — extra Tailwind classes for the wrapper div. Set a solid bg-* and the
+ *     status text colour here. The scene copies that background, because clear
+ *     materials can only refract what is drawn inside the scene.
  */
-export function ModelViewer({ objPath, mtlPath, className = "", interactive = true }) {
+export function ModelViewer({ modelPath, className = "", interactive = true }) {
   const mountRef = useRef(null);
-  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState("loading");
 
   useEffect(() => {
     const mount = mountRef.current;
-    if (!mount) return;
+    if (!mount) return undefined;
+    setStatus("loading");
 
     const width = mount.clientWidth;
     const height = mount.clientHeight;
@@ -27,32 +32,30 @@ export function ModelViewer({ objPath, mtlPath, className = "", interactive = tr
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2;
+    renderer.toneMapping = THREE.NeutralToneMapping;
+    renderer.toneMappingExposure = 1;
     mount.appendChild(renderer.domElement);
 
     /* ── Scene ── */
     const scene = new THREE.Scene();
+    const stageColor = getComputedStyle(mount).backgroundColor;
+    if (stageColor && !stageColor.endsWith(", 0)") && stageColor !== "transparent") {
+      scene.background = new THREE.Color(stageColor);
+    }
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const roomEnv = new RoomEnvironment();
+    const envMap = pmrem.fromScene(roomEnv, 0.04).texture;
+    scene.environment = envMap;
+    scene.environmentIntensity = 0.55;
 
     /* ── Camera ── */
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.01, 1000);
+    const camera = new THREE.PerspectiveCamera(35, width / height, 0.01, 1000);
     camera.position.set(0, 0, 5);
 
-    /* ── Lighting ── */
-    const ambient = new THREE.AmbientLight(0xffffff, 1.2);
-    scene.add(ambient);
-
-    const key = new THREE.DirectionalLight(0xffffff, 2.5);
-    key.position.set(4, 6, 4);
+    /* ── Lighting: a soft key on top of the environment ── */
+    const key = new THREE.DirectionalLight(0xffffff, 0.9);
+    key.position.set(3, 6, 4);
     scene.add(key);
-
-    const fill = new THREE.DirectionalLight(0xc8d8ff, 1.0);
-    fill.position.set(-4, 2, -3);
-    scene.add(fill);
-
-    const rim = new THREE.DirectionalLight(0xfff0cc, 0.8);
-    rim.position.set(0, -4, -5);
-    scene.add(rim);
 
     /* ── Controls ── */
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -60,7 +63,7 @@ export function ModelViewer({ objPath, mtlPath, className = "", interactive = tr
     controls.dampingFactor = 0.08;
     controls.minDistance = 0.5;
     controls.maxDistance = 20;
-    controls.autoRotate = true;
+    controls.autoRotate = !prefersReducedMotion();
     controls.autoRotateSpeed = 1.2;
     if (!interactive) {
       controls.enabled = false;
@@ -68,74 +71,49 @@ export function ModelViewer({ objPath, mtlPath, className = "", interactive = tr
     }
 
     /* ── Load model ── */
-    let animId;
+    let disposed = false;
+    let model = null;
 
-    const loadObj = (materials) => {
-      const loader = new OBJLoader();
-      if (materials) loader.setMaterials(materials);
+    new GLTFLoader().load(
+      modelPath,
+      (gltf) => {
+        model = gltf.scene;
+        if (disposed) {
+          disposeObject(model);
+          return;
+        }
 
-      loader.load(
-        objPath,
-        (obj) => {
-          /* Fit model using bounding sphere — guarantees no overflow at any rotation */
-          const box = new THREE.Box3().setFromObject(obj);
-          const sphere = box.getBoundingSphere(new THREE.Sphere());
-          const center = sphere.center.clone();
-          const targetRadius = 1;
-          const scale = targetRadius / sphere.radius;
-          obj.scale.setScalar(scale);
-          obj.position.sub(center.multiplyScalar(scale));
+        /* Fit model using bounding sphere — guarantees no overflow at any rotation */
+        const box = new THREE.Box3().setFromObject(model);
+        const sphere = box.getBoundingSphere(new THREE.Sphere());
+        const targetRadius = 1;
+        const scale = targetRadius / sphere.radius;
+        model.scale.multiplyScalar(scale);
+        model.position.sub(sphere.center.clone().multiplyScalar(scale));
+        tuneClearMaterials(model, scale, envMap);
+        scene.add(model);
 
-          /* Fallback material if MTL colours are dark/missing */
-          if (!materials) {
-            obj.traverse((child) => {
-              if (child.isMesh) {
-                child.material = new THREE.MeshStandardMaterial({
-                  color: 0xe8e8e8,
-                  roughness: 0.4,
-                  metalness: 0.05,
-                });
-              }
-            });
-          }
-
-          scene.add(obj);
-          setLoading(false);
-
-          /* Camera distance fits the bounding sphere with padding,
-             accounting for the smaller of vertical/horizontal FOV */
-          const fovV = camera.fov * (Math.PI / 180);
-          const fovH = 2 * Math.atan(Math.tan(fovV / 2) * camera.aspect);
-          const minFov = Math.min(fovV, fovH);
-          const padding = 1.35;
-          const dist = (targetRadius * padding) / Math.sin(minFov / 2);
-          camera.position.set(0, 0, dist);
-          camera.near = Math.max(dist * 0.01, 0.001);
-          camera.far = dist * 100;
-          camera.updateProjectionMatrix();
-          controls.update();
-        },
-        undefined,
-        (err) => console.error("[ModelViewer] OBJ load error:", err)
-      );
-    };
-
-    if (mtlPath) {
-      const mtlLoader = new MTLLoader();
-      mtlLoader.load(
-        mtlPath,
-        (materials) => {
-          materials.preload();
-          loadObj(materials);
-        },
-        undefined,
-        () => loadObj(null) // MTL failed → load without
-      );
-    } else {
-      loadObj(null);
-    }
+        /* Camera distance fits the bounding sphere with padding,
+           accounting for the smaller of vertical/horizontal FOV */
+        const fovV = THREE.MathUtils.degToRad(camera.fov);
+        const fovH = 2 * Math.atan(Math.tan(fovV / 2) * camera.aspect);
+        const dist = (targetRadius * 1.02) / Math.sin(Math.min(fovV, fovH) / 2);
+        camera.position.copy(new THREE.Vector3(0.55, 0.35, 1).normalize().multiplyScalar(dist));
+        camera.near = Math.max(dist * 0.01, 0.001);
+        camera.far = dist * 100;
+        camera.updateProjectionMatrix();
+        controls.update();
+        setStatus("ready");
+      },
+      undefined,
+      (err) => {
+        console.error("[ModelViewer] GLB load error:", err);
+        if (!disposed) setStatus("error");
+      }
+    );
 
     /* ── Animate ── */
+    let animId;
     const animate = () => {
       animId = requestAnimationFrame(animate);
       controls.update();
@@ -144,36 +122,76 @@ export function ModelViewer({ objPath, mtlPath, className = "", interactive = tr
     animate();
 
     /* ── Resize ── */
-    const onResize = () => {
+    const ro = new ResizeObserver(() => {
       const w = mount.clientWidth;
       const h = mount.clientHeight;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
-    };
-    const ro = new ResizeObserver(onResize);
+    });
     ro.observe(mount);
 
     /* ── Cleanup ── */
     return () => {
+      disposed = true;
       cancelAnimationFrame(animId);
       ro.disconnect();
       controls.dispose();
+      if (model) disposeObject(model);
+      roomEnv.dispose();
+      envMap.dispose();
+      pmrem.dispose();
       renderer.dispose();
       if (mount.contains(renderer.domElement)) {
         mount.removeChild(renderer.domElement);
       }
     };
-  }, [objPath, mtlPath, interactive]);
+  }, [modelPath, interactive]);
 
   return (
     <div ref={mountRef} className={`w-full h-full relative ${className}`}>
-      {loading && (
+      {status === "loading" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 z-10 pointer-events-none">
           <div className="w-8 h-8 rounded-full border-2 border-surface-300 border-t-brand-500 animate-spin" />
-          <span className="font-mono text-[10px] text-navy/30 uppercase tracking-widest">Loading 3D model</span>
+          <span className="text-xs">Loading 3D model</span>
+        </div>
+      )}
+      {status === "error" && (
+        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+          <span className="text-sm">The 3D view couldn&apos;t load. Try the photos instead.</span>
         </div>
       )}
     </div>
   );
+}
+
+/* The models are real scale (metres) and get scaled up to fit. three.js scales a
+   clear material's thickness with the model but not its attenuation distance, so
+   it has to be scaled here or the plastic turns dark. Clear parts have little of
+   their own to show, so they also get stronger reflections and their back faces. */
+function tuneClearMaterials(root, scale, envMap) {
+  const seen = new Set();
+  root.traverse((child) => {
+    if (!child.isMesh || seen.has(child.material) || !child.material.transmission) return;
+    seen.add(child.material);
+    child.material.attenuationDistance *= scale;
+    child.material.envMap = envMap;
+    child.material.envMapIntensity = 1.6;
+    child.material.side = THREE.DoubleSide;
+    child.material.needsUpdate = true;
+  });
+}
+
+/* Switching between models would otherwise leak each one's GPU buffers. */
+function disposeObject(root) {
+  root.traverse((child) => {
+    if (!child.isMesh) return;
+    child.geometry.dispose();
+    for (const material of [child.material].flat()) {
+      for (const value of Object.values(material)) {
+        if (value?.isTexture) value.dispose();
+      }
+      material.dispose();
+    }
+  });
 }

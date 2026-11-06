@@ -39,13 +39,20 @@ export function ProductViewer({
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 items-start rounded-[2.5rem] bg-white border border-surface-300/60 shadow-xl shadow-navy/10 p-4 md:p-6 lg:p-8">
       {/* Product stage */}
       <div className="lg:col-span-7">
-        <div className="relative aspect-[4/3] rounded-[2rem] overflow-hidden bg-gradient-to-br from-white via-surface-50 to-surface-100 border border-surface-300/50">
-          <div aria-hidden="true" className="absolute inset-x-[12%] bottom-[8%] h-[10%] rounded-full bg-navy/10 blur-2xl" />
+        <div
+          className={`relative aspect-[4/3] rounded-[2rem] overflow-hidden border ${
+            activeItem.is3D
+              ? "bg-navy border-navy"
+              : "bg-gradient-to-br from-white via-surface-50 to-surface-100 border-surface-300/50"
+          }`}
+        >
+          {!activeItem.is3D && (
+            <div aria-hidden="true" className="absolute inset-x-[12%] bottom-[8%] h-[10%] rounded-full bg-navy/10 blur-2xl" />
+          )}
           {activeItem.is3D ? (
             <ModelViewer
-              objPath={activeItem.objPath}
-              mtlPath={activeItem.mtlPath}
-              className="w-full h-full"
+              modelPath={activeItem.modelPath}
+              className="w-full h-full bg-navy text-white/80"
             />
           ) : activeItem.src ? (
             <img
@@ -62,19 +69,21 @@ export function ProductViewer({
           )}
           <div className="absolute top-4 left-4 flex items-center gap-2">
             <span
-              className={`px-3 py-1 rounded-full text-xs font-semibold ${product.categoryBg} ${product.categoryColor}`}
+              className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                activeItem.is3D ? "bg-white/15 text-white" : `${product.categoryBg} ${product.categoryColor}`
+              }`}
             >
               {product.category}
             </span>
             {activeItem.is3D && (
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-navy/80 text-white flex items-center gap-1">
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-white/15 text-white flex items-center gap-1">
                 <Box size={10} />
                 Interactive 3D
               </span>
             )}
           </div>
           {activeItem.is3D && (
-            <div className="absolute bottom-4 right-4 text-xs text-navy/70 pointer-events-none">
+            <div className="absolute bottom-4 right-4 text-xs text-white/80 pointer-events-none">
               drag to rotate · scroll to zoom
             </div>
           )}
@@ -97,7 +106,10 @@ export function ProductViewer({
               {img.is3D ? (
                 <div className="w-full h-full bg-navy flex flex-col items-center justify-center gap-0.5">
                   <Box size={16} className="text-brand-400" />
-                  <span className="text-[9px] font-mono text-white/50 leading-none">3D</span>
+                  <span className="text-[9px] font-mono text-white/70 leading-none">3D</span>
+                  {img.material && (
+                    <span className="text-[9px] text-white leading-none mt-0.5">{img.material}</span>
+                  )}
                 </div>
               ) : (
                 <img

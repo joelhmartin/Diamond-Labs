@@ -89,22 +89,21 @@ await fastify.register(multipart, {
   },
 });
 // Response compression. Nothing was compressed before this — the SPA bundle and
-// especially the 3D models (plain-ASCII .obj) were served raw, which is why the
-// model viewer took so long to populate.
+// especially the 3D models were served raw, which is why the model viewer took
+// so long to populate.
 //
 // `customTypes` is the load-bearing part: @fastify/compress only compresses
-// mime types flagged compressible in mime-db, and .obj/.stl resolve to
-// model/* or application/octet-stream — none of which qualify. Without this
-// they'd silently keep shipping uncompressed. .obj is ASCII and compresses
-// ~4x (DDSO: 14.9 MB -> 4.1 MB).
+// mime types flagged compressible in mime-db, and .glb resolves to
+// model/gltf-binary, which doesn't qualify. Without this the models would
+// silently keep shipping uncompressed.
 await fastify.register(compress, {
   global: true,
   encodings: ["br", "gzip", "deflate"],
   threshold: 1024,
   customTypes: /^model\/|^application\/octet-stream$|\.obj$|\.stl$/,
   // Pinned to quality 4 — @fastify/compress already defaults streams to 4, but
-  // the value is load-bearing enough to state outright. Measured on the 15 MB
-  // DDSO model: q4 = 4.5 MB in ~1.9s, q11 = 2.9 MB in ~236s. q11 is 35% smaller
+  // the value is load-bearing enough to state outright. Measured on an older
+  // 15 MB model: q4 = 4.5 MB in ~1.9s, q11 = 2.9 MB in ~236s. q11 is 35% smaller
   // and completely unusable per-request; the extra bytes are the right trade.
   //
   // Compression here is per-request. If model traffic ever justifies it, the
@@ -163,8 +162,11 @@ await fastify.register(helmet, {
       scriptSrc: ["'self'", "https://js.authorize.net", "https://jstest.authorize.net"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "https://api.authorize.net", "https://apitest.authorize.net"],
+      // blob: on img and connect — GLTFLoader unpacks a .glb's embedded textures
+      // into blob URLs, then fetches them (Chrome, Firefox) or sets them on an
+      // <img> (Safari). Without it the 3D models lose their surface texture.
+      imgSrc: ["'self'", "data:", "blob:", "https:"],
+      connectSrc: ["'self'", "blob:", "https://api.authorize.net", "https://apitest.authorize.net"],
       // player.vimeo.com — the instructional-videos page embeds Vimeo players.
       // Without it every one of those iframes is blocked outright by this policy.
       frameSrc: [

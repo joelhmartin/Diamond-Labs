@@ -15,8 +15,7 @@ export const PRODUCTS = {
       { src: "/images/ddso-ant-pair.webp",     label: "DDSO Anterior — Upper & Lower" },
       {
         is3D: true,
-        objPath: "/models/DDSO_Anterior_contact.obj",
-        mtlPath: "/models/DDSO_Anterior_contact.mtl",
+        modelPath: "/models/DDSO-Anterior.glb",
         label: "DDSO Anterior — 3D View",
       },
     ],
@@ -45,8 +44,7 @@ export const PRODUCTS = {
       { src: "/images/ddso-blue-bands.webp",    label: "DDSO Posterior — Blue Bands" },
       {
         is3D: true,
-        objPath: "/models/DDSO_BANDS_POSTERIOR.obj",
-        mtlPath: "/models/DDSO_BANDS_POSTERIOR.mtl",
+        modelPath: "/models/DDSO-Posterior.glb",
         label: "DDSO Posterior — 3D View",
       },
     ],
@@ -75,9 +73,15 @@ export const PRODUCTS = {
       { src: "/images/ond-bands.webp",    label: "OND — With Bands" },
       {
         is3D: true,
-        objPath: "/models/OND_COMBINED.obj",
-        mtlPath: "/models/OND_COMBINED.mtl",
-        label: "OND — 3D View",
+        modelPath: "/models/OND_Nylon-Trutaine.glb",
+        material: "Mixed",
+        label: "OND — Nylon and Trutaine, 3D View",
+      },
+      {
+        is3D: true,
+        modelPath: "/models/OND_Nylon.glb",
+        material: "Nylon",
+        label: "OND — Nylon, 3D View",
       },
     ],
     specs: [
@@ -105,9 +109,21 @@ export const PRODUCTS = {
       { src: "/images/onp-model.webp",       label: "ONP — On Model" },
       {
         is3D: true,
-        objPath: "/models/ONP-Trutaine.obj",
-        mtlPath: "/models/ONP-Trutaine.mtl",
-        label: "ONP — 3D View",
+        modelPath: "/models/ONP_Trutaine.glb",
+        material: "Trutaine",
+        label: "ONP — Trutaine, 3D View",
+      },
+      {
+        is3D: true,
+        modelPath: "/models/ONP_Nylon.glb",
+        material: "Nylon",
+        label: "ONP — Nylon, 3D View",
+      },
+      {
+        is3D: true,
+        modelPath: "/models/ONP_Bioflex.glb",
+        material: "Bioflex",
+        label: "ONP — Bioflex, 3D View",
       },
     ],
     specs: [
