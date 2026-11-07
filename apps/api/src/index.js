@@ -215,10 +215,21 @@ await fastify.register(helmet, {
         "https://player.vimeo.com",
       ],
       frameAncestors: ["'none'"],
+      // The hosted card forms start with a form POST into their iframe.
+      formAction: ["'self'", "https://accept.authorize.net", "https://test.authorize.net"],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
     },
   },
+});
+
+// Authorize.net's hosted pages frame this relay page to report back to the app
+// (save, cancel, resize), so it needs framing and its inline script. It renders
+// nothing and only forwards a string to the app's own handler.
+fastify.addHook("onSend", async (request, reply) => {
+  if (request.url.split("?")[0] !== "/IFrameCommunicator.html") return;
+  reply.header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; frame-ancestors 'self' https://accept.authorize.net https://test.authorize.net");
+  reply.raw.removeHeader("X-Frame-Options"); // helmet sets it on the raw response
 });
 
 // Rate limit: production caps per the project config; dev gets a much higher
