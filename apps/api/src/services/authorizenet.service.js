@@ -373,7 +373,8 @@ export async function getHostedAddCardToken({ customerProfileId, iframeCommunica
   if (iframeCommunicatorUrl) {
     setting.push({
       settingName: "hostedProfileIFrameCommunicatorUrl",
-      settingValue: JSON.stringify({ url: iframeCommunicatorUrl }),
+      // A plain URL here. Unlike hostedPaymentIFrameCommunicatorUrl, Authorize.net rejects the {"url":...} form.
+      settingValue: iframeCommunicatorUrl,
     });
   }
 

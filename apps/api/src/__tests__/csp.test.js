@@ -18,3 +18,13 @@ test("the CSP lets Accept.js load, self-check and tokenize a card", () => {
     assert.ok(connect.includes(`"https://${host}"`), `connectSrc is missing ${host}`);
   }
 });
+
+test("the CSP lets the hosted card forms post into their iframe and report back", () => {
+  const form = directive("formAction");
+  for (const host of ["accept.authorize.net", "test.authorize.net"]) {
+    assert.ok(form.includes(`"https://${host}"`), `formAction is missing ${host}`);
+  }
+  assert.match(src, /IFrameCommunicator\.html[\s\S]{0,200}frame-ancestors 'self' https:\/\/accept\.authorize\.net https:\/\/test\.authorize\.net/);
+  assert.match(src, /removeHeader\("X-Frame-Options"\)/);
+});
+
