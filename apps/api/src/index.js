@@ -164,7 +164,17 @@ await fastify.register(helmet, {
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       // blob: on img — the Rx form previews a chosen image file from a blob URL.
       imgSrc: ["'self'", "data:", "blob:", "https:"],
-      connectSrc: ["'self'", "https://api.authorize.net", "https://apitest.authorize.net"],
+      // Accept.js re-fetches AcceptCore.js from its CDN to hash-check it, and
+      // AcceptCore posts the card to api2 (production) / apitest (sandbox) to
+      // tokenize it. Without these hosts the browser blocks tokenization.
+      connectSrc: [
+        "'self'",
+        "https://js.authorize.net",
+        "https://jstest.authorize.net",
+        "https://api2.authorize.net",
+        "https://api.authorize.net",
+        "https://apitest.authorize.net",
+      ],
       // player.vimeo.com — the instructional-videos page embeds Vimeo players.
       // Without it every one of those iframes is blocked outright by this policy.
       frameSrc: [
