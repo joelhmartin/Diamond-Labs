@@ -25,13 +25,14 @@ export function headerSafe(value, max = MAX_SUBJECT_LENGTH) {
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
-async function send({ to, bcc, subject, html, text }) {
+async function send({ to, bcc, replyTo, subject, html, text }) {
   // Header values: several subjects interpolate user input (doctor name, account
   // name, ...) and `to` can be a registrant-typed address. Strip control
   // characters (CR/LF header injection) and cap length centrally so no caller
   // has to remember. Done first so the dev log line below is sanitized too.
   to = headerSafe(to, 320);
   if (bcc) bcc = headerSafe(bcc, 320);
+  if (replyTo) replyTo = headerSafe(replyTo, 320);
   subject = headerSafe(subject, MAX_SUBJECT_LENGTH);
 
   if (!mailgun) {
@@ -46,6 +47,7 @@ async function send({ to, bcc, subject, html, text }) {
   form.set("from", env.EMAIL_FROM);
   form.set("to", to);
   if (bcc) form.set("bcc", bcc);
+  if (replyTo) form.set("h:Reply-To", replyTo);
   form.set("subject", subject);
   if (html) form.set("html", html);
   if (text) form.set("text", text);
@@ -58,6 +60,7 @@ async function send({ to, bcc, subject, html, text }) {
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: form.toString(),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
@@ -400,6 +403,28 @@ export async function sendRxSubmissionReceived({ caseNumber, practiceName, devic
       <p style="margin:24px 0;">
         <a href="${caseUrl}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;">Review case</a>
       </p>
+    `,
+  });
+}
+
+/**
+ * Public contact-form message, to the lab. Everything here is visitor-typed, so
+ * it is all escaped; Reply-To lets staff answer straight from their inbox.
+ */
+export async function sendContactMessage({ name, email, practice, phone, subject, message }) {
+  if (!env.ADMIN_NOTIFICATION_EMAIL) return false;
+  const rows = [["From", name], ["Email", email], ["Practice", practice], ["Phone", phone], ["Subject", subject]]
+    .filter(([, value]) => value)
+    .map(([label, value]) => `<tr><td style="padding:6px 12px;font-weight:bold;">${label}</td><td style="padding:6px 12px;">${esc(value)}</td></tr>`)
+    .join("");
+  return send({
+    to: env.ADMIN_NOTIFICATION_EMAIL,
+    replyTo: email,
+    subject: `Website contact: ${subject || "General Question"} (${name})`,
+    html: `
+      <h1>New message from the website</h1>
+      <table style="border-collapse:collapse;margin:16px 0;">${rows}</table>
+      <p style="white-space:pre-wrap;">${esc(message)}</p>
     `,
   });
 }

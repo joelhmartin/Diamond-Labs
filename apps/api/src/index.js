@@ -27,6 +27,7 @@ import rxRoutes from "./routes/rx.routes.js";
 import rxMappingRoutes from "./routes/admin-rx-mapping.routes.js";
 import adminRxCasesRoutes from "./routes/admin-rx-cases.routes.js";
 import themeRoutes from "./routes/theme.routes.js";
+import contactRoutes from "./routes/contact.routes.js";
 import autopayRoutes from "./routes/autopay.routes.js";
 import adminPaymentRoutes from "./routes/admin-payment.routes.js";
 import { registerAllJobs } from "./jobs/definitions/index.js";
@@ -88,22 +89,21 @@ await fastify.register(multipart, {
   },
 });
 // Response compression. Nothing was compressed before this — the SPA bundle and
-// especially the 3D models (plain-ASCII .obj) were served raw, which is why the
-// model viewer took so long to populate.
+// especially the 3D models were served raw, which is why the model viewer took
+// so long to populate.
 //
 // `customTypes` is the load-bearing part: @fastify/compress only compresses
-// mime types flagged compressible in mime-db, and .obj/.stl resolve to
-// model/* or application/octet-stream — none of which qualify. Without this
-// they'd silently keep shipping uncompressed. .obj is ASCII and compresses
-// ~4x (DDSO: 14.9 MB -> 4.1 MB).
+// mime types flagged compressible in mime-db, and .glb resolves to
+// model/gltf-binary, which doesn't qualify. Without this the models would
+// silently keep shipping uncompressed.
 await fastify.register(compress, {
   global: true,
   encodings: ["br", "gzip", "deflate"],
   threshold: 1024,
   customTypes: /^model\/|^application\/octet-stream$|\.obj$|\.stl$/,
   // Pinned to quality 4 — @fastify/compress already defaults streams to 4, but
-  // the value is load-bearing enough to state outright. Measured on the 15 MB
-  // DDSO model: q4 = 4.5 MB in ~1.9s, q11 = 2.9 MB in ~236s. q11 is 35% smaller
+  // the value is load-bearing enough to state outright. Measured on an older
+  // 15 MB model: q4 = 4.5 MB in ~1.9s, q11 = 2.9 MB in ~236s. q11 is 35% smaller
   // and completely unusable per-request; the extra bytes are the right trade.
   //
   // Compression here is per-request. If model traffic ever justifies it, the
@@ -162,7 +162,8 @@ await fastify.register(helmet, {
       scriptSrc: ["'self'", "https://js.authorize.net", "https://jstest.authorize.net"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:", "https:"],
+      // blob: on img — the Rx form previews a chosen image file from a blob URL.
+      imgSrc: ["'self'", "data:", "blob:", "https:"],
       // Accept.js re-fetches AcceptCore.js from its CDN to hash-check it, and
       // AcceptCore posts the card to api2 (production) / apitest (sandbox) to
       // tokenize it. Without these hosts the browser blocks tokenization.
@@ -225,6 +226,7 @@ await fastify.register(rxRoutes,      { prefix: "/api/v1" });
 await fastify.register(rxMappingRoutes, { prefix: "/api/v1" });
 await fastify.register(adminRxCasesRoutes, { prefix: "/api/v1" });
 await fastify.register(themeRoutes,     { prefix: "/api/v1" });
+await fastify.register(contactRoutes,   { prefix: "/api/v1" });
 await fastify.register(autopayRoutes,   { prefix: "/api/v1" });
 await fastify.register(adminPaymentRoutes, { prefix: "/api/v1" });
 

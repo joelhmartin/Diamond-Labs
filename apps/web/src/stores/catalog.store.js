@@ -59,14 +59,9 @@ export const useCatalogStore = create(
     }),
     {
       name: "diamond-catalog",
-      version: 2,
-      migrate: (persisted, version) => {
-        // If old cart data predates the active/availability fields, seed from scratch
-        if (!persisted || !persisted.products?.[0]?.availability) {
-          return { products: SEED_CATALOG };
-        }
-        return persisted;
-      },
+      version: 3,
+      // Nothing edits this store yet, so a saved copy is only ever an old catalog.
+      migrate: () => ({ products: SEED_CATALOG }),
     }
   )
 );

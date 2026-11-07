@@ -508,7 +508,7 @@ export function AdminInvoicesPage() {
       });
   }, [data, query, statusFilter]);
 
-  const pagination = usePagination(groups);
+  const pagination = usePagination(groups, { resetKey: `${query}|${statusFilter}` });
 
   const statusChips = useMemo(() => {
     const entries = Object.entries(data.summary?.statuses || {});

@@ -17,14 +17,13 @@ import LogoFull from "../../images/logoFull.jsx";
 import { useAuth } from "../../hooks/useAuth.js";
 import { ROUTES, roleHome } from "../../config/routes.js";
 
-const NAV_LINKS = [
+export const NAV_LINKS = [
   {
     label: "About Us",
     to: "/about",
     children: [
       { label: "Our Story", to: "/about" },
       { label: "Our Team", to: "/about/team" },
-      { label: "Dr. Steven Olmos", to: "/about/dr-olmos" },
     ],
   },
   {
@@ -41,16 +40,16 @@ const NAV_LINKS = [
     children: [
       { label: "Submit Digital Rx", to: "/submit-case" },
       { label: "Rx Instructions", to: "/resources/rx-instructions" },
-      { label: "Download Forms", to: "/resources/downloads" },
+      { label: "Downloads", to: "/resources/downloads" },
     ],
   },
   {
-    label: "Additional Resources",
+    label: "Resources",
     children: [
-      { label: "New Client Account Form", to: "/resources/new-client" },
+      { label: "Apply for an account", to: ROUTES.REGISTER_DOCTOR },
       { label: "Instructional Videos", to: "/resources/videos" },
       { label: "Our Centres / Certified Labs", to: "/resources/certified-labs" },
-      { label: "Dr. Steven Olmos Courses", to: "/resources/courses" },
+      { label: "Courses", to: "/resources/courses" },
     ],
   },
 ];
@@ -61,10 +60,6 @@ const SOCIALS = [
   { icon: Linkedin, href: "https://linkedin.com/company/diamond-orthotic-laboratory", label: "LinkedIn" },
   { icon: Youtube, href: "https://youtube.com/@diamondorthotic", label: "YouTube" },
 ];
-
-/* Pages that open on a light section (no dark hero behind the nav) — the nav
-   stays in its frosted/navy-text state on these even at the top. */
-const HEROLESS_ROUTES = ["/services/tmd", "/services/sleep"];
 
 /* ─── Desktop nav item (with optional dropdown) ─── */
 function NavItem({ link, scrolled, isActive }) {
@@ -175,7 +170,7 @@ function MobileNavGroup({ link, isActive, onNavigate }) {
               key={child.to + child.label}
               to={child.to}
               onClick={onNavigate}
-              className="block px-4 py-2 rounded-xl text-sm text-navy/50 hover:text-brand-500 hover:bg-brand-500/5 transition-colors"
+              className="block px-4 py-2 rounded-xl text-sm text-navy/70 hover:text-navy hover:bg-brand-500/5 transition-colors"
             >
               {child.label}
             </Link>
@@ -215,7 +210,7 @@ function MobileAccount({ onNavigate }) {
         <div className="font-heading font-semibold text-sm text-navy truncate">
           {user?.name || "Account"}
         </div>
-        <div className="text-[11px] text-navy/40 truncate">
+        <div className="text-[11px] text-navy/70 truncate">
           {user?.email}
         </div>
       </div>
@@ -307,7 +302,7 @@ function AccountButton({ scrolled }) {
                 {user?.name || "Account"}
               </div>
               {user?.email && (
-                <div className="text-[11px] text-navy/40 truncate">
+                <div className="text-[11px] text-navy/70 truncate">
                   {user.email}
                 </div>
               )}
@@ -358,10 +353,7 @@ export function Navbar() {
   const mobileMenuRef = useRef(null);
 
   const [hasScrolled, setHasScrolled] = useState(false);
-  const isHeroless = HEROLESS_ROUTES.some(
-    (p) => location.pathname === p || location.pathname.startsWith(p + "/")
-  );
-  const scrolled = hasScrolled || isHeroless;
+  const scrolled = hasScrolled;
 
   useEffect(() => {
     const onScroll = () => setHasScrolled(window.scrollY > 80);
@@ -523,7 +515,7 @@ export function Navbar() {
                   href={s.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-navy/30 hover:text-brand-500 transition-colors"
+                  className="text-navy/70 hover:text-brand-700 transition-colors"
                   aria-label={s.label}
                 >
                   <s.icon size={16} />
