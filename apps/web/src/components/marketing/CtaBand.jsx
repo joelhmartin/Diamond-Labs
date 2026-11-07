@@ -69,14 +69,14 @@ export function CtaBand({ eyebrow, title, titleAccent, intro, primary, secondary
           <HeroStage />
           <div className={`relative z-10 grid lg:grid-cols-2 gap-8 items-center p-8 md:p-14 ${productFlush ? "!pb-0" : ""}`}>
             <div className={productFlush ? "lg:pb-14" : undefined}>
-              <h2 data-cta-anim className="font-heading font-bold text-3xl md:text-5xl tracking-tight text-on-dark">
+              <h2 data-cta-anim className="font-heading font-bold text-3xl md:text-5xl tracking-tight text-on-dark text-balance">
                 {title}
                 {titleAccent && (
                   <span className="block font-drama italic text-brand-400">{titleAccent}</span>
                 )}
               </h2>
               {intro && (
-                <p data-cta-anim className="mt-5 text-on-dark/75 text-lg leading-relaxed">
+                <p data-cta-anim className="mt-5 max-w-lg text-on-dark/75 text-lg leading-relaxed text-pretty">
                   {intro}
                 </p>
               )}
@@ -126,7 +126,7 @@ export function CtaBand({ eyebrow, title, titleAccent, intro, primary, secondary
           )}
         </h2>
         {intro && (
-          <p data-cta-anim className="mt-6 text-navy/70 text-lg max-w-xl mx-auto leading-relaxed">
+          <p data-cta-anim className="mt-6 text-navy/70 text-lg max-w-xl mx-auto leading-relaxed text-pretty">
             {intro}
           </p>
         )}
