@@ -1,499 +1,174 @@
-import { useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
-import gsap from "gsap";
-import {
-  ArrowRight,
-  Award,
-  BookOpen,
-  Globe2,
-  GraduationCap,
-  Microscope,
-  Quote,
-} from "lucide-react";
-import { playOnView } from "../../lib/playOnView";
+import { PageHero } from "../../components/marketing/PageHero";
+import { SectionHeading } from "../../components/marketing/SectionHeading";
+import { CtaBand } from "../../components/marketing/CtaBand";
+import { StatRow } from "../../components/marketing/StatRow";
+import { Reveal } from "../../components/marketing/Reveal";
+import { HeroStage } from "../../components/marketing/HeroStage";
+import { Award } from "lucide-react";
 
 const CREDENTIALS = [
-  { abbr: "DDS",      label: "Doctor of Dental Surgery — USC School of Dentistry" },
-  { abbr: "DABCP",    label: "Diplomate, American Board of Craniofacial Pain" },
-  { abbr: "DABCDSM",  label: "Diplomate, American Board of Craniofacial Dental Sleep Medicine" },
-  { abbr: "DABDSM",   label: "Diplomate, American Board of Dental Sleep Medicine" },
-  { abbr: "DAIPM",    label: "Diplomate, Academy of Integrative Pain Management" },
-  { abbr: "FAAOP",    label: "Fellow, American Academy of Orofacial Pain" },
-  { abbr: "FAACP",    label: "Fellow, American Academy of Craniofacial Pain" },
-  { abbr: "FICCMO",   label: "Fellow, International College of Cranio-Mandibular Orthopedics" },
-  { abbr: "FADI",     label: "Fellow, Academy of Dentistry International" },
-  { abbr: "FIAO",     label: "Fellow, International Association of Orthodontics" },
-  { abbr: "FACD",     label: "Fellow, American College of Dentists" },
+  { abbr: "DDS", label: "Doctor of Dental Surgery — USC School of Dentistry" },
+  { abbr: "DABCP", label: "Diplomate, American Board of Craniofacial Pain" },
+  { abbr: "DABCDSM", label: "Diplomate, American Board of Craniofacial Dental Sleep Medicine" },
+  { abbr: "DABDSM", label: "Diplomate, American Board of Dental Sleep Medicine" },
+  { abbr: "DAIPM", label: "Diplomate, Academy of Integrative Pain Management" },
+  { abbr: "FAAOP", label: "Fellow, American Academy of Orofacial Pain" },
+  { abbr: "FAACP", label: "Fellow, American Academy of Craniofacial Pain" },
+  { abbr: "FICCMO", label: "Fellow, International College of Cranio-Mandibular Orthopedics" },
+  { abbr: "FADI", label: "Fellow, Academy of Dentistry International" },
+  { abbr: "FIAO", label: "Fellow, International Association of Orthodontics" },
+  { abbr: "FACD", label: "Fellow, American College of Dentists" },
 ];
 
 const FOCUS_AREAS = [
   {
-    Icon: Microscope,
-    title: "Craniofacial Pain",
-    copy: "Diagnosis and non-surgical treatment of chronic and acute orofacial pain — integrating dentistry, neurology, and physical therapy.",
+    title: "Craniofacial pain",
+    copy: "Diagnosis and non-surgical treatment of chronic and acute orofacial pain, integrating dentistry, neurology and physical therapy.",
   },
   {
-    Icon: BookOpen,
-    title: "TMD Research",
-    copy: "Board certified by the American Board of Craniofacial Pain; leading protocols for temporomandibular disorder diagnosis and orthotic therapy.",
+    title: "TMD research",
+    copy: "Board certified by the American Board of Craniofacial Pain, with protocols for temporomandibular disorder diagnosis and orthotic therapy.",
   },
   {
-    Icon: GraduationCap,
-    title: "Dental Sleep Medicine",
+    title: "Dental sleep medicine",
     copy: "Board certified in sleep-related breathing disorders; directs clinical research and education programs for dentists treating OSA.",
   },
 ];
 
-function Hero() {
-  const ref = useRef(null);
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.from("[data-olmos-hero]", {
-        y: 40,
-        opacity: 0,
-        duration: 1,
-        stagger: 0.08,
-        ease: "power3.out",
-        delay: 0.3,
-      });
-    }, ref);
-    return () => ctx.revert();
-  }, []);
-
-  return (
-    <section
-      ref={ref}
-      className="relative h-[85dvh] min-h-[560px] flex items-end overflow-hidden bg-navy section-pad"
-    >
-      <div className="absolute inset-0 opacity-[0.12]">
-        <img
-          src="https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&w=1920&q=80"
-          alt=""
-          className="w-full h-full object-cover"
-          loading="lazy"
-        />
-      </div>
-      <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/80 to-navy/60" />
-      <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/40 to-transparent" />
-
-      <div className="relative z-10 pb-16 md:pb-24 w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-10 lg:gap-16 items-end">
-        <div className="max-w-4xl">
-        <span
-          data-olmos-hero
-          className="font-mono text-xs text-on-dark/40 uppercase tracking-widest"
-        >
-          Founder · Protocol Architect
-        </span>
-        <h1 data-olmos-hero className="mt-4 text-on-dark">
-          <span className="block font-heading font-bold text-4xl sm:text-5xl md:text-7xl tracking-tight leading-[0.95]">
-            Dr. Steven
-          </span>
-          <span className="block font-drama italic text-6xl sm:text-7xl md:text-9xl tracking-tight leading-[0.9] text-brand-500">
-            Olmos, DDS.
-          </span>
-        </h1>
-        <p
-          data-olmos-hero
-          className="mt-6 text-on-dark/50 text-base md:text-lg max-w-xl leading-relaxed"
-        >
-          Founder of TMJ &amp; Sleep Therapy Centres International. 35+ years
-          in private practice. 30+ years devoted to research and treatment of
-          craniofacial pain, TMD, and sleep-disordered breathing.
-        </p>
-        </div>
-
-        {/* Portrait — right of the headline from lg up, hidden below it: the
-            hero is 85dvh and the display type already fills a phone screen, so
-            adding a portrait there crowds the name rather than supporting it.
-            Same asset as the About page. */}
-        <div
-          data-olmos-hero
-          className="hidden lg:block shrink-0 w-56 xl:w-72 rounded-full overflow-hidden border-4 border-brand-500"
-        >
-          <img
-            src="/images/dr-olmos.jpg"
-            alt="Dr. Steven Olmos"
-            className="w-full h-full object-cover"
-            width="900"
-            height="900"
-          />
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function Quotation() {
-  const ref = useRef(null);
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-quote]",
-        { y: 30, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 1,
-          stagger: 0.12,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
-  return (
-    <section ref={ref} className="section-pad py-24 md:py-28">
-      <div className="max-w-4xl mx-auto text-center">
-        <Quote
-          data-quote
-          size={32}
-          className="text-brand-500 mx-auto mb-6 opacity-60"
-        />
-        <p
-          data-quote
-          className="font-drama italic text-3xl md:text-5xl text-navy leading-[1.15] tracking-tight text-balance"
-        >
-          &ldquo;The more precise and accurate your diagnosis, the more
-          specific and effective will be the{" "}
-          <span className="text-brand-500">treatment</span>.&rdquo;
-        </p>
-        <div
-          data-quote
-          className="mt-8 font-mono text-[11px] text-navy/40 uppercase tracking-widest"
-        >
-          Dr. Steven Olmos · DDS
-        </div>
-      </div>
-    </section>
-  );
-}
+const NETWORK_STATS = [
+  { value: "60+", label: "Centres" },
+  { value: "7", label: "Countries" },
+];
 
 function Biography() {
-  const ref = useRef(null);
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-bio]",
-        { y: 30, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.8,
-          stagger: 0.1,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
   return (
-    <section ref={ref} className="section-pad py-24 md:py-28 bg-surface-100">
-      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-12 lg:gap-16">
-        <div className="lg:col-span-2">
-          <span
-            data-bio
-            className="font-mono text-xs text-navy/40 uppercase tracking-widest"
-          >
-            Biography
-          </span>
-          <h2
-            data-bio
-            className="mt-3 font-heading font-bold text-3xl md:text-4xl tracking-tight"
-          >
-            A life&apos;s work in{" "}
-            <span className="font-drama italic text-brand-500">
-              pain &amp; sleep
-            </span>
-            .
-          </h2>
-
-          {/* Fills the column that sat empty beside the biography copy.
-              width/height are the intrinsic dimensions so the browser reserves
-              the right box and the text below never jumps on load. */}
-          <figure data-bio className="mt-8 md:mt-10">
-            <div className="rounded-3xl overflow-hidden border border-navy/10 shadow-sm">
-              <img
-                src="/images/dr-olmos-working.jpg"
-                alt="Dr. Steven Olmos demonstrating a palpation examination during a training course"
-                className="w-full h-auto object-cover"
-                width="1080"
-                height="565"
-                loading="lazy"
-              />
-            </div>
-            <figcaption className="mt-3 font-mono text-[10px] text-navy/35 uppercase tracking-widest">
-              Teaching the protocol · TMJ &amp; Sleep Therapy Centres
-            </figcaption>
-          </figure>
-        </div>
-        <div className="lg:col-span-3 space-y-5 text-navy/60 leading-relaxed">
-          <p data-bio>
-            Dr. Steven Olmos has been in private practice for more than{" "}
-            <span className="text-navy font-semibold">35 years</span>, with
-            the last <span className="text-navy font-semibold">30 years</span>{" "}
-            devoted to research and treatment of craniofacial pain,
-            temporomandibular disorder (TMD), and sleep-disordered breathing.
-          </p>
-          <p data-bio>
-            He obtained his DDS from the University of Southern California
-            School of Dentistry and is Board Certified in both Chronic Pain
-            and Sleep Related Breathing Disorders by the American Board of
-            Craniofacial Pain, the Academy of Integrative Pain Management,
-            the American Board of Dental Sleep Medicine, and the American
-            Board of Craniofacial Pain and Dental Sleep Medicine.
-          </p>
-          <p data-bio>
-            Dr. Olmos is the founder of{" "}
-            <span className="text-navy font-semibold">
-              TMJ &amp; Sleep Therapy Centres International
-            </span>
-            , with over 60 centres in 7 countries dedicated exclusively to
-            the diagnosis and treatment of craniofacial pain and sleep
-            disorders. He currently directs research in these fields through
-            data collection, focused on establishing protocols between
-            dentistry and medicine for optimal treatment outcomes.
-          </p>
+    <Reveal className="section-pad py-20 md:py-24">
+      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-14 items-start">
+        <figure className="lg:col-span-2">
+          <div className="rounded-[2.5rem] overflow-hidden shadow-xl shadow-navy/15">
+            <img
+              src="/images/dr-olmos-working.jpg"
+              alt="Dr. Steven Olmos demonstrating a palpation examination during a training course"
+              className="w-full h-auto object-cover"
+              width="1080"
+              height="565"
+              loading="lazy"
+            />
+          </div>
+          <figcaption className="mt-3 text-sm text-navy/70">
+            Teaching at a TMJ &amp; Sleep Therapy Centres course
+          </figcaption>
+        </figure>
+        <div className="lg:col-span-3">
+          <SectionHeading title="Biography" />
+          <div className="mt-6 space-y-5 text-navy/70 leading-relaxed">
+            <p>
+              Dr. Steven Olmos has been in private practice for more than{" "}
+              <span className="text-navy font-semibold">35 years</span>, with the last{" "}
+              <span className="text-navy font-semibold">30 years</span> devoted to research and treatment of
+              craniofacial pain, temporomandibular disorder (TMD), and sleep-disordered breathing.
+            </p>
+            <p>
+              He obtained his DDS from the University of Southern California School of Dentistry and is Board
+              Certified in both Chronic Pain and Sleep Related Breathing Disorders by the American Board of
+              Craniofacial Pain, the Academy of Integrative Pain Management, the American Board of Dental Sleep
+              Medicine, and the American Board of Craniofacial Pain and Dental Sleep Medicine.
+            </p>
+            <p>
+              Dr. Olmos is the founder of{" "}
+              <span className="text-navy font-semibold">TMJ &amp; Sleep Therapy Centres International</span>, with
+              over 60 centres in 7 countries dedicated exclusively to the diagnosis and treatment of craniofacial
+              pain and sleep disorders. He currently directs research in these fields through data collection,
+              focused on establishing protocols between dentistry and medicine for optimal treatment outcomes.
+            </p>
+          </div>
+          <blockquote className="mt-8 rounded-[2rem] bg-brand-100 border-l-4 border-brand-700 p-6 font-drama italic text-2xl leading-snug text-navy">
+            &ldquo;The more precise and accurate your diagnosis, the more specific and effective will be the
+            treatment.&rdquo;
+          </blockquote>
         </div>
       </div>
-    </section>
+    </Reveal>
   );
 }
 
 function Credentials() {
-  const ref = useRef(null);
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-cred]",
-        { y: 20, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.5,
-          stagger: 0.04,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
   return (
-    <section ref={ref} className="section-pad py-24 md:py-28">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center gap-3 mb-10">
-          <Award size={16} className="text-brand-500" />
-          <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
-            Board Certifications &amp; Fellowships
+    <Reveal className="section-pad pb-20 md:pb-24">
+      <div className="max-w-6xl mx-auto rounded-[2.5rem] bg-white border border-surface-300/60 shadow-sm p-8 md:p-12">
+        <div className="flex items-center gap-4">
+          <span className="grid place-items-center w-12 h-12 rounded-2xl bg-brand-100 text-brand-700">
+            <Award size={22} aria-hidden="true" />
           </span>
-          <div className="flex-1 h-px bg-surface-300/60" />
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {CREDENTIALS.map((c) => (
-            <div
-              key={c.abbr}
-              data-cred
-              className="bg-white card-radius p-5 border border-surface-300/50 hover:border-brand-500/30 hover:shadow-md transition-all duration-500 group"
-            >
-              <div className="font-heading font-bold text-xl tracking-tight text-navy group-hover:text-brand-500 transition-colors">
-                {c.abbr}
-              </div>
-              <div className="text-navy/50 text-xs mt-1.5 leading-snug">
-                {c.label}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function GlobalReach() {
-  const ref = useRef(null);
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-reach]",
-        { y: 30, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.8,
-          stagger: 0.1,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
-  return (
-    <section ref={ref} className="relative bg-navy overflow-hidden">
-      <div className="absolute inset-0 opacity-[0.05]">
-        <img
-          src="https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1920&q=80"
-          alt=""
-          className="w-full h-full object-cover"
-          loading="lazy"
-        />
-      </div>
-      <div className="absolute inset-0 bg-gradient-to-b from-navy via-transparent to-navy" />
-
-      <div className="relative z-10 section-pad py-24 md:py-28">
-        <div className="max-w-6xl mx-auto">
-          <div data-reach className="flex items-center gap-3 mb-6">
-            <Globe2 size={16} className="text-brand-400" />
-            <span className="font-mono text-[10px] text-on-dark/30 uppercase tracking-[0.2em]">
-              TMJ &amp; Sleep Therapy Centres International
-            </span>
-          </div>
-          <h2
-            data-reach
-            className="font-heading font-bold text-4xl md:text-6xl text-on-dark tracking-tight leading-[1.05] text-balance"
-          >
-            <span className="text-brand-400">60+ centres.</span>{" "}
-            <span className="font-drama italic">7 countries.</span>{" "}
-            One protocol.
+          <h2 className="font-heading font-bold text-2xl md:text-4xl tracking-tight text-navy">
+            Board certifications and fellowships
           </h2>
-          <p
-            data-reach
-            className="mt-8 max-w-2xl text-on-dark/45 text-base md:text-lg leading-relaxed"
-          >
-            The network Dr. Olmos founded spans the US, Canada, Australia,
-            and four additional countries — each centre dedicated
-            exclusively to the diagnosis and treatment of craniofacial pain
-            and sleep-disordered breathing. Diamond Orthotic Laboratory is
-            the fabrication arm of that network.
-          </p>
-
-          <div className="mt-16 pt-10 border-t border-white/10 grid grid-cols-1 md:grid-cols-3 gap-8">
-            {FOCUS_AREAS.map((f) => (
-              <div key={f.title} data-reach>
-                <f.Icon size={22} className="text-brand-400 mb-4" />
-                <div className="font-heading font-bold text-lg text-on-dark tracking-tight">
-                  {f.title}
-                </div>
-                <p className="text-on-dark/40 text-sm mt-2 leading-relaxed">
-                  {f.copy}
-                </p>
-              </div>
-            ))}
-          </div>
         </div>
+        <ul className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-3">
+          {CREDENTIALS.map((c) => (
+            <li key={c.abbr} className="flex items-start gap-4 rounded-2xl bg-surface-100 p-4">
+              <span className="flex-shrink-0 min-w-[4.5rem] rounded-full bg-navy px-3 py-1 text-center font-heading font-bold text-sm text-white">
+                {c.abbr}
+              </span>
+              <span className="text-navy/70 text-sm leading-snug">{c.label}</span>
+            </li>
+          ))}
+        </ul>
       </div>
-    </section>
+    </Reveal>
   );
 }
 
-function CTA() {
-  const ref = useRef(null);
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-olmos-cta]",
-        { y: 40, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.8,
-          stagger: 0.1,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
+function Network() {
   return (
-    <section ref={ref} className="section-pad py-24 md:py-28">
-      <div className="max-w-3xl mx-auto text-center">
-        <span
-          data-olmos-cta
-          className="font-mono text-xs text-navy/40 uppercase tracking-widest"
-        >
-          Training &amp; Partnership
-        </span>
-        <h2
-          data-olmos-cta
-          className="mt-4 font-heading font-bold text-3xl md:text-5xl tracking-tight"
-        >
-          Build your practice around
-          <br />
-          <span className="font-drama italic text-brand-500">
-            the Olmos Series.
-          </span>
-        </h2>
-        <div
-          data-olmos-cta
-          className="mt-10 flex flex-wrap items-center justify-center gap-4"
-        >
-          <Link
-            to="/resources/courses"
-            className="btn-magnetic group px-8 py-4 rounded-full bg-accent-500 text-white font-semibold"
-          >
-            <span className="btn-bg bg-accent-600 rounded-full" />
-            <span className="relative z-10 flex items-center gap-2">
-              Training &amp; Courses
-              <ArrowRight
-                size={16}
-                className="group-hover:translate-x-1 transition-transform"
-              />
-            </span>
-          </Link>
-          <Link
-            to="/resources/certified-labs"
-            className="px-8 py-4 rounded-full border border-surface-300 text-navy/70 font-medium hover:bg-surface-200/60 transition-colors duration-300"
-          >
-            Certified Labs
-          </Link>
+    <Reveal className="relative overflow-hidden bg-navy section-pad py-20 md:py-24">
+      <HeroStage />
+      <div className="relative z-10 max-w-6xl mx-auto">
+        <div className="max-w-2xl">
+          <h2 className="font-heading font-bold text-3xl md:text-5xl tracking-tight text-on-dark">
+            TMJ &amp; Sleep Therapy Centres International
+          </h2>
+          <p className="mt-4 text-on-dark/70 text-lg leading-relaxed">
+            The network Dr. Olmos founded spans the US, Canada, Australia and four additional countries. Each
+            centre is dedicated to the diagnosis and treatment of craniofacial pain and sleep-disordered
+            breathing.
+          </p>
         </div>
+        <div className="mt-10">
+          <StatRow stats={NETWORK_STATS} tone="dark" />
+        </div>
+        <ul className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-8">
+          {FOCUS_AREAS.map((f) => (
+            <li key={f.title} className="rounded-[2rem] bg-white/[0.07] border border-white/10 backdrop-blur-sm p-6">
+              <h3 className="font-heading font-bold text-lg text-on-dark">{f.title}</h3>
+              <p className="mt-2 text-on-dark/70 text-sm leading-relaxed">{f.copy}</p>
+            </li>
+          ))}
+        </ul>
       </div>
-    </section>
+    </Reveal>
   );
 }
 
 export function DrOlmosPage() {
   return (
     <>
-      <Hero />
-      <Quotation />
+      <PageHero
+        title="Dr. Steven Olmos, DDS"
+        titleAccent="Craniofacial pain and sleep."
+        intro="Founder of TMJ & Sleep Therapy Centres International. 35+ years in private practice, 30+ years devoted to research and treatment of craniofacial pain, TMD and sleep-disordered breathing."
+      />
       <Biography />
       <Credentials />
-      <GlobalReach />
-      <CTA />
+      <Network />
+      <CtaBand
+        title="Training and courses"
+        intro="Dr. Olmos directs the courses for dentists. The certified labs fabricate Olmos Series appliances."
+        primary={{ label: "Courses", to: "/resources/courses" }}
+        secondary={{ label: "Certified labs", to: "/resources/certified-labs" }}
+        product="/images/ddso-post-render.webp"
+        productAlt="A DDSO appliance with blue bands"
+      />
     </>
   );
 }

@@ -1,19 +1,12 @@
-import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
-import gsap from "gsap";
-import {
-  ArrowRight,
-  ExternalLink,
-  Phone,
-  MapPin,
-  Star,
-  Workflow,
-} from "lucide-react";
-import { playOnView } from "../../lib/playOnView";
+import { ExternalLink, MapPin, Phone } from "lucide-react";
+import { PageHero } from "../../components/marketing/PageHero";
+import { SectionHeading } from "../../components/marketing/SectionHeading";
+import { CtaBand } from "../../components/marketing/CtaBand";
+import { Reveal } from "../../components/marketing/Reveal";
 
 const REGIONS = [
   {
-    flag: "🇺🇸",
     label: "United States",
     labs: [
       {
@@ -22,7 +15,6 @@ const REGIONS = [
         href: "https://www.diamondorthoticlab.com",
         display: "diamondorthoticlab.com",
         phone: "619.724.6400",
-        featured: true,
       },
       {
         name: "John's Dental Laboratory",
@@ -33,7 +25,6 @@ const REGIONS = [
     ],
   },
   {
-    flag: "🇨🇦",
     label: "Canada",
     labs: [
       {
@@ -50,7 +41,6 @@ const REGIONS = [
     ],
   },
   {
-    flag: "🇦🇺",
     label: "Australia",
     labs: [
       {
@@ -63,370 +53,140 @@ const REGIONS = [
   },
 ];
 
-function Hero() {
-  const ref = useRef(null);
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.from("[data-lab-hero]", {
-        y: 40,
-        opacity: 0,
-        duration: 1,
-        stagger: 0.08,
-        ease: "power3.out",
-        delay: 0.3,
-      });
-    }, ref);
-    return () => ctx.revert();
-  }, []);
-
+function MapFeature() {
   return (
-    <section
-      ref={ref}
-      className="relative h-[75dvh] min-h-[520px] flex items-end overflow-hidden bg-navy section-pad"
-    >
-      <div className="absolute inset-0 opacity-[0.1]">
+    <section className="section-pad relative z-10 -mt-10 md:-mt-16">
+      <div className="max-w-6xl mx-auto rounded-[2.5rem] md:rounded-[3rem] bg-white border border-surface-300/60 shadow-2xl shadow-navy/15 p-5 md:p-10">
         <img
-          src="https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1920&q=80"
-          alt=""
-          className="w-full h-full object-cover"
-          loading="lazy"
+          src="/images/certified-labs-map.png"
+          alt="World map with markers across the United States, Canada and Australia, where the certified laboratories are located"
+          className="w-full h-auto rounded-[1.5rem]"
         />
-      </div>
-      <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/70 to-transparent/40" />
-      <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/40 to-transparent" />
-
-      <div className="relative z-10 pb-16 md:pb-24 w-full max-w-6xl mx-auto">
-        <div className="max-w-3xl">
-        <span
-          data-lab-hero
-          className="font-mono text-xs text-on-dark/40 uppercase tracking-widest"
-        >
-          Certified Laboratories
-        </span>
-        <h1 data-lab-hero className="mt-4 text-on-dark">
-          <span className="block font-heading font-bold text-4xl sm:text-5xl md:text-6xl tracking-tight leading-[0.95]">
-            One protocol.
-          </span>
-          <span className="block font-drama italic text-6xl sm:text-7xl md:text-9xl tracking-tight leading-[0.88] text-brand-500">
-            Seven labs.
-          </span>
-        </h1>
-        <p
-          data-lab-hero
-          className="mt-6 text-on-dark/50 text-base md:text-lg max-w-xl leading-relaxed"
-        >
-          Dr. Olmos has partnered with and certified 7 laboratories in the
-          US, Canada, and Australia with the ability and commitment to
-          produce orthotics to the quality and accuracy this treatment
-          demands.
-        </p>
-        </div>
+        <ul className="mt-6 flex flex-wrap gap-3">
+          {REGIONS.map((r) => (
+            <li
+              key={r.label}
+              className="inline-flex items-center gap-2 rounded-full bg-brand-100 text-brand-700 px-4 py-2 text-sm font-semibold"
+            >
+              <MapPin size={16} aria-hidden="true" />
+              {r.label}
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   );
 }
 
 function Standard() {
-  const ref = useRef(null);
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-std]",
-        { y: 30, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.8,
-          stagger: 0.1,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
   return (
-    <section ref={ref} className="section-pad py-24 md:py-28">
+    <Reveal className="section-pad py-20 md:py-24">
       <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-14">
         <div className="lg:col-span-2">
-          <span
-            data-std
-            className="font-mono text-xs text-navy/40 uppercase tracking-widest"
-          >
-            The Standard
-          </span>
-          <h2
-            data-std
-            className="mt-3 font-heading font-bold text-3xl md:text-4xl tracking-tight"
-          >
-            Integrating form with{" "}
-            <span className="font-drama italic text-brand-500">
-              function.
-            </span>
-          </h2>
+          <SectionHeading title="How certification works" />
         </div>
-        <div className="lg:col-span-3 space-y-5 text-navy/60 leading-relaxed">
-          <p data-std>
-            TMJ &amp; Sleep Certified Labs share a commitment to excellence.
-            Each lab has given their assurance that products using the Olmos
-            protocol will meet the consistent high quality we all expect and
-            demand for our patients.
+        <div className="lg:col-span-3 space-y-5 text-navy/70 leading-relaxed">
+          <p>
+            Each TMJ &amp; Sleep Certified Lab has given its assurance that products made to the clinical protocol will
+            meet a consistent quality standard.
           </p>
-          <p data-std>
-            Continued training in the Olmos Protocol is provided to each
-            certified laboratory and its technicians. Ongoing controls are
-            in place to ensure quality as well as your satisfaction.
+          <p>
+            Continued training in the clinical protocol is provided to each certified laboratory and its technicians.
+            Ongoing controls are in place to ensure quality as well as your satisfaction.
           </p>
-          <p data-std>
-            The certified lab program is administered by{" "}
-            <span className="text-navy font-semibold">Matt Rago</span>,
-            Director of International Laboratory Certification, together
-            with{" "}
-            <Link
-              to="/about/dr-olmos"
-              className="text-brand-500 font-semibold hover:underline"
-            >
+          <p>
+            The certified lab program is administered by <span className="text-navy font-semibold">Matt Rago</span>,
+            Director of International Laboratory Certification, together with{" "}
+            <Link to="/about/dr-olmos" className="text-brand-700 font-semibold hover:underline">
               Dr. Olmos
             </Link>
-            . They are available for technical support questions from labs,
-            doctors, and staff.
+            . They are available for technical support questions from labs, doctors, and staff.
           </p>
         </div>
       </div>
-    </section>
+    </Reveal>
   );
 }
 
 function LabCard({ lab }) {
   return (
-    <div
-      className={`card-radius p-6 md:p-7 border transition-all duration-500 flex flex-col ${
-        lab.featured
-          ? "bg-navy text-on-dark border-navy-light hover:border-brand-400/40"
-          : "bg-white border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-navy/5"
-      }`}
-    >
-      {lab.featured && (
-        <div className="flex items-center gap-2 mb-4">
-          <Star size={12} className="text-brand-400 fill-brand-400" />
-          <span className="font-mono text-[10px] text-brand-400 uppercase tracking-widest">
-            Flagship
-          </span>
-        </div>
-      )}
-      <h3
-        className={`font-heading font-bold text-lg tracking-tight leading-snug ${
-          lab.featured ? "text-on-dark" : "text-navy"
-        }`}
-      >
-        {lab.name}
-      </h3>
-      <div
-        className={`mt-2 flex items-center gap-2 text-xs ${
-          lab.featured ? "text-on-dark/50" : "text-navy/45"
-        }`}
-      >
-        <MapPin size={12} />
-        <span>{lab.locator}</span>
-      </div>
-
-      <div className="mt-5 space-y-2 flex-1">
+    <li className="flex flex-col rounded-[2rem] bg-white/[0.07] border border-white/10 backdrop-blur-sm p-7 hover:bg-white/10 transition-colors duration-300">
+      <h4 className="font-heading font-bold text-xl tracking-tight text-on-dark">{lab.name}</h4>
+      <p className="mt-1 flex items-center gap-1.5 text-sm text-on-dark/70">
+        <MapPin size={14} aria-hidden="true" />
+        {lab.locator}
+      </p>
+      <div className="mt-auto pt-6 space-y-2 text-sm">
         {lab.href && (
           <a
             href={lab.href}
             target="_blank"
             rel="noopener noreferrer"
-            className={`group/link inline-flex items-center gap-2 text-sm font-medium transition-colors ${
-              lab.featured
-                ? "text-brand-400 hover:text-brand-300"
-                : "text-brand-500 hover:text-brand-600"
-            }`}
+            className="flex items-center gap-2 font-medium text-brand-300 hover:underline"
           >
+            <ExternalLink size={14} aria-hidden="true" />
             {lab.display}
-            <ExternalLink
-              size={12}
-              className="group-hover/link:translate-x-0.5 transition-transform"
-            />
           </a>
         )}
         {lab.phone && (
-          <div
-            className={`flex items-center gap-2 text-sm ${
-              lab.featured ? "text-on-dark/70" : "text-navy/70"
-            }`}
+          <a
+            href={`tel:+1${lab.phone.replace(/\D/g, "")}`}
+            className="flex items-center gap-2 font-mono text-on-dark/85 hover:underline"
           >
-            <Phone size={12} />
-            <span className="font-mono">{lab.phone}</span>
-          </div>
+            <Phone size={14} aria-hidden="true" />
+            {lab.phone}
+          </a>
         )}
       </div>
-    </div>
+    </li>
   );
 }
 
 function Directory() {
-  const ref = useRef(null);
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-region]",
-        { y: 30, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.7,
-          stagger: 0.12,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
   return (
-    <section ref={ref} className="section-pad py-24 md:py-28 bg-surface-100">
+    <Reveal className="section-pad py-20 md:py-28 bg-navy">
       <div className="max-w-6xl mx-auto">
-        <div className="mb-12 md:mb-16">
-          <div className="flex items-center gap-3 mb-4">
-            <Workflow size={16} className="text-brand-500" />
-            <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
-              Phase I · Phase II · Sleep
-            </span>
-          </div>
-          <h2 className="font-heading font-bold text-3xl md:text-5xl tracking-tight text-balance max-w-3xl">
-            Labs that stand ready to service your{" "}
-            <span className="font-drama italic text-brand-500">
-              appliance needs.
-            </span>
-          </h2>
-        </div>
-
-        <div className="space-y-12 md:space-y-16">
+        <h2 className="font-heading font-bold text-3xl md:text-5xl tracking-tight text-on-dark">
+          Find a <span className="font-drama italic text-brand-500">certified lab</span>
+        </h2>
+        <div className="mt-12 space-y-12">
           {REGIONS.map((r) => (
-            <div key={r.label} data-region>
-              <div className="flex items-center gap-3 mb-6">
-                <span className="text-2xl" aria-hidden>
-                  {r.flag}
-                </span>
-                <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
-                  {r.label}
-                </span>
-                <div className="flex-1 h-px bg-surface-300/60" />
-                <span className="font-mono text-[10px] text-navy/30">
-                  {r.labs.length}{" "}
-                  {r.labs.length === 1 ? "laboratory" : "laboratories"}
-                </span>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6">
+            <div key={r.label}>
+              <h3 className="font-heading font-bold text-xl text-brand-300">{r.label}</h3>
+              <ul className="mt-4 grid md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {r.labs.map((lab) => (
                   <LabCard key={lab.name} lab={lab} />
                 ))}
-              </div>
+              </ul>
             </div>
           ))}
         </div>
       </div>
-    </section>
-  );
-}
-
-function CTA() {
-  const ref = useRef(null);
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-lab-cta]",
-        { y: 40, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.8,
-          stagger: 0.1,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
-  return (
-    <section ref={ref} className="section-pad py-24 md:py-28">
-      <div className="max-w-3xl mx-auto text-center">
-        <span
-          data-lab-cta
-          className="font-mono text-xs text-navy/40 uppercase tracking-widest"
-        >
-          Training &amp; Technical Support
-        </span>
-        <h2
-          data-lab-cta
-          className="mt-4 font-heading font-bold text-3xl md:text-5xl tracking-tight"
-        >
-          Need help with impressions or{" "}
-          <span className="font-drama italic text-brand-500">
-            orthotic repairs?
-          </span>
-        </h2>
-        <p
-          data-lab-cta
-          className="mt-6 text-navy/50 text-base md:text-lg max-w-xl mx-auto"
-        >
-          Call Diamond Orthotic Lab directly for training on taking quality
-          impressions or performing simple orthotic repairs and relines —
-          save your practice time and money.
-        </p>
-        <div
-          data-lab-cta
-          className="mt-10 flex flex-wrap items-center justify-center gap-4"
-        >
-          <a
-            href="tel:+16197246400"
-            className="btn-magnetic group px-8 py-4 rounded-full bg-accent-500 text-white font-semibold"
-          >
-            <span className="btn-bg bg-accent-600 rounded-full" />
-            <span className="relative z-10 flex items-center gap-2">
-              <Phone size={14} />
-              Call 619.724.6400
-            </span>
-          </a>
-          <Link
-            to="/contact"
-            className="px-8 py-4 rounded-full border border-surface-300 text-navy/70 font-medium hover:bg-surface-200/60 transition-colors duration-300"
-          >
-            Contact Form
-            <ArrowRight size={14} className="inline ml-2" />
-          </Link>
-        </div>
-      </div>
-    </section>
+    </Reveal>
   );
 }
 
 export function CertifiedLabsPage() {
   return (
     <>
-      <Hero />
+      <PageHero
+        title="Certified laboratories"
+        titleAccent="in three countries."
+        intro="Laboratories in the US, Canada and Australia are certified to fabricate Olmos Series appliances."
+        product="/images/ddso-ant-angle.webp"
+        productAlt="A DDSO sleep appliance"
+      />
+      <MapFeature />
       <Standard />
       <Directory />
-      <CTA />
+      <CtaBand
+        title="Need help with impressions or orthotic repairs?"
+        intro="Call Diamond Orthotic Lab directly for training on taking quality impressions or performing simple orthotic repairs and relines. Save your practice time and money."
+        primary={{ href: "tel:+16197246400", label: "Call 619.724.6400" }}
+        secondary={{ to: "/contact", label: "Contact form" }}
+        product="/images/onp-clear.webp"
+        productAlt="An Olmos Neuromuscular Positioner appliance"
+      />
     </>
   );
 }

@@ -79,6 +79,12 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes airflow {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+
 @layer base {
   html {
     scroll-behavior: smooth;

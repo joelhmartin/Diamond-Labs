@@ -1,77 +1,43 @@
-import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
-import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
-import {
-  ArrowRight,
-  FileUp,
-  FileDown,
-  Download,
-  ClipboardCheck,
-  MessageSquare,
-  PlayCircle,
-  CheckCircle2,
-  AlertCircle,
-} from "lucide-react";
-
-gsap.registerPlugin(ScrollTrigger);
-
-/* Play a paused tween when `el` enters the viewport. Reliable replacement
-   for ScrollTrigger entrance animations that occasionally get stuck at
-   opacity:0 when layout positions are cached before images/fonts settle. */
-function playOnView(el, tween, { threshold = 0.15 } = {}) {
-  if (!el || !tween) return () => {};
-  const io = new IntersectionObserver(
-    ([entry], obs) => {
-      if (entry.isIntersecting) {
-        tween.play();
-        obs.disconnect();
-      }
-    },
-    { threshold }
-  );
-  io.observe(el);
-  return () => io.disconnect();
-}
+import { ArrowRight, Check, Crosshair, FileText, Mic2, MonitorUp, PlayCircle, ScanLine } from "lucide-react";
+import { PageHero } from "../../components/marketing/PageHero";
+import { SectionHeading } from "../../components/marketing/SectionHeading";
+import { CtaBand } from "../../components/marketing/CtaBand";
+import { Reveal } from "../../components/marketing/Reveal";
 
 const PATHWAYS = [
   {
-    tag: "Recommended",
-    Icon: FileUp,
-    title: "Digital Rx",
-    lead: "Upload intraoral scans and Rx details directly through our HIPAA-compliant portal.",
+    title: "Digital Rx (fastest)",
+    lead: "Approved doctors send intraoral scans and Rx details through the Rx form in the account portal.",
     bullets: [
       "STL or native scanner files accepted",
       "Automatic case-number assignment",
       "Confirmation within one business day",
     ],
-    ctaLabel: "Submit Digital Rx",
+    Icon: MonitorUp,
+    ctaLabel: "Open the Rx form",
     ctaTo: "/submit-case",
-    accent: true,
   },
   {
-    tag: "Paper Form",
-    Icon: FileDown,
-    title: "Download &amp; Fax",
-    lead: "Print the standard Rx form, complete by hand, and include with your shipment.",
+    title: "Paper Rx",
+    lead: "Call the lab for a paper Rx.",
     bullets: [
-      "Olmos Orthotic Rx (PDF)",
-      "Sleep Appliance Rx (PDF)",
+      "Complete by hand",
       "Include with physical models or impressions",
     ],
-    ctaLabel: "View Downloads",
-    ctaTo: "/resources/downloads",
+    Icon: FileText,
+    ctaLabel: "Call 619.724.6400",
+    ctaHref: "tel:+16197246400",
   },
   {
-    tag: "Video Walk-Through",
-    Icon: PlayCircle,
-    title: "Watch the Demos",
+    title: "Watch the demos",
     lead: "See instructional videos for impression taking, scanner protocols, and phonetic bite registration.",
     bullets: [
       "Impression-taking demonstrations",
       "Phonetic bite registration technique",
       "Device-specific instructions for use",
     ],
+    Icon: PlayCircle,
     ctaLabel: "Instructional Videos",
     ctaTo: "/resources/videos",
   },
@@ -89,425 +55,165 @@ const REQUIRED = [
 
 const TIPS = [
   {
-    Icon: AlertCircle,
-    title: "Capture the hammular notches",
+    Icon: ScanLine,
+    title: "Capture the hamular notches",
     body: "Essential for D3D-Matrix mounting. If dragging occurs with Polyvinyl Siloxane, retake around posterior retention landmarks (ball clasps, thermoforming, rigid acrylic).",
   },
   {
-    Icon: AlertCircle,
+    Icon: Mic2,
     title: "Phonetic position for Day appliances",
-    body: "Olmos Day Orthotics are fabricated on the mandible for aesthetics and function. If the patient cannot speak with the appliance in place, they won&apos;t wear it.",
+    body: "Olmos Day Orthotics are fabricated on the mandible for aesthetics and function. If the patient cannot speak with the appliance in place, they won't wear it.",
   },
   {
-    Icon: AlertCircle,
+    Icon: Crosshair,
     title: "Include incisive papilla",
     body: "Critical landmark for mounting procedures. Incomplete impressions around papilla and notches will delay the case until we can request a retake.",
   },
 ];
 
-function Hero() {
-  const ref = useRef(null);
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.from("[data-rx-hero]", {
-        y: 40,
-        opacity: 0,
-        duration: 1,
-        stagger: 0.08,
-        ease: "power3.out",
-        delay: 0.3,
-      });
-    }, ref);
-    return () => ctx.revert();
-  }, []);
-
-  return (
-    <section
-      ref={ref}
-      className="relative h-[75dvh] min-h-[520px] flex items-end overflow-hidden bg-navy section-pad"
-    >
-      <div className="absolute inset-0 opacity-[0.1]">
-        <img
-          src="https://images.unsplash.com/photo-1582560469781-1965b9af903d?auto=format&fit=crop&w=1920&q=80"
-          alt=""
-          className="w-full h-full object-cover"
-          loading="lazy"
-        />
-      </div>
-      <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/70 to-navy/30" />
-      <div className="absolute inset-0 bg-gradient-to-t from-navy via-navy/30 to-transparent" />
-
-      <div className="relative z-10 pb-16 md:pb-24 w-full max-w-6xl mx-auto">
-        <div className="max-w-3xl">
-        <span
-          data-rx-hero
-          className="font-mono text-xs text-on-dark/40 uppercase tracking-widest"
-        >
-          Prescription Workflow
-        </span>
-        <h1 data-rx-hero className="mt-4 text-on-dark">
-          <span className="block font-heading font-bold text-4xl sm:text-5xl md:text-6xl tracking-tight leading-[0.95]">
-            How to send us
-          </span>
-          <span className="block font-drama italic text-6xl sm:text-7xl md:text-9xl tracking-tight leading-[0.88] text-brand-500">
-            a case.
-          </span>
-        </h1>
-        <p
-          data-rx-hero
-          className="mt-6 text-on-dark/50 text-base md:text-lg max-w-xl leading-relaxed"
-        >
-          Three pathways, one protocol. Digital submission is fastest —
-          paper forms and video walk-throughs are available if you&apos;d
-          prefer.
-        </p>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function Pathways() {
-  const ref = useRef(null);
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-path]",
-        { y: 40, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.8,
-          stagger: 0.12,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
   return (
-    <section ref={ref} className="section-pad py-24 md:py-28">
+    <Reveal className="section-pad py-20 md:py-24">
       <div className="max-w-6xl mx-auto">
-        <div className="mb-10 md:mb-12 max-w-2xl">
-          <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
-            Submission Pathways
-          </span>
-          <h2 className="mt-3 font-heading font-bold text-3xl md:text-5xl tracking-tight text-balance">
-            Pick the route that fits your{" "}
-            <span className="font-drama italic text-brand-500">practice.</span>
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6">
-          {PATHWAYS.map((p) => (
-            <div
+        <SectionHeading title="Pick the route that fits your practice" />
+        <ul className="mt-10 grid lg:grid-cols-3 gap-5">
+          {PATHWAYS.map(({ Icon, ...p }, i) => (
+            <li
               key={p.title}
-              data-path
-              className={`card-radius p-7 md:p-8 border flex flex-col transition-all duration-500 ${
-                p.accent
-                  ? "bg-navy text-on-dark border-navy-light hover:border-brand-400/40"
-                  : "bg-white border-surface-300/50 hover:border-brand-500/30 hover:shadow-lg hover:shadow-navy/5"
+              className={`flex flex-col rounded-[2rem] border p-7 md:p-8 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-navy/10 ${
+                i === 0 ? "bg-navy text-on-dark border-navy shadow-xl shadow-navy/20" : "bg-white border-surface-300/60 shadow-sm"
               }`}
             >
-              <div className="flex items-center justify-between mb-6">
-                <span
-                  className={`font-mono text-[10px] uppercase tracking-widest ${
-                    p.accent ? "text-brand-400" : "text-navy/40"
-                  }`}
-                >
-                  {p.tag}
-                </span>
-                <div
-                  className={`w-11 h-11 rounded-2xl flex items-center justify-center ${
-                    p.accent
-                      ? "bg-brand-500/10 border border-brand-500/20"
-                      : "bg-surface-100 border border-surface-300/50"
-                  }`}
-                >
-                  <p.Icon
-                    size={18}
-                    className={p.accent ? "text-brand-400" : "text-navy/60"}
-                  />
-                </div>
-              </div>
-
-              <h3
-                className={`font-heading font-bold text-2xl tracking-tight ${
-                  p.accent ? "text-on-dark" : "text-navy"
-                }`}
-                dangerouslySetInnerHTML={{ __html: p.title }}
-              />
-              <p
-                className={`mt-3 text-sm md:text-base leading-relaxed ${
-                  p.accent ? "text-on-dark/60" : "text-navy/55"
+              <span
+                className={`grid place-items-center w-12 h-12 rounded-2xl ${
+                  i === 0 ? "bg-white/10 text-brand-300" : "bg-brand-100 text-brand-700"
                 }`}
               >
-                {p.lead}
-              </p>
-
-              <ul className="mt-5 space-y-2 flex-1">
-                {p.bullets.map((b, i) => (
-                  <li
-                    key={i}
-                    className={`flex gap-2.5 text-sm leading-snug ${
-                      p.accent ? "text-on-dark/60" : "text-navy/60"
-                    }`}
-                  >
-                    <CheckCircle2
-                      size={13}
-                      className={`mt-1 flex-shrink-0 ${
-                        p.accent ? "text-brand-400" : "text-brand-500"
-                      }`}
-                    />
-                    <span>{b}</span>
+                <Icon size={22} aria-hidden="true" />
+              </span>
+              <h3 className={`mt-5 font-heading font-bold text-2xl tracking-tight ${i === 0 ? "text-on-dark" : "text-navy"}`}>
+                {p.title}
+              </h3>
+              <p className={`mt-3 leading-relaxed ${i === 0 ? "text-on-dark/75" : "text-navy/70"}`}>{p.lead}</p>
+              <ul className={`mt-5 space-y-2 text-sm leading-snug ${i === 0 ? "text-on-dark/75" : "text-navy/70"}`}>
+                {p.bullets.map((b) => (
+                  <li key={b} className="flex gap-2.5">
+                    <Check size={16} className={`mt-0.5 flex-shrink-0 ${i === 0 ? "text-brand-400" : "text-brand-700"}`} aria-hidden="true" />
+                    {b}
                   </li>
                 ))}
               </ul>
-
-              <Link
-                to={p.ctaTo}
-                className={`mt-7 inline-flex items-center gap-2 text-sm font-semibold ${
-                  p.accent
-                    ? "text-brand-400 hover:text-brand-300"
-                    : "text-brand-500 hover:text-brand-600"
-                }`}
-              >
-                {p.ctaLabel}
-                <ArrowRight size={14} />
-              </Link>
-            </div>
+              {(() => {
+                const cls = `mt-auto pt-7 inline-flex items-center gap-2 font-semibold hover:underline ${
+                  i === 0 ? "text-brand-300" : "text-brand-700"
+                }`;
+                return p.ctaHref ? (
+                  <a href={p.ctaHref} className={cls}>
+                    {p.ctaLabel}
+                    <ArrowRight size={14} />
+                  </a>
+                ) : (
+                  <Link to={p.ctaTo} className={cls}>
+                    {p.ctaLabel}
+                    <ArrowRight size={14} />
+                  </Link>
+                );
+              })()}
+            </li>
           ))}
-        </div>
+        </ul>
       </div>
-    </section>
+    </Reveal>
   );
 }
 
 function Required() {
-  const ref = useRef(null);
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-req]",
-        { y: 24, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.5,
-          stagger: 0.04,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
   return (
-    <section ref={ref} className="section-pad py-24 md:py-28 bg-surface-100">
-      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-10 lg:gap-14">
-        <div className="lg:col-span-2">
-          <div className="flex items-center gap-3 mb-4">
-            <ClipboardCheck size={16} className="text-brand-500" />
-            <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
-              What to Include
-            </span>
-          </div>
-          <h2 className="font-heading font-bold text-3xl md:text-4xl tracking-tight">
-            Every case needs{" "}
-            <span className="font-drama italic text-brand-500">
-              these details.
-            </span>
+    <Reveal className="relative overflow-hidden section-pad py-20 md:py-28 bg-navy">
+      <div className="relative z-10 max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-14 items-center">
+        <div>
+          <h2 className="font-heading font-bold text-3xl md:text-5xl tracking-tight text-on-dark">
+            What to <span className="font-drama italic text-brand-500">include</span>
           </h2>
-          <p className="mt-4 text-navy/55 leading-relaxed">
-            Missing information is the single biggest cause of delays.
-            Here&apos;s what we need before fabrication can start.
+          <p className="mt-4 text-on-dark/75 text-lg leading-relaxed max-w-xl">
+            Missing information is the single biggest cause of delays. Here&apos;s what we need before fabrication can
+            start.
           </p>
+          <img
+            src="/images/dorsal1.webp"
+            alt="A white sleep appliance seated on a blue printed dental model"
+            className="mt-8 w-full max-w-md rounded-[2rem] object-cover shadow-xl shadow-black/30"
+          />
         </div>
-        <div className="lg:col-span-3 space-y-2.5">
-          {REQUIRED.map((r, i) => (
-            <div
-              key={i}
-              data-req
-              className="bg-white card-radius px-5 py-4 border border-surface-300/40 flex gap-3 items-start"
-            >
-              <span className="font-mono text-[11px] text-brand-500 tracking-widest mt-0.5 flex-shrink-0">
-                {String(i + 1).padStart(2, "0")}
+        <ul className="rounded-[2rem] bg-white/[0.07] border border-white/10 backdrop-blur-sm p-6 md:p-8 space-y-4">
+          {REQUIRED.map((r) => (
+            <li key={r} className="flex gap-3 text-on-dark/85 leading-snug">
+              <span className="mt-0.5 grid place-items-center w-6 h-6 rounded-full bg-brand-500/20 text-brand-400 flex-shrink-0">
+                <Check size={14} aria-hidden="true" />
               </span>
-              <span className="text-sm text-navy/70 leading-snug">{r}</span>
-            </div>
+              {r}
+            </li>
           ))}
-        </div>
+        </ul>
       </div>
-    </section>
+    </Reveal>
   );
 }
 
 function Tips() {
-  const ref = useRef(null);
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-tip]",
-        { y: 30, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.7,
-          stagger: 0.1,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
   return (
-    <section ref={ref} className="section-pad py-24 md:py-28">
-      <div className="max-w-6xl mx-auto">
-        <div className="mb-10 md:mb-12 max-w-2xl">
-          <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
-            Pro Tips
-          </span>
-          <h2 className="mt-3 font-heading font-bold text-3xl md:text-5xl tracking-tight text-balance">
-            Small details that{" "}
-            <span className="font-drama italic text-brand-500">
-              save the case.
-            </span>
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {TIPS.map((t) => (
-            <div
-              key={t.title}
-              data-tip
-              className="bg-white card-radius p-7 border border-surface-300/50 hover:border-accent-500/30 hover:shadow-lg hover:shadow-navy/5 transition-all duration-500"
-            >
-              <div className="w-11 h-11 rounded-2xl bg-accent-500/10 border border-accent-500/20 flex items-center justify-center mb-5">
-                <t.Icon size={18} className="text-accent-500" />
-              </div>
-              <h3
-                className="font-heading font-bold text-lg tracking-tight"
-                dangerouslySetInnerHTML={{ __html: t.title }}
-              />
-              <p
-                className="mt-2 text-navy/55 text-sm leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: t.body }}
-              />
-            </div>
-          ))}
+    <Reveal className="section-pad py-20 md:py-24">
+      <div className="max-w-6xl mx-auto grid lg:grid-cols-[1fr_1.1fr] gap-10 lg:gap-14 items-center">
+        <figure>
+          <img
+            src="/images/onp-side.webp"
+            alt="A white Olmos appliance seated on a blue printed dental model, side view"
+            className="w-full rounded-[2.5rem] object-cover shadow-xl shadow-navy/15"
+          />
+        </figure>
+        <div>
+          <SectionHeading title="Small details that save the case" />
+          <ul className="mt-8 space-y-4">
+            {TIPS.map(({ Icon, title, body }) => (
+              <li key={title} className="flex gap-5 rounded-[2rem] bg-white border border-surface-300/60 shadow-sm p-6">
+                <span className="flex-shrink-0 grid place-items-center w-12 h-12 rounded-2xl bg-brand-100 text-brand-700">
+                  <Icon size={22} aria-hidden="true" />
+                </span>
+                <div>
+                  <h3 className="font-heading font-bold text-lg tracking-tight text-navy">{title}</h3>
+                  <p className="mt-2 text-sm text-navy/70 leading-relaxed">{body}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
-    </section>
-  );
-}
-
-function CTA() {
-  const ref = useRef(null);
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-rx-cta]",
-        { y: 40, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.8,
-          stagger: 0.1,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
-  return (
-    <section ref={ref} className="section-pad py-24 md:py-28 bg-surface-100">
-      <div className="max-w-3xl mx-auto text-center">
-        <span
-          data-rx-cta
-          className="font-mono text-xs text-navy/40 uppercase tracking-widest"
-        >
-          Need Help?
-        </span>
-        <h2
-          data-rx-cta
-          className="mt-4 font-heading font-bold text-3xl md:text-5xl tracking-tight"
-        >
-          Unsure about a case?
-          <br />
-          <span className="font-drama italic text-brand-500">
-            Call the lab first.
-          </span>
-        </h2>
-        <p
-          data-rx-cta
-          className="mt-6 text-navy/50 text-base md:text-lg max-w-xl mx-auto"
-        >
-          Our technicians can walk you through impression technique,
-          appliance selection, or device-specific requirements before you
-          submit.
-        </p>
-        <div
-          data-rx-cta
-          className="mt-10 flex flex-wrap items-center justify-center gap-4"
-        >
-          <a
-            href="tel:+16197246400"
-            className="btn-magnetic group px-8 py-4 rounded-full bg-brand-500 text-white font-semibold"
-          >
-            <span className="btn-bg bg-brand-600 rounded-full" />
-            <span className="relative z-10 flex items-center gap-2">
-              <MessageSquare size={14} />
-              Call 619.724.6400
-            </span>
-          </a>
-          <Link
-            to="/resources/downloads"
-            className="px-8 py-4 rounded-full border border-surface-300 text-navy/70 font-medium hover:bg-white transition-colors duration-300 inline-flex items-center gap-2"
-          >
-            <Download size={14} />
-            Download PDF Forms
-          </Link>
-        </div>
-      </div>
-    </section>
+    </Reveal>
   );
 }
 
 export function RxInstructionsPage() {
   return (
     <>
-      <Hero />
+      <PageHero
+        variant="compact"
+        title="How to send us"
+        titleAccent="a case."
+        intro="Approved doctors send cases digitally through the account portal, which is fastest. For a paper Rx, call the lab. Video walk-throughs cover impressions and bite registration."
+        product="/images/ond-nylon.webp"
+        productAlt="An Olmos Neuromuscular Device appliance with bands"
+      />
       <Pathways />
       <Required />
       <Tips />
-      <CTA />
+      <CtaBand
+        title="Unsure about a case? Call the lab first."
+        intro="Our technicians can walk you through impression technique, appliance selection, or device-specific requirements before you submit."
+        primary={{ href: "tel:+16197246400", label: "Call 619.724.6400" }}
+        secondary={{ to: "/resources/videos", label: "Instructional videos" }}
+        product="/images/onp-nylon4.webp"
+        productAlt="An Olmos Neuromuscular Positioner appliance"
+      />
     </>
   );
 }

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { ArrowUpRight, Facebook, Instagram, Linkedin, Youtube } from "lucide-react";
+import { ROUTES } from "../../config/routes.js";
 
 const SOCIALS = [
   { icon: Facebook, href: "https://facebook.com/diamondorthotic", label: "Facebook" },
@@ -10,20 +11,19 @@ const SOCIALS = [
 
 const FOOTER_NAV = {
   Products: [
-    { label: "Olmos Series", to: "/products" },
-    { label: "DDSO Sleep Orthotic", to: "/products" },
-    { label: "TMD Orthotics", to: "/products" },
-    { label: "Materials", to: "/products" },
+    { label: "All Products", to: "/products" },
+    { label: "TMD Orthotics", to: "/services/tmd" },
+    { label: "Sleep Appliances", to: "/services/sleep" },
   ],
   Company: [
     { label: "About Us", to: "/about" },
-    { label: "Our Process", to: "/about" },
+    { label: "Our Team", to: "/about/team" },
     { label: "Contact", to: "/contact" },
   ],
   Resources: [
-    { label: "For Dentists", to: "/contact" },
-    { label: "Case Submission", to: "/contact" },
-    { label: "Digital Workflow", to: "/about" },
+    { label: "Case Submission", to: "/submit-case" },
+    { label: "Digital Workflow", to: "/services/digital-workflow" },
+    { label: "Apply for an account", to: ROUTES.REGISTER_DOCTOR },
   ],
 };
 
@@ -38,9 +38,14 @@ export function Footer() {
             <h3 className="font-heading font-bold text-on-dark text-xl tracking-tight">
               Diamond Orthotic Laboratory
             </h3>
-            <p className="mt-3 text-on-dark/50 text-sm leading-relaxed max-w-xs">
-              The premier Olmos-Method orthotic laboratory. Digital-first
-              precision for TMJ and sleep breathing disorders.
+            <p className="mt-3 text-on-dark/60 text-sm leading-relaxed max-w-xs">
+              A digital orthotic laboratory in La Mesa, California, making TMD
+              orthotics and sleep appliances for dentists.
+            </p>
+            <p className="mt-3 text-sm">
+              <a href="tel:+16197246400" className="font-mono text-on-dark/70 hover:text-on-dark transition-colors">
+                619.724.6400
+              </a>
             </p>
             {/* Social links */}
             <div className="mt-6 flex items-center gap-3">
@@ -50,20 +55,12 @@ export function Footer() {
                   href={s.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-on-dark/30 hover:text-on-dark hover:bg-white/10 transition-all duration-300"
+                  className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-on-dark/60 hover:text-on-dark hover:bg-white/10 transition-all duration-300"
                   aria-label={s.label}
                 >
                   <s.icon size={14} />
                 </a>
               ))}
-            </div>
-
-            <div className="mt-4 flex items-center gap-3 font-mono text-xs text-on-dark/40">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-              </span>
-              System Operational
             </div>
           </div>
 
@@ -71,7 +68,7 @@ export function Footer() {
           <div className="md:col-span-8 grid grid-cols-2 sm:grid-cols-3 gap-8">
             {Object.entries(FOOTER_NAV).map(([title, links]) => (
               <div key={title}>
-                <h4 className="font-heading font-semibold text-on-dark/30 text-xs uppercase tracking-widest mb-4">
+                <h4 className="font-heading font-semibold text-on-dark/70 text-sm mb-4">
                   {title}
                 </h4>
                 <ul className="space-y-2.5">
@@ -97,18 +94,18 @@ export function Footer() {
 
         {/* Bottom bar */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-8">
-          <p className="text-on-dark/30 text-xs">
+          <p className="text-on-dark/60 text-xs">
             &copy; {new Date().getFullYear()} Diamond Orthotic Laboratory. All rights
             reserved.
           </p>
-          <div className="flex items-center gap-6 text-on-dark/30 text-xs">
-            <span className="hover:text-on-dark/60 transition-colors cursor-pointer">
+          <div className="flex items-center gap-6 text-on-dark/60 text-xs">
+            <span>
               Privacy Policy
             </span>
-            <span className="hover:text-on-dark/60 transition-colors cursor-pointer">
+            <span>
               Terms of Service
             </span>
-            <span className="hover:text-on-dark/60 transition-colors cursor-pointer">
+            <span>
               FDA Compliance
             </span>
           </div>
