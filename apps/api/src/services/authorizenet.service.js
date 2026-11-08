@@ -218,9 +218,10 @@ export async function createCustomerProfile({ email, description }) {
   const data = await apiRequest({
     createCustomerProfileRequest: {
       merchantAuthentication: merchantAuth(),
+      // Authorize.net validates these in schema order: description before email.
       profile: {
-        email,
         description: description || email,
+        email,
       },
     },
   });
@@ -372,7 +373,8 @@ export async function getHostedAddCardToken({ customerProfileId, iframeCommunica
   if (iframeCommunicatorUrl) {
     setting.push({
       settingName: "hostedProfileIFrameCommunicatorUrl",
-      settingValue: JSON.stringify({ url: iframeCommunicatorUrl }),
+      // A plain URL here. Unlike hostedPaymentIFrameCommunicatorUrl, Authorize.net rejects the {"url":...} form.
+      settingValue: iframeCommunicatorUrl,
     });
   }
 
