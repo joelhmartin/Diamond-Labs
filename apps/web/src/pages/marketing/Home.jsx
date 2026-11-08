@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { playOnView } from "../../lib/playOnView";
+import { prefersReducedMotion } from "../../lib/reducedMotion";
+import { HeroStage } from "../../components/marketing/HeroStage";
+import { CtaBand } from "../../components/marketing/CtaBand.jsx";
+import { RotatingGeometry, ScanningGrid, PulsingWaveform } from "../../components/marketing/ProtocolAnimations.jsx";
+import { JawJointFigure, AirwayFigure } from "../../components/marketing/SpecialtyFigures";
 import LottiePlayer from "../../components/ui/LottiePlayer";
 import {
   ArrowRight,
-  Scan,
-  PenTool,
-  Printer,
   ChevronRight,
   Activity,
   Shield,
@@ -16,30 +17,13 @@ import {
   Clock,
 } from "lucide-react";
 
-gsap.registerPlugin(ScrollTrigger);
-
-/* ─── NOISE OVERLAY ─── */
-function NoiseOverlay() {
-  return (
-    <svg className="noise-overlay" width="100%" height="100%">
-      <filter id="noise">
-        <feTurbulence
-          type="fractalNoise"
-          baseFrequency="0.8"
-          numOctaves="4"
-          stitchTiles="stitch"
-        />
-      </filter>
-      <rect width="100%" height="100%" filter="url(#noise)" />
-    </svg>
-  );
-}
 
 /* ─── HERO ─── */
 function Hero() {
   const heroRef = useRef(null);
 
   useEffect(() => {
+    if (prefersReducedMotion()) return undefined;
     const ctx = gsap.context(() => {
       gsap.from("[data-hero-anim]", {
         y: 40,
@@ -65,29 +49,18 @@ function Hero() {
       ref={heroRef}
       className="relative min-h-[100dvh] flex items-end overflow-hidden section-pad"
     >
-      {/* Background stage */}
-      <div className="absolute inset-0 bg-gradient-to-br from-navy to-navy-dark overflow-hidden">
-        {/* Animated Diamond SVGs / Divs */}
-        <div className="absolute top-[-10%] left-[-5%] w-[40vw] h-[40vw] bg-brand-500/20 opacity-30 animate-float-1 mix-blend-screen" />
-        <div className="absolute top-[20%] right-[-10%] w-[50vw] h-[50vw] bg-brand-400/20 opacity-40 animate-float-2 mix-blend-screen" style={{ animationDelay: "-1s" }} />
-        <div className="absolute bottom-[-15%] left-[20%] w-[45vw] h-[45vw] bg-brand-500/15 opacity-20 animate-float-3 mix-blend-screen" style={{ animationDelay: "-2s" }} />
-        <div className="absolute top-[40%] left-[60%] w-[25vw] h-[25vw] bg-brand-300/20 opacity-30 animate-float-1 mix-blend-screen" style={{ animationDelay: "-1.5s" }} />
-
-        {/* Gradient overlays for readability */}
-        <div className="absolute inset-0 bg-gradient-to-r from-navy/60 via-navy/30 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-t from-navy/80 via-transparent to-transparent" />
-      </div>
+      <HeroStage />
 
       {/* Content */}
-      <div className="relative z-10 pt-44 pb-12 md:pt-48 md:pb-16 lg:pt-0 lg:pb-24 w-full max-w-6xl mx-auto">
+      <div className="relative z-10 pt-44 pb-12 md:pt-48 md:pb-16 lg:pt-36 lg:pb-24 w-full max-w-6xl mx-auto">
         <div className="max-w-3xl">
         <div data-hero-anim className="mb-4">
           <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/10 text-on-dark/70 font-mono text-xs font-semibold tracking-wider shadow-sm">
             <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-500 opacity-75" />
+              <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-500 opacity-75" />
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-brand-500" />
             </span>
-            OLMOS-METHOD CERTIFIED LAB
+            TMD & SLEEP ORTHOTIC LAB
           </span>
         </div>
 
@@ -104,8 +77,8 @@ function Hero() {
           data-hero-anim
           className="mt-6 text-on-dark/60 text-base md:text-lg max-w-lg leading-relaxed font-medium"
         >
-          The only orthotic lab built around the Olmos Series system. Digital
-          workflow. Clinical accuracy. Every appliance, every time.
+          The orthotic lab for TMD and sleep dentistry. Digital workflow.
+          Clinical accuracy. Every appliance, every time.
         </p>
 
         <div data-hero-anim className="mt-8 flex flex-wrap items-center gap-4">
@@ -132,7 +105,7 @@ function Hero() {
 
         <div
           data-hero-anim
-          className="mt-10 md:mt-12 flex flex-wrap items-center gap-x-5 gap-y-2 md:gap-x-8 text-on-dark/40 text-xs font-mono font-medium"
+          className="mt-10 md:mt-12 flex flex-wrap items-center gap-x-5 gap-y-2 md:gap-x-8 text-on-dark/70 text-xs font-mono font-medium"
         >
           <span>Quality</span>
           <span className="w-1 h-1 rounded-full bg-white/20" />
@@ -175,19 +148,22 @@ function DiagnosticShuffler() {
 
   const cards = [
     {
-      label: "Olmos Protocol Assessment",
-      status: "Complete",
+      label: "Diamond Digital Sleep Orthotic",
+      status: "Sleep",
       color: "bg-brand-500",
+      image: "/images/ddso-post-render.webp",
     },
     {
-      label: "Digital Articulation Review",
-      status: "In Progress",
+      label: "Olmos Neuromuscular Device",
+      status: "TMD",
       color: "bg-accent-500",
+      image: "/images/ond-nylon.webp",
     },
     {
-      label: "Clinical Verification",
-      status: "Pending",
+      label: "Olmos Neuromuscular Positioner",
+      status: "TMD",
       color: "bg-emerald-500",
+      image: "/images/onp-nylon4.webp",
     },
   ];
 
@@ -196,12 +172,11 @@ function DiagnosticShuffler() {
       <div className="flex items-center gap-2 mb-2">
         <Shield size={16} className="text-brand-500" />
         <h3 className="font-heading font-bold text-base tracking-tight">
-          Olmos-Method Expertise
+          Clinical Protocol Expertise
         </h3>
       </div>
-      <p className="text-navy/50 text-sm mb-6">
-        The only lab built around the Olmos Series system. We understand the
-        clinical protocol, not just the fabrication.
+      <p className="text-navy/70 text-sm mb-6">
+        We understand the clinical protocol, not just the fabrication.
       </p>
       <div className="relative flex-1" style={{ minHeight: "140px" }}>
         {order.map((idx, pos) => (
@@ -221,13 +196,14 @@ function DiagnosticShuffler() {
             <div className="flex items-center justify-between" style={{ visibility: pos === 0 ? "visible" : "hidden" }}>
               <div className="flex items-center gap-3">
                 <span
-                  className={`w-2 h-2 rounded-full ${cards[idx].color}`}
+                  className={`w-2 h-2 rounded-full flex-shrink-0 ${cards[idx].color}`}
                 />
+                <img src={cards[idx].image} alt="" className="h-9 w-12 object-contain" />
                 <span className="text-sm font-medium text-navy/80">
                   {cards[idx].label}
                 </span>
               </div>
-              <span className="text-xs font-mono text-navy/40">
+              <span className="text-xs font-mono text-navy/70">
                 {cards[idx].status}
               </span>
             </div>
@@ -244,14 +220,13 @@ function TelemetryTypewriter() {
   const [currentLine, setCurrentLine] = useState("");
   const [charIndex, setCharIndex] = useState(0);
   const feedMessages = [
-    "▸ Intraoral scan received — case #4012",
-    "▸ CAD articulation parameters loaded",
-    "▸ Olmos-Method bite registration verified",
-    "▸ Material: Nylon PA12 — biocompatible",
-    "▸ 3D print queue: position 2 of 8",
-    "▸ Quality control: dimensional check passed",
-    "▸ Appliance shipped — tracking generated",
-    "▸ Digital workflow cycle: 4.2 days avg",
+    "▸ Intraoral scan — STL and native files accepted",
+    "▸ Digital bite registration",
+    "▸ CAD articulation to the parameters on your Rx",
+    "▸ Printed in biocompatible PA12 nylon",
+    "▸ Dimensional check against the design file",
+    "▸ Shipped with tracking, care kit and instructions",
+    "▸ Case archived digitally for reprint",
   ];
   const lineIndex = useRef(0);
 
@@ -285,19 +260,19 @@ function TelemetryTypewriter() {
           Digital-First Precision
         </h3>
       </div>
-      <p className="text-navy/50 text-sm mb-4">
-        Full digital workflow. No analog guesswork. Consistent, accurate
-        appliances with fast turnaround.
+      <p className="text-navy/70 text-sm mb-4">
+        Full digital workflow. Consistent, accurate appliances with fast
+        turnaround.
       </p>
-      <div className="flex-1 bg-navy/[0.03] rounded-2xl p-4 font-mono text-xs overflow-hidden">
+      <div className="flex-1 min-h-[9rem] bg-navy/[0.03] rounded-2xl p-4 font-mono text-xs overflow-hidden">
         {lines.map((line, i) => (
-          <div key={i} className="text-navy/40 leading-relaxed truncate">
+          <div key={i} className="text-navy/70 leading-relaxed">
             {line}
           </div>
         ))}
         <div className="text-navy/80 leading-relaxed">
           {currentLine}
-          <span className="inline-block w-1.5 h-3.5 bg-brand-500 ml-0.5 animate-pulse rounded-sm" />
+          <span className="inline-block w-1.5 h-3.5 bg-brand-500 ml-0.5 motion-safe:animate-pulse rounded-sm" />
         </div>
       </div>
     </div>
@@ -309,6 +284,7 @@ function TMJSleepCard() {
   const [phase, setPhase] = useState(0); // 0=TMJ visible, 1=Sleep visible
 
   useEffect(() => {
+    if (prefersReducedMotion()) return undefined;
     const interval = setInterval(() => {
       setPhase((prev) => (prev === 0 ? 1 : 0));
     }, 3500);
@@ -323,79 +299,27 @@ function TMJSleepCard() {
           TMJ + Sleep Under One Roof
         </h3>
       </div>
-      <p className="text-navy/50 text-sm mb-4">
+      <p className="text-navy/70 text-sm mb-4">
         Dual specialization in TMD orthotics and FDA-cleared sleep appliances.
         One lab, every case.
       </p>
-      <div className="flex-1 bg-navy/[0.03] rounded-2xl p-5 overflow-hidden min-h-[140px] flex flex-col items-center justify-center">
-        {/* SVG illustration: TMJ and Sleep side by side */}
-        <div className="flex items-center justify-center gap-6 w-full">
-          {/* TMJ figure */}
-          <div className={`flex flex-col items-center transition-all duration-700 ${phase === 0 ? "opacity-100 scale-100" : "opacity-30 scale-95"}`}>
-            <svg viewBox="0 0 80 90" className="w-16 h-20" fill="none">
-              {/* Head */}
-              <circle cx="40" cy="28" r="18" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
-              {/* Jaw - offset to show pain */}
-              <path d="M28 36 Q40 52 52 36" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
-              {/* Pain lines */}
-              <g className={`transition-opacity duration-500 ${phase === 0 ? "opacity-100" : "opacity-0"}`}>
-                <line x1="58" y1="28" x2="66" y2="24" stroke="rgb(var(--alert))" strokeWidth="1.5" strokeLinecap="round" />
-                <line x1="58" y1="33" x2="68" y2="33" stroke="rgb(var(--alert))" strokeWidth="1.5" strokeLinecap="round" />
-                <line x1="58" y1="38" x2="66" y2="42" stroke="rgb(var(--alert))" strokeWidth="1.5" strokeLinecap="round" />
-              </g>
-              {/* Shoulders */}
-              <path d="M20 58 Q40 48 60 58" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
-              {/* Eyes - squinting in pain */}
-              <line x1="33" y1="25" x2="37" y2="25" stroke="rgb(var(--navy))" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="43" y1="25" x2="47" y2="25" stroke="rgb(var(--navy))" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-            <span className={`mt-2 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all duration-500 ${
-              phase === 0 ? "bg-brand-500 text-white" : "bg-surface-200/60 text-navy/30"
-            }`}>
-              TMD
-            </span>
+      <div className="flex-1 grid grid-cols-2 gap-3">
+        {[
+          { label: "TMD orthotics", Figure: JawJointFigure, on: phase === 0 },
+          { label: "Sleep appliances", Figure: AirwayFigure, on: phase === 1 },
+        ].map(({ label, Figure, on }) => (
+          <div
+            key={label}
+            className={`rounded-2xl px-3 pt-4 pb-3 flex flex-col items-center border transition-colors duration-700 ${
+              on ? "bg-brand-500/[0.08] border-brand-500/30" : "bg-navy/[0.03] border-transparent"
+            }`}
+          >
+            <div className="w-full max-w-[150px] aspect-[120/124] text-navy">
+              <Figure active={on} />
+            </div>
+            <span className="mt-3 text-sm font-semibold text-navy text-center">{label}</span>
           </div>
-
-          {/* Divider */}
-          <div className="flex flex-col items-center gap-1">
-            <div className="w-px h-12 bg-navy/10" />
-            <span className="text-[9px] font-mono text-navy/20">+</span>
-            <div className="w-px h-12 bg-navy/10" />
-          </div>
-
-          {/* Sleep figure */}
-          <div className={`flex flex-col items-center transition-all duration-700 ${phase === 1 ? "opacity-100 scale-100" : "opacity-30 scale-95"}`}>
-            <svg viewBox="0 0 80 90" className="w-16 h-20" fill="none">
-              {/* Head - tilted on pillow */}
-              <circle cx="38" cy="30" r="18" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
-              {/* Closed eyes */}
-              <path d="M31 27 Q34 29 37 27" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
-              <path d="M41 27 Q44 29 47 27" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
-              {/* Open mouth - snoring */}
-              <ellipse cx="39" cy="37" rx="4" ry="3" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
-              {/* Z's */}
-              <g className={`transition-opacity duration-500 ${phase === 1 ? "opacity-100" : "opacity-0"}`}>
-                <text x="56" y="18" fill="rgb(var(--brand-500))" fontSize="11" fontWeight="700" fontFamily="IBM Plex Mono, monospace">Z</text>
-                <text x="63" y="10" fill="rgb(var(--brand-500))" fontSize="8" fontWeight="700" fontFamily="IBM Plex Mono, monospace" opacity="0.6">Z</text>
-                <text x="68" y="4" fill="rgb(var(--brand-500))" fontSize="6" fontWeight="700" fontFamily="IBM Plex Mono, monospace" opacity="0.3">Z</text>
-              </g>
-              {/* Shoulders */}
-              <path d="M18 58 Q38 48 58 58" stroke="rgb(var(--navy))" strokeWidth="1.5" fill="none" />
-            </svg>
-            <span className={`mt-2 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all duration-500 ${
-              phase === 1 ? "bg-accent-500 text-white" : "bg-surface-200/60 text-navy/30"
-            }`}>
-              Sleep
-            </span>
-          </div>
-        </div>
-
-        {/* "One Roof" bar */}
-        <div className="mt-4 w-full flex items-center gap-2">
-          <div className="flex-1 h-px bg-navy/10" />
-          <span className="text-[9px] font-mono text-navy/25 uppercase tracking-widest">One Lab · Every Case</span>
-          <div className="flex-1 h-px bg-navy/10" />
-        </div>
+        ))}
       </div>
     </div>
   );
@@ -454,7 +378,7 @@ function TurnaroundTimeline() {
           2-Week Turnaround
         </h3>
       </div>
-      <p className="text-navy/50 text-sm mb-4">
+      <p className="text-navy/70 text-sm mb-4">
         From scan to delivery in 10 business days or less. No shortcuts — just
         an efficient digital pipeline.
       </p>
@@ -463,7 +387,7 @@ function TurnaroundTimeline() {
         <div className="space-y-2">
           <div>
             <div className="flex items-center justify-between mb-1.5 px-0.5">
-              <span className="text-[10px] font-mono text-navy/30 uppercase">Week 1</span>
+              <span className="text-[10px] font-mono text-navy/70 uppercase">Week 1</span>
             </div>
             <div className="grid grid-cols-5 gap-1">
               {week1.map((day, i) => {
@@ -480,7 +404,7 @@ function TurnaroundTimeline() {
                         ? "bg-brand-500 text-white ring-2 ring-brand-500/30 scale-105"
                         : isFilled
                         ? "bg-brand-500/80 text-white"
-                        : "bg-surface-200/60 text-navy/30"
+                        : "bg-surface-200/60 text-navy/70"
                     }`}
                   >
                     {day}
@@ -491,7 +415,7 @@ function TurnaroundTimeline() {
           </div>
           <div>
             <div className="flex items-center justify-between mb-1.5 px-0.5">
-              <span className="text-[10px] font-mono text-navy/30 uppercase">Week 2</span>
+              <span className="text-[10px] font-mono text-navy/70 uppercase">Week 2</span>
             </div>
             <div className="grid grid-cols-5 gap-1">
               {week2.map((day, i) => {
@@ -508,7 +432,7 @@ function TurnaroundTimeline() {
                         ? "bg-brand-500 text-white ring-2 ring-brand-500/30 scale-105"
                         : isFilled
                         ? "bg-brand-500/80 text-white"
-                        : "bg-surface-200/60 text-navy/30"
+                        : "bg-surface-200/60 text-navy/70"
                     }`}
                   >
                     {day}
@@ -526,7 +450,7 @@ function TurnaroundTimeline() {
               activeLabel === "Arrived!"
                 ? "bg-emerald-500 text-white"
                 : activeLabel
-                ? "bg-brand-500/10 text-brand-500"
+                ? "bg-brand-500/10 text-brand-700"
                 : "bg-transparent text-transparent"
             }`}
           >
@@ -538,10 +462,11 @@ function TurnaroundTimeline() {
   );
 }
 
-function Features() {
+export function Features() {
   const sectionRef = useRef(null);
 
   useEffect(() => {
+    if (prefersReducedMotion()) return undefined;
     let cleanup;
     const ctx = gsap.context(() => {
       const tween = gsap.fromTo(
@@ -568,13 +493,13 @@ function Features() {
     <section ref={sectionRef} className="section-pad py-24 md:py-28">
       <div className="max-w-6xl mx-auto">
         <div className="mb-12 md:mb-16">
-          <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
+          <span className="font-mono text-xs text-navy/70 uppercase tracking-widest">
             Why Diamond
           </span>
           <h2 className="mt-3 font-heading font-bold text-3xl md:text-4xl tracking-tight text-balance">
             Built for the protocol.
             <br />
-            <span className="text-brand-500">Not just the appliance.</span>
+            <span className="text-brand-700">Not just the appliance.</span>
           </h2>
         </div>
 
@@ -602,6 +527,7 @@ function Philosophy() {
   const sectionRef = useRef(null);
 
   useEffect(() => {
+    if (prefersReducedMotion()) return undefined;
     let cleanupPhil;
     let cleanupStat;
     const ctx = gsap.context(() => {
@@ -641,10 +567,10 @@ function Philosophy() {
   }, []);
 
   const stats = [
-    { value: "100%", label: "Digital Workflow" },
+    { value: "19", label: "Lab Team Members" },
     { value: "<2wk", label: "Turnaround" },
-    { value: "FDA", label: "510(k) Cleared" },
-    { value: "50+", label: "Certified Labs" },
+    { value: "FDA", label: "510(k) Sleep Appliances" },
+    { value: "3", label: "Countries With Certified Labs" },
   ];
 
   return (
@@ -675,7 +601,7 @@ function Philosophy() {
         <div className="max-w-6xl mx-auto">
           {/* Top label */}
           <div data-phil className="mb-6">
-            <span className="font-mono text-[10px] font-semibold text-on-dark/25 uppercase tracking-[0.2em]">
+            <span className="font-mono text-[10px] font-semibold text-on-dark/60 uppercase tracking-[0.2em]">
               Our Philosophy
             </span>
           </div>
@@ -694,10 +620,11 @@ function Philosophy() {
 
           {/* Supporting text */}
           <div data-phil className="mt-10 md:mt-14 max-w-xl">
-            <p className="text-on-dark/40 text-sm md:text-base font-medium leading-relaxed">
-              Every orthotic we fabricate follows the Olmos-Method protocol
-              — digitally designed, SLS-printed to sub-millimeter tolerance,
-              and quality-checked before it leaves our lab.
+            <p className="text-on-dark/70 text-sm md:text-base font-medium leading-relaxed">
+              Every orthotic we fabricate follows a documented clinical protocol
+              and is quality-checked before it leaves our lab. Digital cases
+              are designed in CAD, and printed appliances are SLS-printed to
+              sub-millimeter tolerance.
             </p>
           </div>
 
@@ -709,7 +636,7 @@ function Philosophy() {
                   <span className="block font-heading font-bold text-3xl md:text-4xl text-on-dark tracking-tight">
                     {s.value}
                   </span>
-                  <span className="block font-mono text-[10px] font-semibold text-on-dark/30 uppercase tracking-wider mt-1">
+                  <span className="block font-mono text-[10px] font-semibold text-on-dark/60 uppercase tracking-wider mt-1">
                     {s.label}
                   </span>
                 </div>
@@ -724,392 +651,76 @@ function Philosophy() {
 
 /* ─── STICKY PROTOCOL ─── */
 function Protocol() {
-  const sectionRef = useRef(null);
-  const panelsRef = useRef([]);
-
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      const total = panelsRef.current.length;
-
-      panelsRef.current.forEach((panel, i) => {
-        // Pin ALL cards (including last)
-        ScrollTrigger.create({
-          trigger: panel,
-          start: "top top",
-          pin: true,
-          pinSpacing: i === total - 1, // last card gets real spacing so it holds
-          ...(i < total - 1
-            ? {
-                endTrigger: panelsRef.current[total - 1],
-                end: "top top",
-              }
-            : {
-                end: "+=50%", // last card holds for 50vh of scroll
-              }),
-        });
-
-        // Fade/blur out all except the last card
-        if (i < total - 1) {
-          gsap.to(panel, {
-            scale: 0.9,
-            filter: "blur(12px)",
-            opacity: 0.5,
-            scrollTrigger: {
-              trigger: panelsRef.current[i + 1],
-              start: "top 60%",
-              end: "top top",
-              scrub: true,
-            },
-          });
-
-          // Hide the pinned card once the next card fully arrives
-          ScrollTrigger.create({
-            trigger: panelsRef.current[i + 1],
-            start: "top top",
-            onEnter: () => (panel.style.visibility = "hidden"),
-            onLeaveBack: () => (panel.style.visibility = "visible"),
-          });
-        }
-      });
-    }, sectionRef);
-    return () => ctx.revert();
-  }, []);
-
   const steps = [
     {
-      step: "01",
       title: "Scan",
       desc: "Intraoral digital capture eliminates traditional impressions. Precision data from the first touch.",
-      Icon: Scan,
       animation: <RotatingGeometry />,
     },
     {
-      step: "02",
       title: "Design",
-      desc: "CAD articulation with Olmos-Method parameters. Every micron calculated, every occlusal surface mapped.",
-      Icon: PenTool,
+      desc: "CAD articulation to the parameters on your Rx. Every occlusal surface mapped.",
       animation: <ScanningGrid />,
     },
     {
-      step: "03",
       title: "Fabricate",
-      desc: "3D printed in clinical-grade materials. Quality verified. Shipped with tracking and care kit.",
-      Icon: Printer,
+      desc: "Printed appliances are made in biocompatible nylon. Quality verified. Shipped with tracking and care kit.",
       animation: <PulsingWaveform />,
     },
   ];
 
+  /* Cards stack with CSS sticky at lg+, so scrolling past them can never leave
+     blank space. */
   return (
-    <section ref={sectionRef} className="relative">
-      {steps.map((step, i) => (
-        <div key={i}>
-          {/* Spacer between cards gives scroll room for the "hold" */}
-          {i > 0 && <div className="h-[40vh]" />}
-          <div
-            ref={(el) => (panelsRef.current[i] = el)}
-            className="h-screen flex items-center justify-center"
-            style={{ zIndex: i + 1 }}
+    <section className="section-pad py-20 md:py-28">
+      <ol className="max-w-6xl mx-auto space-y-6">
+        {steps.map((step, i) => (
+          <li
+            key={step.title}
+            className="lg:sticky lg:top-[var(--stack-top)] relative overflow-hidden rounded-[2.5rem] md:rounded-[3rem] bg-white border border-navy/10 shadow-xl shadow-navy/10"
+            style={{ "--stack-top": `${112 + i * 20}px` }}
           >
-            <div className="section-pad w-full max-w-6xl mx-auto">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-                <div>
-                  <span className="font-mono text-brand-500 text-sm mb-4 block">
-                    {step.step}
-                  </span>
-                  <h3 className="font-heading font-bold text-4xl md:text-6xl tracking-tight mb-4">
-                    {step.title}
-                  </h3>
-                  <p className="text-navy/50 text-lg max-w-md leading-relaxed">
-                    {step.desc}
-                  </p>
-                </div>
-                <div className="flex items-center justify-center">
-                  <div className="w-72 h-72 md:w-96 md:h-96 rounded-[3rem] flex items-center justify-center overflow-hidden">
-                    {step.animation}
-                  </div>
-                </div>
+            <HeroStage tone="light" />
+            <div className="relative z-10 grid lg:grid-cols-2 gap-8 items-center p-8 md:p-14 lg:min-h-[440px]">
+              <div>
+                <span aria-hidden="true" className="block font-drama italic lining-nums text-7xl md:text-8xl leading-none text-brand-600">
+                  {i + 1}
+                </span>
+                <h3 className="mt-4 font-heading font-bold text-4xl md:text-6xl tracking-tight text-navy">
+                  {step.title}
+                </h3>
+                <p className="mt-4 text-navy/70 text-lg max-w-md leading-relaxed">{step.desc}</p>
+              </div>
+              <div className="flex items-center justify-center" aria-hidden="true">
+                {step.animation}
               </div>
             </div>
-          </div>
-        </div>
-      ))}
-    </section>
-  );
-}
-
-/* SVG animations for protocol cards */
-function RotatingGeometry() {
-  const ref = useRef(null);
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.to("[data-rotate]", {
-        rotation: 360,
-        duration: 20,
-        repeat: -1,
-        ease: "none",
-        transformOrigin: "center center",
-      });
-      gsap.to("[data-rotate-reverse]", {
-        rotation: -360,
-        duration: 30,
-        repeat: -1,
-        ease: "none",
-        transformOrigin: "center center",
-      });
-    }, ref);
-    return () => ctx.revert();
-  }, []);
-
-  return (
-    <svg
-      ref={ref}
-      viewBox="0 0 200 200"
-      className="w-48 h-48 md:w-64 md:h-64"
-    >
-      <g data-rotate>
-        <circle
-          cx="100"
-          cy="100"
-          r="60"
-          fill="none"
-          stroke="rgb(var(--brand-500))"
-          strokeWidth="0.5"
-          opacity="0.4"
-        />
-        <circle
-          cx="100"
-          cy="100"
-          r="45"
-          fill="none"
-          stroke="rgb(var(--brand-500))"
-          strokeWidth="0.5"
-          opacity="0.3"
-        />
-        {[0, 60, 120, 180, 240, 300].map((angle) => (
-          <circle
-            key={angle}
-            cx={100 + 60 * Math.cos((angle * Math.PI) / 180)}
-            cy={100 + 60 * Math.sin((angle * Math.PI) / 180)}
-            r="3"
-            fill="rgb(var(--brand-500))"
-            opacity="0.6"
-          />
+          </li>
         ))}
-      </g>
-      <g data-rotate-reverse>
-        <rect
-          x="65"
-          y="65"
-          width="70"
-          height="70"
-          fill="none"
-          stroke="rgb(var(--brand-500))"
-          strokeWidth="0.5"
-          opacity="0.2"
-          rx="4"
-        />
-        <rect
-          x="78"
-          y="78"
-          width="44"
-          height="44"
-          fill="none"
-          stroke="rgb(var(--brand-500))"
-          strokeWidth="0.5"
-          opacity="0.3"
-          rx="4"
-        />
-      </g>
-      <circle cx="100" cy="100" r="4" fill="rgb(var(--brand-500))" opacity="0.8" />
-    </svg>
-  );
-}
-
-function ScanningGrid() {
-  const ref = useRef(null);
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.to("[data-scan-line]", {
-        y: 160,
-        duration: 2.5,
-        repeat: -1,
-        ease: "power1.inOut",
-        yoyo: true,
-      });
-    }, ref);
-    return () => ctx.revert();
-  }, []);
-
-  const dots = [];
-  for (let row = 0; row < 8; row++) {
-    for (let col = 0; col < 8; col++) {
-      dots.push(
-        <circle
-          key={`${row}-${col}`}
-          cx={40 + col * 17}
-          cy={20 + row * 20}
-          r="2"
-          fill="rgb(var(--brand-500))"
-          opacity="0.15"
-        />
-      );
-    }
-  }
-
-  return (
-    <svg
-      ref={ref}
-      viewBox="0 0 200 200"
-      className="w-48 h-48 md:w-64 md:h-64"
-    >
-      {dots}
-      <line
-        data-scan-line
-        x1="30"
-        y1="20"
-        x2="170"
-        y2="20"
-        stroke="rgb(var(--brand-500))"
-        strokeWidth="1"
-        opacity="0.6"
-      />
-      <rect
-        data-scan-line
-        x="30"
-        y="12"
-        width="140"
-        height="16"
-        fill="url(#scanGradient)"
-      />
-      <defs>
-        <linearGradient id="scanGradient" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="rgb(var(--brand-500))" stopOpacity="0" />
-          <stop offset="50%" stopColor="rgb(var(--brand-500))" stopOpacity="0.1" />
-          <stop offset="100%" stopColor="rgb(var(--brand-500))" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-    </svg>
-  );
-}
-
-function PulsingWaveform() {
-  const ref = useRef(null);
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.to("[data-waveform]", {
-        strokeDashoffset: -400,
-        duration: 3,
-        repeat: -1,
-        ease: "none",
-      });
-    }, ref);
-    return () => ctx.revert();
-  }, []);
-
-  return (
-    <svg
-      ref={ref}
-      viewBox="0 0 200 100"
-      className="w-48 h-24 md:w-64 md:h-32"
-    >
-      <path
-        data-waveform
-        d="M0,50 L20,50 L25,50 L30,20 L35,80 L40,30 L45,70 L50,45 L55,55 L60,50 L80,50 L85,50 L90,15 L95,85 L100,25 L105,75 L110,40 L115,60 L120,50 L140,50 L145,50 L150,20 L155,80 L160,30 L165,70 L170,45 L175,55 L180,50 L200,50"
-        fill="none"
-        stroke="rgb(var(--brand-500))"
-        strokeWidth="1.5"
-        strokeDasharray="200"
-        strokeDashoffset="0"
-        opacity="0.6"
-      />
-      <path
-        d="M0,50 L200,50"
-        fill="none"
-        stroke="rgb(var(--brand-500))"
-        strokeWidth="0.3"
-        opacity="0.2"
-      />
-    </svg>
+      </ol>
+    </section>
   );
 }
 
 /* ─── CTA SECTION ─── */
 function CTASection() {
-  const sectionRef = useRef(null);
-
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-cta-anim]",
-        { y: 40, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.8,
-          stagger: 0.1,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(sectionRef.current, tween);
-    }, sectionRef);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
   return (
-    <section ref={sectionRef} className="section-pad py-24 md:py-28">
-      <div className="max-w-4xl mx-auto text-center">
-        <span
-          data-cta-anim
-          className="font-mono text-xs text-navy/40 uppercase tracking-widest"
-        >
-          Partner With Us
-        </span>
-        <h2
-          data-cta-anim
-          className="mt-4 font-heading font-bold text-3xl md:text-5xl tracking-tight"
-        >
-          Get the best for your
-          <br />
-          <span className="font-drama italic text-brand-500">
-            patients.
-          </span>
-        </h2>
-        <p
-          data-cta-anim
-          className="mt-6 text-navy/50 text-lg max-w-xl mx-auto leading-relaxed"
-        >
+    <CtaBand
+      title="Get the best for your"
+      titleAccent="patients."
+      intro={
+        <>
           Whether you&apos;re treating TMJ disorders, sleep breathing
           conditions, or both — we&apos;re the lab that understands your
           protocol.
-        </p>
-        <div data-cta-anim className="mt-10 flex flex-wrap items-center justify-center gap-4">
-          <Link
-            to="/contact"
-            className="btn-magnetic group px-8 py-4 rounded-full bg-accent-500 text-white font-semibold"
-          >
-            <span className="btn-bg bg-accent-600 rounded-full" />
-            <span className="relative z-10 flex items-center gap-2">
-              Contact Our Lab
-              <ArrowRight
-                size={16}
-                className="group-hover:translate-x-1 transition-transform"
-              />
-            </span>
-          </Link>
-          <Link
-            to="/products"
-            className="px-8 py-4 rounded-full border border-surface-300 text-navy/70 font-medium hover:bg-surface-200/60 transition-colors duration-300"
-          >
-            View All Products
-          </Link>
-        </div>
-      </div>
-    </section>
+        </>
+      }
+      primary={{ label: "Contact Our Lab", to: "/contact" }}
+      secondary={{ label: "View All Products", to: "/products" }}
+      product="/images/cta-patients.webp"
+      productAlt="Three smiling people, each holding a custom oral appliance"
+      productFlush
+    />
   );
 }
 
@@ -1122,7 +733,6 @@ function wait(ms) {
 export function HomePage() {
   return (
     <>
-      <NoiseOverlay />
       <Hero />
       <Features />
       <Philosophy />

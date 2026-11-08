@@ -76,6 +76,7 @@ import { IntakePage } from "./pages/lab/IntakePage.jsx";
 
 // Marketing pages
 import { HomePage } from "./pages/marketing/Home.jsx";
+import { HomeCinematicPage } from "./pages/marketing/HomeCinematic.jsx";
 import { AboutPage } from "./pages/marketing/About.jsx";
 import { ProductPage } from "./pages/marketing/Product.jsx";
 import { ContactPage } from "./pages/marketing/Contact.jsx";
@@ -131,6 +132,18 @@ function ScrollToTop() {
   return null;
 }
 
+/* Film-grain texture shared by every marketing page (moved here from Home). */
+function NoiseOverlay() {
+  return (
+    <svg className="noise-overlay" width="100%" height="100%">
+      <filter id="noise">
+        <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="4" stitchTiles="stitch" />
+      </filter>
+      <rect width="100%" height="100%" filter="url(#noise)" />
+    </svg>
+  );
+}
+
 /* Marketing layout: Navbar + page + Footer + floating cart */
 function MarketingLayout() {
   const { pathname } = useLocation();
@@ -174,6 +187,7 @@ function MarketingLayout() {
 
   return (
     <>
+      <NoiseOverlay />
       <Navbar />
       <main>
         <Outlet />
@@ -211,6 +225,7 @@ function AppRoutes() {
       {/* Marketing routes */}
       <Route element={<MarketingLayout />}>
         <Route path="/" element={<HomePage />} />
+        <Route path="/home-cinematic" element={<HomeCinematicPage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/products" element={<ProductPage />} />
         <Route path="/contact" element={<ContactPage />} />

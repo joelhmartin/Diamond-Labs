@@ -40,7 +40,7 @@ export function headerSafe(value, max = MAX_SUBJECT_LENGTH) {
  * with no STAGING_EMAIL_TO), "unconfigured" (no Mailgun: dev log-only) versus
  * "rejected" (Mailgun said no) and "error" (network/throw). null when ok.
  */
-async function deliver({ to, bcc, subject, html, text }, { detailed = false } = {}) {
+async function deliver({ to, bcc, replyTo, subject, html, text }, { detailed = false } = {}) {
   const done = (ok, reason = null) => (detailed ? { ok, reason } : ok);
   // `to` / `bcc` may be a string or an array of addresses. Each address is
   // sanitised on its own (so the 320-char cap can't cut a list mid-address) and
@@ -72,6 +72,7 @@ async function deliver({ to, bcc, subject, html, text }, { detailed = false } = 
     to = bcc;
     bcc = "";
   }
+  if (replyTo) replyTo = headerSafe(replyTo, 320);
   subject = headerSafe(subject, MAX_SUBJECT_LENGTH);
 
   // Staging: redirect to STAGING_EMAIL_TO (identity in production). Applied after
@@ -95,6 +96,7 @@ async function deliver({ to, bcc, subject, html, text }, { detailed = false } = 
   form.set("from", env.EMAIL_FROM);
   form.set("to", to);
   if (bcc) form.set("bcc", bcc);
+  if (replyTo) form.set("h:Reply-To", replyTo);
   form.set("subject", subject);
   if (html) form.set("html", html);
   if (text) form.set("text", text);
@@ -107,6 +109,7 @@ async function deliver({ to, bcc, subject, html, text }, { detailed = false } = 
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: form.toString(),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
@@ -448,6 +451,28 @@ export async function sendRxSubmissionReceived({ caseNumber, practiceName, devic
       <p style="margin:24px 0;">
         <a href="${caseUrl}" style="display:inline-block;padding:12px 24px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;">Review case</a>
       </p>
+    `,
+  });
+}
+
+/**
+ * Public contact-form message, to the lab. Everything here is visitor-typed, so
+ * it is all escaped; Reply-To lets staff answer straight from their inbox.
+ */
+export async function sendContactMessage({ name, email, practice, phone, subject, message }) {
+  if (!env.ADMIN_NOTIFICATION_EMAIL) return false;
+  const rows = [["From", name], ["Email", email], ["Practice", practice], ["Phone", phone], ["Subject", subject]]
+    .filter(([, value]) => value)
+    .map(([label, value]) => `<tr><td style="padding:6px 12px;font-weight:bold;">${label}</td><td style="padding:6px 12px;">${esc(value)}</td></tr>`)
+    .join("");
+  return deliver({
+    to: env.ADMIN_NOTIFICATION_EMAIL,
+    replyTo: email,
+    subject: `Website contact: ${subject || "General Question"} (${name})`,
+    html: `
+      <h1>New message from the website</h1>
+      <table style="border-collapse:collapse;margin:16px 0;">${rows}</table>
+      <p style="white-space:pre-wrap;">${esc(message)}</p>
     `,
   });
 }

@@ -1,672 +1,169 @@
-import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import gsap from "gsap";
-import {
-  ArrowRight,
-  Globe,
-  Award,
-  Microscope,
-  Cpu,
-} from "lucide-react";
-import { ModelViewer } from "../../components/ModelViewer";
-import { PRODUCTS } from "../../data/products";
-import { playOnView } from "../../lib/playOnView";
+import { ArrowRight, Award, HeartHandshake, Crosshair, Zap } from "lucide-react";
+import { PageHero } from "../../components/marketing/PageHero";
+import { SectionHeading } from "../../components/marketing/SectionHeading";
+import { CtaBand } from "../../components/marketing/CtaBand";
+import { Reveal } from "../../components/marketing/Reveal";
+import { HeroStage } from "../../components/marketing/HeroStage";
 
-/* ─── HERO ─── */
-function AboutHero() {
-  const heroRef = useRef(null);
+const VALUES = [
+  {
+    Icon: Award,
+    title: "Quality",
+    desc: "Every appliance meets exacting standards. Printed precision verified through multi-point dimensional analysis before it leaves our lab.",
+  },
+  {
+    Icon: HeartHandshake,
+    title: "Commitment",
+    desc: "We're invested in outcomes, not just orders. Direct communication with your dedicated technician on every case.",
+  },
+  {
+    Icon: Crosshair,
+    title: "Accuracy",
+    desc: "Full digital workflow from scan to delivery. CAD articulation eliminates the cumulative errors of analog processes.",
+  },
+  {
+    Icon: Zap,
+    title: "Efficiency",
+    desc: "Fast turnaround without cutting corners. Digital-first means fewer remakes, fewer adjustments, and faster chair time.",
+  },
+];
 
-  useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.from("[data-about-hero]", {
-        y: 40,
-        opacity: 0,
-        duration: 1,
-        stagger: 0.08,
-        ease: "power3.out",
-        delay: 0.3,
-      });
-    }, heroRef);
-    return () => ctx.revert();
-  }, []);
+const SHOWCASE = [
+  { name: "DDSO Anterior", full: "Diamond Digital Sleep Orthotic, anterior contact design", image: "/images/ddso-ant-angle.webp", alt: "DDSO anterior sleep appliance on a dark dental model" },
+  { name: "DDSO Posterior", full: "Diamond Digital Sleep Orthotic, full-arch posterior design", image: "/images/ddso-post-render.webp", alt: "DDSO posterior sleep appliance with a nylon band" },
+  { name: "OND", full: "Olmos Neuromuscular Device", image: "/images/ond-nylon.webp", alt: "Olmos Neuromuscular Device on upper and lower models" },
+  { name: "ONP", full: "Olmos Neuromuscular Positioner", image: "/images/onp-nylon4.webp", alt: "Olmos Neuromuscular Positioner on upper and lower models" },
+];
 
-  return (
-    <section
-      ref={heroRef}
-      className="relative h-[70dvh] min-h-[500px] flex items-end overflow-hidden section-pad"
-    >
-      <div className="absolute inset-0">
-        <img
-          src="/images/about-hero.webp"
-          alt="DDSO orthotic in dental laboratory"
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-r from-navy via-navy/60 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-t from-navy via-transparent to-transparent" />
-      </div>
+const textLink = "inline-flex items-center gap-2 font-semibold text-brand-700 hover:underline";
 
-      <div className="relative z-10 pb-16 md:pb-24 w-full max-w-6xl mx-auto">
-        <div className="max-w-3xl">
-        <span
-          data-about-hero
-          className="font-mono text-xs text-on-dark/40 uppercase tracking-widest"
-        >
-          About Diamond
-        </span>
-        <h1 data-about-hero className="mt-4 text-on-dark">
-          <span className="block font-heading font-bold text-4xl sm:text-5xl md:text-7xl tracking-tight leading-[0.95]">
-            The lab behind
-          </span>
-          <span className="block font-drama italic text-5xl sm:text-6xl md:text-8xl tracking-tight leading-[0.9] text-brand-500">
-            the protocol.
-          </span>
-        </h1>
-        <p
-          data-about-hero
-          className="mt-6 text-on-dark/50 text-base md:text-lg max-w-lg leading-relaxed"
-        >
-          Diamond Orthotic Laboratory is the only lab built from the ground up
-          around the Olmos Series system — the gold standard in TMJ and sleep
-          breathing orthotic treatment.
-        </p>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ─── MISSION STATEMENT ─── */
 function Mission() {
-  const ref = useRef(null);
-
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-mission]",
-        { y: 30, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.8,
-          stagger: 0.1,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
   return (
-    <section ref={ref} className="section-pad py-24 md:py-28">
-      <div className="max-w-4xl mx-auto text-center">
-        <span
-          data-mission
-          className="font-mono text-xs text-navy/40 uppercase tracking-widest"
-        >
-          Our Mission
-        </span>
-        <blockquote data-mission className="mt-8">
-          <p className="font-drama italic text-3xl sm:text-4xl md:text-5xl lg:text-6xl text-navy leading-[1.15] tracking-tight">
-            To advance the treatment of TMJ and sleep breathing disorders
-            through{" "}
-            <span className="text-brand-500">
-              precision digital manufacturing
-            </span>{" "}
-            and unwavering commitment to the Olmos clinical protocol.
-          </p>
-        </blockquote>
-        <div
-          data-mission
-          className="mt-8 flex items-center justify-center gap-3 text-navy/30 text-sm"
-        >
-          <div className="h-px w-12 bg-navy/10" />
-          <span className="font-mono text-xs">
-            Quality · Commitment · Accuracy · Efficiency
-          </span>
-          <div className="h-px w-12 bg-navy/10" />
+    <Reveal className="section-pad py-16 md:py-20">
+      <div className="relative overflow-hidden max-w-6xl mx-auto rounded-[2.5rem] md:rounded-[3rem] bg-navy">
+        <HeroStage />
+        <div className="relative z-10 px-8 py-16 md:px-16 md:py-24">
+          <span className="font-mono text-xs uppercase tracking-widest text-on-dark/70">Our mission</span>
+          <h2 className="mt-5 max-w-4xl font-drama italic text-3xl sm:text-4xl md:text-6xl leading-[1.1] tracking-tight text-on-dark">
+            To advance the treatment of <span className="text-brand-400">TMJ</span> and{" "}
+            <span className="text-brand-400">sleep breathing disorders</span> through precision digital manufacturing.
+          </h2>
         </div>
       </div>
-    </section>
+    </Reveal>
   );
 }
 
-/* ─── DR. OLMOS SECTION ─── */
-function DrOlmos() {
-  const ref = useRef(null);
-
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-olmos]",
-        { y: 40, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.8,
-          stagger: 0.12,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
-  return (
-    <section ref={ref} className="relative bg-navy overflow-hidden py-24 md:py-28">
-      {/* Subtle texture */}
-      <div className="absolute inset-0 opacity-[0.04]">
-        <img
-          src="https://images.unsplash.com/photo-1530497610245-94d3c16cda28?auto=format&fit=crop&w=1920&q=80"
-          alt=""
-          className="w-full h-full object-cover"
-          loading="lazy"
-        />
-      </div>
-
-      <div className="relative z-10 section-pad">
-        <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-          {/* Photo */}
-          <div data-olmos className="flex justify-center lg:justify-center">
-            <div className="relative">
-              <div className="w-64 h-64 md:w-full md:h-full rounded-full overflow-hidden border-4 border-brand-500">
-                <img
-                  src="/images/dr-olmos.jpg"
-                  alt="Dr. Steven Olmos"
-                  className="w-full h-full object-cover"
-                  width="900"
-                  height="900"
-                />
-              </div>
-              {/* Sits ON the portrait, not below it — the circle's lower edge
-                  curves away, so an overlapping tag reads as one object. */}
-              <div className="absolute bottom-6 md:bottom-10 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-brand-500 text-white text-xs font-semibold whitespace-nowrap shadow-lg shadow-navy/30">
-                Olmos Series Creator
-              </div>
-            </div>
-          </div>
-
-          {/* Content */}
-          <div>
-            <span
-              data-olmos
-              className="font-mono text-xs text-on-dark/30 uppercase tracking-widest"
-            >
-              The Protocol
-            </span>
-            <h2
-              data-olmos
-              className="mt-4 font-heading font-bold text-3xl md:text-4xl text-on-dark tracking-tight"
-            >
-              Built on the work of
-              <br />
-              <span className="font-drama italic text-brand-500">
-                Dr. Steven Olmos.
-              </span>
-            </h2>
-            <p
-              data-olmos
-              className="mt-6 text-on-dark/50 text-base leading-relaxed"
-            >
-              Dr. Steven Olmos is the global authority on TMJ and sleep
-              breathing disorders. His Olmos Series orthotic system represents
-              decades of clinical research translated into precise, reproducible
-              treatment protocols.
-            </p>
-            <p
-              data-olmos
-              className="mt-4 text-on-dark/50 text-base leading-relaxed"
-            >
-              Diamond Orthotic Laboratory is the only lab purpose-built around
-              this system. We don&apos;t just fabricate appliances — we
-              understand the clinical intent behind every parameter, every
-              adjustment, every case.
-            </p>
-            <div
-              data-olmos
-              className="mt-8 flex flex-wrap items-center gap-4"
-            >
-              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10">
-                <Award size={14} className="text-accent-500" />
-                <span className="text-on-dark/60 text-xs font-medium">
-                  Global TMJ Authority
-                </span>
-              </div>
-              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10">
-                <Microscope size={14} className="text-brand-500" />
-                <span className="text-on-dark/60 text-xs font-medium">
-                  Decades of Research
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ─── VALUES ─── */
 function Values() {
-  const ref = useRef(null);
-
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-value-card]",
-        { y: 60, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.7,
-          stagger: 0.15,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
-  const values = [
-    {
-      title: "Quality",
-      desc: "Every appliance meets exacting standards. 3D-printed precision verified through multi-point dimensional analysis before it leaves our lab.",
-      accent: "bg-brand-500",
-    },
-    {
-      title: "Commitment",
-      desc: "We're invested in outcomes, not just orders. Direct communication with your dedicated technician on every case.",
-      accent: "bg-accent-500",
-    },
-    {
-      title: "Accuracy",
-      desc: "Full digital workflow from scan to delivery. CAD articulation eliminates the cumulative errors of analog processes.",
-      accent: "bg-emerald-500",
-    },
-    {
-      title: "Efficiency",
-      desc: "Fast turnaround without cutting corners. Digital-first means fewer remakes, fewer adjustments, and faster chair time.",
-      accent: "bg-violet-500",
-    },
-  ];
-
   return (
-    <section ref={ref} className="section-pad py-24 md:py-28">
+    <Reveal className="section-pad pb-20 md:pb-24">
       <div className="max-w-6xl mx-auto">
-        <div className="mb-12 md:mb-16">
-          <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
-            Our Values
-          </span>
-          <h2 className="mt-3 font-heading font-bold text-3xl md:text-4xl tracking-tight">
-            What drives every case.
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {values.map((v, i) => (
-            <div
-              key={i}
-              data-value-card
-              className="bg-white card-radius p-6 border border-surface-300/50 shadow-sm hover:shadow-md transition-shadow duration-500"
-            >
-              <div className={`w-2 h-8 rounded-full ${v.accent} mb-5`} />
-              <h3 className="font-heading font-bold text-lg mb-2">
-                {v.title}
-              </h3>
-              <p className="text-navy/50 text-sm leading-relaxed">{v.desc}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ─── CERTIFIED LABS MAP ─── */
-function CertifiedLabs() {
-  const ref = useRef(null);
-
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-map]",
-        { y: 40, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.8,
-          stagger: 0.1,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
-  return (
-    <section ref={ref} className="section-pad py-16 md:py-24">
-      <div className="max-w-6xl mx-auto">
-        <div className="bg-white card-radius-lg p-8 md:p-12 border border-surface-300/50 shadow-sm">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
-            <div>
-              <div data-map className="flex items-center gap-2 mb-4">
-                <Globe size={16} className="text-brand-500" />
-                <span className="font-mono text-xs text-navy/40 uppercase tracking-widest">
-                  Global Reach
-                </span>
-              </div>
-              <h2
-                data-map
-                className="font-heading font-bold text-2xl md:text-3xl tracking-tight"
-              >
-                Olmos-Certified labs
-                <br />
-                <span className="text-brand-500">worldwide.</span>
-              </h2>
-              <p
-                data-map
-                className="mt-4 text-navy/50 text-sm leading-relaxed max-w-md"
-              >
-                Diamond Orthotic Laboratory is part of a select network of
-                certified labs trained to fabricate Olmos Series orthotics.
-                Serving dental professionals across multiple continents.
-              </p>
-              <div data-map className="mt-6 flex flex-wrap gap-3">
-                <span className="px-3 py-1.5 rounded-full bg-brand-500/10 text-brand-500 text-xs font-semibold">
-                  North America
-                </span>
-                <span className="px-3 py-1.5 rounded-full bg-brand-500/10 text-brand-500 text-xs font-semibold">
-                  Australia
-                </span>
-                <span className="px-3 py-1.5 rounded-full bg-brand-500/10 text-brand-500 text-xs font-semibold">
-                  Expanding
-                </span>
-              </div>
-            </div>
-            <div data-map>
-              <img
-                src="/images/certified-labs-map.png"
-                alt="World map showing Olmos-certified lab locations"
-                className="w-full h-auto rounded-2xl"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ─── DIGITAL WORKFLOW SECTION ─── */
-function DigitalWorkflow() {
-  const ref = useRef(null);
-
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-workflow]",
-        { y: 40, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.7,
-          stagger: 0.12,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
-  const steps = [
-    {
-      icon: Cpu,
-      step: "01",
-      title: "Intraoral Scan",
-      desc: "Digital impressions replace traditional molds. Precision data from the very first step.",
-    },
-    {
-      icon: Microscope,
-      step: "02",
-      title: "CAD Design",
-      desc: "Computerized articulation with Olmos-Method parameters. Every surface calculated.",
-    },
-    {
-      icon: Award,
-      step: "03",
-      title: "3D Fabrication",
-      desc: "SLS printing in biocompatible nylon. Quality verified before shipping.",
-    },
-  ];
-
-  return (
-    <section ref={ref} className="section-pad py-24 md:py-28">
-      <div className="max-w-6xl mx-auto">
-        <div className="mb-12 text-center">
-          <span
-            data-workflow
-            className="font-mono text-xs text-navy/40 uppercase tracking-widest"
-          >
-            How We Work
-          </span>
-          <h2
-            data-workflow
-            className="mt-3 font-heading font-bold text-3xl md:text-4xl tracking-tight"
-          >
-            End-to-end digital workflow.
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {steps.map((s, i) => (
-            <div
-              key={i}
-              data-workflow
-              className="relative bg-white card-radius p-8 border border-surface-300/50 shadow-sm hover:shadow-md transition-shadow duration-500"
-            >
-              <span className="font-mono text-brand-500/30 text-5xl font-bold absolute top-4 right-6">
-                {s.step}
+        <SectionHeading title="What drives every case" />
+        <ul className="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {VALUES.map(({ Icon, title, desc }) => (
+            <li key={title} className="rounded-[2rem] bg-white border border-surface-300/60 shadow-sm p-7">
+              <span className="grid place-items-center w-12 h-12 rounded-2xl bg-brand-100 text-brand-700">
+                <Icon size={22} aria-hidden="true" />
               </span>
-              <div className="w-10 h-10 rounded-xl bg-brand-500/10 flex items-center justify-center mb-5">
-                <s.icon size={18} className="text-brand-500" />
-              </div>
-              <h3 className="font-heading font-bold text-lg mb-2">
-                {s.title}
-              </h3>
-              <p className="text-navy/50 text-sm leading-relaxed">{s.desc}</p>
-            </div>
+              <h3 className="mt-5 font-heading font-bold text-xl tracking-tight text-navy">{title}</h3>
+              <p className="mt-2 text-navy/70 text-sm leading-relaxed">{desc}</p>
+            </li>
           ))}
-        </div>
+        </ul>
+      </div>
+    </Reveal>
+  );
+}
 
-        {/* 3D Imaging Technology header */}
-        <div className="mt-20 text-center max-w-2xl mx-auto">
-          <span
-            data-workflow
-            className="font-mono text-xs text-navy/40 uppercase tracking-widest"
-          >
-            Engineered in Three Dimensions
-          </span>
-          <h2
-            data-workflow
-            className="mt-3 font-heading font-bold text-3xl md:text-4xl tracking-tight"
-          >
-            3D Imaging Technology
-          </h2>
-          <p
-            data-workflow
-            className="mt-4 text-navy/60 text-base leading-relaxed"
-          >
-            Every Diamond appliance begins as a high-resolution digital model — captured intraorally, articulated in CAD, and verified surface-by-surface before a single grain of nylon is sintered. The result is a fit no analog impression can match, and a paper trail of geometry from chair to chairside.
+function ImagingTechnology() {
+  return (
+    <Reveal className="relative overflow-hidden bg-navy section-pad py-20 md:py-28">
+      <HeroStage />
+      <div className="relative z-10 max-w-6xl mx-auto">
+        <div className="max-w-2xl">
+          <h2 className="font-heading font-bold text-3xl md:text-5xl tracking-tight text-on-dark">3D imaging technology</h2>
+          <p className="mt-4 text-on-dark/75 text-lg leading-relaxed">
+            Digital cases begin as a high-resolution model, captured intraorally, articulated in CAD and checked surface by
+            surface before fabrication. Printed appliances are made in nylon.
           </p>
+          <Link to="/services/digital-workflow" className="mt-6 inline-flex items-center gap-2 font-semibold text-brand-400 hover:underline">
+            See the digital workflow <ArrowRight size={16} />
+          </Link>
         </div>
-
-        {/* Product reel — auto-rotating 3D models, no interaction */}
-        <div
-          data-workflow
-          className="mt-10 relative w-full rounded-[2rem] overflow-hidden bg-gradient-to-br from-navy/60 via-brand-500/10 to-brand-400/40 border border-surface-300/50 px-4 py-8 md:py-10"
-        >
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
-            {Object.values(PRODUCTS).map((p) => {
-              const model = p.images.find((i) => i.is3D);
-              if (!model) return null;
-              return (
-                <div key={p.fullName} className="flex flex-col items-center">
-                  <div className="w-full aspect-square">
-                    <ModelViewer
-                      objPath={model.objPath}
-                      mtlPath={model.mtlPath}
-                      interactive={false}
-                      className="w-full h-full"
-                    />
-                  </div>
-                  <div className="mt-2 text-center">
-                    <div className="font-heading font-bold text-sm text-navy">
-                      {p.name}
-                    </div>
-                    <div className="font-mono text-[10px] uppercase tracking-widest text-navy/40">
-                      {p.category}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ─── STATS BAR ─── */
-function Stats() {
-  const ref = useRef(null);
-
-  useEffect(() => {
-    let cleanup;
-    const ctx = gsap.context(() => {
-      const tween = gsap.fromTo(
-        "[data-stat]",
-        { y: 30, opacity: 0 },
-        {
-          y: 0,
-          opacity: 1,
-          duration: 0.7,
-          stagger: 0.1,
-          ease: "power3.out",
-          paused: true,
-        }
-      );
-      cleanup = playOnView(ref.current, tween);
-    }, ref);
-    return () => {
-      cleanup?.();
-      ctx.revert();
-    };
-  }, []);
-
-  const stats = [
-    { value: "100%", label: "Digital Workflow" },
-    { value: "<2wk", label: "Turnaround" },
-    { value: "FDA", label: "Cleared Devices" },
-    { value: "1", label: "Lab · Every Protocol" },
-  ];
-
-  return (
-    <section ref={ref} className="section-pad py-16 md:py-24">
-      <div className="max-w-6xl mx-auto">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
-          {stats.map((s, i) => (
-            <div
-              key={i}
-              data-stat
-              className="text-center p-6 rounded-[2rem] bg-white border border-surface-300/50"
-            >
-              <div className="font-heading font-bold text-3xl md:text-4xl text-brand-500 tracking-tight">
-                {s.value}
-              </div>
-              <div className="mt-2 font-mono text-xs text-navy/40 uppercase tracking-wider">
-                {s.label}
-              </div>
-            </div>
+        <ul className="mt-12 grid grid-cols-1 sm:grid-cols-2 gap-5">
+          {SHOWCASE.map((a) => (
+            <li key={a.name}>
+              <Link
+                to="/products"
+                className="group flex h-full flex-col rounded-[2rem] bg-white/[0.07] border border-white/10 backdrop-blur-sm p-6 md:p-8 transition-colors duration-300 hover:bg-white/[0.12]"
+              >
+                <img
+                  src={a.image}
+                  alt={a.alt}
+                  loading="lazy"
+                  className="h-56 md:h-72 w-full object-contain drop-shadow-[0_24px_40px_rgba(0,20,60,0.45)] transition-transform duration-500 group-hover:scale-105"
+                />
+                <span className="mt-6 font-heading font-bold text-2xl tracking-tight text-on-dark">{a.name}</span>
+                <span className="mt-1 flex items-center justify-between gap-3 text-sm text-on-dark/70">
+                  {a.full}
+                  <ArrowRight size={16} className="flex-shrink-0 text-brand-400 transition-transform group-hover:translate-x-1" />
+                </span>
+              </Link>
+            </li>
           ))}
+        </ul>
+      </div>
+    </Reveal>
+  );
+}
+
+function CertifiedLabs() {
+  return (
+    <Reveal className="section-pad py-20 md:py-24">
+      <div className="max-w-6xl mx-auto overflow-hidden rounded-[2.5rem] md:rounded-[3rem] bg-brand-100 border border-brand-200/60 shadow-sm">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center p-8 md:p-14">
+          <div>
+            <SectionHeading
+              title="Part of the certified lab network"
+              intro="Diamond Orthotic Laboratory is one of the laboratories in the US, Canada and Australia certified to fabricate Olmos Series appliances."
+            />
+            <Link to="/resources/certified-labs" className={`mt-6 ${textLink}`}>
+              See the certified labs <ArrowRight size={16} />
+            </Link>
+          </div>
+          <img
+            src="/images/certified-labs-map.png"
+            alt="World map showing the locations of the certified labs"
+            className="w-full h-auto rounded-3xl bg-white p-3 shadow-lg shadow-navy/10"
+            loading="lazy"
+          />
         </div>
       </div>
-    </section>
+    </Reveal>
   );
 }
 
-/* ─── CTA ─── */
-function AboutCTA() {
-  return (
-    <section className="section-pad py-16 md:py-24">
-      <div className="max-w-4xl mx-auto text-center">
-        <h2 className="font-heading font-bold text-2xl md:text-4xl tracking-tight">
-          Ready to partner with
-          <span className="font-drama italic text-brand-500"> Diamond?</span>
-        </h2>
-        <p className="mt-4 text-navy/50 text-base max-w-lg mx-auto">
-          Join the network of dental professionals who trust Diamond Orthotic
-          Laboratory for protocol-driven precision.
-        </p>
-        <Link
-          to="/contact"
-          className="btn-magnetic group mt-8 inline-flex px-8 py-4 rounded-full bg-accent-500 text-white font-semibold"
-        >
-          <span className="btn-bg bg-accent-600 rounded-full" />
-          <span className="relative z-10 flex items-center gap-2">
-            Contact Our Lab
-            <ArrowRight
-              size={16}
-              className="group-hover:translate-x-1 transition-transform"
-            />
-          </span>
-        </Link>
-      </div>
-    </section>
-  );
-}
-
-/* ─── PAGE EXPORT ─── */
 export function AboutPage() {
   return (
     <>
-      <AboutHero />
+      <PageHero
+        title="About Diamond"
+        titleAccent="Orthotic Laboratory."
+        intro="A dental laboratory in La Mesa, California, making TMJ and sleep breathing appliances for dentists on a fully digital workflow."
+        backdrop={{ src: "/images/hero-lab.webp", alt: "The Diamond Orthotic Laboratory workroom with 3D printers and design stations" }}
+      />
       <Mission />
-      <DrOlmos />
       <Values />
-      <DigitalWorkflow />
+      <ImagingTechnology />
       <CertifiedLabs />
-      <Stats />
-      <AboutCTA />
+      <CtaBand
+        title="Work with the lab"
+        intro="Ask about an appliance, a case in progress or setting up an account."
+        primary={{ label: "Contact the lab", to: "/contact" }}
+        product="/images/ddso-ant-pair.webp"
+        productAlt="A DDSO anterior appliance, upper and lower"
+      />
     </>
   );
 }

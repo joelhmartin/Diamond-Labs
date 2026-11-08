@@ -11,10 +11,11 @@ export function CatalogCard({ product, onOpen }) {
   const cartItem = useCartStore((s) =>
     s.items.find((i) => i.id === product.singleVariant?.id)
   );
-  const [imgFailed, setImgFailed] = useState(false);
+  const [failedImages, setFailedImages] = useState(0);
 
-  const img = product.thumbnail || product.image;
-  const showImage = img && !imgFailed;
+  // The full image first: thumbnails are 150px wide, too small for this card, and some are missing.
+  const img = [product.image, product.thumbnail].filter(Boolean)[failedImages];
+  const showImage = Boolean(img);
   const inCart = Boolean(cartItem);
   const qty = cartItem?.qty ?? 0;
 
@@ -50,7 +51,7 @@ export function CatalogCard({ product, onOpen }) {
       } ${!canBuy ? "opacity-80" : ""}`}
     >
       {/* Image */}
-      <div className="relative aspect-square bg-surface-100 overflow-hidden">
+      <div className="relative aspect-square bg-white overflow-hidden">
         {showImage ? (
           <img
             src={img}
@@ -59,7 +60,7 @@ export function CatalogCard({ product, onOpen }) {
               canBuy ? "group-hover:scale-[1.03]" : "grayscale"
             }`}
             loading="lazy"
-            onError={() => setImgFailed(true)}
+            onError={() => setFailedImages((n) => n + 1)}
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center text-navy/20">
@@ -106,7 +107,9 @@ export function CatalogCard({ product, onOpen }) {
           </p>
         )}
 
-        <div className="mt-4 pt-4 border-t border-surface-300/50 flex items-center justify-between">
+        {/* Pushes the price to the bottom, so it lines up across a row however long the name is. */}
+        <div className="flex-1 min-h-4" />
+        <div className="pt-4 border-t border-surface-300/50 flex items-center justify-between">
           <div className="font-heading font-bold text-lg tracking-tight">
             {product.singleVariant
               ? product.singleVariant.priceCents === 0

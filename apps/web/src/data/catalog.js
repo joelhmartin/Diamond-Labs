@@ -4,6 +4,9 @@
  * fabrication (OND/ONP/DDSO orthotics built per case) lives in products.js
  * and routes through the Digital Rx form instead.
  *
+ * The few per-case appliances listed here carry `active: false`: they stay so admin can
+ * still map their catalog ids, but the shop does not sell them.
+ *
  * This file is legacy SEED data (still read by the admin products page until
  * Task 13). The public shop reads the server catalog: GET /api/v1/catalog.
  */
@@ -97,7 +100,7 @@ const RAW = [
   { id: "62",  name: "Mute — Trial Pack", img: "Mute_TrialPack.jpg", thumb: "thumbnails/Mute_TrialPack_thumbnail.jpg", price: 14.99, cats: "Sleep", stock: 945 },
   { id: "63",  name: "DDSO Sample Models", img: "ddso(diamonddigitalsleeporthotic)_nonasaldilators.jpg", thumb: "thumbnails/DDSO(DiamondDigitalSleepOrthotic)_NoNasalDilators_thumbnail.jpg", price: 150, cats: "Digital Rx.@Sleep", stock: 9970 },
   { id: "67",  name: "SomnoMed Sample Models", img: "1- somnomed-names.jpg", thumb: "thumbnails/1- SomnoMed-NAMES_thumbnail.jpg", price: 300, cats: "Sleep", stock: 999 },
-  { id: "70",  name: "Shirazi Hybrid (Printed Nylon)", img: "shirazihybrid(printed-nylon).jpg", thumb: "thumbnails/ShiraziHybrid(PRINTED-NYLON)_thumbnail.jpg", price: 500, cats: "Sleep", stock: 1000 },
+  { id: "70",  name: "Shirazi Hybrid (Printed Nylon)", img: "shirazihybrid(printed-nylon).jpg", thumb: "thumbnails/ShiraziHybrid(PRINTED-NYLON)_thumbnail.jpg", price: 500, cats: "Sleep", stock: 1000, active: false },
   { id: "72",  name: "Diamond D Scan", img: "diamond d scan.jpg", thumb: "thumbnails/Diamond D Scan_thumbnail.jpg", price: 15, cats: "Products", stock: -356 },
   { id: "73",  name: "Diamond Bite Sticks", img: "Diamon Bite Sticks.jpg", thumb: "thumbnails/Diamon Bite Sticks_thumbnail.jpg", price: 15, cats: "Products", stock: -121 },
   { id: "74",  name: "Diamond Impression Material", img: "diamond impression material.jpg", thumb: "thumbnails/Diamond Impression Material_thumbnail.jpg", price: 12, cats: "Products", stock: 820 },
@@ -124,8 +127,8 @@ const RAW = [
   { id: "104", name: "New Client Welcome Kit", img: "newclientwelcomekit.jpg", thumb: "thumbnails/NewClientWelcomeKit_thumbnail.jpg", price: 0, cats: "Products", stock: 944 },
   { id: "105", name: "Diamond A Classic", img: "diamond a classic.jpg", thumb: "thumbnails/Diamond A Classic_thumbnail.jpg", price: 15, cats: "Products", stock: 9738 },
   { id: "25-2", name: "Nylon Adjusting Burs (5 pcs.)", img: "61ffujos9s_sl1500_.jpg", thumb: "thumbnails/61FfUJoS9S_SL1500__thumbnail.jpg", price: 135, cats: "Tools", stock: 999 },
-  { id: "109", name: "Rx. OD — Diamoform (PMT)", img: "od-pmt.png", thumb: "thumbnails/od-pmt_thumbnail.jpg", price: 199, cats: "Digital Rx.", stock: 0 },
-  { id: "112", name: "DDSO — Diamond Digital Sleep Orthotic", img: "ddso_transparent.png", thumb: "thumbnails/ddso_transparent_thumbnail.jpg", price: 450, cats: "Digital Rx.", stock: 0 },
+  { id: "109", name: "Rx. OD — Diamoform (PMT)", img: "od-pmt.png", thumb: "thumbnails/od-pmt_thumbnail.jpg", price: 199, cats: "Digital Rx.", stock: 0, active: false },
+  { id: "112", name: "DDSO — Diamond Digital Sleep Orthotic", img: "ddso_transparent.png", thumb: "thumbnails/ddso_transparent_thumbnail.jpg", price: 450, cats: "Digital Rx.", stock: 0, active: false },
 ];
 
 function build(p) {

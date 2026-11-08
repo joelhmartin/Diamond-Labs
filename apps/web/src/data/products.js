@@ -1,3 +1,5 @@
+/* A 3D entry is one view of `device` (public/models/appliances) with the material
+   looks it is made in. More than one look gives the viewer a material picker. */
 export const PRODUCTS = {
   ddsoAnt: {
     name: "DDSO",
@@ -9,14 +11,14 @@ export const PRODUCTS = {
     categoryBg: "bg-accent-500/10",
     images: [
       { src: "/images/ddso-ant-overview.webp", label: "DDSO Anterior — Overview" },
-      { src: "/images/ddso-ant-front.webp",    label: "DDSO Anterior — Front View" },
+      { src: "/images/ddso-front.webp",    label: "DDSO Anterior — Front View" },
       { src: "/images/ddso-ant-hooks.webp",    label: "DDSO Anterior — Nylon Band Hooks" },
       { src: "/images/ddso-ant-angle.webp",    label: "DDSO Anterior — Angle View" },
       { src: "/images/ddso-ant-pair.webp",     label: "DDSO Anterior — Upper & Lower" },
       {
         is3D: true,
-        objPath: "/models/DDSO_Anterior_contact.obj",
-        mtlPath: "/models/DDSO_Anterior_contact.mtl",
+        device: "ddso-anterior",
+        looks: [{ label: "Nylon", upper: "nylon", lower: "nylon" }],
         label: "DDSO Anterior — 3D View",
       },
     ],
@@ -39,14 +41,13 @@ export const PRODUCTS = {
     categoryBg: "bg-accent-500/10",
     images: [
       { src: "/images/ddso-post-overview.webp", label: "DDSO Posterior — Overview" },
-      { src: "/images/ddso-post-iso.webp",      label: "DDSO Posterior — Isometric" },
-      { src: "/images/ddso-post-stacked.webp",  label: "DDSO Posterior — Stacked" },
+      { src: "/images/ddso-post-render.webp",      label: "DDSO Posterior — Isometric" },
       { src: "/images/ddso-post-interior.webp", label: "DDSO Posterior — Interior" },
-      { src: "/images/ddso-blue-bands.webp",    label: "DDSO Posterior — Blue Bands" },
+      { src: "/images/ddso-isometric.webp",     label: "DDSO Posterior — Blue Bands" },
       {
         is3D: true,
-        objPath: "/models/DDSO_BANDS_POSTERIOR.obj",
-        mtlPath: "/models/DDSO_BANDS_POSTERIOR.mtl",
+        device: "ddso-posterior",
+        looks: [{ label: "Nylon", upper: "nylon", lower: "nylon" }],
         label: "DDSO Posterior — 3D View",
       },
     ],
@@ -68,15 +69,17 @@ export const PRODUCTS = {
     categoryColor: "text-brand-500",
     categoryBg: "bg-brand-500/10",
     images: [
-      { src: "/images/ond-overview.webp", label: "OND — Overview" },
       { src: "/images/ond-nylon.webp",    label: "OND — Nylon" },
       { src: "/images/ond-trutaine.webp", label: "OND — Trutaine" },
       { src: "/images/ond-front.webp",    label: "OND — Front View" },
       { src: "/images/ond-bands.webp",    label: "OND — With Bands" },
       {
         is3D: true,
-        objPath: "/models/OND_COMBINED.obj",
-        mtlPath: "/models/OND_COMBINED.mtl",
+        device: "ond",
+        looks: [
+          { label: "Nylon + Trutaine", upper: "nylon", lower: "trutaine" },
+          { label: "Nylon", upper: "nylon", lower: "nylon" },
+        ],
         label: "OND — 3D View",
       },
     ],
@@ -99,14 +102,17 @@ export const PRODUCTS = {
     categoryBg: "bg-brand-500/10",
     images: [
       { src: "/images/onp-front.webp",       label: "ONP — Front View" },
-      { src: "/images/onp-nylon.webp",       label: "ONP — Nylon" },
       { src: "/images/onp-nylon4.webp",      label: "ONP — Nylon Detail" },
       { src: "/images/onp-bioflex-new.webp", label: "ONP — Bioflex" },
       { src: "/images/onp-model.webp",       label: "ONP — On Model" },
       {
         is3D: true,
-        objPath: "/models/ONP-Trutaine.obj",
-        mtlPath: "/models/ONP-Trutaine.mtl",
+        device: "onp",
+        looks: [
+          { label: "Trutaine", upper: "trutaine", lower: "trutaine" },
+          { label: "Nylon", upper: "nylon", lower: "nylon" },
+          { label: "Bioflex", upper: "bioflex", lower: "bioflex" },
+        ],
         label: "ONP — 3D View",
       },
     ],
