@@ -15,7 +15,7 @@ import {
 import gsap from "gsap";
 import LogoFull from "../../images/logoFull.jsx";
 import { useAuth } from "../../hooks/useAuth.js";
-import { ROUTES, roleHome, usesAppShell } from "../../config/routes.js";
+import { ROUTES, roleHome, isPortalHome } from "../../config/routes.js";
 
 export const NAV_LINKS = [
   {
@@ -320,7 +320,7 @@ function AccountButton({ scrolled }) {
               <LayoutDashboard size={13} />
               {homeLabel}
             </Link>
-            {usesAppShell(user) && (
+            {!isPortalHome(home) && (
               <Link
                 to={ROUTES.SETTINGS}
                 onClick={() => setOpen(false)}
