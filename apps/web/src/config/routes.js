@@ -58,3 +58,10 @@ export function roleHome(user) {
   // surfaces role-specific sections like /admin/*.
   return ROUTES.DASHBOARD;
 }
+
+/** Whether a home path is a portal one (doctor or pending), not the staff app shell (/dashboard, /settings, ...). */
+export function isPortalHome(home) {
+  return PORTAL_HOMES.includes(home);
+}
+
+const PORTAL_HOMES = [ROUTES.DOCTOR_INVOICES, ROUTES.REGISTER_PENDING];
