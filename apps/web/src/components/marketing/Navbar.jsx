@@ -15,7 +15,7 @@ import {
 import gsap from "gsap";
 import LogoFull from "../../images/logoFull.jsx";
 import { useAuth } from "../../hooks/useAuth.js";
-import { ROUTES, roleHome, isPortalHome } from "../../config/routes.js";
+import { ROUTES, roleHome, isPortalHome, accountPathFor } from "../../config/routes.js";
 
 export const NAV_LINKS = [
   {
@@ -320,14 +320,14 @@ function AccountButton({ scrolled }) {
               <LayoutDashboard size={13} />
               {homeLabel}
             </Link>
-            {!isPortalHome(home) && (
+            {accountPathFor(home) && (
               <Link
-                to={ROUTES.SETTINGS}
+                to={accountPathFor(home)}
                 onClick={() => setOpen(false)}
                 className="flex items-center gap-2 px-4 py-2.5 text-sm text-navy/70 hover:text-brand-500 hover:bg-brand-500/5 transition-colors"
               >
                 <UserCircle2 size={13} />
-                Settings
+                {isPortalHome(home) ? "Account" : "Settings"}
               </Link>
             )}
             <button
