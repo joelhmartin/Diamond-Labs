@@ -103,6 +103,7 @@ import { InvoiceDetailPage } from "./pages/doctor/InvoiceDetailPage.jsx";
 import { PaymentsPage } from "./pages/doctor/PaymentsPage.jsx";
 import { SavedCardsPage } from "./pages/doctor/SavedCardsPage.jsx";
 import AutoPayPage from "./pages/doctor/AutoPayPage.jsx";
+import AccountPage from "./pages/doctor/AccountPage.jsx";
 import { NewCasePage } from "./pages/app/NewCasePage.jsx";
 import { RxChooserPage } from "./pages/app/RxChooserPage.jsx";
 import { RxFormPage } from "./pages/app/RxFormPage.jsx";
@@ -331,6 +332,7 @@ function AppRoutes() {
           <Route path="payments" element={<PaymentsPage />} />
           <Route path="saved-cards" element={<SavedCardsPage />} />
           <Route path="autopay" element={<AutoPayPage />} />
+          <Route path="account" element={<AccountPage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="cases" element={<MyCasesPage />} />
           <Route path="messages" element={<MessagesPage />} />

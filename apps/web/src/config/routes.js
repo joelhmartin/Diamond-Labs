@@ -70,6 +70,7 @@ export const ROUTES = {
   DOCTOR_PAYMENTS: "/doctor/payments",
   DOCTOR_SAVED_CARDS: "/doctor/saved-cards",
   DOCTOR_AUTOPAY: "/doctor/autopay",
+  DOCTOR_ACCOUNT: "/doctor/account",
   DOCTOR_CASES: "/doctor/cases",
   DOCTOR_MESSAGES: "/doctor/messages",
   DOCTOR_THREAD: "/doctor/messages/:id",
@@ -120,6 +121,12 @@ export function roleHome(user, { hasPractices = false } = {}) {
 /** Whether a home path is a portal one (doctor or pending), not the staff app shell (/dashboard, /settings, ...). */
 export function isPortalHome(home) {
   return PORTAL_HOMES.includes(home);
+}
+
+/** Where the account menu's settings link goes for a given home; null when there is none (pending doctors). */
+export function accountPathFor(home) {
+  if (home === ROUTES.REGISTER_PENDING) return null;
+  return home === ROUTES.DOCTOR_INVOICES ? ROUTES.DOCTOR_ACCOUNT : ROUTES.SETTINGS;
 }
 
 const PORTAL_HOMES = [ROUTES.DOCTOR_INVOICES, ROUTES.REGISTER_PENDING];
