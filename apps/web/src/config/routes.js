@@ -61,5 +61,7 @@ export function roleHome(user) {
 
 /** Whether the user belongs in the staff app shell (/dashboard, /settings, ...). Doctors have their own portal. */
 export function usesAppShell(user) {
-  return roleHome(user) === ROUTES.DASHBOARD;
+  return !PORTAL_HOMES.includes(roleHome(user));
 }
+
+const PORTAL_HOMES = [ROUTES.DOCTOR_INVOICES, ROUTES.REGISTER_PENDING];
