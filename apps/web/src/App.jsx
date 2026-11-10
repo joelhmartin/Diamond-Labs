@@ -72,6 +72,7 @@ import { NewCasePage } from "./pages/app/NewCasePage.jsx";
 import { RxChooserPage } from "./pages/app/RxChooserPage.jsx";
 import { RxFormPage } from "./pages/app/RxFormPage.jsx";
 import { RequireDoctor } from "./guards/RequireDoctor.jsx";
+import { RequireAppShellUser } from "./guards/RequireAppShellUser.jsx";
 import { RequireRxAccess } from "./guards/RequireRxAccess.jsx";
 import { ThemeEditor } from "./components/theme/ThemeEditor.jsx";
 
@@ -219,9 +220,11 @@ function AppRoutes() {
       <Route
         element={
           <RequireAuth>
-            <RequireAccount>
-              <AppShell />
-            </RequireAccount>
+            <RequireAppShellUser>
+              <RequireAccount>
+                <AppShell />
+              </RequireAccount>
+            </RequireAppShellUser>
           </RequireAuth>
         }
       >

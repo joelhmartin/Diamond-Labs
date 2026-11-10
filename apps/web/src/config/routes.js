@@ -58,3 +58,8 @@ export function roleHome(user) {
   // surfaces role-specific sections like /admin/*.
   return ROUTES.DASHBOARD;
 }
+
+/** Whether the user belongs in the staff app shell (/dashboard, /settings, ...). Doctors have their own portal. */
+export function usesAppShell(user) {
+  return roleHome(user) === ROUTES.DASHBOARD;
+}
