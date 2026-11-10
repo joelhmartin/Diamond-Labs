@@ -1,6 +1,6 @@
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { clsx } from "clsx";
-import { ArrowLeft, FileText, CreditCard, ClipboardPlus, Receipt, RefreshCw } from "lucide-react";
+import { ArrowLeft, FileText, CreditCard, ClipboardPlus, Receipt, RefreshCw, UserCircle2 } from "lucide-react";
 import { brand } from "../../config/brand.js";
 import { ROUTES } from "../../config/routes.js";
 import { useAuth } from "../../hooks/useAuth.js";
@@ -11,6 +11,7 @@ const navItems = [
   { label: "Rx Forms", to: ROUTES.RX_CHOOSER, icon: ClipboardPlus },
   { label: "Saved Cards", to: ROUTES.DOCTOR_SAVED_CARDS, icon: CreditCard },
   { label: "AutoPay", to: ROUTES.DOCTOR_AUTOPAY, icon: RefreshCw },
+  { label: "Account", to: ROUTES.DOCTOR_ACCOUNT, icon: UserCircle2 },
 ];
 
 export function DoctorShell() {
