@@ -116,3 +116,10 @@ export function roleHome(user, { hasPractices = false } = {}) {
   // Everyone else lands on the account dashboard.
   return ROUTES.DASHBOARD;
 }
+
+/** Whether a home path is a portal one (doctor or pending), not the staff app shell (/dashboard, /settings, ...). */
+export function isPortalHome(home) {
+  return PORTAL_HOMES.includes(home);
+}
+
+const PORTAL_HOMES = [ROUTES.DOCTOR_INVOICES, ROUTES.REGISTER_PENDING];

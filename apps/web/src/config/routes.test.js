@@ -1,6 +1,6 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { roleHome, ROUTES, labOrderPath, shipmentPrintPath } from "./routes.js";
+import { roleHome, isPortalHome, ROUTES, labOrderPath, shipmentPrintPath } from "./routes.js";
 
 test("admin roleHome is /lab/dashboard, lab is /lab", () => {
   assert.equal(roleHome({ role: "lab" }), ROUTES.LAB_BOARD);
@@ -32,4 +32,13 @@ test("a practice login that is not a doctor lands in the portal; staff never do"
   assert.equal(roleHome({ role: "user" }, { hasPractices: false }), ROUTES.DASHBOARD);
   assert.equal(roleHome({ role: "admin" }, { hasPractices: true }), ROUTES.LAB_DASHBOARD_HOME);
   assert.equal(roleHome({ role: "lab" }, { hasPractices: true }), ROUTES.LAB_BOARD);
+});
+
+test("portal homes are the doctor portal and the pending page, never the staff shell", () => {
+  assert.equal(isPortalHome(roleHome({ role: "doctor", approvalStatus: "approved" })), true);
+  assert.equal(isPortalHome(roleHome({ role: "doctor", approvalStatus: "pending" })), true);
+  assert.equal(isPortalHome(roleHome({ role: "user" }, { hasPractices: true })), true);
+  assert.equal(isPortalHome(roleHome({ role: "admin" })), false);
+  assert.equal(isPortalHome(roleHome({ role: "lab" })), false);
+  assert.equal(isPortalHome(roleHome({ role: "user" })), false);
 });
